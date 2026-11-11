@@ -23,6 +23,7 @@ import (
 
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
+	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/web"
 )
 
@@ -61,6 +62,9 @@ type Config struct {
 	// Connections serves /api/connections. serve wires the SQLite-backed
 	// service; nil answers those endpoints with 500 (the API is still up).
 	Connections *connections.Service
+	// Reports serves /api/reports/dashboard and /api/findings. serve wires the
+	// SQLite-backed service; nil answers those endpoints with 500.
+	Reports *reports.Service
 }
 
 // Server serves the bastion API and UI. Create it with New, take its handler
@@ -74,6 +78,10 @@ type Server struct {
 	// a Server without a database (some tests); those endpoints then answer
 	// 500 instead of panicking.
 	connections *connections.Service
+
+	// reports backs /api/reports/dashboard and /api/findings, with the same
+	// nil-means-unavailable contract.
+	reports *reports.Service
 
 	// token arrives once, in the browser URL. session is the cookie value that
 	// replaces it. They are distinct values: a token that leaked into shell
@@ -105,6 +113,7 @@ func New(cfg Config) (*Server, error) {
 		port:        cfg.Port,
 		log:         logger,
 		connections: cfg.Connections,
+		reports:     cfg.Reports,
 		token:       token,
 		session:     session,
 	}

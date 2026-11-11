@@ -115,6 +115,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest findings across assets.
+         * @description Returns the findings of the most recent succeeded scan of every
+         *     non-archived asset (failed, canceled and running scans are skipped),
+         *     most severe first. `status` is the effective status: any
+         *     `finding_states` decision for the same asset and fingerprint reports the
+         *     finding as `ignored` and fills `state` and `reason`, without rewriting
+         *     the stored row.
+         */
+        get: operations["listFindings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard aggregates across non-archived assets.
+         * @description Totals, the five riskiest assets, a trend of open critical+high findings
+         *     and the last scan of every asset. Every aggregate counts only open
+         *     findings (no `finding_states` decision) of each asset's most recent
+         *     succeeded scan; archived assets are excluded throughout.
+         *
+         *     Ignore decisions are keyed on (asset_id, fingerprint) and are applied to
+         *     all scans of the asset, so ignoring a finding also removes it from older
+         *     points of the trend (retroactive) rather than only from the newest point.
+         */
+        get: operations["getDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -228,6 +280,195 @@ export interface components {
             already_added: boolean;
         };
         /**
+         * Severity
+         * @description Normalized severity scale (`unknown` when a scanner gave no usable level).
+         * @enum {string}
+         */
+        Severity: "critical" | "high" | "medium" | "low" | "unknown";
+        /**
+         * FindingType
+         * @description Kind of finding (PROJECT_SPEC.md §5).
+         * @enum {string}
+         */
+        FindingType: "vulnerability" | "secret" | "outdated" | "misconfig" | "license" | "malware" | "sast";
+        /**
+         * FindingStatus
+         * @description Effective status. Any `finding_states` decision for the same asset and
+         *     fingerprint reports the finding as `ignored`; the decision itself is in
+         *     `state`.
+         * @enum {string}
+         */
+        FindingStatus: "open" | "ignored";
+        /**
+         * FindingState
+         * @description The user decision that hides a finding across scans.
+         * @enum {string}
+         */
+        FindingState: "ignored" | "accepted_risk" | "false_positive";
+        /**
+         * AssetKind
+         * @description What the asset is.
+         * @enum {string}
+         */
+        AssetKind: "repo" | "image" | "path";
+        /**
+         * ScanStatus
+         * @description Lifecycle state of a scan.
+         * @enum {string}
+         */
+        ScanStatus: "queued" | "running" | "succeeded" | "failed" | "canceled";
+        /**
+         * Finding
+         * @description One normalized finding of an asset's latest succeeded scan. Optional
+         *     fields are absent when the scanner did not provide them.
+         */
+        Finding: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            asset_id: number;
+            /** Format: int64 */
+            scan_id: number;
+            /** @description Stable identifier of the finding across scans (PROJECT_SPEC.md §5). */
+            fingerprint: string;
+            type: components["schemas"]["FindingType"];
+            severity: components["schemas"]["Severity"];
+            title: string;
+            /** @description CVE, GHSA or scanner rule id. */
+            rule_id?: string;
+            package_name?: string;
+            package_version?: string;
+            /** @description Version that closes the finding, when the advisory knows one. */
+            fixed_version?: string;
+            /**
+             * @example npm
+             * @example go
+             * @example deb
+             */
+            ecosystem?: string;
+            /**
+             * @description Display location: `file:line` (line is display only), file plus
+             *     cause for misconfigurations, or the package path inside an image.
+             */
+            location?: string;
+            /** @description Raw occurrences merged into this finding within one scan. */
+            occurrences: number;
+            scanner: string;
+            status: components["schemas"]["FindingStatus"];
+            state?: components["schemas"]["FindingState"];
+            /** @description The user's reason for the decision in `state`. */
+            reason?: string;
+            /**
+             * Format: int64
+             * @description Scan that reported this fingerprint for the asset first.
+             */
+            first_seen_scan_id?: number;
+            description?: string;
+            /** @description Advisory or rule references; `[]` when there are none. */
+            references: string[];
+        };
+        /** FindingList */
+        FindingList: {
+            findings: components["schemas"]["Finding"][];
+        };
+        /**
+         * Dashboard
+         * @description Aggregates for §7.1. Every number counts open findings of each
+         *     non-archived asset's latest succeeded scan.
+         */
+        Dashboard: {
+            totals_by_severity: components["schemas"]["SeverityTotals"];
+            totals_by_type: components["schemas"]["TypeTotals"];
+            /** @description Up to five assets, riskiest first. */
+            top_assets: components["schemas"]["AssetRisk"][];
+            /**
+             * @description Per asset, the open critical+high count of its last ten succeeded
+             *     scans, oldest first. Ignore decisions apply to every point.
+             */
+            trend: components["schemas"]["AssetTrend"][];
+            /**
+             * @description The newest scan of every non-archived asset that has one, whatever
+             *     its status (a failed last scan is shown as failed).
+             */
+            last_scans: components["schemas"]["LastScan"][];
+        };
+        /**
+         * SeverityTotals
+         * @description Open findings per severity; severities without findings are zero.
+         */
+        SeverityTotals: {
+            critical: number;
+            high: number;
+            medium: number;
+            low: number;
+            unknown: number;
+        };
+        /**
+         * TypeTotals
+         * @description Open findings per type; types without findings are zero.
+         */
+        TypeTotals: {
+            vulnerability: number;
+            secret: number;
+            outdated: number;
+            misconfig: number;
+            license: number;
+            malware: number;
+            sast: number;
+        };
+        /**
+         * AssetRisk
+         * @description One asset's open findings and risk score
+         *     (`critical*1000 + high*100 + medium*10 + low`). Assets whose open
+         *     findings are all `unknown` severity score 0 and are not listed.
+         */
+        AssetRisk: {
+            /** Format: int64 */
+            asset_id: number;
+            display_name: string;
+            kind: components["schemas"]["AssetKind"];
+            score: number;
+            critical: number;
+            high: number;
+            medium: number;
+            low: number;
+        };
+        /**
+         * AssetTrend
+         * @description One asset's trend series.
+         */
+        AssetTrend: {
+            /** Format: int64 */
+            asset_id: number;
+            /** @description Up to ten succeeded scans, oldest first. */
+            scans: components["schemas"]["TrendScan"][];
+        };
+        /** TrendScan */
+        TrendScan: {
+            /** Format: int64 */
+            scan_id: number;
+            /**
+             * Format: date-time
+             * @description Absent only for data written outside a finished scan.
+             */
+            finished_at?: string;
+            critical_high_open: number;
+        };
+        /** LastScan */
+        LastScan: {
+            /** Format: int64 */
+            asset_id: number;
+            display_name: string;
+            /** Format: int64 */
+            scan_id: number;
+            status: components["schemas"]["ScanStatus"];
+            /**
+             * Format: date-time
+             * @description Absent while the scan has not finished.
+             */
+            finished_at?: string;
+        };
+        /**
          * Problem
          * @description RFC 9457 problem details. Extension members are allowed and may be
          *     added later without a breaking change.
@@ -274,6 +515,14 @@ export interface components {
     parameters: {
         /** @description Connection id. */
         ConnectionID: number;
+        /** @description Only findings of this asset. */
+        AssetIDQuery: number;
+        /** @description Only findings with this severity. */
+        SeverityQuery: components["schemas"]["Severity"];
+        /** @description Only findings of this type. */
+        FindingTypeQuery: components["schemas"]["FindingType"];
+        /** @description Only findings with this effective status. */
+        FindingStatusQuery: components["schemas"]["FindingStatus"];
     };
     requestBodies: never;
     headers: never;
@@ -471,6 +720,72 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    listFindings: {
+        parameters: {
+            query?: {
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+                /** @description Only findings with this severity. */
+                severity?: components["parameters"]["SeverityQuery"];
+                /** @description Only findings of this type. */
+                type?: components["parameters"]["FindingTypeQuery"];
+                /** @description Only findings with this effective status. */
+                status?: components["parameters"]["FindingStatusQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The latest findings, after the filters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingList"];
+                };
+            };
+            /** @description A query parameter is not a valid asset id or enum value. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getDashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dashboard aggregates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
         };
     };
 }

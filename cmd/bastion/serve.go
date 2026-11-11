@@ -18,6 +18,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/httpapi"
+	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
 )
@@ -127,10 +128,16 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		return errors.Join(fmt.Errorf("create connections service: %w", err), ln.Close())
 	}
 
+	reportService, err := reports.NewService(db)
+	if err != nil {
+		return errors.Join(fmt.Errorf("create reports service: %w", err), ln.Close())
+	}
+
 	srv, err := deps.newServer(httpapi.Config{
 		Version:     version,
 		Port:        port,
 		Connections: service,
+		Reports:     reportService,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())
