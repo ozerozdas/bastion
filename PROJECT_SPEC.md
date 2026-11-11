@@ -49,7 +49,7 @@ Positioning: a free, private, simple alternative to paid platforms like Aikido.d
 
 | Area | Choice | Notes |
 |---|---|---|
-| Language | Go 1.26+ | `CGO_ENABLED=0` for all builds. Dev tools pinned via `go.mod` `tool` directives (`go tool <name>`), no global installs |
+| Language | Go 1.27+ (forced by Trivy v0.76, ADR-001) | `CGO_ENABLED=0` for all builds. Dev tools pinned via `go.mod` `tool` directives (`go tool <name>`), no global installs |
 | HTTP | stdlib `net/http` (1.22+ routing) | No web framework |
 | CLI | `spf13/cobra` | `bastion serve` (default), `bastion scan`, `bastion doctor`, `bastion version` |
 | Logging | `log/slog` | JSON in `--log-format json`, text by default |

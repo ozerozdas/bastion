@@ -2,7 +2,7 @@
 id: BST-003
 title: ADR-001 spike: Trivy as library (vuln + misconfig + license) on a local dir
 phase: P0
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-001]
 estimate: M
@@ -85,3 +85,4 @@ Trivy v0.76.2 has **no `replace` directives**, so none were copied into our go.m
 make check     # gofmt clean, golangci-lint "0 issues.", go test ./... ok, CGO_ENABLED=0 build
 ./bin/bastion spike-trivy --cache-dir <cache> testdata/trivy/fixture | jq '.Results[].Class'
 ```
+- 2026-11-11 review (orchestrator): re-ran make check (green), spike on fixture → 8 vuln / 4 misconfig / 3 license, binary 148 MiB, import boundary holds. Done.
