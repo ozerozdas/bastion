@@ -52,6 +52,26 @@ func (q *Queries) CreateScan(ctx context.Context, arg CreateScanParams) (Scan, e
 	return i, err
 }
 
+const failUnfinishedScans = `-- name: FailUnfinishedScans :exec
+UPDATE scans
+SET status = 'failed',
+    finished_at = ?1,
+    error = ?2
+WHERE status IN ('queued', 'running')
+`
+
+type FailUnfinishedScansParams struct {
+	FinishedAt sql.NullString
+	Error      sql.NullString
+}
+
+// Startup recovery: a scan still queued or running when this process starts
+// was cut short by the previous process exiting, so it can never finish.
+func (q *Queries) FailUnfinishedScans(ctx context.Context, arg FailUnfinishedScansParams) error {
+	_, err := q.db.ExecContext(ctx, failUnfinishedScans, arg.FinishedAt, arg.Error)
+	return err
+}
+
 const finishScan = `-- name: FinishScan :exec
 UPDATE scans
 SET status = ?1,

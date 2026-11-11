@@ -113,11 +113,18 @@ func newProvider(database *sql.DB) (*goose.Provider, error) {
 // connection needs: WAL for concurrent readers, foreign key enforcement (off
 // by default in SQLite), and a busy timeout so brief writer contention does
 // not fail a request.
+//
+// _txlock=immediate makes BEGIN take the write lock up front. A deferred
+// transaction that reads first and writes later cannot wait for a competing
+// writer in WAL mode: SQLite returns SQLITE_BUSY immediately instead of
+// invoking the busy handler. The worker pool persists scans concurrently, so
+// that upgrade race would surface as "database is locked".
 func dataSourceName(path string) string {
 	query := url.Values{}
 	query.Add("_pragma", "journal_mode(WAL)")
 	query.Add("_pragma", "foreign_keys(ON)")
 	query.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeoutMillis))
+	query.Add("_txlock", "immediate")
 
 	return (&url.URL{Scheme: "file", Path: path, RawQuery: query.Encode()}).String()
 }
