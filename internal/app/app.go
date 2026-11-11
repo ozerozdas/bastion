@@ -22,6 +22,7 @@ const (
 	cacheDirName      = "bastion"
 	dbFileName        = "bastion.db"
 	trivyCacheDirName = "trivy"
+	workspacesDirName = "workspaces"
 )
 
 // Flags are the raw path values from the CLI. An empty string means "not set",
@@ -77,6 +78,13 @@ func (p Paths) DBPath() string {
 // cache directory.
 func (p Paths) TrivyCacheDir() string {
 	return filepath.Join(p.CacheDir, trivyCacheDirName)
+}
+
+// WorkspacesDir is where fetched repository checkouts live, inside the cache
+// directory (PROJECT_SPEC.md §4.4). It is temporary data, so it never sits in
+// the data directory next to the database.
+func (p Paths) WorkspacesDir() string {
+	return filepath.Join(p.CacheDir, workspacesDirName)
 }
 
 // firstSet returns the first non-empty value.

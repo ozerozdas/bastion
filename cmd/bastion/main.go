@@ -2,6 +2,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -16,8 +17,18 @@ var version = "dev"
 
 func main() {
 	if err := newRootCmd().Execute(); err != nil {
-		os.Exit(1)
+		os.Exit(exitCode(err))
 	}
+}
+
+// exitCode maps a command error onto the process status: 2 when a --fail-on
+// threshold was breached, so CI can tell findings from a broken scan, and 1
+// for every other error.
+func exitCode(err error) int {
+	if errors.Is(err, errFailOn) {
+		return 2
+	}
+	return 1
 }
 
 // rootOptions holds the process configuration shared by every subcommand. The

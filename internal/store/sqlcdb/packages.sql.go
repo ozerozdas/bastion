@@ -45,3 +45,43 @@ func (q *Queries) InsertPackage(ctx context.Context, arg InsertPackageParams) er
 	)
 	return err
 }
+
+const listPackagesByScan = `-- name: ListPackagesByScan :many
+SELECT id, scan_id, ecosystem, name, version, purl, path, direct FROM packages
+WHERE scan_id = ?1
+ORDER BY ecosystem, name, version, path, id
+`
+
+// SBOM entries of one scan, in the order findings use them. Reading a finished
+// scan back (CLI output, reports) needs the rows InsertPackage wrote.
+func (q *Queries) ListPackagesByScan(ctx context.Context, scanID int64) ([]Package, error) {
+	rows, err := q.db.QueryContext(ctx, listPackagesByScan, scanID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Package
+	for rows.Next() {
+		var i Package
+		if err := rows.Scan(
+			&i.ID,
+			&i.ScanID,
+			&i.Ecosystem,
+			&i.Name,
+			&i.Version,
+			&i.PURL,
+			&i.Path,
+			&i.Direct,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

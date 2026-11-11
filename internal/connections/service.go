@@ -386,6 +386,40 @@ func (s *Service) row(ctx context.Context, id int64) (sqlcdb.Connection, error) 
 	return row, nil
 }
 
+// Token returns the credential a CLI command should use for GitHub: the first
+// GitHub connection's keyring entry, else BASTION_GITHUB_TOKEN (§10). It is
+// the same lookup Test and Discover perform, without a connection id.
+func (s *Service) Token(ctx context.Context) (string, error) {
+	rows, err := sqlcdb.New(s.db).ListConnections(ctx)
+	if err != nil {
+		return "", fmt.Errorf("connections: list: %w", err)
+	}
+	for _, row := range rows {
+		if row.Kind != KindGitHub {
+			continue
+		}
+		if token, err := s.token(row); err == nil {
+			return token, nil
+		}
+	}
+	return envGitHubToken()
+}
+
+// EnvToken returns BASTION_GITHUB_TOKEN when it is set. It backs --repo scans
+// that run with --no-store and therefore never open the database (§10).
+func EnvToken() (string, error) {
+	return envGitHubToken()
+}
+
+// envGitHubToken reads the environment fallback for github-token.
+func envGitHubToken() (string, error) {
+	value, err := (secrets.EnvStore{}).Get(githubTokenKey)
+	if err == nil && value != "" {
+		return value, nil
+	}
+	return "", ErrNoToken
+}
+
 // token returns the connection's credential: the keyring entry named by
 // secret_ref, else BASTION_GITHUB_TOKEN (§10).
 func (s *Service) token(row sqlcdb.Connection) (string, error) {
@@ -395,11 +429,7 @@ func (s *Service) token(row sqlcdb.Connection) (string, error) {
 			return value, nil
 		}
 	}
-	value, err := (secrets.EnvStore{}).Get(githubTokenKey)
-	if err == nil && value != "" {
-		return value, nil
-	}
-	return "", ErrNoToken
+	return envGitHubToken()
 }
 
 // decodeConfig decodes the non-secret config object. Unknown keys are kept so
