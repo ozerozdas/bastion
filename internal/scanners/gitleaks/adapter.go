@@ -34,7 +34,7 @@ func (s *Scanner) Scan(ctx context.Context, ws *sources.Workspace, opts scanners
 	if ws == nil {
 		return nil, errors.New("gitleaks: workspace is required")
 	}
-	found, err := ScanDir(ctx, ws.Dir, opts.HMACKey)
+	found, err := ScanDir(ctx, ws.Dir, opts.HMACKey, opts.SkipDirs)
 	if err != nil {
 		return nil, fmt.Errorf("gitleaks: scan: %w", err)
 	}

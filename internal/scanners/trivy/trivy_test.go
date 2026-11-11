@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/aquasecurity/trivy/pkg/fanal/walker"
 )
 
 func TestResolveTarget(t *testing.T) {
@@ -44,7 +46,7 @@ func TestResolveTarget(t *testing.T) {
 
 // TestScanArgs pins the scanner set: secrets belong to Gitleaks, not Trivy.
 func TestScanArgs(t *testing.T) {
-	args := scanArgs("/tmp/cache")
+	args := scanArgs("/tmp/cache", []string{"/scan/testdata", "/scan/other/fixtures"})
 
 	valueOf := func(name string) (string, bool) {
 		i := slices.Index(args, name)
@@ -52,6 +54,16 @@ func TestScanArgs(t *testing.T) {
 			return "", false
 		}
 		return args[i+1], true
+	}
+
+	valuesOf := func(name string) []string {
+		var values []string
+		for i, arg := range args {
+			if arg == name && i+1 < len(args) {
+				values = append(values, args[i+1])
+			}
+		}
+		return values
 	}
 
 	cacheDir, ok := valueOf("--cache-dir")
@@ -72,5 +84,41 @@ func TestScanArgs(t *testing.T) {
 	}
 	if format, _ := valueOf("--format"); format != "json" {
 		t.Fatalf("--format = %q, want json", format)
+	}
+	if got, want := valuesOf("--skip-dirs"), []string{"/scan/testdata", "/scan/other/fixtures"}; !slices.Equal(got, want) {
+		t.Fatalf("--skip-dirs = %v, want %v", got, want)
+	}
+}
+
+// TestSkipPatterns pins the semantics of --skip-dirs for Trivy: an entry
+// relative to the scan root becomes an absolute path under that root, which
+// Trivy's walker turns back into the root-relative path it matches on. Passing
+// the bare relative entry would make Trivy resolve it against the process
+// working directory instead.
+func TestSkipPatterns(t *testing.T) {
+	target := t.TempDir()
+
+	got, err := skipPatterns(target, []string{"testdata", "**/node_modules/"})
+	if err != nil {
+		t.Fatalf("skipPatterns: %v", err)
+	}
+	want := []string{
+		filepath.Join(target, "testdata"),
+		filepath.Join(target, "**", "node_modules"),
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("skipPatterns = %v, want %v", got, want)
+	}
+	if rel := walker.NewFS().BuildSkipPaths(target, got); !slices.Equal(rel, []string{"testdata", "**/node_modules"}) {
+		t.Fatalf("Trivy walk paths = %v, want the paths relative to the scan root", rel)
+	}
+
+	if patterns, err := skipPatterns(target, nil); err != nil || patterns != nil {
+		t.Fatalf("skipPatterns(nil) = %v, %v, want no patterns", patterns, err)
+	}
+	for _, dir := range []string{"", ".", "/abs", "../up", "testdata/../.."} {
+		if _, err := skipPatterns(target, []string{dir}); err == nil {
+			t.Errorf("skipPatterns accepted %q", dir)
+		}
 	}
 }

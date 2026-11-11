@@ -59,11 +59,12 @@ type adapter interface {
 }
 
 type scanOptions struct {
-	path    string
-	repo    string
-	format  string
-	failOn  string
-	noStore bool
+	path     string
+	repo     string
+	format   string
+	failOn   string
+	noStore  bool
+	skipDirs []string
 }
 
 // scanOutput is the `bastion scan --format json` document.
@@ -131,6 +132,8 @@ func newScanCmd(root *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&opts.format, "format", scanFormatJSON,
 		"output format: "+scanFormatJSON+", "+scanFormatTable+" or "+scanFormatSARIF)
 	cmd.Flags().BoolVar(&opts.noStore, "no-store", false, "print findings without writing to the database")
+	cmd.Flags().StringArrayVar(&opts.skipDirs, "skip-dirs", nil,
+		"directory to leave out of the scan, relative to the scan root (e.g. testdata); repeat for more")
 	cmd.Flags().StringVar(&opts.failOn, "fail-on", "",
 		"exit with status 2 when an open finding is at or above this severity: critical, high, medium or low")
 	return cmd
@@ -185,6 +188,14 @@ func (o *scanOptions) validate() error {
 	}
 	if o.failOn != "" && severityOrder(findings.Severity(o.failOn)) == severityUnknownOrder {
 		return fmt.Errorf("scan: unsupported --fail-on severity %q (supported: critical, high, medium, low)", o.failOn)
+	}
+	// Scanning is rooted at the target (a local path or a downloaded repo
+	// checkout), so a skip dir is only meaningful relative to that root.
+	for _, dir := range o.skipDirs {
+		rel := filepath.FromSlash(dir)
+		if rel == "." || !filepath.IsLocal(rel) {
+			return fmt.Errorf("scan: --skip-dirs %q must be a path relative to the scan root", dir)
+		}
 	}
 	return nil
 }
@@ -253,6 +264,7 @@ func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDep
 	scanOpts := scanners.Options{
 		CacheDir: deps.paths.TrivyCacheDir(),
 		HMACKey:  key,
+		SkipDirs: opts.skipDirs,
 	}
 
 	var (

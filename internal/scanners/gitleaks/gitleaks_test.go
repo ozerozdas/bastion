@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -32,7 +33,7 @@ func TestScanDirDetectsAndRedacts(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	findings, err := ScanDir(context.Background(), dir, testKey)
+	findings, err := ScanDir(context.Background(), dir, testKey, nil)
 	if err != nil {
 		t.Fatalf("ScanDir: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestScanDirDetectsAndRedacts(t *testing.T) {
 }
 
 func TestScanDirRejectsEmptyKey(t *testing.T) {
-	if _, err := ScanDir(context.Background(), t.TempDir(), nil); err == nil {
+	if _, err := ScanDir(context.Background(), t.TempDir(), nil, nil); err == nil {
 		t.Fatal("ScanDir accepted an empty HMAC key")
 	}
 }
@@ -87,9 +88,62 @@ func TestScanDirRejectsFileTarget(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
-	if _, err := ScanDir(context.Background(), file, testKey); err == nil {
+	if _, err := ScanDir(context.Background(), file, testKey, nil); err == nil {
 		t.Fatal("ScanDir accepted a file target")
 	}
+}
+
+// TestScanDirSkipsDirs proves a secret under a skipped directory (named
+// relative to the scan root) never reaches the result, while the same secret
+// outside it is still reported.
+func TestScanDirSkipsDirs(t *testing.T) {
+	dir := t.TempDir()
+	// Assembled here so the repository never contains a secret-shaped string.
+	body := "aws_access_key_id = " + "AKIA" + "Q7W3ZR5M4N2P6T3V" + "\n"
+	for _, rel := range []string{"config/credentials", "testdata/fixture/credentials"} {
+		path := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+	}
+
+	all, err := ScanDir(context.Background(), dir, testKey, nil)
+	if err != nil {
+		t.Fatalf("ScanDir without skip dirs: %v", err)
+	}
+	if got, want := scannedFiles(all), []string{"config/credentials", "testdata/fixture/credentials"}; !slices.Equal(got, want) {
+		t.Fatalf("scanned files = %v, want %v", got, want)
+	}
+
+	kept, err := ScanDir(context.Background(), dir, testKey, []string{"testdata"})
+	if err != nil {
+		t.Fatalf("ScanDir with skip dirs: %v", err)
+	}
+	if got, want := scannedFiles(kept), []string{"config/credentials"}; !slices.Equal(got, want) {
+		t.Fatalf("scanned files with --skip-dirs testdata = %v, want %v", got, want)
+	}
+
+	if _, err := ScanDir(context.Background(), dir, testKey, []string{dir}); err == nil {
+		t.Fatal("ScanDir accepted an absolute skip dir")
+	}
+	if _, err := ScanDir(context.Background(), dir, testKey, []string{"../up"}); err == nil {
+		t.Fatal("ScanDir accepted a skip dir outside the scan root")
+	}
+}
+
+// scannedFiles lists the distinct files the findings point at, sorted.
+func scannedFiles(findings []Finding) []string {
+	var files []string
+	for _, f := range findings {
+		if !slices.Contains(files, f.File) {
+			files = append(files, f.File)
+		}
+	}
+	slices.Sort(files)
+	return files
 }
 
 func TestRedactMatch(t *testing.T) {

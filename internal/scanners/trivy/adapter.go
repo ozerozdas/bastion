@@ -39,7 +39,7 @@ func (s *Scanner) Scan(ctx context.Context, ws *sources.Workspace, opts scanners
 	if ws == nil {
 		return nil, errors.New("trivy: workspace is required")
 	}
-	raw, err := ScanFS(ctx, ws.Dir, opts.CacheDir)
+	raw, err := ScanFS(ctx, ws.Dir, opts.CacheDir, opts.SkipDirs)
 	if err != nil {
 		return nil, fmt.Errorf("trivy: scan: %w", err)
 	}
