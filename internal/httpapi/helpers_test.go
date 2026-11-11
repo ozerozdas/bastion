@@ -17,9 +17,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ozerozdas/bastion/internal/assets"
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
+	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
@@ -33,6 +35,8 @@ type fakeGitHub struct {
 	userErr  error
 	repos    []github.Repo
 	reposErr error
+	repo     github.Repo
+	repoErr  error
 }
 
 func newFakeGitHub() *fakeGitHub {
@@ -51,6 +55,20 @@ func (f *fakeGitHub) ListRepos(context.Context) ([]github.Repo, error) {
 	return f.repos, f.reposErr
 }
 
+// Repo answers asset creation's default-branch lookup. The zero repo resolves
+// to owner/name on main, so tests only set repo when they need another answer.
+func (f *fakeGitHub) Repo(_ context.Context, owner, name string) (github.Repo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.repoErr != nil {
+		return github.Repo{}, f.repoErr
+	}
+	if f.repo.FullName == "" {
+		return github.Repo{FullName: owner + "/" + name, DefaultBranch: "main"}, nil
+	}
+	return f.repo, nil
+}
+
 func (f *fakeGitHub) setUserErr(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -61,6 +79,16 @@ func (f *fakeGitHub) setRepos(repos []github.Repo, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.repos, f.reposErr = repos, err
+}
+
+// fakeTokens answers every credential lookup, so asset creation never needs a
+// keyring or the environment fallback.
+type fakeTokens struct{}
+
+func (fakeTokens) Token(context.Context) (string, error) { return "test-token", nil }
+
+func (fakeTokens) ConnectionToken(context.Context, int64) (string, error) {
+	return "test-token", nil
 }
 
 // testServer is a Server listening on a real loopback port, with request logs
@@ -74,6 +102,7 @@ type testServer struct {
 	db          *sql.DB
 	secretStore *secrets.MemoryStore
 	github      *fakeGitHub
+	scanManager *jobs.Manager
 }
 
 // newTestServer starts the server on an ephemeral loopback port. Tests use
@@ -120,6 +149,25 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 		t.Fatalf("reports.NewService: %v", err)
 	}
 
+	// No sources or scanners: a queued scan fails its pipeline quickly, which
+	// is all the API tests need (the endpoint contract, not scanning).
+	scanManager, err := jobs.New(jobs.Config{DB: db, Concurrency: 1})
+	if err != nil {
+		t.Fatalf("jobs.New: %v", err)
+	}
+	t.Cleanup(func() { _ = scanManager.Close() })
+
+	assetService, err := assets.NewService(db,
+		assets.WithScanManager(scanManager),
+		assets.WithGitHub(
+			func(string) (assets.RepoClient, error) { return fake, nil },
+			fakeTokens{},
+		),
+	)
+	if err != nil {
+		t.Fatalf("assets.NewService: %v", err)
+	}
+
 	logs := &syncBuffer{}
 	srv, err := New(Config{
 		Version:     "test-version",
@@ -127,6 +175,7 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 		Logger:      slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Connections: service,
 		Reports:     reportService,
+		Assets:      assetService,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -145,6 +194,7 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 		db:          db,
 		secretStore: secretStore,
 		github:      fake,
+		scanManager: scanManager,
 		client: &http.Client{
 			// Redirects are asserted, not followed.
 			CheckRedirect: func(*http.Request, []*http.Request) error {

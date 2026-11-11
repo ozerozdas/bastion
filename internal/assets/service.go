@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/findings"
 	"github.com/ozerozdas/bastion/internal/jobs"
@@ -308,7 +309,9 @@ func (s *Service) defaultBranch(ctx context.Context, connectionID int64, fullNam
 	}
 	repo, err := client.Repo(ctx, owner, name)
 	if err != nil {
-		return "", fmt.Errorf("assets: resolve default branch of %s: %w", fullName, err)
+		// ErrUpstream lets the handler turn a GitHub failure into a 502 with
+		// GitHub's hint instead of a 500.
+		return "", fmt.Errorf("assets: resolve default branch of %s: %w: %w", fullName, connections.ErrUpstream, err)
 	}
 	if repo.DefaultBranch == "" {
 		return "", fmt.Errorf("%w: GitHub reports no default branch for %s", ErrInvalid, fullName)
