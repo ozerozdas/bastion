@@ -18,7 +18,7 @@
 | BST-014 | P0 exit check | P0 | done | tester | all |
 | BST-015 | ADR-005 GitHub network calls | P1 | done | architect | — |
 | BST-016 | Store: persist a scan | P1 | done | coder | — |
-| BST-017 | finding_states + latest findings | P1 | review | coder | 016 |
+| BST-017 | finding_states + latest findings | P1 | done | coder | 016 |
 | BST-018 | `scan --path` persists (real asset id) | P1 | in_progress | coder | 016 |
 | BST-019 | GitHub API client | P1 | done | coder | 015 |
 | BST-020 | Connections service + API | P1 | in_progress | coder | 016, 019 |

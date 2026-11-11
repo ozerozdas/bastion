@@ -2,7 +2,7 @@
 id: BST-017
 title: "finding_states: ignore by fingerprint, status on read, latest findings"
 phase: P1
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-016]
 estimate: M
