@@ -1,0 +1,91 @@
+# GoReleaser v2 configuration (PROJECT_SPEC.md §3, §11.3.7; task BST-035).
+#
+# Print the release: push a tag `v*`, and .github/workflows/release.yml runs
+# `goreleaser release --clean`. Locally, `make release-snapshot` runs the same
+# pipeline against the working tree without publishing anything.
+version: 2
+
+project_name: bastion
+
+# The web UI is embedded (web/embed.go), so web/dist must exist before any
+# `go build`. `make web-build` installs node_modules on demand and runs Vite.
+before:
+  hooks:
+    - make web-build
+
+builds:
+  - id: bastion
+    main: ./cmd/bastion
+    binary: bastion
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  # bastion_0.1.0_linux_amd64.tar.gz — install.sh builds the same name.
+  - id: bastion
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  # A fixed name, because install.sh fetches it from the release assets.
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^pm:"
+      - "merge conflict"
+      - "Merge branch"
+      - "Merge pull request"
+
+# `brews` (formulas) is deprecated since v2.10 and replaced by casks. A cask
+# installs the prebuilt binary from the release archive, which is what a
+# single Go binary needs; `name: bastion` keeps the install command short:
+#   brew install ozerozdas/tap/bastion
+homebrew_casks:
+  - name: bastion
+    repository:
+      owner: ozerozdas
+      name: homebrew-tap
+      # A token with contents:write on the tap only; the default GITHUB_TOKEN
+      # cannot write to another repository.
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/ozerozdas/bastion"
+    description: "Local-first security center for developers: dependency, licence, IaC and secret findings in one binary"
+    binaries:
+      - bastion
+    commit_msg_template: "Brew cask update for {{ .ProjectName }} version {{ .Tag }}"
+    # The binary is not code-signed or notarized (backlog), so macOS marks it
+    # quarantined and refuses to run it ("damaged and cannot be opened").
+    # GoReleaser documents this post-install hook for exactly that case:
+    # https://goreleaser.com/customization/publish/homebrew_casks/#signing-and-notarizing
+    # It is the declarative install-steps DSL (v2.19+), not the deprecated
+    # `hooks.post.install` Ruby stanza. Proper signing replaces it later.
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/bastion"]
+          end

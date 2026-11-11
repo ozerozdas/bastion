@@ -17,10 +17,27 @@ the OS keyring), repo discovery and tarball fetch, scan jobs with live progress,
 reason, Security Reports, and `bastion scan` with JSON, table and SARIF output. Container
 images, fix plans, SAST and MCP are later phases.
 
-## Install (from source)
+## Install
 
-Requirements: Go 1.27+, Node 24 (the web UI is embedded into the binary, so it is built
-first).
+Homebrew (tap is `ozerozdas/homebrew-tap`; the cask installs the prebuilt binary):
+
+```sh
+brew install ozerozdas/tap/bastion
+```
+
+Script — detects macOS/Linux and amd64/arm64, downloads the latest release,
+verifies its sha256 against `checksums.txt` and installs to `~/.local/bin`
+(override with `BASTION_INSTALL_DIR`, pin with `BASTION_VERSION=v0.1.0`):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ozerozdas/bastion/master/install.sh | sh
+```
+
+Read it first: [install.sh](install.sh) — it is ~110 lines and needs only
+`curl`, `tar` and `sha256sum`/`shasum`.
+
+Or from source: Go 1.27+, Node 24 (the web UI is embedded into the binary, so it
+is built first).
 
 ```sh
 git clone https://github.com/ozerozdas/bastion && cd bastion
@@ -28,7 +45,7 @@ make build        # → bin/bastion
 ./bin/bastion version
 ```
 
-Prebuilt binaries and a Homebrew tap are coming with v0.1.0. Binary size is ~156 MiB; the
+Prebuilt binaries are ~156 MiB; the
 first scan additionally downloads a ~1.7 GB vulnerability DB into the cache directory.
 
 ## 5-minute quickstart
