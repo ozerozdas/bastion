@@ -2,7 +2,7 @@
 id: BST-026
 title: "UI: Connections page (GitHub)"
 phase: P1
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-020]
 estimate: M
