@@ -3,7 +3,7 @@
 | id | title | phase | status | owner_role | depends_on |
 |---|---|---|---|---|---|
 | BST-001 | Repo scaffold | P0 | done | coder | — |
-| BST-002 | CI | P0 | ready | coder | 001 |
+| BST-002 | CI | P0 | done | coder | 001 |
 | BST-003 | Trivy spike → ADR-001 | P0 | done | coder | 001 |
 | BST-004 | Gitleaks spike | P0 | done | coder | 001 |
 | BST-005 | App paths + config | P0 | done | coder | 001 |
