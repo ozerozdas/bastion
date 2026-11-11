@@ -2,7 +2,7 @@
 id: BST-006
 title: SQLite (modernc) + goose embedded migrations + sqlc; migration 0001 with all §5 tables
 phase: P0
-status: todo
+status: ready
 owner_role: coder
 depends_on: [BST-005]
 estimate: M

@@ -2,7 +2,7 @@
 id: BST-010
 title: Scanner interface + findings model + fingerprint with unit tests
 phase: P0
-status: todo
+status: ready
 owner_role: coder
 depends_on: [BST-003, BST-004]
 estimate: M
