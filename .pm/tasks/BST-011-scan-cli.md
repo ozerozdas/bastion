@@ -2,7 +2,7 @@
 id: BST-011
 title: bastion scan --path <dir> --format json via interface + normalizers (golden tests)
 phase: P0
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-010]
 estimate: M
@@ -64,3 +64,4 @@ Verification:
 - `./bin/bastion scan --path testdata/trivy/fixture --format json` requires the
   warm Trivy cache (fixture e2e not re-run for this task; golden tests cover the
   normalizer).
+- 2026-11-11 review (orchestrator + reviewer): review findings fixed on bst-010-review-fixes (length-prefixed fingerprint, per-scan merge with occurrences, license version key, Windows paths, deterministic CVSS, partial scanner results). make check green; fixture e2e 8 vuln/4 misconfig/1 license, both scanner runs succeeded. Done.

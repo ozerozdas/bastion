@@ -2,7 +2,7 @@
 id: BST-012
 title: bastion doctor
 phase: P0
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-005, BST-006]
 estimate: S
@@ -76,3 +76,4 @@ BASTION_HMAC_KEY=$(openssl rand -base64 32) ./bin/bastion doctor
   1); `BASTION_HMAC_KEY=...` run reports `hmac key env` without the value;
   `/dev/null/nope` data dir reports `db status error` and exits 1.
 
+- 2026-11-11 review (orchestrator + reviewer): review findings fixed on bst-010-review-fixes (length-prefixed fingerprint, per-scan merge with occurrences, license version key, Windows paths, deterministic CVSS, partial scanner results). make check green; fixture e2e 8 vuln/4 misconfig/1 license, both scanner runs succeeded. Done.

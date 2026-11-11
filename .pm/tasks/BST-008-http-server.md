@@ -2,7 +2,7 @@
 id: BST-008
 title: HTTP server with §4.3 security
 phase: P0
-status: todo
+status: ready
 owner_role: coder
 depends_on: [BST-007]
 estimate: M

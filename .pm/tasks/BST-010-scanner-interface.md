@@ -2,7 +2,7 @@
 id: BST-010
 title: Scanner interface + findings model + fingerprint with unit tests
 phase: P0
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-003, BST-004]
 estimate: M
@@ -78,3 +78,4 @@ Branch commit for the reviewer's findings on §5 fingerprint/dedup:
 Verification:
 - `go test ./internal/findings ./internal/scanners/...` → pass.
 - `make check` → see BST-011 log (same branch).
+- 2026-11-11 review (orchestrator + reviewer): review findings fixed on bst-010-review-fixes (length-prefixed fingerprint, per-scan merge with occurrences, license version key, Windows paths, deterministic CVSS, partial scanner results). make check green; fixture e2e 8 vuln/4 misconfig/1 license, both scanner runs succeeded. Done.
