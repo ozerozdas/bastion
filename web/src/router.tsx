@@ -45,6 +45,17 @@ const projectsRoute = createRoute({
 const reportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/security-reports',
+  // ?asset=<id> keeps the selected project in the URL, so it survives reloads.
+  validateSearch: (search: Record<string, unknown>): { asset?: number } => {
+    const raw = search.asset
+    if (typeof raw === 'number' && Number.isInteger(raw) && raw > 0) {
+      return { asset: raw }
+    }
+    if (typeof raw === 'string' && /^\d+$/.test(raw)) {
+      return { asset: Number(raw) }
+    }
+    return {}
+  },
   component: ReportsPage,
 })
 
