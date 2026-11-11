@@ -2,7 +2,7 @@
 id: BST-019
 title: GitHub API client (internal/connections/github)
 phase: P1
-status: todo
+status: in_progress
 owner_role: coder
 depends_on: [BST-015]
 estimate: M

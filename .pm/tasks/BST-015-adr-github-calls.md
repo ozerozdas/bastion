@@ -2,7 +2,7 @@
 id: BST-015
 title: "ADR-005: GitHub API + tarball network calls"
 phase: P1
-status: review
+status: done
 owner_role: architect
 depends_on: []
 estimate: S
@@ -17,7 +17,7 @@ estimate: S
 
 ## Acceptance criteria
 - [x] `.pm/decisions/ADR-005-github-network-calls.md` written
-- [ ] Özer approves (status → accepted)
+- [x] Özer approves (status → accepted)
 
 ## Verification
 Reviewer runs `make check` plus the commands in the acceptance criteria.

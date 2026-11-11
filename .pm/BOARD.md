@@ -16,11 +16,11 @@
 | BST-012 | `doctor` | P0 | done | coder | 005, 006 |
 | BST-013 | Keyring wrapper | P0 | done | coder | 005 |
 | BST-014 | P0 exit check | P0 | done | tester | all |
-| BST-015 | ADR-005 GitHub network calls | P1 | review | architect | — |
+| BST-015 | ADR-005 GitHub network calls | P1 | done | architect | — |
 | BST-016 | Store: persist a scan | P1 | ready | coder | — |
 | BST-017 | finding_states + latest findings | P1 | todo | coder | 016 |
 | BST-018 | `scan --path` persists (real asset id) | P1 | todo | coder | 016 |
-| BST-019 | GitHub API client | P1 | todo | coder | 015 |
+| BST-019 | GitHub API client | P1 | in_progress | coder | 015 |
 | BST-020 | Connections service + API | P1 | todo | coder | 016, 019 |
 | BST-021 | GitHub tarball source | P1 | todo | coder | 019 |
 | BST-022 | Job system | P1 | todo | coder | 016, 021 |
