@@ -2,7 +2,7 @@
 id: BST-003
 title: ADR-001 spike: Trivy as library (vuln + misconfig + license) on a local dir
 phase: P0
-status: todo
+status: ready
 owner_role: coder
 depends_on: [BST-001]
 estimate: M

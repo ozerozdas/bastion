@@ -2,7 +2,7 @@
 id: BST-005
 title: internal/app paths + config (data dir, cache dir, flags, env)
 phase: P0
-status: todo
+status: ready
 owner_role: coder
 depends_on: [BST-001]
 estimate: S

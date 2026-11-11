@@ -2,7 +2,7 @@
 id: BST-002
 title: CI: GitHub Actions running make check on push/PR, build matrix smoke
 phase: P0
-status: todo
+status: ready
 owner_role: coder
 depends_on: [BST-001]
 estimate: S

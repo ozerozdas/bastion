@@ -2,13 +2,13 @@
 
 | id | title | phase | status | owner_role | depends_on |
 |---|---|---|---|---|---|
-| BST-001 | Repo scaffold | P0 | ready | coder | — |
-| BST-002 | CI | P0 | todo | coder | 001 |
-| BST-003 | Trivy spike → ADR-001 | P0 | todo | coder | 001 |
-| BST-004 | Gitleaks spike | P0 | todo | coder | 001 |
-| BST-005 | App paths + config | P0 | todo | coder | 001 |
+| BST-001 | Repo scaffold | P0 | done | coder | — |
+| BST-002 | CI | P0 | ready | coder | 001 |
+| BST-003 | Trivy spike → ADR-001 | P0 | ready | coder | 001 |
+| BST-004 | Gitleaks spike | P0 | ready | coder | 001 |
+| BST-005 | App paths + config | P0 | ready | coder | 001 |
 | BST-006 | SQLite + goose + sqlc | P0 | todo | coder | 005 |
-| BST-007 | OpenAPI + codegen | P0 | todo | coder | 001 |
+| BST-007 | OpenAPI + codegen | P0 | ready | coder | 001 |
 | BST-008 | HTTP server + §4.3 security | P0 | todo | coder | 007 |
 | BST-009 | Web scaffold + embed | P0 | todo | coder | 008 |
 | BST-010 | Scanner interface + fingerprint | P0 | todo | coder | 003, 004 |

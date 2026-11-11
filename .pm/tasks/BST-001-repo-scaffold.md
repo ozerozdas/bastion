@@ -2,7 +2,7 @@
 id: BST-001
 title: Repo scaffold: layout §4.1, go.mod, Makefile, golangci-lint, .editorconfig, LICENSE
 phase: P0
-status: ready
+status: done
 owner_role: coder
 depends_on: []
 estimate: S
@@ -27,3 +27,4 @@ PROJECT_SPEC.md §12 (seed tasks), §3, §4.
 See acceptance criteria; reviewer runs `make check` plus the commands listed there.
 
 ## Notes / Log
+- 2026-11-11: done. Deps: cobra (CLI, spec §3), golangci-lint v2 as go tool. `make check` green; bin/bastion 2.4 MB.

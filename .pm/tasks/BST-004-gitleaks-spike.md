@@ -2,7 +2,7 @@
 id: BST-004
 title: Spike: Gitleaks library scan of a local dir with redaction
 phase: P0
-status: todo
+status: ready
 owner_role: coder
 depends_on: [BST-001]
 estimate: S
