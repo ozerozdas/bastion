@@ -29,6 +29,8 @@ test:
 	go test ./...
 
 gen:
+	@# sqlc v1.31 shifts byte offsets on non-ASCII input and emits corrupt SQL silently.
+	@! LC_ALL=C grep -n '[^ -~	]' db/queries/*.sql || { echo "db/queries: non-ASCII characters break sqlc"; exit 1; }
 	go tool sqlc generate
 	go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
 	@test -d web/node_modules || $(NPM) ci --no-audit --no-fund
