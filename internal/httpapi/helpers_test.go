@@ -20,6 +20,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
+	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
 )
@@ -114,12 +115,18 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 		t.Fatalf("NewService: %v", err)
 	}
 
+	reportService, err := reports.NewService(db)
+	if err != nil {
+		t.Fatalf("reports.NewService: %v", err)
+	}
+
 	logs := &syncBuffer{}
 	srv, err := New(Config{
 		Version:     "test-version",
 		Port:        port,
 		Logger:      slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Connections: service,
+		Reports:     reportService,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

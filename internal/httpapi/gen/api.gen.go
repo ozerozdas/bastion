@@ -9,12 +9,34 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
 )
+
+// Defines values for AssetKind.
+const (
+	Image AssetKind = "image"
+	Path  AssetKind = "path"
+	Repo  AssetKind = "repo"
+)
+
+// Valid indicates whether the value is a known member of the AssetKind enum.
+func (e AssetKind) Valid() bool {
+	switch e {
+	case Image:
+		return true
+	case Path:
+		return true
+	case Repo:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for ConnectionKind.
 const (
@@ -73,6 +95,78 @@ func (e CreateConnectionRequestKind) Valid() bool {
 	}
 }
 
+// Defines values for FindingState.
+const (
+	FindingStateAcceptedRisk  FindingState = "accepted_risk"
+	FindingStateFalsePositive FindingState = "false_positive"
+	FindingStateIgnored       FindingState = "ignored"
+)
+
+// Valid indicates whether the value is a known member of the FindingState enum.
+func (e FindingState) Valid() bool {
+	switch e {
+	case FindingStateAcceptedRisk:
+		return true
+	case FindingStateFalsePositive:
+		return true
+	case FindingStateIgnored:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingStatus.
+const (
+	FindingStatusIgnored FindingStatus = "ignored"
+	FindingStatusOpen    FindingStatus = "open"
+)
+
+// Valid indicates whether the value is a known member of the FindingStatus enum.
+func (e FindingStatus) Valid() bool {
+	switch e {
+	case FindingStatusIgnored:
+		return true
+	case FindingStatusOpen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingType.
+const (
+	License       FindingType = "license"
+	Malware       FindingType = "malware"
+	Misconfig     FindingType = "misconfig"
+	Outdated      FindingType = "outdated"
+	Sast          FindingType = "sast"
+	Secret        FindingType = "secret"
+	Vulnerability FindingType = "vulnerability"
+)
+
+// Valid indicates whether the value is a known member of the FindingType enum.
+func (e FindingType) Valid() bool {
+	switch e {
+	case License:
+		return true
+	case Malware:
+		return true
+	case Misconfig:
+		return true
+	case Outdated:
+		return true
+	case Sast:
+		return true
+	case Secret:
+		return true
+	case Vulnerability:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	HealthStatusOk HealthStatus = "ok"
@@ -86,6 +180,87 @@ func (e HealthStatus) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// Defines values for ScanStatus.
+const (
+	Canceled  ScanStatus = "canceled"
+	Failed    ScanStatus = "failed"
+	Queued    ScanStatus = "queued"
+	Running   ScanStatus = "running"
+	Succeeded ScanStatus = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the ScanStatus enum.
+func (e ScanStatus) Valid() bool {
+	switch e {
+	case Canceled:
+		return true
+	case Failed:
+		return true
+	case Queued:
+		return true
+	case Running:
+		return true
+	case Succeeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for Severity.
+const (
+	SeverityCritical Severity = "critical"
+	SeverityHigh     Severity = "high"
+	SeverityLow      Severity = "low"
+	SeverityMedium   Severity = "medium"
+	SeverityUnknown  Severity = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the Severity enum.
+func (e Severity) Valid() bool {
+	switch e {
+	case SeverityCritical:
+		return true
+	case SeverityHigh:
+		return true
+	case SeverityLow:
+		return true
+	case SeverityMedium:
+		return true
+	case SeverityUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// AssetKind What the asset is.
+type AssetKind string
+
+// AssetRisk One asset's open findings and risk score
+// (`critical*1000 + high*100 + medium*10 + low`). Assets whose open
+// findings are all `unknown` severity score 0 and are not listed.
+type AssetRisk struct {
+	AssetId     int64  `json:"asset_id"`
+	Critical    int    `json:"critical"`
+	DisplayName string `json:"display_name"`
+	High        int    `json:"high"`
+
+	// Kind What the asset is.
+	Kind   AssetKind `json:"kind"`
+	Low    int       `json:"low"`
+	Medium int       `json:"medium"`
+	Score  int       `json:"score"`
+}
+
+// AssetTrend One asset's trend series.
+type AssetTrend struct {
+	AssetId int64 `json:"asset_id"`
+
+	// Scans Up to ten succeeded scans, oldest first.
+	Scans []TrendScan `json:"scans"`
 }
 
 // Connection A configured integration. The credential itself is never part of this
@@ -146,6 +321,27 @@ type CreateConnectionRequest struct {
 // CreateConnectionRequestKind Only `github` can be created in v0.1.
 type CreateConnectionRequestKind string
 
+// Dashboard Aggregates for §7.1. Every number counts open findings of each
+// non-archived asset's latest succeeded scan.
+type Dashboard struct {
+	// LastScans The newest scan of every non-archived asset that has one, whatever
+	// its status (a failed last scan is shown as failed).
+	LastScans []LastScan `json:"last_scans"`
+
+	// TopAssets Up to five assets, riskiest first.
+	TopAssets []AssetRisk `json:"top_assets"`
+
+	// TotalsBySeverity Open findings per severity; severities without findings are zero.
+	TotalsBySeverity SeverityTotals `json:"totals_by_severity"`
+
+	// TotalsByType Open findings per type; types without findings are zero.
+	TotalsByType TypeTotals `json:"totals_by_type"`
+
+	// Trend Per asset, the open critical+high count of its last ten succeeded
+	// scans, oldest first. Ignore decisions apply to every point.
+	Trend []AssetTrend `json:"trend"`
+}
+
 // DiscoverReposResponse defines model for DiscoverReposResponse.
 type DiscoverReposResponse struct {
 	Repos []DiscoveredRepo `json:"repos"`
@@ -168,6 +364,77 @@ type DiscoveredRepo struct {
 	Private  bool   `json:"private"`
 }
 
+// Finding One normalized finding of an asset's latest succeeded scan. Optional
+// fields are absent when the scanner did not provide them.
+type Finding struct {
+	AssetId     int64   `json:"asset_id"`
+	Description *string `json:"description,omitempty"`
+
+	// Ecosystem Examples: npm, go, deb
+	Ecosystem *string `json:"ecosystem,omitempty"`
+
+	// Fingerprint Stable identifier of the finding across scans (PROJECT_SPEC.md §5).
+	Fingerprint string `json:"fingerprint"`
+
+	// FirstSeenScanId Scan that reported this fingerprint for the asset first.
+	FirstSeenScanId *int64 `json:"first_seen_scan_id,omitempty"`
+
+	// FixedVersion Version that closes the finding, when the advisory knows one.
+	FixedVersion *string `json:"fixed_version,omitempty"`
+	Id           int64   `json:"id"`
+
+	// Location Display location: `file:line` (line is display only), file plus
+	// cause for misconfigurations, or the package path inside an image.
+	Location *string `json:"location,omitempty"`
+
+	// Occurrences Raw occurrences merged into this finding within one scan.
+	Occurrences    int     `json:"occurrences"`
+	PackageName    *string `json:"package_name,omitempty"`
+	PackageVersion *string `json:"package_version,omitempty"`
+
+	// Reason The user's reason for the decision in `state`.
+	Reason *string `json:"reason,omitempty"`
+
+	// References Advisory or rule references; `[]` when there are none.
+	References []string `json:"references"`
+
+	// RuleId CVE, GHSA or scanner rule id.
+	RuleId  *string `json:"rule_id,omitempty"`
+	ScanId  int64   `json:"scan_id"`
+	Scanner string  `json:"scanner"`
+
+	// Severity Normalized severity scale (`unknown` when a scanner gave no usable level).
+	Severity Severity `json:"severity"`
+
+	// State The user decision that hides a finding across scans.
+	State *FindingState `json:"state,omitempty"`
+
+	// Status Effective status. Any `finding_states` decision for the same asset and
+	// fingerprint reports the finding as `ignored`; the decision itself is in
+	// `state`.
+	Status FindingStatus `json:"status"`
+	Title  string        `json:"title"`
+
+	// Type Kind of finding (PROJECT_SPEC.md §5).
+	Type FindingType `json:"type"`
+}
+
+// FindingList defines model for FindingList.
+type FindingList struct {
+	Findings []Finding `json:"findings"`
+}
+
+// FindingState The user decision that hides a finding across scans.
+type FindingState string
+
+// FindingStatus Effective status. Any `finding_states` decision for the same asset and
+// fingerprint reports the finding as `ignored`; the decision itself is in
+// `state`.
+type FindingStatus string
+
+// FindingType Kind of finding (PROJECT_SPEC.md §5).
+type FindingType string
+
 // Health Liveness of the local API.
 type Health struct {
 	// Status Always `ok` while the server is accepting requests.
@@ -183,6 +450,19 @@ type Health struct {
 
 // HealthStatus Always `ok` while the server is accepting requests.
 type HealthStatus string
+
+// LastScan defines model for LastScan.
+type LastScan struct {
+	AssetId     int64  `json:"asset_id"`
+	DisplayName string `json:"display_name"`
+
+	// FinishedAt Absent while the scan has not finished.
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ScanId     int64      `json:"scan_id"`
+
+	// Status Lifecycle state of a scan.
+	Status ScanStatus `json:"status"`
+}
 
 // Problem RFC 9457 problem details. Extension members are allowed and may be
 // added later without a breaking change.
@@ -205,8 +485,72 @@ type Problem struct {
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
+// ScanStatus Lifecycle state of a scan.
+type ScanStatus string
+
+// Severity Normalized severity scale (`unknown` when a scanner gave no usable level).
+type Severity string
+
+// SeverityTotals Open findings per severity; severities without findings are zero.
+type SeverityTotals struct {
+	Critical int `json:"critical"`
+	High     int `json:"high"`
+	Low      int `json:"low"`
+	Medium   int `json:"medium"`
+	Unknown  int `json:"unknown"`
+}
+
+// TrendScan defines model for TrendScan.
+type TrendScan struct {
+	CriticalHighOpen int `json:"critical_high_open"`
+
+	// FinishedAt Absent only for data written outside a finished scan.
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ScanId     int64      `json:"scan_id"`
+}
+
+// TypeTotals Open findings per type; types without findings are zero.
+type TypeTotals struct {
+	License       int `json:"license"`
+	Malware       int `json:"malware"`
+	Misconfig     int `json:"misconfig"`
+	Outdated      int `json:"outdated"`
+	Sast          int `json:"sast"`
+	Secret        int `json:"secret"`
+	Vulnerability int `json:"vulnerability"`
+}
+
+// AssetIDQuery defines model for AssetIDQuery.
+type AssetIDQuery = int64
+
 // ConnectionID defines model for ConnectionID.
 type ConnectionID = int64
+
+// FindingStatusQuery Effective status. Any `finding_states` decision for the same asset and
+// fingerprint reports the finding as `ignored`; the decision itself is in
+// `state`.
+type FindingStatusQuery = FindingStatus
+
+// FindingTypeQuery Kind of finding (PROJECT_SPEC.md §5).
+type FindingTypeQuery = FindingType
+
+// SeverityQuery Normalized severity scale (`unknown` when a scanner gave no usable level).
+type SeverityQuery = Severity
+
+// ListFindingsParams defines parameters for ListFindings.
+type ListFindingsParams struct {
+	// AssetId Only findings of this asset.
+	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+
+	// Severity Only findings with this severity.
+	Severity *SeverityQuery `form:"severity,omitempty" json:"severity,omitempty"`
+
+	// Type Only findings of this type.
+	Type *FindingTypeQuery `form:"type,omitempty" json:"type,omitempty"`
+
+	// Status Only findings with this effective status.
+	Status *FindingStatusQuery `form:"status,omitempty" json:"status,omitempty"`
+}
 
 // CreateConnectionJSONRequestBody defines body for CreateConnection for application/json ContentType.
 type CreateConnectionJSONRequestBody = CreateConnectionRequest
@@ -350,9 +694,15 @@ type ServerInterface interface {
 	// TestConnection Test a connection and record the result.
 	// (POST /api/connections/{id}/test)
 	TestConnection(w http.ResponseWriter, r *http.Request, id ConnectionID)
+	// ListFindings Latest findings across assets.
+	// (GET /api/findings)
+	ListFindings(w http.ResponseWriter, r *http.Request, params ListFindingsParams)
 	// GetHealth Liveness and version probe.
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// GetDashboard Dashboard aggregates across non-archived assets.
+	// (GET /api/reports/dashboard)
+	GetDashboard(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -470,11 +820,97 @@ func (siw *ServerInterfaceWrapper) TestConnection(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListFindings operation middleware
+func (siw *ServerInterfaceWrapper) ListFindings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListFindingsParams
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "severity" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "severity", r.URL.Query(), &params.Severity, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "severity"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "severity", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFindings(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDashboard operation middleware
+func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDashboard(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -610,6 +1046,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/connections/{id}", wrapper.DeleteConnection)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections/{id}/test", wrapper.TestConnection)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections/{id}/discover", wrapper.DiscoverConnectionRepos)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/findings", wrapper.ListFindings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/dashboard", wrapper.GetDashboard)
 
 	return m
 }
@@ -1367,6 +1805,133 @@ func (response TestConnection500ApplicationProblemPlusJSONResponse) VisitTestCon
 	return err
 }
 
+type ListFindingsRequestObject struct {
+	Params ListFindingsParams
+}
+
+type ListFindingsResponseObject interface {
+	VisitListFindingsResponse(w http.ResponseWriter) error
+}
+
+type ListFindings200JSONResponse FindingList
+
+func (response ListFindings200JSONResponse) VisitListFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFindings400ApplicationProblemPlusJSONResponse Problem
+
+func (response ListFindings400ApplicationProblemPlusJSONResponse) VisitListFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFindings401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListFindings401ApplicationProblemPlusJSONResponse) VisitListFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFindings403ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListFindings403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListFindings403ResponseHeaders
+}
+
+func (response ListFindings403ApplicationProblemPlusJSONResponse) VisitListFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFindings421ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListFindings421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListFindings421ResponseHeaders
+}
+
+func (response ListFindings421ApplicationProblemPlusJSONResponse) VisitListFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFindings500ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListFindings500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListFindings500ResponseHeaders
+}
+
+func (response ListFindings500ApplicationProblemPlusJSONResponse) VisitListFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetHealthRequestObject struct {
 }
 
@@ -1479,6 +2044,118 @@ func (response GetHealth500ApplicationProblemPlusJSONResponse) VisitGetHealthRes
 	return err
 }
 
+type GetDashboardRequestObject struct {
+}
+
+type GetDashboardResponseObject interface {
+	VisitGetDashboardResponse(w http.ResponseWriter) error
+}
+
+type GetDashboard200JSONResponse Dashboard
+
+func (response GetDashboard200JSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDashboard401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetDashboard401ApplicationProblemPlusJSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDashboard403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetDashboard403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetDashboard403ResponseHeaders
+}
+
+func (response GetDashboard403ApplicationProblemPlusJSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDashboard421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetDashboard421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetDashboard421ResponseHeaders
+}
+
+func (response GetDashboard421ApplicationProblemPlusJSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDashboard500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetDashboard500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetDashboard500ResponseHeaders
+}
+
+func (response GetDashboard500ApplicationProblemPlusJSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ListConnections List configured connections.
@@ -1496,9 +2173,15 @@ type StrictServerInterface interface {
 	// TestConnection Test a connection and record the result.
 	// (POST /api/connections/{id}/test)
 	TestConnection(ctx context.Context, request TestConnectionRequestObject) (TestConnectionResponseObject, error)
+	// ListFindings Latest findings across assets.
+	// (GET /api/findings)
+	ListFindings(ctx context.Context, request ListFindingsRequestObject) (ListFindingsResponseObject, error)
 	// GetHealth Liveness and version probe.
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+	// GetDashboard Dashboard aggregates across non-archived assets.
+	// (GET /api/reports/dashboard)
+	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1673,6 +2356,32 @@ func (sh *strictHandler) TestConnection(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// ListFindings operation middleware
+func (sh *strictHandler) ListFindings(w http.ResponseWriter, r *http.Request, params ListFindingsParams) {
+	var request ListFindingsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListFindings(ctx, request.(ListFindingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListFindings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListFindingsResponseObject); ok {
+		if err := validResponse.VisitListFindingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHealth operation middleware
 func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	var request GetHealthRequestObject
@@ -1690,6 +2399,30 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDashboard operation middleware
+func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
+	var request GetDashboardRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDashboard(ctx, request.(GetDashboardRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDashboard")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDashboardResponseObject); ok {
+		if err := validResponse.VisitGetDashboardResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
