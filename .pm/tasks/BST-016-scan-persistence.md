@@ -2,7 +2,7 @@
 id: BST-016
 title: "Store: persist a scan (scans, scanner_runs, packages, findings)"
 phase: P1
-status: review
+status: done
 owner_role: coder
 depends_on: []
 estimate: M
