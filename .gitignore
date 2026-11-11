@@ -1,6 +1,8 @@
 /bin/
 /web/node_modules/
 /web/dist/
+/web/playwright-report/
+/web/test-results/
 *.test
 *.out
 .DS_Store

@@ -15,16 +15,11 @@ import { scansQuery, useCancelScan, useStartScans, type Scan } from '../api/scan
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { suggestFix } from '../lib/hints'
+import { relativeTime } from '../lib/time'
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
-
-const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
-
-const relativeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
 
 /** statusView maps a scan status to its badge text and tone (§7.5). */
 const statusView: Record<
@@ -465,21 +460,6 @@ function ScanFailure({ error }: { error: string | undefined }) {
   )
 }
 
-/** suggestFix turns a scan error into a concrete next step (§7). */
-function suggestFix(error: string | undefined): string {
-  const text = (error ?? '').toLowerCase()
-  if (text.includes('token') || text.includes('401')) {
-    return 'Re-test the GitHub connection on Connections.'
-  }
-  if (text.includes('rate limit')) {
-    return 'Wait until GitHub resets the rate limit, then scan again.'
-  }
-  if (text.includes('not found') || text.includes('404')) {
-    return 'Check the token has access to this repository.'
-  }
-  return 'See Scan History for details.'
-}
-
 /** AddProjects is the inline panel: GitHub discovery plus a local path. */
 function AddProjects() {
   const connections = useQuery(connectionsQuery)
@@ -896,27 +876,4 @@ function scanWhen(lastScan: Asset['last_scan'], running: boolean): string {
     return ''
   }
   return relativeTime(lastScan.finished_at)
-}
-
-/** relativeTime formats a timestamp the same way Scan History does. */
-function relativeTime(timestamp: string): string {
-  const then = new Date(timestamp).getTime()
-  if (Number.isNaN(then)) {
-    return 'unknown'
-  }
-  const seconds = (then - Date.now()) / 1000
-  const magnitude = Math.abs(seconds)
-  if (magnitude < 45) {
-    return 'just now'
-  }
-  if (magnitude < 3600) {
-    return relativeFormat.format(Math.round(seconds / 60), 'minute')
-  }
-  if (magnitude < 86_400) {
-    return relativeFormat.format(Math.round(seconds / 3600), 'hour')
-  }
-  if (magnitude < 2_592_000) {
-    return relativeFormat.format(Math.round(seconds / 86_400), 'day')
-  }
-  return dateTimeFormat.format(new Date(then))
 }

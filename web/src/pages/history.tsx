@@ -8,13 +8,7 @@ import { scansQuery, type Scan } from '../api/scans'
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { buttonVariants } from '../components/ui/button'
-
-const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
-
-const relativeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+import { formatDateTime, relativeTime, scanDuration } from '../lib/time'
 
 /** statusView maps a scan status to its badge text and tone (§7.5). */
 const statusView: Record<
@@ -167,14 +161,14 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
                   className="py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums"
                   title={
                     scan.started_at
-                      ? dateTimeFormat.format(new Date(scan.started_at))
+                      ? formatDateTime(scan.started_at)
                       : undefined
                   }
                 >
                   {relativeTime(scan.started_at)}
                 </td>
                 <td className="py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums">
-                  {duration(scan)}
+                  {scanDuration(scan)}
                 </td>
                 <td className="py-2 pl-3">
                   {scan.error ? (
@@ -220,54 +214,6 @@ function assetNames(assets: Asset[]): Map<number, string> {
     names.set(asset.id, asset.display_name)
   }
   return names
-}
-
-/** duration is finished minus started, phrased in one short unit chain. */
-function duration(scan: Scan): string {
-  if (!scan.started_at) {
-    return scan.status === 'queued' ? 'waiting' : '—'
-  }
-  const started = new Date(scan.started_at).getTime()
-  const finished = scan.finished_at ? new Date(scan.finished_at).getTime() : NaN
-  if (Number.isNaN(started) || Number.isNaN(finished)) {
-    return scan.status === 'running' ? 'running' : '—'
-  }
-  const seconds = Math.max(0, Math.round((finished - started) / 1000))
-  if (seconds < 60) {
-    return `${String(seconds)}s`
-  }
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) {
-    return `${String(minutes)}m ${String(seconds % 60)}s`
-  }
-  const hours = Math.floor(minutes / 60)
-  return `${String(hours)}h ${String(minutes % 60)}m`
-}
-
-/** relativeTime says when a scan started, falling back to the full date. */
-function relativeTime(timestamp: string | undefined): string {
-  if (!timestamp) {
-    return 'not started'
-  }
-  const then = new Date(timestamp).getTime()
-  if (Number.isNaN(then)) {
-    return 'unknown'
-  }
-  const seconds = (then - Date.now()) / 1000
-  const magnitude = Math.abs(seconds)
-  if (magnitude < 45) {
-    return 'just now'
-  }
-  if (magnitude < 3600) {
-    return relativeFormat.format(Math.round(seconds / 60), 'minute')
-  }
-  if (magnitude < 86_400) {
-    return relativeFormat.format(Math.round(seconds / 3600), 'hour')
-  }
-  if (magnitude < 2_592_000) {
-    return relativeFormat.format(Math.round(seconds / 86_400), 'day')
-  }
-  return dateTimeFormat.format(new Date(then))
 }
 
 /** ErrorNote shows the problem detail the API returned, plus what to do next. */
