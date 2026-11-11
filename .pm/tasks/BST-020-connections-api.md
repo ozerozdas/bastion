@@ -2,7 +2,7 @@
 id: BST-020
 title: Connections service + API (GitHub)
 phase: P1
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-016, BST-019]
 estimate: M

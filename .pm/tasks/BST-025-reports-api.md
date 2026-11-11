@@ -2,7 +2,7 @@
 id: BST-025
 title: Dashboard + latest findings API (internal/reports)
 phase: P1
-status: todo
+status: in_progress
 owner_role: coder
 depends_on: [BST-017]
 estimate: M
