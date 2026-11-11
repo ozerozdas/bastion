@@ -1,6 +1,6 @@
 ---
 id: BST-026
-title: UI: Connections page (GitHub)
+title: "UI: Connections page (GitHub)"
 phase: P1
 status: todo
 owner_role: coder

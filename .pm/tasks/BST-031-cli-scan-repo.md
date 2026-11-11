@@ -1,6 +1,6 @@
 ---
 id: BST-031
-title: CLI: `scan --repo owner/name` and `--format json|table|sarif`
+title: "CLI: `scan --repo owner/name` and `--format json|table|sarif`"
 phase: P1
 status: todo
 owner_role: coder

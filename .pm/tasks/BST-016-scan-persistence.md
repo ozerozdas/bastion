@@ -1,6 +1,6 @@
 ---
 id: BST-016
-title: Store: persist a scan (scans, scanner_runs, packages, findings)
+title: "Store: persist a scan (scans, scanner_runs, packages, findings)"
 phase: P1
 status: ready
 owner_role: coder

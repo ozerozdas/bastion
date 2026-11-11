@@ -1,6 +1,6 @@
 ---
 id: BST-015
-title: ADR-005: GitHub API + tarball network calls
+title: "ADR-005: GitHub API + tarball network calls"
 phase: P1
 status: review
 owner_role: architect

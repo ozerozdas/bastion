@@ -1,6 +1,6 @@
 ---
 id: BST-032
-title: Frontend tests: Vitest logic + Playwright smoke for 5 pages
+title: "Frontend tests: Vitest logic + Playwright smoke for 5 pages"
 phase: P1
 status: todo
 owner_role: tester

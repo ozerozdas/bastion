@@ -1,6 +1,6 @@
 ---
 id: BST-029
-title: UI: Dashboard
+title: "UI: Dashboard"
 phase: P1
 status: todo
 owner_role: coder

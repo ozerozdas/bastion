@@ -1,6 +1,6 @@
 ---
 id: BST-030
-title: UI: Scan History (list)
+title: "UI: Scan History (list)"
 phase: P1
 status: todo
 owner_role: coder

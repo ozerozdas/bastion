@@ -1,6 +1,6 @@
 ---
 id: BST-035
-title: Release pipeline: GoReleaser, install.sh, Homebrew tap
+title: "Release pipeline: GoReleaser, install.sh, Homebrew tap"
 phase: P1
 status: todo
 owner_role: coder

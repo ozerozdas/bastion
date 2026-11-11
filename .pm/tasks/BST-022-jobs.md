@@ -1,6 +1,6 @@
 ---
 id: BST-022
-title: Job system: queue, worker pool, cancel, lifecycle (internal/jobs)
+title: "Job system: queue, worker pool, cancel, lifecycle (internal/jobs)"
 phase: P1
 status: todo
 owner_role: coder

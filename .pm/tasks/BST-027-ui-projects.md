@@ -1,6 +1,6 @@
 ---
 id: BST-027
-title: UI: Projects page, discover dialog, scan + live progress
+title: "UI: Projects page, discover dialog, scan + live progress"
 phase: P1
 status: todo
 owner_role: coder

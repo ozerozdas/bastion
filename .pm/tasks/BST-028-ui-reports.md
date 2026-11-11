@@ -1,6 +1,6 @@
 ---
 id: BST-028
-title: UI: Security Reports (findings table, drawer, ignore)
+title: "UI: Security Reports (findings table, drawer, ignore)"
 phase: P1
 status: todo
 owner_role: coder

@@ -1,6 +1,6 @@
 ---
 id: BST-017
-title: finding_states: ignore by fingerprint, status on read, latest findings
+title: "finding_states: ignore by fingerprint, status on read, latest findings"
 phase: P1
 status: todo
 owner_role: coder
