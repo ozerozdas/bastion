@@ -24,6 +24,31 @@ jobs:
       # make check builds the UI (embed) before go build.
       - run: make check
 
+  # The smoke test drives the built binary in Chromium. `make check` must not
+  # download a browser, so this job installs one and runs the five-page test.
+  e2e:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: make build
+      - run: npx --prefix web playwright install --with-deps chromium
+      - run: make e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7
+
   # bastion scans its own repository. testdata holds intentional fixture
   # vulnerabilities, so it is skipped. SARIF upload to code scanning needs extra
   # permissions and arrives with the Phase 4 GitHub Action.
