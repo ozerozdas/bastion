@@ -10,6 +10,34 @@ import (
 	"database/sql"
 )
 
+const archiveAsset = `-- name: ArchiveAsset :one
+UPDATE assets SET archived_at = ?1 WHERE id = ?2
+RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at
+`
+
+type ArchiveAssetParams struct {
+	ArchivedAt sql.NullString
+	ID         int64
+}
+
+// Soft delete: the row stays so historical scans keep their findings.
+func (q *Queries) ArchiveAsset(ctx context.Context, arg ArchiveAssetParams) (Asset, error) {
+	row := q.db.QueryRowContext(ctx, archiveAsset, arg.ArchivedAt, arg.ID)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.ConnectionID,
+		&i.DisplayName,
+		&i.Ref,
+		&i.DefaultBranch,
+		&i.MetadataJSON,
+		&i.CreatedAt,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
 const createAsset = `-- name: CreateAsset :one
 INSERT INTO assets (kind, connection_id, display_name, ref, default_branch, metadata_json, created_at)
 VALUES (
@@ -65,6 +93,63 @@ SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json
 
 func (q *Queries) GetAsset(ctx context.Context, id int64) (Asset, error) {
 	row := q.db.QueryRowContext(ctx, getAsset, id)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.ConnectionID,
+		&i.DisplayName,
+		&i.Ref,
+		&i.DefaultBranch,
+		&i.MetadataJSON,
+		&i.CreatedAt,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
+const getOrCreateAsset = `-- name: GetOrCreateAsset :one
+INSERT INTO assets (kind, connection_id, display_name, ref, default_branch, metadata_json, created_at)
+VALUES (
+    ?1,
+    ?2,
+    ?3,
+    ?4,
+    ?5,
+    ?6,
+    ?7
+)
+ON CONFLICT (kind, ref) DO UPDATE SET
+    display_name   = excluded.display_name,
+    connection_id  = COALESCE(excluded.connection_id, assets.connection_id),
+    default_branch = COALESCE(excluded.default_branch, assets.default_branch)
+RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at
+`
+
+type GetOrCreateAssetParams struct {
+	Kind          string
+	ConnectionID  sql.NullInt64
+	DisplayName   string
+	Ref           string
+	DefaultBranch sql.NullString
+	MetadataJSON  string
+	CreatedAt     string
+}
+
+// Resolve the asset a scan targets, creating it the first time it is seen. A
+// repeat target keeps its row and id (findings fingerprints depend on the id);
+// only the display fields are refreshed, and optional fields are filled when
+// the caller provides them but never cleared.
+func (q *Queries) GetOrCreateAsset(ctx context.Context, arg GetOrCreateAssetParams) (Asset, error) {
+	row := q.db.QueryRowContext(ctx, getOrCreateAsset,
+		arg.Kind,
+		arg.ConnectionID,
+		arg.DisplayName,
+		arg.Ref,
+		arg.DefaultBranch,
+		arg.MetadataJSON,
+		arg.CreatedAt,
+	)
 	var i Asset
 	err := row.Scan(
 		&i.ID,

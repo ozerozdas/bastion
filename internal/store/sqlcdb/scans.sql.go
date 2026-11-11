@@ -51,3 +51,154 @@ func (q *Queries) CreateScan(ctx context.Context, arg CreateScanParams) (Scan, e
 	)
 	return i, err
 }
+
+const finishScan = `-- name: FinishScan :exec
+UPDATE scans
+SET status = ?1,
+    finished_at = ?2,
+    error = ?3,
+    target_ref = COALESCE(?4, target_ref)
+WHERE id = ?5
+`
+
+type FinishScanParams struct {
+	Status     string
+	FinishedAt sql.NullString
+	Error      sql.NullString
+	TargetRef  sql.NullString
+	ID         int64
+}
+
+// Record the final state of a scan. An empty target_ref keeps the value the
+// scan was created with.
+func (q *Queries) FinishScan(ctx context.Context, arg FinishScanParams) error {
+	_, err := q.db.ExecContext(ctx, finishScan,
+		arg.Status,
+		arg.FinishedAt,
+		arg.Error,
+		arg.TargetRef,
+		arg.ID,
+	)
+	return err
+}
+
+const getScan = `-- name: GetScan :one
+SELECT id, asset_id, target_ref, status, "trigger", started_at, finished_at, error FROM scans WHERE id = ?1
+`
+
+func (q *Queries) GetScan(ctx context.Context, id int64) (Scan, error) {
+	row := q.db.QueryRowContext(ctx, getScan, id)
+	var i Scan
+	err := row.Scan(
+		&i.ID,
+		&i.AssetID,
+		&i.TargetRef,
+		&i.Status,
+		&i.Trigger,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.Error,
+	)
+	return i, err
+}
+
+const insertScannerRun = `-- name: InsertScannerRun :exec
+INSERT INTO scanner_runs (scan_id, scanner, scanner_version, db_version, status, duration_ms, error, raw_path)
+VALUES (
+    ?1,
+    ?2,
+    ?3,
+    ?4,
+    ?5,
+    ?6,
+    ?7,
+    ?8
+)
+`
+
+type InsertScannerRunParams struct {
+	ScanID         int64
+	Scanner        string
+	ScannerVersion sql.NullString
+	DBVersion      sql.NullString
+	Status         string
+	DurationMS     sql.NullInt64
+	Error          sql.NullString
+	RawPath        sql.NullString
+}
+
+func (q *Queries) InsertScannerRun(ctx context.Context, arg InsertScannerRunParams) error {
+	_, err := q.db.ExecContext(ctx, insertScannerRun,
+		arg.ScanID,
+		arg.Scanner,
+		arg.ScannerVersion,
+		arg.DBVersion,
+		arg.Status,
+		arg.DurationMS,
+		arg.Error,
+		arg.RawPath,
+	)
+	return err
+}
+
+const listScansByAsset = `-- name: ListScansByAsset :many
+SELECT id, asset_id, target_ref, status, "trigger", started_at, finished_at, error FROM scans WHERE asset_id = ?1 ORDER BY id DESC LIMIT ?2
+`
+
+type ListScansByAssetParams struct {
+	AssetID int64
+	Limit   int64
+}
+
+// Newest first: ids increase with time, so ordering by id is stable even when
+// two scans share a started_at.
+func (q *Queries) ListScansByAsset(ctx context.Context, arg ListScansByAssetParams) ([]Scan, error) {
+	rows, err := q.db.QueryContext(ctx, listScansByAsset, arg.AssetID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Scan
+	for rows.Next() {
+		var i Scan
+		if err := rows.Scan(
+			&i.ID,
+			&i.AssetID,
+			&i.TargetRef,
+			&i.Status,
+			&i.Trigger,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.Error,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markScanRunning = `-- name: MarkScanRunning :exec
+UPDATE scans
+SET status = 'running',
+    started_at = COALESCE(started_at, ?1)
+WHERE id = ?2
+`
+
+type MarkScanRunningParams struct {
+	StartedAt sql.NullString
+	ID        int64
+}
+
+// Keep the start time a caller has already recorded; set it on the first
+// transition to running.
+func (q *Queries) MarkScanRunning(ctx context.Context, arg MarkScanRunningParams) error {
+	_, err := q.db.ExecContext(ctx, markScanRunning, arg.StartedAt, arg.ID)
+	return err
+}
