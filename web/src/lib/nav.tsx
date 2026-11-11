@@ -22,7 +22,7 @@ export const navItems: NavItem[] = [
   {
     to: '/',
     label: 'Dashboard',
-    subtitle: 'Nothing has been scanned yet',
+    subtitle: 'Open findings across your projects',
     icon: DashboardIcon,
   },
   {
