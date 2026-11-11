@@ -132,37 +132,101 @@ func (q *Queries) InsertFinding(ctx context.Context, arg InsertFindingParams) er
 }
 
 const listFindingsByScan = `-- name: ListFindingsByScan :many
-SELECT id, scan_id, asset_id, type, fingerprint, occurrences, severity, title, rule_id, package_name, package_version, fixed_version, ecosystem, location, cvss, epss, description, references_json, scanner, first_seen_scan_id, status, created_at FROM findings
-WHERE scan_id = ?1
-  AND (?2 IS NULL OR type = ?2)
-  AND (?3 IS NULL OR severity = ?3)
+SELECT
+    f.id,
+    f.scan_id,
+    f.asset_id,
+    f.type,
+    f.fingerprint,
+    f.occurrences,
+    f.severity,
+    f.title,
+    f.rule_id,
+    f.package_name,
+    f.package_version,
+    f.fixed_version,
+    f.ecosystem,
+    f.location,
+    f.cvss,
+    f.epss,
+    f.description,
+    f.references_json,
+    f.scanner,
+    f.first_seen_scan_id,
+    CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) AS status,
+    fs.state AS state,
+    fs.reason AS reason,
+    f.created_at
+FROM findings f
+LEFT JOIN finding_states fs
+    ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+WHERE f.scan_id = ?1
+  AND (?2 IS NULL OR f.type = ?2)
+  AND (?3 IS NULL OR f.severity = ?3)
+  AND (?4 IS NULL OR CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) = ?4)
 ORDER BY
-    CASE severity
+    CASE f.severity
         WHEN 'critical' THEN 0
         WHEN 'high' THEN 1
         WHEN 'medium' THEN 2
         WHEN 'low' THEN 3
         ELSE 4
     END,
-    fingerprint
+    f.fingerprint
 `
 
 type ListFindingsByScanParams struct {
 	ScanID   int64
 	Type     interface{}
 	Severity interface{}
+	Status   interface{}
 }
 
-// Findings of one scan, most severe first, with optional type/severity filters.
-func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScanParams) ([]Finding, error) {
-	rows, err := q.db.QueryContext(ctx, listFindingsByScan, arg.ScanID, arg.Type, arg.Severity)
+type ListFindingsByScanRow struct {
+	ID              int64
+	ScanID          int64
+	AssetID         int64
+	Type            string
+	Fingerprint     string
+	Occurrences     int64
+	Severity        string
+	Title           string
+	RuleID          sql.NullString
+	PackageName     sql.NullString
+	PackageVersion  sql.NullString
+	FixedVersion    sql.NullString
+	Ecosystem       sql.NullString
+	Location        sql.NullString
+	CVSS            sql.NullFloat64
+	EPSS            sql.NullFloat64
+	Description     sql.NullString
+	ReferencesJSON  string
+	Scanner         string
+	FirstSeenScanID sql.NullInt64
+	Status          string
+	State           sql.NullString
+	Reason          sql.NullString
+	CreatedAt       string
+}
+
+// Findings of one scan, most severe first, with optional type/severity/status
+// filters. status is the effective status: a finding_states row for the same
+// (asset_id, fingerprint) reports the finding as 'ignored' without rewriting
+// the stored row, and state/reason carry the decision for the UI.
+func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScanParams) ([]ListFindingsByScanRow, error) {
+	rows, err := q.db.QueryContext(ctx, listFindingsByScan,
+		arg.ScanID,
+		arg.Type,
+		arg.Severity,
+		arg.Status,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Finding
+	var items []ListFindingsByScanRow
 	for rows.Next() {
-		var i Finding
+		var i ListFindingsByScanRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ScanID,
@@ -185,6 +249,154 @@ func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScan
 			&i.Scanner,
 			&i.FirstSeenScanID,
 			&i.Status,
+			&i.State,
+			&i.Reason,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLatestFindings = `-- name: ListLatestFindings :many
+SELECT
+    f.id,
+    f.scan_id,
+    f.asset_id,
+    f.type,
+    f.fingerprint,
+    f.occurrences,
+    f.severity,
+    f.title,
+    f.rule_id,
+    f.package_name,
+    f.package_version,
+    f.fixed_version,
+    f.ecosystem,
+    f.location,
+    f.cvss,
+    f.epss,
+    f.description,
+    f.references_json,
+    f.scanner,
+    f.first_seen_scan_id,
+    CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) AS status,
+    fs.state AS state,
+    fs.reason AS reason,
+    f.created_at
+FROM findings f
+JOIN scans s ON s.id = f.scan_id
+JOIN assets a ON a.id = f.asset_id
+LEFT JOIN finding_states fs
+    ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+WHERE a.archived_at IS NULL
+  AND s.status = 'succeeded'
+  AND s.id = (
+      SELECT MAX(s2.id)
+      FROM scans s2
+      WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
+  )
+  AND (?1 IS NULL OR f.asset_id = ?1)
+  AND (?2 IS NULL OR f.type = ?2)
+  AND (?3 IS NULL OR f.severity = ?3)
+  AND (?4 IS NULL OR CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) = ?4)
+ORDER BY
+    CASE f.severity
+        WHEN 'critical' THEN 0
+        WHEN 'high' THEN 1
+        WHEN 'medium' THEN 2
+        WHEN 'low' THEN 3
+        ELSE 4
+    END,
+    f.asset_id,
+    f.fingerprint
+`
+
+type ListLatestFindingsParams struct {
+	AssetID  interface{}
+	Type     interface{}
+	Severity interface{}
+	Status   interface{}
+}
+
+type ListLatestFindingsRow struct {
+	ID              int64
+	ScanID          int64
+	AssetID         int64
+	Type            string
+	Fingerprint     string
+	Occurrences     int64
+	Severity        string
+	Title           string
+	RuleID          sql.NullString
+	PackageName     sql.NullString
+	PackageVersion  sql.NullString
+	FixedVersion    sql.NullString
+	Ecosystem       sql.NullString
+	Location        sql.NullString
+	CVSS            sql.NullFloat64
+	EPSS            sql.NullFloat64
+	Description     sql.NullString
+	ReferencesJSON  string
+	Scanner         string
+	FirstSeenScanID sql.NullInt64
+	Status          string
+	State           sql.NullString
+	Reason          sql.NullString
+	CreatedAt       string
+}
+
+// Findings of the most recent succeeded scan of every non-archived asset, so
+// the UI shows the current state of the fleet. Failed, canceled and running
+// scans are skipped: when the newest scan failed, its asset still reports the
+// previous succeeded scan. Filters and the effective status match
+// ListFindingsByScan.
+func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindingsParams) ([]ListLatestFindingsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLatestFindings,
+		arg.AssetID,
+		arg.Type,
+		arg.Severity,
+		arg.Status,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLatestFindingsRow
+	for rows.Next() {
+		var i ListLatestFindingsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ScanID,
+			&i.AssetID,
+			&i.Type,
+			&i.Fingerprint,
+			&i.Occurrences,
+			&i.Severity,
+			&i.Title,
+			&i.RuleID,
+			&i.PackageName,
+			&i.PackageVersion,
+			&i.FixedVersion,
+			&i.Ecosystem,
+			&i.Location,
+			&i.CVSS,
+			&i.EPSS,
+			&i.Description,
+			&i.ReferencesJSON,
+			&i.Scanner,
+			&i.FirstSeenScanID,
+			&i.Status,
+			&i.State,
+			&i.Reason,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
