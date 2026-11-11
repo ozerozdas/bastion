@@ -2,7 +2,7 @@
 id: BST-029
 title: "UI: Dashboard"
 phase: P1
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-025]
 estimate: M
