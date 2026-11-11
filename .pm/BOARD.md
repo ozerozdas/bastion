@@ -29,7 +29,7 @@
 | BST-025 | Reports API | P1 | done | coder | 017 |
 | BST-026 | UI Connections | P1 | done | coder | 020 |
 | BST-027 | UI Projects + scan progress | P1 | todo | coder | 023, 024, 026 |
-| BST-028 | UI Security Reports | P1 | in_progress | coder | 024, 025 |
+| BST-028 | UI Security Reports | P1 | done | coder | 024, 025 |
 | BST-029 | UI Dashboard | P1 | done | coder | 025 |
 | BST-030 | UI Scan History | P1 | done | coder | 024 |
 | BST-031 | CLI `scan --repo`, table/SARIF | P1 | done | coder | 018, 021 |
