@@ -10,7 +10,8 @@
       "scanner": "gitleaks",
       "match": "AKIA****",
       "secret_hmac": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "fingerprint": "c6c4f6e9c758111ef46d4398c73c382bd330dc3c199c4c858d033d30c26b91e7"
+      "fingerprint": "170e492a272eef751ed110b748358048556fc5dea6afd4765dcfacb8fead6e33",
+      "occurrences": 1
     }
   ],
   "packages": []

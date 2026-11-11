@@ -10,7 +10,8 @@
       "scanner": "gitleaks",
       "match": "AKIA****",
       "secret_hmac": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      "fingerprint": "44bb1dc6b14fc04af89ff6929d8364589e771669bcca09bf02fe2fc2b76e2f0e"
+      "fingerprint": "9841f9d0352b646fa087f961299f44fa817ecd075fa88623dc62367b00c873b6",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -22,7 +23,8 @@
       "scanner": "gitleaks",
       "match": "ghp_****",
       "secret_hmac": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      "fingerprint": "9fb0a9c303e8b785bc86073447ae220b3e603103b0a71e165996e6600a599bfd"
+      "fingerprint": "96d82654dcff56c68ea708f664b98263e40eb9477c6147196ac49b03becc7656",
+      "occurrences": 1
     }
   ],
   "packages": []

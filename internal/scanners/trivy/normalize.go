@@ -27,14 +27,8 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 	}
 
 	// License entries do not carry versions; look them up in the package
-	// inventory of the same target when possible.
-	versions := make(map[string]string)
-	for _, res := range report.Results {
-		target := findings.NormalizeLocation(raw.WorkspaceDir, res.Target)
-		for _, p := range res.Packages {
-			versions[target+"|"+p.Name] = p.Version
-		}
-	}
+	// inventory by package name (plus ecosystem when the report states one).
+	versions := packageVersions(report)
 
 	fs := make([]findings.Finding, 0)
 	pkgs := make([]findings.Package, 0)
@@ -105,11 +99,11 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 			case "notice", "permissive", "unencumbered":
 				continue
 			}
-			// Trivy licence severities are policy categories, not exploit
-			// risk: restricted licences are reported as high, notice
-			// obligations as low. They are mapped onto §5 severities as-is so
-			// the dashboard can surface restricted licences next to high
-			// vulnerabilities, while the category remains in Description.
+			// The remaining licences keep Trivy's upstream severity, mapped
+			// onto the §5 scale unchanged. That severity is a policy category,
+			// not exploit risk: the dashboard surfaces it next to the same
+			// vulnerability severities. The Trivy category is kept in
+			// Description so the distinction stays visible.
 			f := findings.Finding{
 				AssetID:        asset.ID,
 				Type:           findings.TypeLicense,
@@ -117,7 +111,7 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 				Severity:       findings.ParseSeverity(l.Severity),
 				Title:          l.Name + " license",
 				PackageName:    l.PkgName,
-				PackageVersion: versions[findings.NormalizeLocation(raw.WorkspaceDir, l.FilePath)+"|"+l.PkgName],
+				PackageVersion: lookupVersion(versions, eco, l.PkgName),
 				Ecosystem:      eco,
 				Location:       findings.NormalizeLocation(raw.WorkspaceDir, l.FilePath),
 				Description:    l.Category,
@@ -155,30 +149,74 @@ func references(primary string, refs []string) []string {
 	return out
 }
 
-// maxCVSS picks the highest CVSS v3 score, falling back to v2. Trivy reports
-// one score per advisory source; bastion stores one column.
+// maxCVSS picks the highest CVSS v3 score across sources, falling back to the
+// highest v2 score only when no source has a v3 score. Trivy reports one score
+// per advisory source; bastion stores one column. Sources are visited in
+// sorted key order so a map's iteration order can never change the result.
 func maxCVSS(scores map[string]cvssScore) *float64 {
+	sources := make([]string, 0, len(scores))
+	for source := range scores {
+		sources = append(sources, source)
+	}
+	slices.Sort(sources)
+
 	var best float64
-	found := false
-	for _, s := range scores {
-		if s.V3Score > best || !found {
-			best = s.V3Score
-			found = found || s.V3Score > 0
+	for _, source := range sources {
+		if v3 := scores[source].V3Score; v3 > best {
+			best = v3
 		}
 	}
-	if found {
+	if best > 0 {
 		return &best
 	}
-	for _, s := range scores {
-		if s.V2Score > best || !found {
-			best = s.V2Score
-			found = found || s.V2Score > 0
+	for _, source := range sources {
+		if v2 := scores[source].V2Score; v2 > best {
+			best = v2
 		}
 	}
-	if !found {
+	if best <= 0 {
 		return nil
 	}
 	return &best
+}
+
+// pkgKey identifies a package inside a report. The ecosystem is empty when the
+// report does not state one: Trivy license results carry Class "license" and
+// no Type.
+type pkgKey struct {
+	ecosystem string
+	name      string
+}
+
+// packageVersions indexes the package inventory by ecosystem plus name, and by
+// name alone as a fallback. The target path is deliberately not part of the
+// key: Trivy lists the same package under every manifest that references it,
+// so a license entry must not depend on which target it was reported under.
+func packageVersions(report report) map[pkgKey]string {
+	versions := make(map[pkgKey]string)
+	for _, res := range report.Results {
+		eco := ecosystem(res)
+		for _, p := range res.Packages {
+			if p.Version == "" {
+				continue
+			}
+			versions[pkgKey{ecosystem: eco, name: p.Name}] = p.Version
+			nameOnly := pkgKey{name: p.Name}
+			if _, ok := versions[nameOnly]; !ok {
+				versions[nameOnly] = p.Version
+			}
+		}
+	}
+	return versions
+}
+
+// lookupVersion returns the version for a package, preferring the ecosystem
+// specific entry and falling back to the name-only one.
+func lookupVersion(versions map[pkgKey]string, eco, name string) string {
+	if v := versions[pkgKey{ecosystem: eco, name: name}]; v != "" {
+		return v
+	}
+	return versions[pkgKey{name: name}]
 }
 
 // ecosystem maps a Trivy result type onto a §5 ecosystem name.

@@ -171,3 +171,78 @@ func TestNormalizeLocation(t *testing.T) {
 		})
 	}
 }
+
+func TestFingerprintMaterialIsUnambiguous(t *testing.T) {
+	// A plain "|" join would give these findings the same material
+	// ("…|CVE-1|x|npm|pkg|loc"). Length-prefixed fields must separate them.
+	first := Finding{
+		AssetID:     7,
+		Type:        TypeVulnerability,
+		RuleID:      "CVE-1|x",
+		Ecosystem:   "npm",
+		PackageName: "pkg",
+	}
+	second := Finding{
+		AssetID:     7,
+		Type:        TypeVulnerability,
+		RuleID:      "CVE-1",
+		Ecosystem:   "x|npm",
+		PackageName: "pkg",
+	}
+	if a, b := Fingerprint(first.AssetID, first), Fingerprint(second.AssetID, second); a == b {
+		t.Fatalf("rule_id %q and ecosystem %q collided on fingerprint %s", first.RuleID, second.Ecosystem, a)
+	}
+
+	// Same class of ambiguity between the package name and the location.
+	third := first
+	third.RuleID = "CVE-1"
+	third.Ecosystem = "npm"
+	third.PackageName = "pkg|app"
+	third.Location = "package.json"
+	second = third
+	second.PackageName = "pkg"
+	second.Location = "app|package.json"
+	if a, b := Fingerprint(third.AssetID, third), Fingerprint(second.AssetID, second); a == b {
+		t.Fatalf("package_name %q and location %q collided on fingerprint %s", third.PackageName, second.Location, a)
+	}
+}
+
+func TestFingerprintSecretFieldsAreNotDelimited(t *testing.T) {
+	// file + rule + HMAC are separate fields, so shifting a "|" between them
+	// must not produce the same fingerprint.
+	first := Finding{
+		AssetID:    7,
+		Type:       TypeSecret,
+		RuleID:     "rule|a",
+		Location:   "file:1",
+		SecretHMAC: strings.Repeat("b", 64),
+	}
+	second := first
+	second.RuleID = "rule"
+	second.SecretHMAC = "a|" + strings.Repeat("b", 64)
+	if a, b := Fingerprint(first.AssetID, first), Fingerprint(second.AssetID, second); a == b {
+		t.Fatalf("secret rule/hmac split collided on fingerprint %s", a)
+	}
+}
+
+func TestNormalizeLocationWindowsSeparators(t *testing.T) {
+	tests := []struct {
+		name      string
+		workspace string
+		location  string
+		want      string
+	}{
+		{name: "backslash path", location: `pkg\sub\package.json`, want: "pkg/sub/package.json"},
+		{name: "mixed separators and dot segments", location: `.\pkg\sub\..\sub\a.json`, want: "pkg/sub/a.json"},
+		{name: "line suffix kept", location: `deploy\.env:3`, want: "deploy/.env:3"},
+		{name: "windows drive letter", location: `C:\repo\pkg\a.json`, want: "C:/repo/pkg/a.json"},
+		{name: "windows workspace prefix", workspace: `C:\work\ws`, location: `C:\work\ws\pkg\a.json`, want: "pkg/a.json"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NormalizeLocation(tt.workspace, tt.location); got != tt.want {
+				t.Fatalf("NormalizeLocation(%q, %q) = %q, want %q", tt.workspace, tt.location, got, tt.want)
+			}
+		})
+	}
+}

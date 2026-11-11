@@ -92,6 +92,10 @@ type Finding struct {
 	LayerDigest string `json:"layer_digest,omitempty"`
 
 	Fingerprint string `json:"fingerprint"`
+	// Occurrences counts the raw findings inside one scan that share this
+	// fingerprint (PROJECT_SPEC.md §5: one finding per fingerprint per scan).
+	// Merge sets it; a finding that occurred once has 1.
+	Occurrences int `json:"occurrences"`
 }
 
 // Package is one SBOM entry reported by a scanner.

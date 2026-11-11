@@ -25,8 +25,6 @@ See acceptance criteria; reviewer runs `make check` plus the commands listed the
 
 ## Notes / Log
 
-## Notes / Log
-
 ### 2026-11-11 — implemented (bst-010-scanner-interface)
 - `internal/sources`: `TargetKind`, `Target`, `Workspace` (Dir + Cleanup; `Image` deferred to P2), `Source`; `localpath` source for `path` targets.
 - `internal/scanners/scanner.go`: `Scanner` (§4.2), `Options{CacheDir, HMACKey}`, `RawResult{Scanner, Version, WorkspaceDir, Raw, Data}`.
@@ -44,3 +42,39 @@ Verification:
 - `make check` → golangci-lint 0 issues, all tests pass, build OK.
 - `go test ./internal/findings` covers the fingerprint table: version change, secret line shift, workspace temp prefix change, layer digest change keep the fingerprint; asset/type/rule/ecosystem/package/location changes do not.
 - Normalizer golden tests are delivered by BST-011.
+
+### 2026-11-11 — review fixes (bst-010-review-fixes)
+Branch commit for the reviewer's findings on §5 fingerprint/dedup:
+
+- **H1 (fingerprint encoding).** `Fingerprint` no longer joins fields with `|`.
+  Every field (asset id, type, rule id, ecosystem, package name, location) is
+  written as `<byte length>:<value>` before sha256, so a separator inside a field
+  can no longer collide with a different split. The secret location is no longer
+  a `file|rule|hmac` composite: file, rule and HMAC are separate material fields.
+  Tests: `TestFingerprintMaterialIsUnambiguous` (`CVE-1|x` + `npm` vs `CVE-1` +
+  `x|npm`, and package/location variant), `TestFingerprintSecretFieldsAreNotDelimited`.
+- **H2/M3/M4 (one finding per fingerprint per scan).** `Finding.Occurrences`
+  (`json:"occurrences"`) added; `findings.Merge` groups by fingerprint, keeps the
+  first in input order, upgrades to the highest severity (`SeverityRank`:
+  critical > high > medium > low > unknown) and counts occurrences (≥1). It is
+  called once, in the scan pipeline (`cmd/bastion/scan.go`, see BST-011).
+  Tests: `internal/findings/merge_test.go` (duplicate DS-0001 → 1 finding /
+  2 occurrences; low+high → high / 2; distinct fingerprints and singletons;
+  empty fingerprint never collapsed).
+- **M1 (schema comment + occurrences).** `db/migrations/00001_init.sql` gains
+  `occurrences INTEGER NOT NULL DEFAULT 1 CHECK (occurrences >= 1)` and its
+  findings.location comment now says the secret location is `file:line` for
+  display while the HMAC lives only in the fingerprint material. Editing 00001 is
+  allowed pre-release only — see `.pm/decisions/ADR-004-pre-release-migration-edits.md`.
+  `make gen` regenerated `internal/store/sqlcdb/models.go` (`Occurrences int64`).
+- **L1 (Windows paths).** `NormalizeLocation` replaces `\` with `/` before
+  cleaning, so Windows-style locations normalize on every OS. Tests:
+  `TestNormalizeLocationWindowsSeparators`.
+- Golden files regenerated with `-update` for both normalizers: fingerprints
+  changed by H1 and the `occurrences` field is new. The golden tests now apply
+  `findings.Merge` before asserting, so they document the merged output the
+  pipeline/UI consumes.
+
+Verification:
+- `go test ./internal/findings ./internal/scanners/...` → pass.
+- `make check` → see BST-011 log (same branch).

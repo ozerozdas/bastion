@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -47,6 +49,7 @@ type scannerRun struct {
 	ScannerVersion string `json:"scanner_version"`
 	Status         string `json:"status"`
 	DurationMS     int64  `json:"duration_ms"`
+	Error          string `json:"error,omitempty"`
 }
 
 func newScanCmd(root *rootOptions) *cobra.Command {
@@ -89,49 +92,83 @@ func (o *scanOptions) run(cmd *cobra.Command, root *rootOptions) error {
 		DisplayName: filepath.Base(ws.Dir),
 		Ref:         ws.Dir,
 	}
+	// Trivy serializes itself (ADR-001); running adapters one after another
+	// also keeps Gitleaks independent of that lock.
+	out, scanErr := scanTarget(ctx, sources.KindPath, []scanners.Scanner{trivy.New(), gitleaks.New()}, ws, asset, scanners.Options{
+		CacheDir: root.paths.TrivyCacheDir(),
+		HMACKey:  key,
+	})
+
+	// Partial results are still printed: one broken scanner must not hide the
+	// findings of the others. The returned error keeps the exit code non-zero.
+	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		return fmt.Errorf("write scan output: %w", err)
+	}
+	return scanErr
+}
+
+// scanTarget runs every scanner that supports kind, normalizes the output and
+// merges duplicate fingerprints (PROJECT_SPEC.md §5). A failing scanner is
+// recorded in its scanner_run and the remaining scanners still contribute
+// findings; the returned error names every failed scanner.
+func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Scanner, ws *sources.Workspace, asset findings.Asset, opts scanners.Options) (scanOutput, error) {
 	out := scanOutput{
 		Asset:       asset,
 		Findings:    []findings.Finding{},
 		Packages:    []findings.Package{},
 		ScannerRuns: []scannerRun{},
 	}
-
-	// Trivy serializes itself (ADR-001); running adapters one after another
-	// also keeps Gitleaks independent of that lock.
-	adapters := []adapter{trivy.New(), gitleaks.New()}
-	for _, a := range adapters {
-		if !a.Supports(sources.KindPath) {
+	var failed []string
+	for _, s := range scs {
+		if !s.Supports(kind) {
 			continue
 		}
 		start := time.Now()
-		raw, err := a.Scan(ctx, ws, scanners.Options{
-			CacheDir: root.paths.TrivyCacheDir(),
-			HMACKey:  key,
-		})
-		if err != nil {
-			return fmt.Errorf("scan: %s: %w", a.Name(), err)
-		}
-		fs, pkgs, err := a.Normalize(raw, asset)
-		if err != nil {
-			return fmt.Errorf("scan: normalize %s: %w", a.Name(), err)
-		}
-		out.Findings = append(out.Findings, fs...)
-		out.Packages = append(out.Packages, pkgs...)
-		out.ScannerRuns = append(out.ScannerRuns, scannerRun{
-			Scanner:        a.Name(),
-			ScannerVersion: a.Version(),
+		fs, pkgs, err := runScanner(ctx, s, ws, asset, opts)
+		duration := time.Since(start).Milliseconds()
+		run := scannerRun{
+			Scanner:        s.Name(),
+			ScannerVersion: s.Version(),
 			Status:         "succeeded",
-			DurationMS:     time.Since(start).Milliseconds(),
-		})
+			DurationMS:     duration,
+		}
+		if err != nil {
+			run.Status = "failed"
+			run.Error = err.Error()
+			failed = append(failed, s.Name())
+		} else {
+			out.Findings = append(out.Findings, fs...)
+			out.Packages = append(out.Packages, pkgs...)
+		}
+		out.ScannerRuns = append(out.ScannerRuns, run)
 	}
 
+	// One finding per fingerprint per scan, before sorting and printing.
+	out.Findings = findings.Merge(out.Findings)
 	findings.SortFindings(out.Findings)
 	findings.SortPackages(out.Packages)
 
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(out); err != nil {
-		return fmt.Errorf("write scan output: %w", err)
+	if len(failed) > 0 {
+		return out, fmt.Errorf("scan: scanner failed: %s", strings.Join(failed, ", "))
 	}
-	return nil
+	return out, nil
+}
+
+// runScanner scans and normalizes one scanner's output.
+func runScanner(ctx context.Context, s scanners.Scanner, ws *sources.Workspace, asset findings.Asset, opts scanners.Options) ([]findings.Finding, []findings.Package, error) {
+	a, ok := s.(adapter)
+	if !ok {
+		return nil, nil, fmt.Errorf("%s: scanner does not normalize its own output", s.Name())
+	}
+	raw, err := a.Scan(ctx, ws, opts)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", a.Name(), err)
+	}
+	fs, pkgs, err := a.Normalize(raw, asset)
+	if err != nil {
+		return nil, nil, fmt.Errorf("normalize %s: %w", a.Name(), err)
+	}
+	return fs, pkgs, nil
 }

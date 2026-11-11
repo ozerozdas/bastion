@@ -42,6 +42,9 @@ func TestNormalizeGolden(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Normalize: %v", err)
 			}
+			// The scan pipeline merges findings that share a fingerprint
+			// (PROJECT_SPEC.md §5); the goldens show that merged output.
+			fs = findings.Merge(fs)
 			testutil.AssertJSON(t, filepath.Join(dir, "expected.json"), struct {
 				Findings []findings.Finding `json:"findings"`
 				Packages []findings.Package `json:"packages"`

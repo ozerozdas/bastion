@@ -11,7 +11,8 @@
       "location": "package-lock.json",
       "description": "restricted",
       "scanner": "trivy",
-      "fingerprint": "df9b03966c9f864d7a9f058c1e13fe9547017ae7b3b79f8b93c656d7c1a39912"
+      "fingerprint": "b2efc6e9ef0697ad451ab1c29bdda94d1705ce31d46c0694a4c16a06c7d8978b",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -25,7 +26,8 @@
         "https://avd.aquasec.com/misconfig/ds-0001"
       ],
       "scanner": "trivy",
-      "fingerprint": "eacb33115cd5d81a6e018edb5dcf15ef3d8981a2ce88cb2ef6882111068862bc"
+      "fingerprint": "7f8f74a68cbddc846419cfde051c1e2c6b9dd3ac0d0454534eabf668a7fd2482",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -40,7 +42,8 @@
         "https://avd.aquasec.com/misconfig/ds-0002"
       ],
       "scanner": "trivy",
-      "fingerprint": "78fd955ed77e8f0960029fa87a480823fee45654f9a6252f65200f3136d29da4"
+      "fingerprint": "c1f7e32bb368f84a69521fefb202ff206ec32568ef0cef716004f77e1b5441cd",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -55,7 +58,8 @@
         "https://avd.aquasec.com/misconfig/ds-0026"
       ],
       "scanner": "trivy",
-      "fingerprint": "6053d5002841501ca3bffbe5f3f0d55736ef5966cc9f0a54c13c5d7dbd82ce3c"
+      "fingerprint": "56174c362fc9a6fab9810359f8495a0e1f5a95b7572447288accaee1ee9e278c",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -70,7 +74,8 @@
         "https://avd.aquasec.com/misconfig/ds-0029"
       ],
       "scanner": "trivy",
-      "fingerprint": "f588add079c4b096d0a93fb304934ba2676541eb3016c9ed18cd931e4bb092dd"
+      "fingerprint": "b085ae17f9beb730a35ddfe8627e05f94a536fad72703a6fa42427a5070e1a95",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -116,7 +121,8 @@
         "https://www.oracle.com/security-alerts/cpuoct2021.html"
       ],
       "scanner": "trivy",
-      "fingerprint": "cee781f8cef90cdcc186322e7319ddcd80284405cc9f0fa069e4d56886c37101"
+      "fingerprint": "8a23275b46f923887c9888b19745575504532b3b31155b8428698baaa8c70455",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -158,7 +164,8 @@
         "https://www.npmjs.com/advisories/1179"
       ],
       "scanner": "trivy",
-      "fingerprint": "ea812799b279cdbc2f80ecf1c832166cb2326336a07b8e415e15d9894207fe5c"
+      "fingerprint": "4d96a9785bc9baa2901fc36b6de0a2793828c714e04679142a2edf82f81d2c11",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -200,7 +207,8 @@
         "https://www.oracle.com/security-alerts/cpuoct2021.html"
       ],
       "scanner": "trivy",
-      "fingerprint": "efb4019202aafc78fba6ea646715d4fd80e02ed52f67bee820fea8ad769860eb"
+      "fingerprint": "f373f2337b879e072fd5643f4534c56791b3b85fe347584cf353db4dcf9ba1b1",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -243,7 +251,8 @@
         "https://www.oracle.com/security-alerts/cpuoct2021.html"
       ],
       "scanner": "trivy",
-      "fingerprint": "d1f62dbdf02d0928459a3a3e2a0ba9a43ccd8f3f72d1550c9ab9a5fd15b705b1"
+      "fingerprint": "e6dac2e5eddfd5385ce3f3101d5c6b891b4f61b5ee1bdb51193370b2d5d46774",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -301,7 +310,8 @@
         "https://www.cve.org/CVERecord?id=CVE-2021-44906"
       ],
       "scanner": "trivy",
-      "fingerprint": "ca30f57bac39321ef72886e0f5172689c1a7d9c2385209fee04957402e54bb57"
+      "fingerprint": "2b7ad189b54ebab55805c1ed6652464b5a27616fe33471b699b2f322c0e88c04",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -426,7 +436,8 @@
         "https://www.cve.org/CVERecord?id=CVE-2025-13465"
       ],
       "scanner": "trivy",
-      "fingerprint": "3f6f556fa70e60db00f4e0e03f6373ef451d7a2dad6c1c46f2fa60ba9bcd83bc"
+      "fingerprint": "0e6a465085ec4f4ccf311c7ffd4dcf0d97eeedcdff529738e968e8c627758b5f",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -542,7 +553,8 @@
         "https://www.cve.org/CVERecord?id=CVE-2026-4800"
       ],
       "scanner": "trivy",
-      "fingerprint": "d5dae26372656e99a992b9ff76c4bd786393e2c5827bda3b1edbbcb559d24c79"
+      "fingerprint": "ce5e90108d14ce508923310ff662c24559f48c072fc99a160ba4d583d5629a9d",
+      "occurrences": 1
     },
     {
       "asset_id": 1,
@@ -562,7 +574,8 @@
         "https://www.npmjs.com/advisories/1523"
       ],
       "scanner": "trivy",
-      "fingerprint": "2ca11cc3091ba8c0c16f578ec96f74f0ca1233c59cd64c15edbb242bf777f618"
+      "fingerprint": "1190012eb45ef689e30523fbc2a151dfbe46b0d1f82c9326b164196124021a3a",
+      "occurrences": 1
     }
   ],
   "packages": [

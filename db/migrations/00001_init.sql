@@ -99,6 +99,9 @@ CREATE TABLE findings (
     asset_id           INTEGER NOT NULL REFERENCES assets (id) ON DELETE CASCADE,
     type               TEXT    NOT NULL CHECK (type IN ('vulnerability', 'secret', 'outdated', 'misconfig', 'license', 'malware', 'sast')),
     fingerprint        TEXT    NOT NULL,
+    -- How many raw occurrences inside this scan share the fingerprint; they
+    -- are stored as one finding (PROJECT_SPEC.md §5).
+    occurrences        INTEGER NOT NULL DEFAULT 1 CHECK (occurrences >= 1),
     severity           TEXT    NOT NULL DEFAULT 'unknown' CHECK (severity IN ('critical', 'high', 'medium', 'low', 'unknown')),
     title              TEXT    NOT NULL,
     -- CVE, GHSA or scanner rule id.
@@ -107,9 +110,10 @@ CREATE TABLE findings (
     package_version    TEXT,
     fixed_version      TEXT,
     ecosystem          TEXT,
-    -- Normalized location: "file:line" or image-internal path. For secrets it
-    -- is "file + rule_id + secret_hmac" (PROJECT_SPEC.md §5): only the HMAC
-    -- appears here, so there is deliberately no raw-secret column anywhere.
+    -- Display location: "file:line" for secrets (the line is display only),
+    -- "file + resource/cause" for misconfigurations, the package path inside
+    -- the image for image findings. The secret HMAC is not stored here: it
+    -- lives only in the fingerprint material, so no raw-secret column exists.
     location           TEXT,
     cvss               REAL,
     epss               REAL,

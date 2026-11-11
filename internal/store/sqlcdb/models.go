@@ -45,6 +45,7 @@ type Finding struct {
 	AssetID         int64
 	Type            string
 	Fingerprint     string
+	Occurrences     int64
 	Severity        string
 	Title           string
 	RuleID          sql.NullString

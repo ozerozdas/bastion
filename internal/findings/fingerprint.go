@@ -3,7 +3,6 @@ package findings
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -12,47 +11,61 @@ import (
 
 // Fingerprint returns the stable identity of a finding:
 //
-//	sha256(asset_id | type | rule_id | ecosystem | package_name | location_normalized)
+//	sha256(asset_id, type, rule_id, ecosystem, package_name, location_normalized)
+//
+// Each field is written as "<byte length>:<value>" before hashing, so the
+// concatenation is unambiguous: a separator character inside a field can never
+// be mistaken for a different split (PROJECT_SPEC.md §5).
 //
 // It deliberately excludes the package version, scan id, line numbers and
 // layer digests, so re-scanning an unchanged target yields the same
 // fingerprints (PROJECT_SPEC.md §5).
 func Fingerprint(assetID int64, f Finding) string {
-	loc := locationForFingerprint(f)
-	material := fmt.Sprintf("%d|%s|%s|%s|%s|%s",
-		assetID, f.Type, f.RuleID, f.Ecosystem, f.PackageName, loc)
-	sum := sha256.Sum256([]byte(material))
+	var material strings.Builder
+	for _, field := range fingerprintFields(assetID, f) {
+		material.WriteString(strconv.Itoa(len(field)))
+		material.WriteByte(':')
+		material.WriteString(field)
+	}
+	sum := sha256.Sum256([]byte(material.String()))
 	return hex.EncodeToString(sum[:])
 }
 
-// locationForFingerprint applies the type-specific rules from §5.
-func locationForFingerprint(f Finding) string {
+// fingerprintFields returns the fingerprint material in a fixed order. A
+// secret contributes its file, rule id and HMAC as separate fields rather than
+// joining them into the location with a delimiter.
+func fingerprintFields(assetID int64, f Finding) []string {
+	fields := []string{
+		strconv.FormatInt(assetID, 10),
+		string(f.Type),
+		f.RuleID,
+		f.Ecosystem,
+		f.PackageName,
+	}
 	loc := NormalizeLocation("", f.Location)
 	switch f.Type {
 	case TypeSecret:
 		// A secret keeps its identity when lines shift: file + rule +
-		// HMAC(secret). rule_id is also in the overall material; keeping it
-		// here documents the §5 rule and makes the location independent of
-		// the other fields.
-		return stripLine(loc) + "|" + f.RuleID + "|" + f.SecretHMAC
-	case TypeMisconfig:
-		// Normalizers encode file + resource/cause identifier in Location;
-		// the line number never enters it.
-		return loc
+		// HMAC(secret) (PROJECT_SPEC.md §5). The rule also appears above;
+		// repeating it keeps the §5 rule self-contained in the material.
+		return append(fields, stripLine(loc), f.RuleID, f.SecretHMAC)
 	default:
-		// Image locations are package paths inside the image. LayerDigest is
-		// not consulted here, so a rebuild does not make findings new/fixed.
-		return loc
+		// Image locations are package paths inside the image and misconfig
+		// locations are file + resource/cause identifier. LayerDigest is not
+		// consulted here, so a rebuild does not make findings new/fixed, and
+		// no location carries a line number.
+		return append(fields, loc)
 	}
 }
 
 // NormalizeLocation makes a scanner location comparable across runs: it
-// converts to slash form, strips a workspace prefix and cleans relative
-// segments. An empty location stays empty.
+// converts to slash form (including Windows-style separators on any OS),
+// strips a workspace prefix and cleans relative segments. An empty location
+// stays empty.
 func NormalizeLocation(workspace, location string) string {
-	loc := filepath.ToSlash(strings.TrimSpace(location))
+	loc := strings.ReplaceAll(strings.TrimSpace(location), "\\", "/")
 	if workspace != "" && loc != "" {
-		ws := filepath.ToSlash(filepath.Clean(workspace))
+		ws := strings.ReplaceAll(filepath.Clean(workspace), "\\", "/")
 		switch {
 		case loc == ws:
 			loc = ""
