@@ -119,33 +119,43 @@ func (f Filter) params() (sqlcdb.ListLatestFindingsParams, error) {
 		params.AssetID = f.AssetID
 	}
 
-	if f.Severity != "" {
-		if !validSeverity(f.Severity) {
-			return params, fmt.Errorf("%w: severity %q is not one of %s, %s, %s, %s, %s", ErrInvalid,
-				f.Severity, findings.SeverityCritical, findings.SeverityHigh, findings.SeverityMedium,
-				findings.SeverityLow, findings.SeverityUnknown)
-		}
-		params.Severity = f.Severity
+	if err := validateEnums(f.Severity, f.Type, f.Status); err != nil {
+		return params, err
 	}
-
-	if f.Type != "" {
-		if !validType(f.Type) {
-			return params, fmt.Errorf("%w: type %q is not one of %s, %s, %s, %s, %s, %s, %s", ErrInvalid,
-				f.Type, findings.TypeVulnerability, findings.TypeSecret, findings.TypeOutdated,
-				findings.TypeMisconfig, findings.TypeLicense, findings.TypeMalware, findings.TypeSAST)
-		}
-		params.Type = f.Type
-	}
-
-	if f.Status != "" {
-		if f.Status != FindingStatusOpen && f.Status != FindingStatusIgnored {
-			return params, fmt.Errorf("%w: status %q is not one of %s, %s", ErrInvalid,
-				f.Status, FindingStatusOpen, FindingStatusIgnored)
-		}
-		params.Status = f.Status
-	}
+	params.Severity = nullable(f.Severity)
+	params.Type = nullable(f.Type)
+	params.Status = nullable(f.Status)
 
 	return params, nil
+}
+
+// validateEnums rejects an enum value no filter accepts. The message names the
+// rejected value, because the caller sees it as a problem detail.
+func validateEnums(severity, kind, status string) error {
+	if severity != "" && !validSeverity(severity) {
+		return fmt.Errorf("%w: severity %q is not one of %s, %s, %s, %s, %s", ErrInvalid,
+			severity, findings.SeverityCritical, findings.SeverityHigh, findings.SeverityMedium,
+			findings.SeverityLow, findings.SeverityUnknown)
+	}
+	if kind != "" && !validType(kind) {
+		return fmt.Errorf("%w: type %q is not one of %s, %s, %s, %s, %s, %s, %s", ErrInvalid,
+			kind, findings.TypeVulnerability, findings.TypeSecret, findings.TypeOutdated,
+			findings.TypeMisconfig, findings.TypeLicense, findings.TypeMalware, findings.TypeSAST)
+	}
+	if status != "" && status != FindingStatusOpen && status != FindingStatusIgnored {
+		return fmt.Errorf("%w: status %q is not one of %s, %s", ErrInvalid,
+			status, FindingStatusOpen, FindingStatusIgnored)
+	}
+	return nil
+}
+
+// nullable turns an empty filter value into a nil query argument, which the
+// generated SQL reads as "no filter".
+func nullable(value string) interface{} {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func validSeverity(severity string) bool {

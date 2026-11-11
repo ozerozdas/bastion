@@ -19,19 +19,19 @@ import (
 
 // Defines values for AssetKind.
 const (
-	Image AssetKind = "image"
-	Path  AssetKind = "path"
-	Repo  AssetKind = "repo"
+	AssetKindImage AssetKind = "image"
+	AssetKindPath  AssetKind = "path"
+	AssetKindRepo  AssetKind = "repo"
 )
 
 // Valid indicates whether the value is a known member of the AssetKind enum.
 func (e AssetKind) Valid() bool {
 	switch e {
-	case Image:
+	case AssetKindImage:
 		return true
-	case Path:
+	case AssetKindPath:
 		return true
-	case Repo:
+	case AssetKindRepo:
 		return true
 	default:
 		return false
@@ -74,6 +74,24 @@ func (e ConnectionStatus) Valid() bool {
 	case ConnectionStatusOk:
 		return true
 	case ConnectionStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateAssetRequestKind.
+const (
+	CreateAssetRequestKindPath CreateAssetRequestKind = "path"
+	CreateAssetRequestKindRepo CreateAssetRequestKind = "repo"
+)
+
+// Valid indicates whether the value is a known member of the CreateAssetRequestKind enum.
+func (e CreateAssetRequestKind) Valid() bool {
+	switch e {
+	case CreateAssetRequestKindPath:
+		return true
+	case CreateAssetRequestKindRepo:
 		return true
 	default:
 		return false
@@ -182,6 +200,27 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for ScanTrigger.
+const (
+	Api ScanTrigger = "api"
+	Cli ScanTrigger = "cli"
+	Ui  ScanTrigger = "ui"
+)
+
+// Valid indicates whether the value is a known member of the ScanTrigger enum.
+func (e ScanTrigger) Valid() bool {
+	switch e {
+	case Api:
+		return true
+	case Cli:
+		return true
+	case Ui:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ScanStatus.
 const (
 	Canceled  ScanStatus = "canceled"
@@ -236,8 +275,50 @@ func (e Severity) Valid() bool {
 	}
 }
 
+// Asset One tracked repository or path.
+type Asset struct {
+	// ConnectionId The connection repo scans authenticate with.
+	ConnectionId *int64    `json:"connection_id,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+
+	// DefaultBranch Branch the repository tracks; absent for paths.
+	DefaultBranch *string `json:"default_branch,omitempty"`
+	DisplayName   string  `json:"display_name"`
+	Id            int64   `json:"id"`
+
+	// Kind What the asset is.
+	Kind AssetKind `json:"kind"`
+
+	// LastScan The asset's newest scan, whatever its status: a failed newest scan is
+	// what the asset list must show.
+	LastScan *AssetLastScan `json:"last_scan,omitempty"`
+
+	// OpenCounts Open findings per severity; severities without findings are zero.
+	OpenCounts SeverityTotals `json:"open_counts"`
+
+	// Ref Canonical reference: `owner/repo` for repositories, the absolute
+	// directory for paths.
+	Ref string `json:"ref"`
+}
+
 // AssetKind What the asset is.
 type AssetKind string
+
+// AssetLastScan The asset's newest scan, whatever its status: a failed newest scan is
+// what the asset list must show.
+type AssetLastScan struct {
+	// FinishedAt Absent while the scan has not finished.
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ScanId     int64      `json:"scan_id"`
+
+	// Status Lifecycle state of a scan.
+	Status ScanStatus `json:"status"`
+}
+
+// AssetList Every non-archived asset.
+type AssetList struct {
+	Assets []Asset `json:"assets"`
+}
 
 // AssetRisk One asset's open findings and risk score
 // (`critical*1000 + high*100 + medium*10 + low`). Assets whose open
@@ -304,6 +385,26 @@ type ConnectionList struct {
 // ConnectionStatus Result of the last test.
 type ConnectionStatus string
 
+// CreateAssetRequest defines model for CreateAssetRequest.
+type CreateAssetRequest struct {
+	// ConnectionId Connection whose token resolves the default branch and authenticates
+	// scans. Absent uses the default GitHub token.
+	ConnectionId *int64 `json:"connection_id,omitempty"`
+
+	// Kind `repo` takes an `owner/repo` ref; `path` takes an existing absolute
+	// directory. Images arrive in a later phase.
+	Kind CreateAssetRequestKind `json:"kind"`
+
+	// Ref `owner/repo` for repositories, an absolute directory for paths.
+	//
+	// Examples: octo/hello, /Users/me/src/hello
+	Ref string `json:"ref"`
+}
+
+// CreateAssetRequestKind `repo` takes an `owner/repo` ref; `path` takes an existing absolute
+// directory. Images arrive in a later phase.
+type CreateAssetRequestKind string
+
 // CreateConnectionRequest defines model for CreateConnectionRequest.
 type CreateConnectionRequest struct {
 	// Kind Only `github` can be created in v0.1.
@@ -320,6 +421,11 @@ type CreateConnectionRequest struct {
 
 // CreateConnectionRequestKind Only `github` can be created in v0.1.
 type CreateConnectionRequestKind string
+
+// CreateScansRequest defines model for CreateScansRequest.
+type CreateScansRequest struct {
+	AssetIds []int64 `json:"asset_ids"`
+}
 
 // Dashboard Aggregates for §7.1. Every number counts open findings of each
 // non-archived asset's latest succeeded scan.
@@ -485,8 +591,82 @@ type Problem struct {
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
+// QueuedScan The scan id the caller tracks the queued scan by.
+type QueuedScan struct {
+	AssetId int64 `json:"asset_id"`
+	ScanId  int64 `json:"scan_id"`
+}
+
+// Scan One scan of one asset. `scanner_runs` is filled by the single-scan read
+// only; the list omits it.
+type Scan struct {
+	AssetId int64 `json:"asset_id"`
+
+	// Error Why a failed scan failed; absent otherwise.
+	Error *string `json:"error,omitempty"`
+
+	// FinishedAt Absent while the scan has not finished.
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	Id         int64      `json:"id"`
+
+	// ScannerRuns One entry per scanner, in execution order (single-scan read only).
+	ScannerRuns *[]ScannerRun `json:"scanner_runs,omitempty"`
+
+	// StartedAt Absent while the scan is still queued.
+	StartedAt *time.Time `json:"started_at,omitempty"`
+
+	// Status Lifecycle state of a scan.
+	Status ScanStatus `json:"status"`
+
+	// TargetRef Resolved git SHA or image digest at scan time, when known.
+	TargetRef *string `json:"target_ref,omitempty"`
+
+	// Trigger Who started the scan.
+	Trigger ScanTrigger `json:"trigger"`
+}
+
+// ScanTrigger Who started the scan.
+type ScanTrigger string
+
+// ScanList Scans, newest first.
+type ScanList struct {
+	Scans []Scan `json:"scans"`
+}
+
+// ScanQueueResult defines model for ScanQueueResult.
+type ScanQueueResult struct {
+	Scans []QueuedScan `json:"scans"`
+}
+
 // ScanStatus Lifecycle state of a scan.
 type ScanStatus string
+
+// ScannerRun One scanner's result inside a scan.
+type ScannerRun struct {
+	// DbVersion Version of the advisory database the scanner used.
+	DbVersion  *string `json:"db_version,omitempty"`
+	DurationMs *int64  `json:"duration_ms,omitempty"`
+
+	// Error Why this scanner failed; absent otherwise.
+	Error          *string `json:"error,omitempty"`
+	Scanner        string  `json:"scanner"`
+	ScannerVersion *string `json:"scanner_version,omitempty"`
+
+	// Status Lifecycle state of a scan.
+	Status ScanStatus `json:"status"`
+}
+
+// SetFindingStateRequest defines model for SetFindingStateRequest.
+type SetFindingStateRequest struct {
+	// AssetId The asset the finding belongs to; decisions are per asset.
+	AssetId int64 `json:"asset_id"`
+
+	// Reason Why the finding is hidden; required, so decisions stay reviewable.
+	Reason string `json:"reason"`
+
+	// State The user decision that hides a finding across scans.
+	State FindingState `json:"state"`
+}
 
 // Severity Normalized severity scale (`unknown` when a scanner gave no usable level).
 type Severity string
@@ -520,8 +700,14 @@ type TypeTotals struct {
 	Vulnerability int `json:"vulnerability"`
 }
 
+// AssetID defines model for AssetID.
+type AssetID = int64
+
 // AssetIDQuery defines model for AssetIDQuery.
 type AssetIDQuery = int64
+
+// AssetIDRequiredQuery defines model for AssetIDRequiredQuery.
+type AssetIDRequiredQuery = int64
 
 // ConnectionID defines model for ConnectionID.
 type ConnectionID = int64
@@ -533,6 +719,15 @@ type FindingStatusQuery = FindingStatus
 
 // FindingTypeQuery Kind of finding (PROJECT_SPEC.md §5).
 type FindingTypeQuery = FindingType
+
+// Fingerprint defines model for Fingerprint.
+type Fingerprint = string
+
+// ScanID defines model for ScanID.
+type ScanID = int64
+
+// ScanLimitQuery defines model for ScanLimitQuery.
+type ScanLimitQuery = int
 
 // SeverityQuery Normalized severity scale (`unknown` when a scanner gave no usable level).
 type SeverityQuery = Severity
@@ -552,8 +747,44 @@ type ListFindingsParams struct {
 	Status *FindingStatusQuery `form:"status,omitempty" json:"status,omitempty"`
 }
 
+// ClearFindingStateParams defines parameters for ClearFindingState.
+type ClearFindingStateParams struct {
+	// AssetId The asset the decision belongs to.
+	AssetId AssetIDRequiredQuery `form:"asset_id" json:"asset_id"`
+}
+
+// ListScansParams defines parameters for ListScans.
+type ListScansParams struct {
+	// AssetId Only findings of this asset.
+	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+
+	// Limit Maximum number of scans to return, newest first.
+	Limit *ScanLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListScanFindingsParams defines parameters for ListScanFindings.
+type ListScanFindingsParams struct {
+	// Severity Only findings with this severity.
+	Severity *SeverityQuery `form:"severity,omitempty" json:"severity,omitempty"`
+
+	// Type Only findings of this type.
+	Type *FindingTypeQuery `form:"type,omitempty" json:"type,omitempty"`
+
+	// Status Only findings with this effective status.
+	Status *FindingStatusQuery `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// CreateAssetJSONRequestBody defines body for CreateAsset for application/json ContentType.
+type CreateAssetJSONRequestBody = CreateAssetRequest
+
 // CreateConnectionJSONRequestBody defines body for CreateConnection for application/json ContentType.
 type CreateConnectionJSONRequestBody = CreateConnectionRequest
+
+// SetFindingStateJSONRequestBody defines body for SetFindingState for application/json ContentType.
+type SetFindingStateJSONRequestBody = SetFindingStateRequest
+
+// CreateScansJSONRequestBody defines body for CreateScans for application/json ContentType.
+type CreateScansJSONRequestBody = CreateScansRequest
 
 // Getter for additional properties for Problem. Returns the specified
 // element and whether it was found
@@ -679,6 +910,15 @@ func (a Problem) MarshalJSON() ([]byte, error) {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListAssets List tracked assets.
+	// (GET /api/assets)
+	ListAssets(w http.ResponseWriter, r *http.Request)
+	// CreateAsset Track a repository or a local path.
+	// (POST /api/assets)
+	CreateAsset(w http.ResponseWriter, r *http.Request)
+	// DeleteAsset Archive an asset.
+	// (DELETE /api/assets/{id})
+	DeleteAsset(w http.ResponseWriter, r *http.Request, id AssetID)
 	// ListConnections List configured connections.
 	// (GET /api/connections)
 	ListConnections(w http.ResponseWriter, r *http.Request)
@@ -697,12 +937,33 @@ type ServerInterface interface {
 	// ListFindings Latest findings across assets.
 	// (GET /api/findings)
 	ListFindings(w http.ResponseWriter, r *http.Request, params ListFindingsParams)
+	// ClearFindingState Clear the decision for one finding.
+	// (DELETE /api/findings/{fingerprint}/state)
+	ClearFindingState(w http.ResponseWriter, r *http.Request, fingerprint Fingerprint, params ClearFindingStateParams)
+	// SetFindingState Record a decision for one finding.
+	// (POST /api/findings/{fingerprint}/state)
+	SetFindingState(w http.ResponseWriter, r *http.Request, fingerprint Fingerprint)
 	// GetHealth Liveness and version probe.
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
 	// GetDashboard Dashboard aggregates across non-archived assets.
 	// (GET /api/reports/dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
+	// ListScans List scans, newest first.
+	// (GET /api/scans)
+	ListScans(w http.ResponseWriter, r *http.Request, params ListScansParams)
+	// CreateScans Queue scans of one or more assets.
+	// (POST /api/scans)
+	CreateScans(w http.ResponseWriter, r *http.Request)
+	// GetScan One scan with its scanner runs.
+	// (GET /api/scans/{id})
+	GetScan(w http.ResponseWriter, r *http.Request, id ScanID)
+	// CancelScan Cancel a queued or running scan.
+	// (POST /api/scans/{id}/cancel)
+	CancelScan(w http.ResponseWriter, r *http.Request, id ScanID)
+	// ListScanFindings Findings of one scan.
+	// (GET /api/scans/{id}/findings)
+	ListScanFindings(w http.ResponseWriter, r *http.Request, id ScanID, params ListScanFindingsParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -713,6 +974,60 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListAssets operation middleware
+func (siw *ServerInterfaceWrapper) ListAssets(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAssets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAsset operation middleware
+func (siw *ServerInterfaceWrapper) CreateAsset(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAsset(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAsset operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAsset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAsset(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListConnections operation middleware
 func (siw *ServerInterfaceWrapper) ListConnections(w http.ResponseWriter, r *http.Request) {
@@ -892,6 +1207,74 @@ func (siw *ServerInterfaceWrapper) ListFindings(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ClearFindingState operation middleware
+func (siw *ServerInterfaceWrapper) ClearFindingState(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "fingerprint" -------------
+	var fingerprint Fingerprint
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fingerprint", r.PathValue("fingerprint"), &fingerprint, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fingerprint", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ClearFindingStateParams
+
+	// ------------- Required query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearFindingState(w, r, fingerprint, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetFindingState operation middleware
+func (siw *ServerInterfaceWrapper) SetFindingState(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "fingerprint" -------------
+	var fingerprint Fingerprint
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fingerprint", r.PathValue("fingerprint"), &fingerprint, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fingerprint", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetFindingState(w, r, fingerprint)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -911,6 +1294,186 @@ func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDashboard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListScans operation middleware
+func (siw *ServerInterfaceWrapper) ListScans(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListScansParams
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListScans(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateScans operation middleware
+func (siw *ServerInterfaceWrapper) CreateScans(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateScans(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetScan operation middleware
+func (siw *ServerInterfaceWrapper) GetScan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ScanID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetScan(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelScan operation middleware
+func (siw *ServerInterfaceWrapper) CancelScan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ScanID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelScan(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListScanFindings operation middleware
+func (siw *ServerInterfaceWrapper) ListScanFindings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ScanID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListScanFindingsParams
+
+	// ------------- Optional query parameter "severity" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "severity", r.URL.Query(), &params.Severity, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "severity"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "severity", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListScanFindings(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1046,6 +1609,16 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/connections/{id}", wrapper.DeleteConnection)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections/{id}/test", wrapper.TestConnection)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections/{id}/discover", wrapper.DiscoverConnectionRepos)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assets", wrapper.ListAssets)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assets", wrapper.CreateAsset)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/assets/{id}", wrapper.DeleteAsset)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans", wrapper.ListScans)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans", wrapper.CreateScans)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/{id}", wrapper.GetScan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans/{id}/cancel", wrapper.CancelScan)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/{id}/findings", wrapper.ListScanFindings)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/findings/{fingerprint}/state", wrapper.ClearFindingState)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/findings/{fingerprint}/state", wrapper.SetFindingState)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/findings", wrapper.ListFindings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/dashboard", wrapper.GetDashboard)
 
@@ -1059,6 +1632,418 @@ type ProblemApplicationProblemPlusJSONResponse struct {
 	Body Problem
 
 	Headers ProblemResponseHeaders
+}
+
+type ListAssetsRequestObject struct {
+}
+
+type ListAssetsResponseObject interface {
+	VisitListAssetsResponse(w http.ResponseWriter) error
+}
+
+type ListAssets200JSONResponse AssetList
+
+func (response ListAssets200JSONResponse) VisitListAssetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssets401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListAssets401ApplicationProblemPlusJSONResponse) VisitListAssetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssets403ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListAssets403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListAssets403ResponseHeaders
+}
+
+func (response ListAssets403ApplicationProblemPlusJSONResponse) VisitListAssetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssets421ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListAssets421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListAssets421ResponseHeaders
+}
+
+func (response ListAssets421ApplicationProblemPlusJSONResponse) VisitListAssetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssets500ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListAssets500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListAssets500ResponseHeaders
+}
+
+func (response ListAssets500ApplicationProblemPlusJSONResponse) VisitListAssetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAssetRequestObject struct {
+	Body *CreateAssetJSONRequestBody
+}
+
+type CreateAssetResponseObject interface {
+	VisitCreateAssetResponse(w http.ResponseWriter) error
+}
+
+type CreateAsset201JSONResponse Asset
+
+func (response CreateAsset201JSONResponse) VisitCreateAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAsset400ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateAsset400ApplicationProblemPlusJSONResponse) VisitCreateAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAsset401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateAsset401ApplicationProblemPlusJSONResponse) VisitCreateAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAsset403ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateAsset403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateAsset403ResponseHeaders
+}
+
+func (response CreateAsset403ApplicationProblemPlusJSONResponse) VisitCreateAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAsset404ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateAsset404ApplicationProblemPlusJSONResponse) VisitCreateAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAsset409ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateAsset409ApplicationProblemPlusJSONResponse) VisitCreateAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAsset421ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateAsset421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateAsset421ResponseHeaders
+}
+
+func (response CreateAsset421ApplicationProblemPlusJSONResponse) VisitCreateAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAsset500ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateAsset500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateAsset500ResponseHeaders
+}
+
+func (response CreateAsset500ApplicationProblemPlusJSONResponse) VisitCreateAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAsset502ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateAsset502ApplicationProblemPlusJSONResponse) VisitCreateAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAssetRequestObject struct {
+	Id AssetID `json:"id"`
+}
+
+type DeleteAssetResponseObject interface {
+	VisitDeleteAssetResponse(w http.ResponseWriter) error
+}
+
+type DeleteAsset204Response struct {
+}
+
+func (response DeleteAsset204Response) VisitDeleteAssetResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAsset401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteAsset401ApplicationProblemPlusJSONResponse) VisitDeleteAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAsset403ResponseHeaders struct {
+	ContentType *string
+}
+
+type DeleteAsset403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DeleteAsset403ResponseHeaders
+}
+
+func (response DeleteAsset403ApplicationProblemPlusJSONResponse) VisitDeleteAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAsset404ResponseHeaders struct {
+	ContentType *string
+}
+
+type DeleteAsset404ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DeleteAsset404ResponseHeaders
+}
+
+func (response DeleteAsset404ApplicationProblemPlusJSONResponse) VisitDeleteAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAsset421ResponseHeaders struct {
+	ContentType *string
+}
+
+type DeleteAsset421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DeleteAsset421ResponseHeaders
+}
+
+func (response DeleteAsset421ApplicationProblemPlusJSONResponse) VisitDeleteAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAsset500ResponseHeaders struct {
+	ContentType *string
+}
+
+type DeleteAsset500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DeleteAsset500ResponseHeaders
+}
+
+func (response DeleteAsset500ApplicationProblemPlusJSONResponse) VisitDeleteAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type ListConnectionsRequestObject struct {
@@ -1932,6 +2917,288 @@ func (response ListFindings500ApplicationProblemPlusJSONResponse) VisitListFindi
 	return err
 }
 
+type ClearFindingStateRequestObject struct {
+	Fingerprint Fingerprint `json:"fingerprint"`
+	Params      ClearFindingStateParams
+}
+
+type ClearFindingStateResponseObject interface {
+	VisitClearFindingStateResponse(w http.ResponseWriter) error
+}
+
+type ClearFindingState204Response struct {
+}
+
+func (response ClearFindingState204Response) VisitClearFindingStateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ClearFindingState400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ClearFindingState400ApplicationProblemPlusJSONResponse) VisitClearFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearFindingState401ResponseHeaders struct {
+	ContentType *string
+}
+
+type ClearFindingState401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ClearFindingState401ResponseHeaders
+}
+
+func (response ClearFindingState401ApplicationProblemPlusJSONResponse) VisitClearFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearFindingState403ResponseHeaders struct {
+	ContentType *string
+}
+
+type ClearFindingState403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ClearFindingState403ResponseHeaders
+}
+
+func (response ClearFindingState403ApplicationProblemPlusJSONResponse) VisitClearFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearFindingState404ApplicationProblemPlusJSONResponse Problem
+
+func (response ClearFindingState404ApplicationProblemPlusJSONResponse) VisitClearFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearFindingState421ResponseHeaders struct {
+	ContentType *string
+}
+
+type ClearFindingState421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ClearFindingState421ResponseHeaders
+}
+
+func (response ClearFindingState421ApplicationProblemPlusJSONResponse) VisitClearFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearFindingState500ResponseHeaders struct {
+	ContentType *string
+}
+
+type ClearFindingState500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ClearFindingState500ResponseHeaders
+}
+
+func (response ClearFindingState500ApplicationProblemPlusJSONResponse) VisitClearFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFindingStateRequestObject struct {
+	Fingerprint Fingerprint `json:"fingerprint"`
+	Body        *SetFindingStateJSONRequestBody
+}
+
+type SetFindingStateResponseObject interface {
+	VisitSetFindingStateResponse(w http.ResponseWriter) error
+}
+
+type SetFindingState204Response struct {
+}
+
+func (response SetFindingState204Response) VisitSetFindingStateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetFindingState400ApplicationProblemPlusJSONResponse Problem
+
+func (response SetFindingState400ApplicationProblemPlusJSONResponse) VisitSetFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFindingState401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetFindingState401ApplicationProblemPlusJSONResponse) VisitSetFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFindingState403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetFindingState403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetFindingState403ResponseHeaders
+}
+
+func (response SetFindingState403ApplicationProblemPlusJSONResponse) VisitSetFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFindingState404ApplicationProblemPlusJSONResponse Problem
+
+func (response SetFindingState404ApplicationProblemPlusJSONResponse) VisitSetFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFindingState421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetFindingState421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetFindingState421ResponseHeaders
+}
+
+func (response SetFindingState421ApplicationProblemPlusJSONResponse) VisitSetFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFindingState500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetFindingState500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetFindingState500ResponseHeaders
+}
+
+func (response SetFindingState500ApplicationProblemPlusJSONResponse) VisitSetFindingStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetHealthRequestObject struct {
 }
 
@@ -2156,8 +3423,749 @@ func (response GetDashboard500ApplicationProblemPlusJSONResponse) VisitGetDashbo
 	return err
 }
 
+type ListScansRequestObject struct {
+	Params ListScansParams
+}
+
+type ListScansResponseObject interface {
+	VisitListScansResponse(w http.ResponseWriter) error
+}
+
+type ListScans200JSONResponse ScanList
+
+func (response ListScans200JSONResponse) VisitListScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScans400ApplicationProblemPlusJSONResponse Problem
+
+func (response ListScans400ApplicationProblemPlusJSONResponse) VisitListScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScans401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListScans401ApplicationProblemPlusJSONResponse) VisitListScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScans403ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListScans403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListScans403ResponseHeaders
+}
+
+func (response ListScans403ApplicationProblemPlusJSONResponse) VisitListScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScans421ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListScans421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListScans421ResponseHeaders
+}
+
+func (response ListScans421ApplicationProblemPlusJSONResponse) VisitListScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScans500ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListScans500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListScans500ResponseHeaders
+}
+
+func (response ListScans500ApplicationProblemPlusJSONResponse) VisitListScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateScansRequestObject struct {
+	Body *CreateScansJSONRequestBody
+}
+
+type CreateScansResponseObject interface {
+	VisitCreateScansResponse(w http.ResponseWriter) error
+}
+
+type CreateScans202JSONResponse ScanQueueResult
+
+func (response CreateScans202JSONResponse) VisitCreateScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateScans400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateScans400ApplicationProblemPlusJSONResponse) VisitCreateScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateScans401ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateScans401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateScans401ResponseHeaders
+}
+
+func (response CreateScans401ApplicationProblemPlusJSONResponse) VisitCreateScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateScans403ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateScans403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateScans403ResponseHeaders
+}
+
+func (response CreateScans403ApplicationProblemPlusJSONResponse) VisitCreateScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateScans404ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateScans404ApplicationProblemPlusJSONResponse) VisitCreateScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateScans409ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateScans409ApplicationProblemPlusJSONResponse) VisitCreateScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateScans421ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateScans421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateScans421ResponseHeaders
+}
+
+func (response CreateScans421ApplicationProblemPlusJSONResponse) VisitCreateScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateScans500ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateScans500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateScans500ResponseHeaders
+}
+
+func (response CreateScans500ApplicationProblemPlusJSONResponse) VisitCreateScansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScanRequestObject struct {
+	Id ScanID `json:"id"`
+}
+
+type GetScanResponseObject interface {
+	VisitGetScanResponse(w http.ResponseWriter) error
+}
+
+type GetScan200JSONResponse Scan
+
+func (response GetScan200JSONResponse) VisitGetScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScan401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetScan401ApplicationProblemPlusJSONResponse) VisitGetScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScan403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetScan403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetScan403ResponseHeaders
+}
+
+func (response GetScan403ApplicationProblemPlusJSONResponse) VisitGetScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScan404ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetScan404ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetScan404ResponseHeaders
+}
+
+func (response GetScan404ApplicationProblemPlusJSONResponse) VisitGetScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScan421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetScan421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetScan421ResponseHeaders
+}
+
+func (response GetScan421ApplicationProblemPlusJSONResponse) VisitGetScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScan500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetScan500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetScan500ResponseHeaders
+}
+
+func (response GetScan500ApplicationProblemPlusJSONResponse) VisitGetScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelScanRequestObject struct {
+	Id ScanID `json:"id"`
+}
+
+type CancelScanResponseObject interface {
+	VisitCancelScanResponse(w http.ResponseWriter) error
+}
+
+type CancelScan200JSONResponse Scan
+
+func (response CancelScan200JSONResponse) VisitCancelScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelScan401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CancelScan401ApplicationProblemPlusJSONResponse) VisitCancelScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelScan403ResponseHeaders struct {
+	ContentType *string
+}
+
+type CancelScan403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CancelScan403ResponseHeaders
+}
+
+func (response CancelScan403ApplicationProblemPlusJSONResponse) VisitCancelScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelScan404ResponseHeaders struct {
+	ContentType *string
+}
+
+type CancelScan404ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CancelScan404ResponseHeaders
+}
+
+func (response CancelScan404ApplicationProblemPlusJSONResponse) VisitCancelScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelScan409ApplicationProblemPlusJSONResponse Problem
+
+func (response CancelScan409ApplicationProblemPlusJSONResponse) VisitCancelScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelScan421ResponseHeaders struct {
+	ContentType *string
+}
+
+type CancelScan421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CancelScan421ResponseHeaders
+}
+
+func (response CancelScan421ApplicationProblemPlusJSONResponse) VisitCancelScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelScan500ResponseHeaders struct {
+	ContentType *string
+}
+
+type CancelScan500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CancelScan500ResponseHeaders
+}
+
+func (response CancelScan500ApplicationProblemPlusJSONResponse) VisitCancelScanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScanFindingsRequestObject struct {
+	Id     ScanID `json:"id"`
+	Params ListScanFindingsParams
+}
+
+type ListScanFindingsResponseObject interface {
+	VisitListScanFindingsResponse(w http.ResponseWriter) error
+}
+
+type ListScanFindings200JSONResponse FindingList
+
+func (response ListScanFindings200JSONResponse) VisitListScanFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScanFindings400ApplicationProblemPlusJSONResponse Problem
+
+func (response ListScanFindings400ApplicationProblemPlusJSONResponse) VisitListScanFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScanFindings401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListScanFindings401ApplicationProblemPlusJSONResponse) VisitListScanFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScanFindings403ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListScanFindings403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListScanFindings403ResponseHeaders
+}
+
+func (response ListScanFindings403ApplicationProblemPlusJSONResponse) VisitListScanFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScanFindings404ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListScanFindings404ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListScanFindings404ResponseHeaders
+}
+
+func (response ListScanFindings404ApplicationProblemPlusJSONResponse) VisitListScanFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScanFindings421ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListScanFindings421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListScanFindings421ResponseHeaders
+}
+
+func (response ListScanFindings421ApplicationProblemPlusJSONResponse) VisitListScanFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScanFindings500ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListScanFindings500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListScanFindings500ResponseHeaders
+}
+
+func (response ListScanFindings500ApplicationProblemPlusJSONResponse) VisitListScanFindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListAssets List tracked assets.
+	// (GET /api/assets)
+	ListAssets(ctx context.Context, request ListAssetsRequestObject) (ListAssetsResponseObject, error)
+	// CreateAsset Track a repository or a local path.
+	// (POST /api/assets)
+	CreateAsset(ctx context.Context, request CreateAssetRequestObject) (CreateAssetResponseObject, error)
+	// DeleteAsset Archive an asset.
+	// (DELETE /api/assets/{id})
+	DeleteAsset(ctx context.Context, request DeleteAssetRequestObject) (DeleteAssetResponseObject, error)
 	// ListConnections List configured connections.
 	// (GET /api/connections)
 	ListConnections(ctx context.Context, request ListConnectionsRequestObject) (ListConnectionsResponseObject, error)
@@ -2176,12 +4184,33 @@ type StrictServerInterface interface {
 	// ListFindings Latest findings across assets.
 	// (GET /api/findings)
 	ListFindings(ctx context.Context, request ListFindingsRequestObject) (ListFindingsResponseObject, error)
+	// ClearFindingState Clear the decision for one finding.
+	// (DELETE /api/findings/{fingerprint}/state)
+	ClearFindingState(ctx context.Context, request ClearFindingStateRequestObject) (ClearFindingStateResponseObject, error)
+	// SetFindingState Record a decision for one finding.
+	// (POST /api/findings/{fingerprint}/state)
+	SetFindingState(ctx context.Context, request SetFindingStateRequestObject) (SetFindingStateResponseObject, error)
 	// GetHealth Liveness and version probe.
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
 	// GetDashboard Dashboard aggregates across non-archived assets.
 	// (GET /api/reports/dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
+	// ListScans List scans, newest first.
+	// (GET /api/scans)
+	ListScans(ctx context.Context, request ListScansRequestObject) (ListScansResponseObject, error)
+	// CreateScans Queue scans of one or more assets.
+	// (POST /api/scans)
+	CreateScans(ctx context.Context, request CreateScansRequestObject) (CreateScansResponseObject, error)
+	// GetScan One scan with its scanner runs.
+	// (GET /api/scans/{id})
+	GetScan(ctx context.Context, request GetScanRequestObject) (GetScanResponseObject, error)
+	// CancelScan Cancel a queued or running scan.
+	// (POST /api/scans/{id}/cancel)
+	CancelScan(ctx context.Context, request CancelScanRequestObject) (CancelScanResponseObject, error)
+	// ListScanFindings Findings of one scan.
+	// (GET /api/scans/{id}/findings)
+	ListScanFindings(ctx context.Context, request ListScanFindingsRequestObject) (ListScanFindingsResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -2221,6 +4250,87 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListAssets operation middleware
+func (sh *strictHandler) ListAssets(w http.ResponseWriter, r *http.Request) {
+	var request ListAssetsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAssets(ctx, request.(ListAssetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAssets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAssetsResponseObject); ok {
+		if err := validResponse.VisitListAssetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAsset operation middleware
+func (sh *strictHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
+	var request CreateAssetRequestObject
+
+	var body CreateAssetJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAsset(ctx, request.(CreateAssetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAsset")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAssetResponseObject); ok {
+		if err := validResponse.VisitCreateAssetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAsset operation middleware
+func (sh *strictHandler) DeleteAsset(w http.ResponseWriter, r *http.Request, id AssetID) {
+	var request DeleteAssetRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAsset(ctx, request.(DeleteAssetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAsset")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAssetResponseObject); ok {
+		if err := validResponse.VisitDeleteAssetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ListConnections operation middleware
@@ -2382,6 +4492,66 @@ func (sh *strictHandler) ListFindings(w http.ResponseWriter, r *http.Request, pa
 	}
 }
 
+// ClearFindingState operation middleware
+func (sh *strictHandler) ClearFindingState(w http.ResponseWriter, r *http.Request, fingerprint Fingerprint, params ClearFindingStateParams) {
+	var request ClearFindingStateRequestObject
+
+	request.Fingerprint = fingerprint
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClearFindingState(ctx, request.(ClearFindingStateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClearFindingState")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClearFindingStateResponseObject); ok {
+		if err := validResponse.VisitClearFindingStateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetFindingState operation middleware
+func (sh *strictHandler) SetFindingState(w http.ResponseWriter, r *http.Request, fingerprint Fingerprint) {
+	var request SetFindingStateRequestObject
+
+	request.Fingerprint = fingerprint
+
+	var body SetFindingStateJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetFindingState(ctx, request.(SetFindingStateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetFindingState")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetFindingStateResponseObject); ok {
+		if err := validResponse.VisitSetFindingStateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHealth operation middleware
 func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	var request GetHealthRequestObject
@@ -2423,6 +4593,142 @@ func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDashboardResponseObject); ok {
 		if err := validResponse.VisitGetDashboardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListScans operation middleware
+func (sh *strictHandler) ListScans(w http.ResponseWriter, r *http.Request, params ListScansParams) {
+	var request ListScansRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListScans(ctx, request.(ListScansRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListScans")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListScansResponseObject); ok {
+		if err := validResponse.VisitListScansResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateScans operation middleware
+func (sh *strictHandler) CreateScans(w http.ResponseWriter, r *http.Request) {
+	var request CreateScansRequestObject
+
+	var body CreateScansJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateScans(ctx, request.(CreateScansRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateScans")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateScansResponseObject); ok {
+		if err := validResponse.VisitCreateScansResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetScan operation middleware
+func (sh *strictHandler) GetScan(w http.ResponseWriter, r *http.Request, id ScanID) {
+	var request GetScanRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetScan(ctx, request.(GetScanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetScan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetScanResponseObject); ok {
+		if err := validResponse.VisitGetScanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelScan operation middleware
+func (sh *strictHandler) CancelScan(w http.ResponseWriter, r *http.Request, id ScanID) {
+	var request CancelScanRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelScan(ctx, request.(CancelScanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelScan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelScanResponseObject); ok {
+		if err := validResponse.VisitCancelScanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListScanFindings operation middleware
+func (sh *strictHandler) ListScanFindings(w http.ResponseWriter, r *http.Request, id ScanID, params ListScanFindingsParams) {
+	var request ListScanFindingsRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListScanFindings(ctx, request.(ListScanFindingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListScanFindings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListScanFindingsResponseObject); ok {
+		if err := validResponse.VisitListScanFindingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

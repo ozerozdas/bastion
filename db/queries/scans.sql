@@ -63,3 +63,11 @@ VALUES (
     sqlc.narg(error),
     sqlc.narg(raw_path)
 );
+
+-- name: ListScans :many
+-- Newest first, optionally narrowed to one asset. Ids increase with time, so
+-- ordering by id is stable even when two scans share a started_at.
+SELECT * FROM scans
+WHERE (sqlc.narg(asset_id) IS NULL OR asset_id = sqlc.narg(asset_id))
+ORDER BY id DESC
+LIMIT sqlc.arg(limit);

@@ -33,6 +33,14 @@ tags:
     description: |
       Credentialed integrations used to discover and fetch sources. Tokens live
       in the OS keyring (never in SQLite) and are never returned by the API.
+  - name: assets
+    description: |
+      The repositories and local paths bastion tracks. Archiving is a soft
+      delete: history and findings stay readable.
+  - name: scans
+    description: |
+      Scan queue and history. Scans run in the server's worker pool; every scan
+      is cancelable until it finishes.
   - name: findings
     description: |
       Normalized findings across assets. The list endpoints report each asset's
@@ -225,6 +233,355 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /api/assets:
+    get:
+      operationId: listAssets
+      summary: List tracked assets.
+      description: |
+        Every non-archived asset with its newest scan (whatever its status) and
+        the open severity counts of its newest succeeded scan. `open_counts`
+        uses the dashboard scope: any `finding_states` decision hides its
+        finding, and a failed or running newest scan does not shadow the last
+        complete report.
+      tags: [assets]
+      responses:
+        "200":
+          description: The tracked assets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createAsset
+      summary: Track a repository or a local path.
+      description: |
+        `repo` resolves the repository's default branch through GitHub with the
+        connection's token (`connection_id`, else the default GitHub token) and
+        stores it. `path` must be an existing absolute directory.
+
+        Re-adding an archived asset revives that row instead of creating a
+        second one: its history, scans and finding decisions stay attached to
+        the same id, which fingerprints depend on.
+      tags: [assets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetRequest"
+      responses:
+        "201":
+          description: The asset was created or revived.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        "400":
+          description: |
+            The kind, ref or path is invalid, or a repo asset's default branch
+            could not be resolved because GitHub rejected the request.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: The connection id does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: |
+            The asset already exists or the connection has no token; the detail
+            says which.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "502":
+          description: GitHub failed the request; the detail carries the hint.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/assets/{id}:
+    delete:
+      operationId: deleteAsset
+      summary: Archive an asset.
+      description: |
+        Soft delete: the row, its scans and its findings stay in the database,
+        but the asset disappears from the lists, the dashboard and new scans.
+      tags: [assets]
+      parameters:
+        - $ref: "#/components/parameters/AssetID"
+      responses:
+        "204":
+          description: The asset is archived.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/scans:
+    get:
+      operationId: listScans
+      summary: List scans, newest first.
+      tags: [scans]
+      parameters:
+        - $ref: "#/components/parameters/AssetIDQuery"
+        - $ref: "#/components/parameters/ScanLimitQuery"
+      responses:
+        "200":
+          description: The scans after the filters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanList"
+        "400":
+          description: The asset id or limit is not usable.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createScans
+      summary: Queue scans of one or more assets.
+      description: |
+        Every asset id is checked before anything is queued: an unknown or
+        archived asset fails the whole request, so the caller never receives a
+        partial batch it cannot correlate. The scans run in the server's worker
+        pool with `trigger: ui` and can be canceled individually.
+      tags: [scans]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScansRequest"
+      responses:
+        "202":
+          description: The scans are queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanQueueResult"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: An asset id does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: An asset is archived and cannot be scanned.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/scans/{id}:
+    get:
+      operationId: getScan
+      summary: One scan with its scanner runs.
+      tags: [scans]
+      parameters:
+        - $ref: "#/components/parameters/ScanID"
+      responses:
+        "200":
+          description: The scan, including `scanner_runs`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scan"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/scans/{id}/cancel:
+    post:
+      operationId: cancelScan
+      summary: Cancel a queued or running scan.
+      description: |
+        A queued scan is persisted as canceled before this responds; a running
+        scan stops at its next check and its worker persists the final state.
+        The body is the scan as it stood when the request was accepted.
+      tags: [scans]
+      parameters:
+        - $ref: "#/components/parameters/ScanID"
+      responses:
+        "200":
+          description: The scan after the cancel request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scan"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: The scan is already finished or canceled.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/scans/{id}/findings:
+    get:
+      operationId: listScanFindings
+      summary: Findings of one scan.
+      description: |
+        Every finding the scan produced, most severe first, with the effective
+        status: a `finding_states` decision for the same asset and fingerprint
+        reports the finding as `ignored` and fills `state` and `reason`.
+      tags: [findings]
+      parameters:
+        - $ref: "#/components/parameters/ScanID"
+        - $ref: "#/components/parameters/SeverityQuery"
+        - $ref: "#/components/parameters/FindingTypeQuery"
+        - $ref: "#/components/parameters/FindingStatusQuery"
+      responses:
+        "200":
+          description: The findings after the filters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FindingList"
+        "400":
+          description: A query parameter is not a valid enum value.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/findings/{fingerprint}/state:
+    post:
+      operationId: setFindingState
+      summary: Record a decision for one finding.
+      description: |
+        Decisions are keyed on (asset_id, fingerprint), so they hide the finding
+        in this scan and in every later one that rediscovers it. `reason` is
+        required: a hidden finding must stay reviewable. Re-deciding replaces
+        the previous state and reason.
+      tags: [findings]
+      parameters:
+        - $ref: "#/components/parameters/Fingerprint"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetFindingStateRequest"
+      responses:
+        "204":
+          description: The decision is stored.
+        "400":
+          description: The state is unknown, the reason is blank or ids are missing.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: The asset id does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: clearFindingState
+      summary: Clear the decision for one finding.
+      description: |
+        Clearing is a DELETE with `asset_id` in the query, because the decision
+        key is (asset_id, fingerprint) and both are needed to identify it.
+        Clearing a decision that does not exist succeeds.
+      tags: [findings]
+      parameters:
+        - $ref: "#/components/parameters/Fingerprint"
+        - $ref: "#/components/parameters/AssetIDRequiredQuery"
+      responses:
+        "204":
+          description: No decision is stored for the fingerprint any more.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: The asset id does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/findings:
     get:
       operationId: listFindings
@@ -321,6 +678,51 @@ components:
         type: integer
         format: int64
         minimum: 1
+    AssetIDRequiredQuery:
+      name: asset_id
+      in: query
+      required: true
+      description: The asset the decision belongs to.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    AssetID:
+      name: id
+      in: path
+      required: true
+      description: Asset id.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    ScanID:
+      name: id
+      in: path
+      required: true
+      description: Scan id.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    ScanLimitQuery:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of scans to return, newest first.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    Fingerprint:
+      name: fingerprint
+      in: path
+      required: true
+      description: Stable finding fingerprint within one asset.
+      schema:
+        type: string
+        minLength: 1
     SeverityQuery:
       name: severity
       in: query
@@ -778,6 +1180,226 @@ components:
           type: string
           format: date-time
           description: Absent while the scan has not finished.
+    AssetList:
+      type: object
+      title: AssetList
+      description: Every non-archived asset.
+      additionalProperties: false
+      required: [assets]
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Asset"
+    Asset:
+      type: object
+      title: Asset
+      description: One tracked repository or path.
+      additionalProperties: false
+      required: [id, kind, display_name, ref, created_at, open_counts]
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+        kind:
+          $ref: "#/components/schemas/AssetKind"
+        connection_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The connection repo scans authenticate with.
+        display_name:
+          type: string
+        ref:
+          type: string
+          description: |
+            Canonical reference: `owner/repo` for repositories, the absolute
+            directory for paths.
+        default_branch:
+          type: string
+          description: Branch the repository tracks; absent for paths.
+        created_at:
+          type: string
+          format: date-time
+        last_scan:
+          $ref: "#/components/schemas/AssetLastScan"
+        open_counts:
+          $ref: "#/components/schemas/SeverityTotals"
+    AssetLastScan:
+      type: object
+      title: AssetLastScan
+      description: |
+        The asset's newest scan, whatever its status: a failed newest scan is
+        what the asset list must show.
+      additionalProperties: false
+      required: [scan_id, status]
+      properties:
+        scan_id:
+          type: integer
+          format: int64
+          minimum: 1
+        status:
+          $ref: "#/components/schemas/ScanStatus"
+        finished_at:
+          type: string
+          format: date-time
+          description: Absent while the scan has not finished.
+    CreateAssetRequest:
+      type: object
+      title: CreateAssetRequest
+      additionalProperties: false
+      required: [kind, ref]
+      properties:
+        kind:
+          type: string
+          description: |
+            `repo` takes an `owner/repo` ref; `path` takes an existing absolute
+            directory. Images arrive in a later phase.
+          enum: [repo, path]
+        ref:
+          type: string
+          minLength: 1
+          description: "`owner/repo` for repositories, an absolute directory for paths."
+          examples: ["octo/hello", "/Users/me/src/hello"]
+        connection_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: |
+            Connection whose token resolves the default branch and authenticates
+            scans. Absent uses the default GitHub token.
+    ScanList:
+      type: object
+      title: ScanList
+      description: Scans, newest first.
+      additionalProperties: false
+      required: [scans]
+      properties:
+        scans:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scan"
+    Scan:
+      type: object
+      title: Scan
+      description: |
+        One scan of one asset. `scanner_runs` is filled by the single-scan read
+        only; the list omits it.
+      additionalProperties: false
+      required: [id, asset_id, status, trigger]
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+        asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+        target_ref:
+          type: string
+          description: Resolved git SHA or image digest at scan time, when known.
+        status:
+          $ref: "#/components/schemas/ScanStatus"
+        trigger:
+          type: string
+          description: Who started the scan.
+          enum: [ui, cli, api]
+        started_at:
+          type: string
+          format: date-time
+          description: Absent while the scan is still queued.
+        finished_at:
+          type: string
+          format: date-time
+          description: Absent while the scan has not finished.
+        error:
+          type: string
+          description: Why a failed scan failed; absent otherwise.
+        scanner_runs:
+          type: array
+          description: One entry per scanner, in execution order (single-scan read only).
+          items:
+            $ref: "#/components/schemas/ScannerRun"
+    ScannerRun:
+      type: object
+      title: ScannerRun
+      description: One scanner's result inside a scan.
+      additionalProperties: false
+      required: [scanner, status]
+      properties:
+        scanner:
+          type: string
+        scanner_version:
+          type: string
+        db_version:
+          type: string
+          description: Version of the advisory database the scanner used.
+        status:
+          $ref: "#/components/schemas/ScanStatus"
+        duration_ms:
+          type: integer
+          format: int64
+          minimum: 0
+        error:
+          type: string
+          description: Why this scanner failed; absent otherwise.
+    CreateScansRequest:
+      type: object
+      title: CreateScansRequest
+      additionalProperties: false
+      required: [asset_ids]
+      properties:
+        asset_ids:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+    ScanQueueResult:
+      type: object
+      title: ScanQueueResult
+      additionalProperties: false
+      required: [scans]
+      properties:
+        scans:
+          type: array
+          items:
+            $ref: "#/components/schemas/QueuedScan"
+    QueuedScan:
+      type: object
+      title: QueuedScan
+      description: The scan id the caller tracks the queued scan by.
+      additionalProperties: false
+      required: [scan_id, asset_id]
+      properties:
+        scan_id:
+          type: integer
+          format: int64
+          minimum: 1
+        asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+    SetFindingStateRequest:
+      type: object
+      title: SetFindingStateRequest
+      additionalProperties: false
+      required: [asset_id, state, reason]
+      properties:
+        asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The asset the finding belongs to; decisions are per asset.
+        state:
+          $ref: "#/components/schemas/FindingState"
+        reason:
+          type: string
+          minLength: 1
+          description: Why the finding is hidden; required, so decisions stay reviewable.
     Problem:
       type: object
       title: Problem
