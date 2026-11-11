@@ -56,7 +56,7 @@ bastion [flags]                  # same as `bastion serve`
 bastion serve   [--port N] [--no-browser] [--concurrency N]
 bastion scan    --path DIR | --repo owner/name[@ref]
                 [--format json|table|sarif] [--fail-on critical|high|medium|low]
-                [--skip-dirs DIR ...] [--no-store]
+                [--skip-dirs DIR]...  [--no-store]
 bastion doctor  [--json]
 bastion version
 ```
@@ -95,7 +95,7 @@ Nothing else is called. No telemetry, no update check, no analytics: Trivy runs 
 | `codeload.github.com` | Redirect target of the tarball call | The repository archive itself |
 
 The three Trivy registries are OCI pulls performed by Trivy's updater; they are cached
-under `<cache>/bastion/trivy` and re-used by later scans. GitHub is never contacted in the
+under `<cache>/trivy` and re-used by later scans. GitHub is never contacted in the
 background, and request URLs are never logged (private-repo redirects carry a short-lived
 token).
 
@@ -147,8 +147,8 @@ Defaults are `flag > environment > platform default`:
 |---|---|---|
 | Data dir (SQLite `bastion.db`) | `<user config dir>/bastion` — `~/Library/Application Support/bastion` (macOS), `~/.config/bastion` (Linux) | `--data-dir`, `BASTION_DATA_DIR` |
 | Cache dir | `<user cache dir>/bastion` — `~/Library/Caches/bastion` (macOS), `~/.cache/bastion` (Linux) | `--cache-dir`, `BASTION_CACHE_DIR` |
-| Trivy DB and checks | `<cache>/bastion/trivy` | (cache dir) |
-| Repo workspaces | `<cache>/bastion/workspaces`, deleted after each scan | (cache dir) |
+| Trivy DB and checks | `<cache>/trivy` | (cache dir) |
+| Repo workspaces | `<cache>/workspaces`, deleted after each scan | (cache dir) |
 
 The cache directory is the large artifact on disk, not the binary. Deleting it is safe; the
 next scan re-downloads the DB.
