@@ -533,30 +533,6 @@ function FindingDrawer({
           </dd>
         </dl>
 
-        {finding.references.length > 0 ? (
-          <section className="flex flex-col gap-1.5">
-            <h3 className="text-[13px] font-semibold">References</h3>
-            <ul className="flex flex-col gap-1 text-xs">
-              {finding.references.map((reference, index) => (
-                <li key={`${String(index)}-${reference}`} className="break-all">
-                  {isHttpsUrl(reference) ? (
-                    <a
-                      href={reference}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="underline underline-offset-2 hover:text-fg"
-                    >
-                      {reference}
-                    </a>
-                  ) : (
-                    <span className="text-muted">{reference}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
         <section className="flex flex-col gap-2 rounded-md border border-border-subtle bg-bg p-3">
           <h3 className="text-[13px] font-semibold">Decision</h3>
 
@@ -649,6 +625,30 @@ function FindingDrawer({
             <ErrorNote error={setState.error} fix="Add a reason and try again." />
           ) : null}
         </section>
+
+        {finding.references.length > 0 ? (
+          <section className="flex flex-col gap-1.5">
+            <h3 className="text-[13px] font-semibold">References</h3>
+            <ul className="flex flex-col gap-1 text-xs">
+              {finding.references.map((reference, index) => (
+                <li key={`${String(index)}-${reference}`} className="break-all">
+                  {isHttpsUrl(reference) ? (
+                    <a
+                      href={reference}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="underline underline-offset-2 hover:text-fg"
+                    >
+                      {reference}
+                    </a>
+                  ) : (
+                    <span className="text-muted">{reference}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </div>
     </div>
   )
