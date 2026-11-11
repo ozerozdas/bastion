@@ -203,7 +203,8 @@ All timestamps UTC, stored as RFC3339 text. IDs are integer autoincrement.
 `id, asset_id, fingerprint, state (ignored|accepted_risk|false_positive), reason, created_at`
 
 ### Fingerprint (critical for diff & dedup)
-`sha256(asset_id | type | rule_id | ecosystem | package_name | location_normalized)`
+`sha256(asset_id | type | rule_id | ecosystem | package_name | location_normalized)`, where each field is encoded unambiguously as `<byte length>:<value>` (a plain `|` join lets a `|` inside a field collide with a different split).
+- **One finding per fingerprint per scan.** Occurrences that share a fingerprint inside one scan (same CVE on two copies of a package in one lockfile, the same Dockerfile rule in two stages) are merged into one finding: highest severity wins, `occurrences` counts them. Line numbers are deliberately not used to split them, since they would make fingerprints unstable.
 - **Excludes** `package_version` and `scan_id`, so the same CVE on the same package stays the same finding after an unrelated bump. A version change that fixes it makes it disappear → "closed".
 - `location_normalized` strips temp workspace prefixes and, for secrets, uses `file + rule_id + secret_hmac` (not line number, which shifts).
 - For **image** targets, `location_normalized` is the package's file path inside the image (e.g. `usr/lib/node_modules/x/package.json`, or the OS package DB path for OS packages), **never the layer digest**: layer digests change on every rebuild and would make every finding look new and fixed at once.
