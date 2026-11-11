@@ -6,7 +6,7 @@
 | BST-002 | CI | P0 | ready | coder | 001 |
 | BST-003 | Trivy spike → ADR-001 | P0 | done | coder | 001 |
 | BST-004 | Gitleaks spike | P0 | ready | coder | 001 |
-| BST-005 | App paths + config | P0 | ready | coder | 001 |
+| BST-005 | App paths + config | P0 | review | coder | 001 |
 | BST-006 | SQLite + goose + sqlc | P0 | todo | coder | 005 |
 | BST-007 | OpenAPI + codegen | P0 | ready | coder | 001 |
 | BST-008 | HTTP server + §4.3 security | P0 | todo | coder | 007 |
