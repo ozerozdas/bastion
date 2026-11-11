@@ -4,7 +4,7 @@ title: Frontend tests: Vitest logic + Playwright smoke for 5 pages
 phase: P1
 status: todo
 owner_role: tester
-depends_on: [026, 027, 028, 029, 030]
+depends_on: [BST-026, BST-027, BST-028, BST-029, BST-030]
 estimate: M
 ---
 

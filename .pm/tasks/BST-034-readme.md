@@ -4,7 +4,7 @@ title: README: quickstart, threat model, network calls, demo GIF
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [027, 028, 031]
+depends_on: [BST-027, BST-028, BST-031]
 estimate: M
 ---
 

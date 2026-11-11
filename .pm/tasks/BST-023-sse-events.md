@@ -4,7 +4,7 @@ title: SSE /api/events
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [022]
+depends_on: [BST-022]
 estimate: S
 ---
 

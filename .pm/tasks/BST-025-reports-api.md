@@ -4,7 +4,7 @@ title: Dashboard + latest findings API (internal/reports)
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [017]
+depends_on: [BST-017]
 estimate: M
 ---
 

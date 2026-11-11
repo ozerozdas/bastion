@@ -4,7 +4,7 @@ title: UI: Scan History (list)
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [024]
+depends_on: [BST-024]
 estimate: S
 ---
 

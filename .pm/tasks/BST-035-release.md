@@ -4,7 +4,7 @@ title: Release pipeline: GoReleaser, install.sh, Homebrew tap
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [033]
+depends_on: [BST-033]
 estimate: M
 ---
 

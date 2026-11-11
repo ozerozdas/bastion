@@ -4,7 +4,7 @@ title: Self-scan in CI + `make gen` cleanup
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [031]
+depends_on: [BST-031]
 estimate: S
 ---
 

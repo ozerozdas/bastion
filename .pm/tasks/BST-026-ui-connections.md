@@ -4,7 +4,7 @@ title: UI: Connections page (GitHub)
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [020]
+depends_on: [BST-020]
 estimate: M
 ---
 

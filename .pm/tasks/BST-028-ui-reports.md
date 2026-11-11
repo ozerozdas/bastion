@@ -4,7 +4,7 @@ title: UI: Security Reports (findings table, drawer, ignore)
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [024, 025]
+depends_on: [BST-024, BST-025]
 estimate: L
 ---
 

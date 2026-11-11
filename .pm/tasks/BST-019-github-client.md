@@ -4,7 +4,7 @@ title: GitHub API client (internal/connections/github)
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [015]
+depends_on: [BST-015]
 estimate: M
 ---
 

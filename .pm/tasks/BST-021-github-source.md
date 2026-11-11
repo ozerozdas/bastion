@@ -4,7 +4,7 @@ title: GitHub tarball source (internal/sources/github)
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [019]
+depends_on: [BST-019]
 estimate: M
 ---
 

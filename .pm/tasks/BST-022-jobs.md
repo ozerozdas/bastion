@@ -4,7 +4,7 @@ title: Job system: queue, worker pool, cancel, lifecycle (internal/jobs)
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [016, 021]
+depends_on: [BST-016, BST-021]
 estimate: L
 ---
 

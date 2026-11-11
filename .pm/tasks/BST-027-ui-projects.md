@@ -4,7 +4,7 @@ title: UI: Projects page, discover dialog, scan + live progress
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [023, 024, 026]
+depends_on: [BST-023, BST-024, BST-026]
 estimate: L
 ---
 

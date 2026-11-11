@@ -4,7 +4,7 @@ title: CLI: `scan --repo owner/name` and `--format json|table|sarif`
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [018, 021]
+depends_on: [BST-018, BST-021]
 estimate: M
 ---
 

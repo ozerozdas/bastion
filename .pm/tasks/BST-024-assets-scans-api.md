@@ -4,7 +4,7 @@ title: Assets, scans and finding-state API
 phase: P1
 status: todo
 owner_role: coder
-depends_on: [017, 020, 022]
+depends_on: [BST-017, BST-020, BST-022]
 estimate: M
 ---
 
