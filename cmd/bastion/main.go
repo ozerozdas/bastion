@@ -32,5 +32,6 @@ func newRootCmd() *cobra.Command {
 			return err
 		},
 	})
+	root.AddCommand(newSpikeTrivyCmd())
 	return root
 }

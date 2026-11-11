@@ -4,7 +4,7 @@
 |---|---|---|---|---|---|
 | BST-001 | Repo scaffold | P0 | done | coder | — |
 | BST-002 | CI | P0 | ready | coder | 001 |
-| BST-003 | Trivy spike → ADR-001 | P0 | ready | coder | 001 |
+| BST-003 | Trivy spike → ADR-001 | P0 | review | coder | 001 |
 | BST-004 | Gitleaks spike | P0 | ready | coder | 001 |
 | BST-005 | App paths + config | P0 | ready | coder | 001 |
 | BST-006 | SQLite + goose + sqlc | P0 | todo | coder | 005 |
