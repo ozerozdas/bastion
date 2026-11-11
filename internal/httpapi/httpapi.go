@@ -23,6 +23,7 @@ import (
 
 	"github.com/ozerozdas/bastion/internal/assets"
 	"github.com/ozerozdas/bastion/internal/connections"
+	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/web"
@@ -70,6 +71,10 @@ type Config struct {
 	// serve wires the SQLite-backed service with the scan queue; nil answers
 	// those endpoints with 500.
 	Assets *assets.Service
+	// Events is the broker /api/events streams from. serve passes the same
+	// broker to the scan manager, so every published event reaches the UI. Nil
+	// gives the server its own broker, which then stays silent.
+	Events *events.Broker
 }
 
 // Server serves the bastion API and UI. Create it with New, take its handler
@@ -91,6 +96,10 @@ type Server struct {
 	// assets backs /api/assets, /api/scans and /api/findings/{fingerprint}/state,
 	// with the same nil-means-unavailable contract.
 	assets *assets.Service
+
+	// events backs /api/events. It is never nil: without a wired broker the
+	// endpoint is still valid, it just has nothing to stream.
+	events *events.Broker
 
 	// token arrives once, in the browser URL. session is the cookie value that
 	// replaces it. They are distinct values: a token that leaked into shell
@@ -116,6 +125,10 @@ func New(cfg Config) (*Server, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	broker := cfg.Events
+	if broker == nil {
+		broker = events.NewBroker()
+	}
 
 	s := &Server{
 		version:     cfg.Version,
@@ -124,6 +137,7 @@ func New(cfg Config) (*Server, error) {
 		connections: cfg.Connections,
 		reports:     cfg.Reports,
 		assets:      cfg.Assets,
+		events:      broker,
 		token:       token,
 		session:     session,
 	}
@@ -189,6 +203,11 @@ func (s *Server) buildHandler() http.Handler {
 	}), gen.StdHTTPServerOptions{
 		BaseRouter: mux,
 	})
+
+	// SSE is hand-written: the generated strict server cannot flush per event.
+	// The path is excluded from codegen (api/oapi-codegen.yaml) but documented
+	// in the spec.
+	mux.HandleFunc("GET /api/events", s.handleEvents)
 
 	// Unknown /api/* paths must not fall through to the UI handler.
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, r *http.Request) {

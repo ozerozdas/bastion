@@ -649,6 +649,37 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/events:
+    get:
+      operationId: streamEvents
+      summary: Stream scan lifecycle events.
+      description: |
+        Server-Sent Events stream of everything the scan queue does
+        (PROJECT_SPEC.md §6). Each frame is `event: <type>` plus one
+        `data: <ScanEvent JSON>` line, where the event type is `scan.queued`,
+        `scan.progress` or `scan.finished`. An idle stream sends a `: ping`
+        comment every 15 seconds; comments are not events.
+
+        There is no replay: the stream continues with the next event after it
+        opens, so a client that reconnects refetches the state it missed. A
+        client that falls too far behind is dropped, so a slow reader can never
+        stall a scan worker. Like every other `/api/*` route the stream
+        requires the `bastion_session` cookie; mutating-request CSRF does not
+        apply to this GET.
+      tags: [scans]
+      responses:
+        "200":
+          description: The event stream, open until the client disconnects.
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ScanEvent"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     sessionCookie:
@@ -1431,3 +1462,37 @@ components:
           type: string
           format: uri-reference
           description: URI reference identifying this specific occurrence.
+    ScanEvent:
+      type: object
+      title: ScanEvent
+      description: |
+        One scan lifecycle event, carried in the `data:` line of an
+        `/api/events` frame. Optional fields are absent when they do not apply
+        to the event type.
+      additionalProperties: false
+      required: [type, scan_id, asset_id, status]
+      properties:
+        type:
+          type: string
+          description: The SSE event name.
+          enum: [scan.queued, scan.progress, scan.finished]
+        scan_id:
+          type: integer
+          format: int64
+          minimum: 1
+        asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+        status:
+          $ref: "#/components/schemas/ScanStatus"
+        stage:
+          type: string
+          description: Pipeline stage of a `scan.progress` event.
+          enum: [resolve, fetch, scan, normalize]
+        scanner:
+          type: string
+          description: Scanner a `scan.progress` event belongs to, when any.
+        error:
+          type: string
+          description: Why the scan failed, on a failed `scan.finished` event.

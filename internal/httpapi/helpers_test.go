@@ -20,6 +20,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/assets"
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
+	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/reports"
@@ -103,6 +104,7 @@ type testServer struct {
 	secretStore *secrets.MemoryStore
 	github      *fakeGitHub
 	scanManager *jobs.Manager
+	events      *events.Broker
 }
 
 // newTestServer starts the server on an ephemeral loopback port. Tests use
@@ -151,7 +153,8 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 
 	// No sources or scanners: a queued scan fails its pipeline quickly, which
 	// is all the API tests need (the endpoint contract, not scanning).
-	scanManager, err := jobs.New(jobs.Config{DB: db, Concurrency: 1})
+	bus := events.NewBroker()
+	scanManager, err := jobs.New(jobs.Config{DB: db, Concurrency: 1, Events: bus})
 	if err != nil {
 		t.Fatalf("jobs.New: %v", err)
 	}
@@ -176,6 +179,7 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 		Connections: service,
 		Reports:     reportService,
 		Assets:      assetService,
+		Events:      bus,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -195,6 +199,7 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 		secretStore: secretStore,
 		github:      fake,
 		scanManager: scanManager,
+		events:      bus,
 		client: &http.Client{
 			// Redirects are asserted, not followed.
 			CheckRedirect: func(*http.Request, []*http.Request) error {

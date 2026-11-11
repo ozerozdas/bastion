@@ -221,6 +221,51 @@ func (e ScanTrigger) Valid() bool {
 	}
 }
 
+// Defines values for ScanEventStage.
+const (
+	ScanEventStageFetch     ScanEventStage = "fetch"
+	ScanEventStageNormalize ScanEventStage = "normalize"
+	ScanEventStageResolve   ScanEventStage = "resolve"
+	ScanEventStageScan      ScanEventStage = "scan"
+)
+
+// Valid indicates whether the value is a known member of the ScanEventStage enum.
+func (e ScanEventStage) Valid() bool {
+	switch e {
+	case ScanEventStageFetch:
+		return true
+	case ScanEventStageNormalize:
+		return true
+	case ScanEventStageResolve:
+		return true
+	case ScanEventStageScan:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScanEventType.
+const (
+	ScanFinished ScanEventType = "scan.finished"
+	ScanProgress ScanEventType = "scan.progress"
+	ScanQueued   ScanEventType = "scan.queued"
+)
+
+// Valid indicates whether the value is a known member of the ScanEventType enum.
+func (e ScanEventType) Valid() bool {
+	switch e {
+	case ScanFinished:
+		return true
+	case ScanProgress:
+		return true
+	case ScanQueued:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ScanStatus.
 const (
 	Canceled  ScanStatus = "canceled"
@@ -627,6 +672,35 @@ type Scan struct {
 
 // ScanTrigger Who started the scan.
 type ScanTrigger string
+
+// ScanEvent One scan lifecycle event, carried in the `data:` line of an
+// `/api/events` frame. Optional fields are absent when they do not apply
+// to the event type.
+type ScanEvent struct {
+	AssetId int64 `json:"asset_id"`
+
+	// Error Why the scan failed, on a failed `scan.finished` event.
+	Error  *string `json:"error,omitempty"`
+	ScanId int64   `json:"scan_id"`
+
+	// Scanner Scanner a `scan.progress` event belongs to, when any.
+	Scanner *string `json:"scanner,omitempty"`
+
+	// Stage Pipeline stage of a `scan.progress` event.
+	Stage *ScanEventStage `json:"stage,omitempty"`
+
+	// Status Lifecycle state of a scan.
+	Status ScanStatus `json:"status"`
+
+	// Type The SSE event name.
+	Type ScanEventType `json:"type"`
+}
+
+// ScanEventStage Pipeline stage of a `scan.progress` event.
+type ScanEventStage string
+
+// ScanEventType The SSE event name.
+type ScanEventType string
 
 // ScanList Scans, newest first.
 type ScanList struct {

@@ -183,8 +183,9 @@ const serverScanShutdownGrace = 10 * time.Second
 // repositories, the same scanners as the CLI, and a resolver that reads the
 // asset's connection token for repositories. Scans left unfinished by the
 // previous process are failed before the server accepts requests, so a queued
-// scan can never stay queued forever.
-func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, tokens *connections.Service, secretStore secrets.Store) (*jobs.Manager, error) {
+// scan can never stay queued forever. bus receives the lifecycle events the
+// SSE endpoint streams.
+func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher) (*jobs.Manager, error) {
 	hmacKey, err := secrets.LocalKey(secretStore)
 	if err != nil {
 		// Only secret fingerprints need the key; everything else still works,
@@ -210,6 +211,7 @@ func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, t
 			HMACKey:  hmacKey,
 		},
 		Concurrency: opts.concurrency,
+		Events:      bus,
 		Resolve:     newRepoResolver(db, tokens, version),
 	})
 	if err != nil {

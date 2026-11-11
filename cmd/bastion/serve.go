@@ -18,6 +18,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/assets"
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
+	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/reports"
@@ -140,7 +141,10 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		return errors.Join(fmt.Errorf("create reports service: %w", err), ln.Close())
 	}
 
-	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore)
+	// One broker feeds both the scan workers (publish) and /api/events
+	// (subscribe), so the UI sees every lifecycle event of the scans it starts.
+	bus := events.NewBroker()
+	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore, bus)
 	if err != nil {
 		return errors.Join(err, ln.Close())
 	}
@@ -167,6 +171,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		Connections: service,
 		Reports:     reportService,
 		Assets:      assetService,
+		Events:      bus,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())
