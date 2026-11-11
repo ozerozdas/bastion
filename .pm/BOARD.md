@@ -33,8 +33,8 @@
 | BST-029 | UI Dashboard | P1 | done | coder | 025 |
 | BST-030 | UI Scan History | P1 | done | coder | 024 |
 | BST-031 | CLI `scan --repo`, table/SARIF | P1 | done | coder | 018, 021 |
-| BST-032 | Vitest + Playwright smoke | P1 | todo | tester | 026–030 |
-| BST-033 | CI self-scan + `make gen` cleanup | P1 | in_progress | coder | 031 |
-| BST-034 | README, threat model, network calls | P1 | todo | coder | 027, 028, 031 |
+| BST-032 | Vitest + Playwright smoke | P1 | in_progress | tester | 026–030 |
+| BST-033 | CI self-scan + `make gen` cleanup | P1 | done | coder | 031 |
+| BST-034 | README, threat model, network calls | P1 | in_progress | coder | 027, 028, 031 |
 | BST-035 | Release pipeline | P1 | todo | coder | 033 |
 | BST-036 | P1 exit check | P1 | todo | tester | all |

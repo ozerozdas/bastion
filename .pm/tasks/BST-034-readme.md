@@ -2,7 +2,7 @@
 id: BST-034
 title: "README: quickstart, threat model, network calls, demo GIF"
 phase: P1
-status: todo
+status: in_progress
 owner_role: coder
 depends_on: [BST-027, BST-028, BST-031]
 estimate: M

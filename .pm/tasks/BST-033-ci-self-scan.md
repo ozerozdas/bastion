@@ -2,7 +2,7 @@
 id: BST-033
 title: Self-scan in CI + `make gen` cleanup
 phase: P1
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-031]
 estimate: S
