@@ -35,6 +35,15 @@ WHERE id = sqlc.arg(id);
 -- two scans share a started_at.
 SELECT * FROM scans WHERE asset_id = sqlc.arg(asset_id) ORDER BY id DESC LIMIT sqlc.arg(limit);
 
+-- name: FailUnfinishedScans :exec
+-- Startup recovery: a scan still queued or running when this process starts
+-- was cut short by the previous process exiting, so it can never finish.
+UPDATE scans
+SET status = 'failed',
+    finished_at = sqlc.arg(finished_at),
+    error = sqlc.arg(error)
+WHERE status IN ('queued', 'running');
+
 -- name: InsertScannerRun :exec
 INSERT INTO scanner_runs (scan_id, scanner, scanner_version, db_version, status, duration_ms, error, raw_path)
 VALUES (
