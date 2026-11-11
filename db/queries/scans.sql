@@ -44,6 +44,13 @@ SET status = 'failed',
     error = sqlc.arg(error)
 WHERE status IN ('queued', 'running');
 
+-- name: ListScannerRunsByScan :many
+-- Scanner runs of one scan in execution order. Reading a finished scan back
+-- (CLI output, reports) needs the rows InsertScannerRun wrote.
+SELECT * FROM scanner_runs
+WHERE scan_id = sqlc.arg(scan_id)
+ORDER BY id;
+
 -- name: InsertScannerRun :exec
 INSERT INTO scanner_runs (scan_id, scanner, scanner_version, db_version, status, duration_ms, error, raw_path)
 VALUES (

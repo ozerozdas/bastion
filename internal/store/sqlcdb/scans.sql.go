@@ -161,6 +161,47 @@ func (q *Queries) InsertScannerRun(ctx context.Context, arg InsertScannerRunPara
 	return err
 }
 
+const listScannerRunsByScan = `-- name: ListScannerRunsByScan :many
+SELECT id, scan_id, scanner, scanner_version, db_version, status, duration_ms, error, raw_path FROM scanner_runs
+WHERE scan_id = ?1
+ORDER BY id
+`
+
+// Scanner runs of one scan in execution order. Reading a finished scan back
+// (CLI output, reports) needs the rows InsertScannerRun wrote.
+func (q *Queries) ListScannerRunsByScan(ctx context.Context, scanID int64) ([]ScannerRun, error) {
+	rows, err := q.db.QueryContext(ctx, listScannerRunsByScan, scanID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ScannerRun
+	for rows.Next() {
+		var i ScannerRun
+		if err := rows.Scan(
+			&i.ID,
+			&i.ScanID,
+			&i.Scanner,
+			&i.ScannerVersion,
+			&i.DBVersion,
+			&i.Status,
+			&i.DurationMS,
+			&i.Error,
+			&i.RawPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listScansByAsset = `-- name: ListScansByAsset :many
 SELECT id, asset_id, target_ref, status, "trigger", started_at, finished_at, error FROM scans WHERE asset_id = ?1 ORDER BY id DESC LIMIT ?2
 `
