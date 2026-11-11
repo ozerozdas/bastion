@@ -2,7 +2,7 @@
 id: BST-032
 title: "Frontend tests: Vitest logic + Playwright smoke for 5 pages"
 phase: P1
-status: review
+status: done
 owner_role: tester
 depends_on: [BST-026, BST-027, BST-028, BST-029, BST-030]
 estimate: M
