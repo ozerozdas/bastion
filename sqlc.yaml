@@ -1,0 +1,19 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "db/migrations"
+    queries: "db/queries"
+    gen:
+      go:
+        package: "sqlcdb"
+        out: "internal/store/sqlcdb"
+        rename:
+          config_json: ConfigJSON
+          metadata_json: MetadataJSON
+          references_json: ReferencesJSON
+          rule_id: RuleID
+          db_version: DBVersion
+          duration_ms: DurationMS
+          purl: PURL
+          cvss: CVSS
+          epss: EPSS

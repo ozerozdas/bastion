@@ -17,5 +17,6 @@ test:
 
 gen:
 	go generate ./...
+	go tool sqlc generate
 
 check: fmt lint test build
