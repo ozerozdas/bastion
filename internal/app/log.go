@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -46,18 +45,15 @@ func NewLogger(w io.Writer, cfg LogConfig) (*slog.Logger, error) {
 // Trivy's pkg/log runs an init() that replaces slog.Default() with a buffering
 // handler which silently drops records until Trivy initialises its own logger
 // (ADR-001). Because all init()s run before main(), every bastion entrypoint
-// must call SetupLogging after flag parsing and before doing work. The pointer
-// check below turns a handler that did not take effect into a hard error
-// instead of a silently lost log line.
+// must call SetupLogging after flag parsing and before doing work.
+// The root command enables cobra.EnableTraverseRunHooks so subcommands with
+// their own PersistentPreRunE cannot skip this.
 func SetupLogging(w io.Writer, cfg LogConfig) (*slog.Logger, error) {
 	logger, err := NewLogger(w, cfg)
 	if err != nil {
 		return nil, err
 	}
 	slog.SetDefault(logger)
-	if slog.Default() != logger {
-		return nil, errors.New("app: slog.Default() did not keep bastion's handler")
-	}
 	logger.Debug("logging configured", "format", cfg.Format, "log_level", cfg.Level)
 	return logger, nil
 }

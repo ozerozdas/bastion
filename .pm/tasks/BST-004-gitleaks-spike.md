@@ -2,7 +2,7 @@
 id: BST-004
 title: Spike: Gitleaks library scan of a local dir with redaction
 phase: P0
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-001]
 estimate: S
@@ -82,3 +82,4 @@ grep -rln 'gitleaks/v8' --include='*.go' . | grep -v '^./internal/scanners/gitle
   build OK. The command was not executed manually because it would write the
   HMAC key into the reviewer's real keychain; the adapter is covered by tests
   with the in-memory store pattern.
+- 2026-11-11 review (orchestrator + reviewer): fixed review findings (HMAC env name unified to BASTION_HMAC_KEY with env-wins + read-back; gitleaks config parsed once in init to remove viper race; rune-safe redaction; cobra traverse hooks; dead slog check removed). `go test -race` + `make check` green; spike-gitleaks e2e with env key: secret absent from stdout/stderr. Done.

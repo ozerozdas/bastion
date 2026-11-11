@@ -37,7 +37,17 @@ func init() {
 	// verbose gitleaks log could echo fragments of scanned content, so silence
 	// it for the whole process. This runs after gitleaks' init, so it wins.
 	logging.Logger = zerolog.Nop()
+
+	// Parse the default config once, at program start, before any scan can
+	// run: Config.Translate reads the process-global Viper, which Trivy resets
+	// during its scans (ADR-001). Doing it here removes that data race.
+	defaultCfg, defaultCfgErr = defaultConfig()
 }
+
+var (
+	defaultCfg    config.Config
+	defaultCfgErr error
+)
 
 // Finding is one secret finding, safe to log, return or persist.
 type Finding struct {
@@ -66,10 +76,10 @@ func ScanDir(ctx context.Context, dir string, key []byte) ([]Finding, error) {
 		return nil, err
 	}
 
-	cfg, err := defaultConfig()
-	if err != nil {
-		return nil, err
+	if defaultCfgErr != nil {
+		return nil, defaultCfgErr
 	}
+	cfg := defaultCfg
 
 	detector := detect.NewDetector(cfg)
 	raw, err := detector.DetectSource(ctx, &sources.Files{
@@ -112,7 +122,7 @@ func ScanDir(ctx context.Context, dir string, key []byte) ([]Finding, error) {
 // reads through the process-global Viper instance, which Trivy also owns
 // (ADR-001). A local Viper keeps Gitleaks' configuration independent of
 // Trivy's. Config.Translate still reads viper.ConfigFileUsed() for a
-// cosmetic Path field, but that read is harmless.
+// cosmetic Path field, so this must only run from init (see above).
 func defaultConfig() (config.Config, error) {
 	v := viper.New()
 	v.SetConfigType("toml")
@@ -160,13 +170,14 @@ func relativePath(dir, file string) string {
 	return filepath.ToSlash(rel)
 }
 
-// redactMatch returns the safe form of a secret: the first four characters plus
+// redactMatch returns the safe form of a secret: the first four runes plus
 // "****", or just "****" when the secret is too short to reveal any characters.
 func redactMatch(secret string) string {
-	if len(secret) <= 4 {
+	r := []rune(secret)
+	if len(r) <= 4 {
 		return "****"
 	}
-	return secret[:4] + "****"
+	return string(r[:4]) + "****"
 }
 
 // secretHMAC returns hex(HMAC-SHA256(key, secret)).

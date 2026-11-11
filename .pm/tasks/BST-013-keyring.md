@@ -2,7 +2,7 @@
 id: BST-013
 title: Keyring wrapper with interface + in-memory fake
 phase: P0
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-005]
 estimate: S
@@ -61,3 +61,4 @@ CGO_ENABLED=0 go build ./...     # go-keyring is CGO-free (macOS: /usr/bin/secur
   real keychain is not exercised automatically, so tests never prompt.
 - Verified: `make check` → 0 lint issues, all tests pass; `CGO_ENABLED=0
   go build ./...` OK.
+- 2026-11-11 review (orchestrator + reviewer): fixed review findings (HMAC env name unified to BASTION_HMAC_KEY with env-wins + read-back; gitleaks config parsed once in init to remove viper race; rune-safe redaction; cobra traverse hooks; dead slog check removed). `go test -race` + `make check` green; spike-gitleaks e2e with env key: secret absent from stdout/stderr. Done.

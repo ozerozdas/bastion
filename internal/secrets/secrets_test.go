@@ -228,3 +228,25 @@ type failingStore struct {
 func (s failingStore) Get(string) (string, error) { return "", s.err }
 func (s failingStore) Set(string, string) error   { return s.err }
 func (s failingStore) Delete(string) error        { return s.err }
+
+func TestHMACKeyEnvNameMatches(t *testing.T) {
+	if got := EnvVarName(HMACKeyName); got != EnvHMACKey {
+		t.Fatalf("EnvVarName(%q) = %q, want %q", HMACKeyName, got, EnvHMACKey)
+	}
+}
+
+func TestLocalKeyEnvWinsOverKeyring(t *testing.T) {
+	store := NewMemoryStore()
+	if _, err := LocalKey(store); err != nil {
+		t.Fatalf("LocalKey: %v", err)
+	}
+	want := bytes.Repeat([]byte{7}, localKeySize)
+	t.Setenv(EnvHMACKey, base64.StdEncoding.EncodeToString(want))
+	got, err := LocalKey(store)
+	if err != nil {
+		t.Fatalf("LocalKey: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatal("env key did not override the stored key")
+	}
+}

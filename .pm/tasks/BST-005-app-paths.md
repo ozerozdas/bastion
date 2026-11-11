@@ -2,7 +2,7 @@
 id: BST-005
 title: internal/app paths + config (data dir, cache dir, flags, env)
 phase: P0
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-001]
 estimate: S
@@ -65,3 +65,4 @@ BASTION_CACHE_DIR=/tmp/env-cache ./bin/bastion --log-level debug version
   OK. Manual: flag/env/default precedence via `--log-level debug`; `spike-trivy`
   warm run against the existing Trivy cache through `<base>/trivy` produced the
   same 8 vulnerabilities (0.43 s).
+- 2026-11-11 review (orchestrator + reviewer): fixed review findings (HMAC env name unified to BASTION_HMAC_KEY with env-wins + read-back; gitleaks config parsed once in init to remove viper race; rune-safe redaction; cobra traverse hooks; dead slog check removed). `go test -race` + `make check` green; spike-gitleaks e2e with env key: secret absent from stdout/stderr. Done.

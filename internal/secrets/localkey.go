@@ -12,29 +12,34 @@ import (
 
 const (
 	// HMACKeyName is the keyring key that holds the base64-encoded 32-byte
-	// local HMAC key.
-	HMACKeyName = "hmac-local-key"
-	// EnvHMACKey is the environment fallback for the local HMAC key, used when
-	// the keyring is unavailable. The value must be base64-encoded 32 bytes.
+	// local HMAC key. Its environment name (EnvVarName) is EnvHMACKey.
+	HMACKeyName = "hmac-key"
+	// EnvHMACKey overrides the keyring when set: headless machines and CI use
+	// it. The value must be base64-encoded 32 bytes.
 	EnvHMACKey = "BASTION_HMAC_KEY"
 
 	localKeySize = 32
 )
 
-// localKeyMu serializes get-or-create so two concurrent first callers cannot
-// generate different keys (one of which would not be the stored one).
+// localKeyMu serializes get-or-create within this process. Across processes
+// the read-back after Set makes every caller use whichever key was stored last.
 var localKeyMu sync.Mutex
 
 // LocalKey returns the 32-byte key bastion uses to HMAC secrets before storing
 // them (PROJECT_SPEC.md §4.3). A plain hash is not used because low-entropy
 // secrets would be brute-forceable from the database.
 //
-// The key is created on first use and stored base64-encoded under HMACKeyName.
-// If the keyring is unavailable, the key is read from EnvHMACKey instead; if
-// that is also absent, the returned error explains how to set it.
+// Resolution is deterministic so fingerprints stay stable across runs:
+//  1. EnvHMACKey, if set, always wins.
+//  2. Otherwise the key stored under HMACKeyName; created on first use.
+//  3. If the keyring cannot be read or written, an error explains how to set
+//     EnvHMACKey. A random throwaway key is never returned.
 func LocalKey(store Store) ([]byte, error) {
 	if store == nil {
 		return nil, errors.New("secrets: store is required")
+	}
+	if encoded := strings.TrimSpace(os.Getenv(EnvHMACKey)); encoded != "" {
+		return decodeLocalKey(EnvHMACKey, encoded)
 	}
 
 	localKeyMu.Lock()
@@ -45,8 +50,7 @@ func LocalKey(store Store) ([]byte, error) {
 		return decodeLocalKey(HMACKeyName, encoded)
 	}
 	if !errors.Is(err, ErrNotFound) {
-		// The keyring could not be read at all; environment fallback (§10).
-		return localKeyFromEnv(fmt.Errorf("read %q from keyring: %w", HMACKeyName, err))
+		return nil, noKeyError(fmt.Errorf("read %q from keyring: %w", HMACKeyName, err))
 	}
 
 	key := make([]byte, localKeySize)
@@ -54,9 +58,14 @@ func LocalKey(store Store) ([]byte, error) {
 		return nil, fmt.Errorf("secrets: generate local HMAC key: %w", err)
 	}
 	if err := store.Set(HMACKeyName, base64.StdEncoding.EncodeToString(key)); err != nil {
-		return localKeyFromEnv(fmt.Errorf("store %q: %w", HMACKeyName, err))
+		return nil, noKeyError(fmt.Errorf("store %q: %w", HMACKeyName, err))
 	}
-	return key, nil
+	// Read back: another bastion process may have stored its key concurrently.
+	stored, err := store.Get(HMACKeyName)
+	if err != nil {
+		return nil, noKeyError(fmt.Errorf("read back %q: %w", HMACKeyName, err))
+	}
+	return decodeLocalKey(HMACKeyName, stored)
 }
 
 // decodeLocalKey decodes and validates a base64-encoded key of the expected
@@ -72,15 +81,10 @@ func decodeLocalKey(name, encoded string) ([]byte, error) {
 	return key, nil
 }
 
-// localKeyFromEnv reads the fallback key from EnvHMACKey. cause describes why
-// the keyring path failed and is included in the error when no fallback exists.
-func localKeyFromEnv(cause error) ([]byte, error) {
-	encoded := strings.TrimSpace(os.Getenv(EnvHMACKey))
-	if encoded == "" {
-		return nil, fmt.Errorf(
-			"secrets: no local HMAC key available (%w); set %s to a base64-encoded %d-byte key, e.g. `openssl rand -base64 %d`",
-			cause, EnvHMACKey, localKeySize, localKeySize,
-		)
-	}
-	return decodeLocalKey(EnvHMACKey, encoded)
+// noKeyError wraps a keyring failure with a hint on how to provide the key.
+func noKeyError(cause error) error {
+	return fmt.Errorf(
+		"secrets: no local HMAC key available (%w); set %s to a base64-encoded %d-byte key, e.g. `openssl rand -base64 %d`",
+		cause, EnvHMACKey, localKeySize, localKeySize,
+	)
 }

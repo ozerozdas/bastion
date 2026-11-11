@@ -98,6 +98,7 @@ func TestRedactMatch(t *testing.T) {
 		"abcd":                 "****",
 		"abc":                  "****",
 		"":                     "****",
+		"şifre-çok-gizli":      "şifr****",
 	}
 	for secret, want := range tests {
 		if got := redactMatch(secret); got != want {

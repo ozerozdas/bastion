@@ -33,6 +33,9 @@ type rootOptions struct {
 }
 
 func newRootCmd() *cobra.Command {
+	// Run every ancestor's PersistentPreRunE, so logging setup (ADR-001)
+	// cannot be skipped by a subcommand that defines its own hook.
+	cobra.EnableTraverseRunHooks = true
 	opts := &rootOptions{}
 
 	root := &cobra.Command{
