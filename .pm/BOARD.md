@@ -15,4 +15,4 @@
 | BST-011 | `scan --path` + golden tests | P0 | done | coder | 010 |
 | BST-012 | `doctor` | P0 | done | coder | 005, 006 |
 | BST-013 | Keyring wrapper | P0 | done | coder | 005 |
-| BST-014 | P0 exit check | P0 | ready | tester | all |
+| BST-014 | P0 exit check | P0 | done | tester | all |
