@@ -29,6 +29,28 @@ export const connectionsQuery = queryOptions({
   },
 })
 
+/** DiscoveredRepo is one repository a GitHub connection can add. */
+export type DiscoveredRepo = components['schemas']['DiscoveredRepo']
+
+type DiscoverReposResponse = components['schemas']['DiscoverReposResponse']
+
+/**
+ * discoverQuery lists the repositories the connection can read, each flagged
+ * already_added when an asset with the same owner/repo reference exists.
+ */
+export function discoverQuery(id: number) {
+  return queryOptions({
+    queryKey: [...connectionsKey, 'discover', id],
+    queryFn: async () => {
+      const list = await api.get<DiscoverReposResponse>(
+        `/api/connections/${String(id)}/discover`,
+      )
+      return list.repos
+    },
+    enabled: Number.isInteger(id) && id > 0,
+  })
+}
+
 /** useCreateConnection stores the token in the keyring and tests it once. */
 export function useCreateConnection() {
   const queryClient = useQueryClient()
