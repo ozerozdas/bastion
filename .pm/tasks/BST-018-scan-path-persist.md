@@ -2,7 +2,7 @@
 id: BST-018
 title: "`scan --path` persists results under a real path asset"
 phase: P1
-status: todo
+status: in_progress
 owner_role: coder
 depends_on: [BST-016]
 estimate: S
