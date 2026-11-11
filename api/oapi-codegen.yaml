@@ -1,0 +1,12 @@
+# oapi-codegen configuration for api/openapi.yaml (PROJECT_SPEC.md §3, §9).
+# Run through `make gen`, never by hand.
+package: gen
+output: internal/httpapi/gen/api.gen.go
+generate:
+  # stdlib net/http (Go 1.22+ method patterns) — no web framework (§3).
+  std-http-server: true
+  # Typed request/response objects, so handlers cannot forget a status code.
+  strict-server: true
+  models: true
+output-options:
+  skip-prune: true

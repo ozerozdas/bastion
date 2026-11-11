@@ -1,0 +1,13 @@
+{
+  "name": "bastion-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bastion web UI. Scaffolded fully in BST-009; for now this package only contains the OpenAPI type generation.",
+  "scripts": {
+    "gen:api": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0"
+  }
+}

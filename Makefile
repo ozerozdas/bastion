@@ -16,7 +16,9 @@ test:
 	go test ./...
 
 gen:
-	go generate ./...
 	go tool sqlc generate
+	go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+	@test -d web/node_modules || npm --prefix web ci --no-audit --no-fund
+	npm --prefix web run gen:api
 
 check: fmt lint test build
