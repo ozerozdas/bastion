@@ -7,7 +7,7 @@ import (
 
 func TestRedact(t *testing.T) {
 	// A 43-char base64url value, like a real token.
-	const token = "W4nqHbpPCDk1yCUZb3yHKp2_voosFmx3lnkCMXb_9dk" //nolint:gosec // G101: fake test token
+	const token = "W4nqHbpPCDk1yCUZb3yHKp2_voosFmx3lnkCMXb_9dk" //nolint:gosec // G101: fake test token. gitleaks:allow
 
 	tests := []struct {
 		name       string
