@@ -202,6 +202,52 @@ func (q *Queries) ListScannerRunsByScan(ctx context.Context, scanID int64) ([]Sc
 	return items, nil
 }
 
+const listScans = `-- name: ListScans :many
+SELECT id, asset_id, target_ref, status, "trigger", started_at, finished_at, error FROM scans
+WHERE (?1 IS NULL OR asset_id = ?1)
+ORDER BY id DESC
+LIMIT ?2
+`
+
+type ListScansParams struct {
+	AssetID interface{}
+	Limit   int64
+}
+
+// Newest first, optionally narrowed to one asset. Ids increase with time, so
+// ordering by id is stable even when two scans share a started_at.
+func (q *Queries) ListScans(ctx context.Context, arg ListScansParams) ([]Scan, error) {
+	rows, err := q.db.QueryContext(ctx, listScans, arg.AssetID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Scan
+	for rows.Next() {
+		var i Scan
+		if err := rows.Scan(
+			&i.ID,
+			&i.AssetID,
+			&i.TargetRef,
+			&i.Status,
+			&i.Trigger,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.Error,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listScansByAsset = `-- name: ListScansByAsset :many
 SELECT id, asset_id, target_ref, status, "trigger", started_at, finished_at, error FROM scans WHERE asset_id = ?1 ORDER BY id DESC LIMIT ?2
 `

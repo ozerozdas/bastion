@@ -265,8 +265,8 @@ func TestGetDashboard(t *testing.T) {
 	}
 
 	wantAssets := []gen.AssetRisk{
-		{AssetId: alpha.ID, DisplayName: "Alpha", Kind: gen.Path, Score: 1000, Critical: 1},
-		{AssetId: beta.ID, DisplayName: "Beta", Kind: gen.Repo, Score: 10, Medium: 1},
+		{AssetId: alpha.ID, DisplayName: "Alpha", Kind: gen.AssetKindPath, Score: 1000, Critical: 1},
+		{AssetId: beta.ID, DisplayName: "Beta", Kind: gen.AssetKindRepo, Score: 10, Medium: 1},
 	}
 	if len(dashboard.TopAssets) != len(wantAssets) {
 		t.Fatalf("top_assets = %+v, want %+v", dashboard.TopAssets, wantAssets)

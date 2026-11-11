@@ -15,9 +15,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ozerozdas/bastion/internal/app"
+	"github.com/ozerozdas/bastion/internal/assets"
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/httpapi"
+	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
@@ -28,6 +30,8 @@ import (
 type serveOptions struct {
 	port      int
 	noBrowser bool
+	// concurrency is the number of scans the worker pool runs at once.
+	concurrency int
 	// paths are resolved by the root command's PersistentPreRunE, so
 	// --data-dir and BASTION_DATA_DIR apply to serve as well.
 	paths app.Paths
@@ -65,6 +69,8 @@ func addServeFlags(cmd *cobra.Command, opts *serveOptions) {
 		"port to listen on; 0 picks a free port")
 	cmd.Flags().BoolVar(&opts.noBrowser, "no-browser", false,
 		"do not open the UI in the browser")
+	cmd.Flags().IntVar(&opts.concurrency, "concurrency", jobs.DefaultConcurrency,
+		"number of scans to run at once")
 }
 
 func newServeCmd(root *rootOptions) *cobra.Command {
@@ -119,7 +125,8 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	}
 	defer func() { _ = db.Close() }()
 
-	service, err := connections.NewService(db, deps.newSecretStore(), connections.WithGitHubFactory(
+	secretStore := deps.newSecretStore()
+	service, err := connections.NewService(db, secretStore, connections.WithGitHubFactory(
 		func(token string) (connections.GitHubClient, error) {
 			return github.New(github.Config{Token: token, Version: version})
 		},
@@ -133,11 +140,33 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		return errors.Join(fmt.Errorf("create reports service: %w", err), ln.Close())
 	}
 
+	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore)
+	if err != nil {
+		return errors.Join(err, ln.Close())
+	}
+	// Stop the worker pool when the server stops, so a running scan is
+	// persisted as canceled instead of being cut off by process exit.
+	defer stopScanManager(manager)
+
+	assetService, err := assets.NewService(db,
+		assets.WithScanManager(manager),
+		assets.WithGitHub(
+			func(token string) (assets.RepoClient, error) {
+				return github.New(github.Config{Token: token, Version: version})
+			},
+			service,
+		),
+	)
+	if err != nil {
+		return errors.Join(fmt.Errorf("create assets service: %w", err), ln.Close())
+	}
+
 	srv, err := deps.newServer(httpapi.Config{
 		Version:     version,
 		Port:        port,
 		Connections: service,
 		Reports:     reportService,
+		Assets:      assetService,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())

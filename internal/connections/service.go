@@ -405,6 +405,20 @@ func (s *Service) Token(ctx context.Context) (string, error) {
 	return envGitHubToken()
 }
 
+// ConnectionToken returns the credential for one connection: its keyring entry,
+// else BASTION_GITHUB_TOKEN like Test and Discover. A zero id means the default
+// GitHub token (Service.Token), for assets created without a connection.
+func (s *Service) ConnectionToken(ctx context.Context, id int64) (string, error) {
+	if id <= 0 {
+		return s.Token(ctx)
+	}
+	row, err := s.row(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return s.token(row)
+}
+
 // EnvToken returns BASTION_GITHUB_TOKEN when it is set. It backs --repo scans
 // that run with --no-store and therefore never open the database (§10).
 func EnvToken() (string, error) {

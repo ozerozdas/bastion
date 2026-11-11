@@ -108,6 +108,32 @@ func (q *Queries) GetAsset(ctx context.Context, id int64) (Asset, error) {
 	return i, err
 }
 
+const getAssetByKindRef = `-- name: GetAssetByKindRef :one
+SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at FROM assets WHERE kind = ?1 AND ref = ?2
+`
+
+type GetAssetByKindRefParams struct {
+	Kind string
+	Ref  string
+}
+
+func (q *Queries) GetAssetByKindRef(ctx context.Context, arg GetAssetByKindRefParams) (Asset, error) {
+	row := q.db.QueryRowContext(ctx, getAssetByKindRef, arg.Kind, arg.Ref)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.ConnectionID,
+		&i.DisplayName,
+		&i.Ref,
+		&i.DefaultBranch,
+		&i.MetadataJSON,
+		&i.CreatedAt,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
 const getOrCreateAsset = `-- name: GetOrCreateAsset :one
 INSERT INTO assets (kind, connection_id, display_name, ref, default_branch, metadata_json, created_at)
 VALUES (
@@ -165,6 +191,125 @@ func (q *Queries) GetOrCreateAsset(ctx context.Context, arg GetOrCreateAssetPara
 	return i, err
 }
 
+const listAssetSummaries = `-- name: ListAssetSummaries :many
+WITH newest_scan AS (
+    SELECT s.asset_id, s.id AS scan_id, s.status, s.finished_at
+    FROM scans s
+    WHERE s.id = (
+        SELECT MAX(s2.id)
+        FROM scans s2
+        WHERE s2.asset_id = s.asset_id
+    )
+),
+last_succeeded AS (
+    SELECT s.asset_id, s.id AS scan_id
+    FROM scans s
+    WHERE s.status = 'succeeded'
+      AND s.id = (
+          SELECT MAX(s2.id)
+          FROM scans s2
+          WHERE s2.asset_id = s.asset_id AND s2.status = 'succeeded'
+      )
+),
+open_severity AS (
+    SELECT
+        f.asset_id,
+        SUM(CASE WHEN f.severity = 'critical' THEN 1 ELSE 0 END) AS open_critical,
+        SUM(CASE WHEN f.severity = 'high' THEN 1 ELSE 0 END) AS open_high,
+        SUM(CASE WHEN f.severity = 'medium' THEN 1 ELSE 0 END) AS open_medium,
+        SUM(CASE WHEN f.severity = 'low' THEN 1 ELSE 0 END) AS open_low,
+        SUM(CASE WHEN f.severity = 'unknown' THEN 1 ELSE 0 END) AS open_unknown
+    FROM findings f
+    JOIN last_succeeded ls ON ls.scan_id = f.scan_id
+    LEFT JOIN finding_states fs
+        ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+    WHERE f.status = 'open' AND fs.id IS NULL
+    GROUP BY f.asset_id
+)
+SELECT
+    a.id,
+    a.kind,
+    a.connection_id,
+    a.display_name,
+    a.ref,
+    a.default_branch,
+    a.created_at,
+    ns.scan_id AS last_scan_id,
+    ns.status AS last_scan_status,
+    ns.finished_at AS last_scan_finished_at,
+    CAST(COALESCE(os.open_critical, 0) AS INTEGER) AS open_critical,
+    CAST(COALESCE(os.open_high, 0) AS INTEGER) AS open_high,
+    CAST(COALESCE(os.open_medium, 0) AS INTEGER) AS open_medium,
+    CAST(COALESCE(os.open_low, 0) AS INTEGER) AS open_low,
+    CAST(COALESCE(os.open_unknown, 0) AS INTEGER) AS open_unknown
+FROM assets a
+LEFT JOIN newest_scan ns ON ns.asset_id = a.id
+LEFT JOIN open_severity os ON os.asset_id = a.id
+WHERE a.archived_at IS NULL
+ORDER BY a.display_name, a.id
+`
+
+type ListAssetSummariesRow struct {
+	ID                 int64
+	Kind               string
+	ConnectionID       sql.NullInt64
+	DisplayName        string
+	Ref                string
+	DefaultBranch      sql.NullString
+	CreatedAt          string
+	LastScanID         sql.NullInt64
+	LastScanStatus     sql.NullString
+	LastScanFinishedAt sql.NullString
+	OpenCritical       int64
+	OpenHigh           int64
+	OpenMedium         int64
+	OpenLow            int64
+	OpenUnknown        int64
+}
+
+// Every non-archived asset with its newest scan and the open severity counts of
+// its newest succeeded scan. The counts use the dashboard scope: a decision in
+// finding_states hides its finding, and a failed or running newest scan does
+// not shadow the last complete report.
+func (q *Queries) ListAssetSummaries(ctx context.Context) ([]ListAssetSummariesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAssetSummaries)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAssetSummariesRow
+	for rows.Next() {
+		var i ListAssetSummariesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.ConnectionID,
+			&i.DisplayName,
+			&i.Ref,
+			&i.DefaultBranch,
+			&i.CreatedAt,
+			&i.LastScanID,
+			&i.LastScanStatus,
+			&i.LastScanFinishedAt,
+			&i.OpenCritical,
+			&i.OpenHigh,
+			&i.OpenMedium,
+			&i.OpenLow,
+			&i.OpenUnknown,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAssets = `-- name: ListAssets :many
 SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at FROM assets WHERE archived_at IS NULL ORDER BY display_name, id
 `
@@ -200,4 +345,28 @@ func (q *Queries) ListAssets(ctx context.Context) ([]Asset, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const unarchiveAsset = `-- name: UnarchiveAsset :one
+UPDATE assets SET archived_at = NULL WHERE id = ?1
+RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at
+`
+
+// Re-adding an archived asset revives its row, so its historical scans and
+// findings keep pointing at the same id (fingerprints include it).
+func (q *Queries) UnarchiveAsset(ctx context.Context, id int64) (Asset, error) {
+	row := q.db.QueryRowContext(ctx, unarchiveAsset, id)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.ConnectionID,
+		&i.DisplayName,
+		&i.Ref,
+		&i.DefaultBranch,
+		&i.MetadataJSON,
+		&i.CreatedAt,
+		&i.ArchivedAt,
+	)
+	return i, err
 }

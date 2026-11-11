@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ozerozdas/bastion/internal/assets"
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/reports"
@@ -65,6 +66,10 @@ type Config struct {
 	// Reports serves /api/reports/dashboard and /api/findings. serve wires the
 	// SQLite-backed service; nil answers those endpoints with 500.
 	Reports *reports.Service
+	// Assets serves /api/assets, /api/scans and the finding-state endpoints.
+	// serve wires the SQLite-backed service with the scan queue; nil answers
+	// those endpoints with 500.
+	Assets *assets.Service
 }
 
 // Server serves the bastion API and UI. Create it with New, take its handler
@@ -82,6 +87,10 @@ type Server struct {
 	// reports backs /api/reports/dashboard and /api/findings, with the same
 	// nil-means-unavailable contract.
 	reports *reports.Service
+
+	// assets backs /api/assets, /api/scans and /api/findings/{fingerprint}/state,
+	// with the same nil-means-unavailable contract.
+	assets *assets.Service
 
 	// token arrives once, in the browser URL. session is the cookie value that
 	// replaces it. They are distinct values: a token that leaked into shell
@@ -114,6 +123,7 @@ func New(cfg Config) (*Server, error) {
 		log:         logger,
 		connections: cfg.Connections,
 		reports:     cfg.Reports,
+		assets:      cfg.Assets,
 		token:       token,
 		session:     session,
 	}

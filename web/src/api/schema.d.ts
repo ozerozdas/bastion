@@ -115,6 +115,175 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List tracked assets.
+         * @description Every non-archived asset with its newest scan (whatever its status) and
+         *     the open severity counts of its newest succeeded scan. `open_counts`
+         *     uses the dashboard scope: any `finding_states` decision hides its
+         *     finding, and a failed or running newest scan does not shadow the last
+         *     complete report.
+         */
+        get: operations["listAssets"];
+        put?: never;
+        /**
+         * Track a repository or a local path.
+         * @description `repo` resolves the repository's default branch through GitHub with the
+         *     connection's token (`connection_id`, else the default GitHub token) and
+         *     stores it. `path` must be an existing absolute directory.
+         *
+         *     Re-adding an archived asset revives that row instead of creating a
+         *     second one: its history, scans and finding decisions stay attached to
+         *     the same id, which fingerprints depend on.
+         */
+        post: operations["createAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Archive an asset.
+         * @description Soft delete: the row, its scans and its findings stay in the database,
+         *     but the asset disappears from the lists, the dashboard and new scans.
+         */
+        delete: operations["deleteAsset"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List scans, newest first. */
+        get: operations["listScans"];
+        put?: never;
+        /**
+         * Queue scans of one or more assets.
+         * @description Every asset id is checked before anything is queued: an unknown or
+         *     archived asset fails the whole request, so the caller never receives a
+         *     partial batch it cannot correlate. The scans run in the server's worker
+         *     pool with `trigger: ui` and can be canceled individually.
+         */
+        post: operations["createScans"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One scan with its scanner runs. */
+        get: operations["getScan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scans/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a queued or running scan.
+         * @description A queued scan is persisted as canceled before this responds; a running
+         *     scan stops at its next check and its worker persists the final state.
+         *     The body is the scan as it stood when the request was accepted.
+         */
+        post: operations["cancelScan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scans/{id}/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Findings of one scan.
+         * @description Every finding the scan produced, most severe first, with the effective
+         *     status: a `finding_states` decision for the same asset and fingerprint
+         *     reports the finding as `ignored` and fills `state` and `reason`.
+         */
+        get: operations["listScanFindings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/findings/{fingerprint}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a decision for one finding.
+         * @description Decisions are keyed on (asset_id, fingerprint), so they hide the finding
+         *     in this scan and in every later one that rediscovers it. `reason` is
+         *     required: a hidden finding must stay reviewable. Re-deciding replaces
+         *     the previous state and reason.
+         */
+        post: operations["setFindingState"];
+        /**
+         * Clear the decision for one finding.
+         * @description Clearing is a DELETE with `asset_id` in the query, because the decision
+         *     key is (asset_id, fingerprint) and both are needed to identify it.
+         *     Clearing a decision that does not exist succeeds.
+         */
+        delete: operations["clearFindingState"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/findings": {
         parameters: {
             query?: never;
@@ -469,6 +638,159 @@ export interface components {
             finished_at?: string;
         };
         /**
+         * AssetList
+         * @description Every non-archived asset.
+         */
+        AssetList: {
+            assets: components["schemas"]["Asset"][];
+        };
+        /**
+         * Asset
+         * @description One tracked repository or path.
+         */
+        Asset: {
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["AssetKind"];
+            /**
+             * Format: int64
+             * @description The connection repo scans authenticate with.
+             */
+            connection_id?: number;
+            display_name: string;
+            /**
+             * @description Canonical reference: `owner/repo` for repositories, the absolute
+             *     directory for paths.
+             */
+            ref: string;
+            /** @description Branch the repository tracks; absent for paths. */
+            default_branch?: string;
+            /** Format: date-time */
+            created_at: string;
+            last_scan?: components["schemas"]["AssetLastScan"];
+            open_counts: components["schemas"]["SeverityTotals"];
+        };
+        /**
+         * AssetLastScan
+         * @description The asset's newest scan, whatever its status: a failed newest scan is
+         *     what the asset list must show.
+         */
+        AssetLastScan: {
+            /** Format: int64 */
+            scan_id: number;
+            status: components["schemas"]["ScanStatus"];
+            /**
+             * Format: date-time
+             * @description Absent while the scan has not finished.
+             */
+            finished_at?: string;
+        };
+        /** CreateAssetRequest */
+        CreateAssetRequest: {
+            /**
+             * @description `repo` takes an `owner/repo` ref; `path` takes an existing absolute
+             *     directory. Images arrive in a later phase.
+             * @enum {string}
+             */
+            kind: "repo" | "path";
+            /**
+             * @description `owner/repo` for repositories, an absolute directory for paths.
+             * @example octo/hello
+             * @example /Users/me/src/hello
+             */
+            ref: string;
+            /**
+             * Format: int64
+             * @description Connection whose token resolves the default branch and authenticates
+             *     scans. Absent uses the default GitHub token.
+             */
+            connection_id?: number;
+        };
+        /**
+         * ScanList
+         * @description Scans, newest first.
+         */
+        ScanList: {
+            scans: components["schemas"]["Scan"][];
+        };
+        /**
+         * Scan
+         * @description One scan of one asset. `scanner_runs` is filled by the single-scan read
+         *     only; the list omits it.
+         */
+        Scan: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            asset_id: number;
+            /** @description Resolved git SHA or image digest at scan time, when known. */
+            target_ref?: string;
+            status: components["schemas"]["ScanStatus"];
+            /**
+             * @description Who started the scan.
+             * @enum {string}
+             */
+            trigger: "ui" | "cli" | "api";
+            /**
+             * Format: date-time
+             * @description Absent while the scan is still queued.
+             */
+            started_at?: string;
+            /**
+             * Format: date-time
+             * @description Absent while the scan has not finished.
+             */
+            finished_at?: string;
+            /** @description Why a failed scan failed; absent otherwise. */
+            error?: string;
+            /** @description One entry per scanner, in execution order (single-scan read only). */
+            scanner_runs?: components["schemas"]["ScannerRun"][];
+        };
+        /**
+         * ScannerRun
+         * @description One scanner's result inside a scan.
+         */
+        ScannerRun: {
+            scanner: string;
+            scanner_version?: string;
+            /** @description Version of the advisory database the scanner used. */
+            db_version?: string;
+            status: components["schemas"]["ScanStatus"];
+            /** Format: int64 */
+            duration_ms?: number;
+            /** @description Why this scanner failed; absent otherwise. */
+            error?: string;
+        };
+        /** CreateScansRequest */
+        CreateScansRequest: {
+            asset_ids: number[];
+        };
+        /** ScanQueueResult */
+        ScanQueueResult: {
+            scans: components["schemas"]["QueuedScan"][];
+        };
+        /**
+         * QueuedScan
+         * @description The scan id the caller tracks the queued scan by.
+         */
+        QueuedScan: {
+            /** Format: int64 */
+            scan_id: number;
+            /** Format: int64 */
+            asset_id: number;
+        };
+        /** SetFindingStateRequest */
+        SetFindingStateRequest: {
+            /**
+             * Format: int64
+             * @description The asset the finding belongs to; decisions are per asset.
+             */
+            asset_id: number;
+            state: components["schemas"]["FindingState"];
+            /** @description Why the finding is hidden; required, so decisions stay reviewable. */
+            reason: string;
+        };
+        /**
          * Problem
          * @description RFC 9457 problem details. Extension members are allowed and may be
          *     added later without a breaking change.
@@ -517,6 +839,16 @@ export interface components {
         ConnectionID: number;
         /** @description Only findings of this asset. */
         AssetIDQuery: number;
+        /** @description The asset the decision belongs to. */
+        AssetIDRequiredQuery: number;
+        /** @description Asset id. */
+        AssetID: number;
+        /** @description Scan id. */
+        ScanID: number;
+        /** @description Maximum number of scans to return, newest first. */
+        ScanLimitQuery: number;
+        /** @description Stable finding fingerprint within one asset. */
+        Fingerprint: string;
         /** @description Only findings with this severity. */
         SeverityQuery: components["schemas"]["Severity"];
         /** @description Only findings of this type. */
@@ -720,6 +1052,405 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    listAssets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tracked assets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    createAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAssetRequest"];
+            };
+        };
+        responses: {
+            /** @description The asset was created or revived. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Asset"];
+                };
+            };
+            /**
+             * @description The kind, ref or path is invalid, or a repo asset's default branch
+             *     could not be resolved because GitHub rejected the request.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description The connection id does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description The asset already exists or the connection has no token; the detail
+             *     says which.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+            /** @description GitHub failed the request; the detail carries the hint. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Asset id. */
+                id: components["parameters"]["AssetID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The asset is archived. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    listScans: {
+        parameters: {
+            query?: {
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+                /** @description Maximum number of scans to return, newest first. */
+                limit?: components["parameters"]["ScanLimitQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scans after the filters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanList"];
+                };
+            };
+            /** @description The asset id or limit is not usable. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    createScans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateScansRequest"];
+            };
+        };
+        responses: {
+            /** @description The scans are queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanQueueResult"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description An asset id does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An asset is archived and cannot be scanned. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Scan id. */
+                id: components["parameters"]["ScanID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scan, including `scanner_runs`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Scan"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    cancelScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Scan id. */
+                id: components["parameters"]["ScanID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scan after the cancel request. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Scan"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description The scan is already finished or canceled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    listScanFindings: {
+        parameters: {
+            query?: {
+                /** @description Only findings with this severity. */
+                severity?: components["parameters"]["SeverityQuery"];
+                /** @description Only findings of this type. */
+                type?: components["parameters"]["FindingTypeQuery"];
+                /** @description Only findings with this effective status. */
+                status?: components["parameters"]["FindingStatusQuery"];
+            };
+            header?: never;
+            path: {
+                /** @description Scan id. */
+                id: components["parameters"]["ScanID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The findings after the filters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingList"];
+                };
+            };
+            /** @description A query parameter is not a valid enum value. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setFindingState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Stable finding fingerprint within one asset. */
+                fingerprint: components["parameters"]["Fingerprint"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetFindingStateRequest"];
+            };
+        };
+        responses: {
+            /** @description The decision is stored. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The state is unknown, the reason is blank or ids are missing. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description The asset id does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    clearFindingState: {
+        parameters: {
+            query: {
+                /** @description The asset the decision belongs to. */
+                asset_id: components["parameters"]["AssetIDRequiredQuery"];
+            };
+            header?: never;
+            path: {
+                /** @description Stable finding fingerprint within one asset. */
+                fingerprint: components["parameters"]["Fingerprint"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No decision is stored for the fingerprint any more. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description The asset id does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
         };
     };
     listFindings: {

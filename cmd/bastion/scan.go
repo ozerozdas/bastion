@@ -379,12 +379,6 @@ func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, ass
 	asset = stored
 
 	scannerList := deps.newScanners()
-	normalizers := make(map[string]findings.Normalizer, len(scannerList))
-	for _, s := range scannerList {
-		if a, ok := s.(adapter); ok {
-			normalizers[s.Name()] = a
-		}
-	}
 
 	srcs := map[sources.TargetKind]sources.Source{sources.KindPath: localpath.New()}
 	if repo != nil {
@@ -406,18 +400,17 @@ func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, ass
 	}
 
 	waiter := newFinishWaiter()
-	manager, err := jobs.New(jobs.Config{
+	manager, err := newScanManager(pipelineConfig{
 		DB:          db,
+		ScannerList: scannerList,
 		Sources:     srcs,
-		Scanners:    scannerList,
-		Normalizers: normalizers,
-		Options:     func() scanners.Options { return scanOpts },
+		Options:     scanOpts,
 		Concurrency: 1,
 		Events:      waiter,
 		Resolve:     resolve,
 	})
 	if err != nil {
-		return scanOutput{}, fmt.Errorf("scan: %w", err)
+		return scanOutput{}, err
 	}
 	defer func() { _ = manager.Close() }()
 
