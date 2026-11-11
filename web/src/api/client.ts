@@ -70,6 +70,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 /** api is the whole HTTP surface the UI needs: typed calls, one place for CSRF. */
 export const api = {
   get: <T>(path: string): Promise<T> => request<T>(path),
-  post: <T>(path: string, body: unknown): Promise<T> =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  post: <T>(path: string, body?: unknown): Promise<T> =>
+    request<T>(
+      path,
+      body === undefined
+        ? { method: 'POST' }
+        : { method: 'POST', body: JSON.stringify(body) },
+    ),
+  remove: <T>(path: string): Promise<T> => request<T>(path, { method: 'DELETE' }),
 }
