@@ -49,6 +49,7 @@ func newRootCmd() *cobra.Command {
 		Args:              cobra.NoArgs,
 		PersistentPreRunE: opts.persistentPreRunE,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			serveOpts.paths = opts.paths
 			return runServe(cmd, serveOpts, defaultServeDeps())
 		},
 	}
@@ -72,7 +73,7 @@ func newRootCmd() *cobra.Command {
 			return err
 		},
 	})
-	root.AddCommand(newServeCmd())
+	root.AddCommand(newServeCmd(opts))
 	root.AddCommand(newScanCmd(opts))
 	root.AddCommand(newDoctorCmd(opts))
 	return root

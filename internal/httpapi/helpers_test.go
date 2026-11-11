@@ -3,34 +3,89 @@ package httpapi
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/ozerozdas/bastion/internal/connections"
+	"github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
+	"github.com/ozerozdas/bastion/internal/secrets"
+	"github.com/ozerozdas/bastion/internal/store"
 )
+
+// fakeGitHub stands in for internal/connections/github. Handler tests never
+// call GitHub: they drive User and ListRepos through this fake.
+type fakeGitHub struct {
+	mu       sync.Mutex
+	user     github.User
+	userErr  error
+	repos    []github.Repo
+	reposErr error
+}
+
+func newFakeGitHub() *fakeGitHub {
+	return &fakeGitHub{user: github.User{Login: "octocat"}}
+}
+
+func (f *fakeGitHub) User(context.Context) (github.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.user, f.userErr
+}
+
+func (f *fakeGitHub) ListRepos(context.Context) ([]github.Repo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.repos, f.reposErr
+}
+
+func (f *fakeGitHub) setUserErr(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.userErr = err
+}
+
+func (f *fakeGitHub) setRepos(repos []github.Repo, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.repos, f.reposErr = repos, err
+}
 
 // testServer is a Server listening on a real loopback port, with request logs
 // captured so tests can assert what was (and was not) written.
 type testServer struct {
 	*Server
 
-	url    string
-	logs   *syncBuffer
-	client *http.Client
+	url         string
+	logs        *syncBuffer
+	client      *http.Client
+	db          *sql.DB
+	secretStore *secrets.MemoryStore
+	github      *fakeGitHub
 }
 
 // newTestServer starts the server on an ephemeral loopback port. Tests use
 // httptest with a pre-bound listener so the port in the URL is the port the
 // server validates the Host header against.
 func newTestServer(t *testing.T) *testServer {
+	t.Helper()
+	return newTestServerWithGitHub(t, nil)
+}
+
+// newTestServerWithGitHub is newTestServer with a caller-controlled fake
+// GitHub. A nil fake gets one whose User succeeds as "octocat".
+func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 	t.Helper()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -42,11 +97,29 @@ func newTestServer(t *testing.T) *testServer {
 		t.Fatalf("listener port: %v", err)
 	}
 
+	if fake == nil {
+		fake = newFakeGitHub()
+	}
+	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "bastion.db"))
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	secretStore := secrets.NewMemoryStore()
+	service, err := connections.NewService(db, secretStore, connections.WithGitHubFactory(
+		func(string) (connections.GitHubClient, error) { return fake, nil },
+	))
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
 	logs := &syncBuffer{}
 	srv, err := New(Config{
-		Version: "test-version",
-		Port:    port,
-		Logger:  slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Version:     "test-version",
+		Port:        port,
+		Logger:      slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Connections: service,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -59,9 +132,12 @@ func newTestServer(t *testing.T) *testServer {
 	t.Cleanup(ts.Close)
 
 	return &testServer{
-		Server: srv,
-		url:    ts.URL, // http://127.0.0.1:<port>
-		logs:   logs,
+		Server:      srv,
+		url:         ts.URL, // http://127.0.0.1:<port>
+		logs:        logs,
+		db:          db,
+		secretStore: secretStore,
+		github:      fake,
 		client: &http.Client{
 			// Redirects are asserted, not followed.
 			CheckRedirect: func(*http.Request, []*http.Request) error {

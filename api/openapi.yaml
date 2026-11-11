@@ -29,6 +29,10 @@ servers:
 tags:
   - name: system
     description: Process and API liveness.
+  - name: connections
+    description: |
+      Credentialed integrations used to discover and fetch sources. Tokens live
+      in the OS keyring (never in SQLite) and are never returned by the API.
 security:
   - sessionCookie: []
 paths:
@@ -55,6 +59,163 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/connections:
+    get:
+      operationId: listConnections
+      summary: List configured connections.
+      description: |
+        Returns every connection, ordered by kind and name. Tokens and keyring
+        references are never part of the response.
+      tags: [connections]
+      responses:
+        "200":
+          description: The configured connections.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createConnection
+      summary: Add a connection and test it.
+      description: |
+        Stores the token in the OS keyring under `bastion.connection.<id>`, then
+        tests it with `GET /user`. A failed test still creates the connection: it
+        is returned with `status: error` and a human-readable `hint`, so the user
+        can correct the token or keyring without losing the entry. If the token
+        cannot be stored, the row is removed again and no connection is created.
+      tags: [connections]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConnectionRequest"
+      responses:
+        "201":
+          description: The connection was created (and tested).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Connection"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: A connection with the same kind and name already exists.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/connections/{id}:
+    delete:
+      operationId: deleteConnection
+      summary: Remove a connection and its stored secret.
+      tags: [connections]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      responses:
+        "204":
+          description: The connection and its keyring entry were removed.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/connections/{id}/test:
+    post:
+      operationId: testConnection
+      summary: Test a connection and record the result.
+      description: |
+        Calls `GET /user` with the stored token and records `status`,
+        `last_checked_at` and the GitHub login in the connection's non-secret
+        config. A failed test returns the connection with `status: error` and a
+        `hint`; it is not an API error.
+      tags: [connections]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      responses:
+        "200":
+          description: The connection after the test, successful or not.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Connection"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/connections/{id}/discover:
+    get:
+      operationId: discoverConnectionRepos
+      summary: List repositories the connection can add.
+      description: |
+        Calls GitHub's repository list and marks the ones that already exist as
+        assets with `already_added: true`.
+      tags: [connections]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      responses:
+        "200":
+          description: Repositories visible to the connection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverReposResponse"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: The connection has no token and the environment fallback is unset.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "502":
+          description: |
+            GitHub rejected or failed the request. `detail` carries the
+            human-readable hint from the GitHub client (for example "token
+            invalid or expired").
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
 components:
   securitySchemes:
     sessionCookie:
@@ -65,6 +226,16 @@ components:
         Set by the server when it exchanges the single-use startup token for a
         session. `HttpOnly; SameSite=Strict; Path=/` (no `Secure`, since the
         transport is plain HTTP on loopback). Never sent to or read by the SPA.
+  parameters:
+    ConnectionID:
+      name: id
+      in: path
+      required: true
+      description: Connection id.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
   responses:
     Problem:
       description: |
@@ -98,6 +269,122 @@ components:
             Build version of the running binary (`dev` for local builds,
             otherwise the release tag).
           examples: ["0.1.0"]
+    ConnectionList:
+      type: object
+      title: ConnectionList
+      description: Every configured connection.
+      additionalProperties: false
+      required: [connections]
+      properties:
+        connections:
+          type: array
+          items:
+            $ref: "#/components/schemas/Connection"
+    Connection:
+      type: object
+      title: Connection
+      description: |
+        A configured integration. The credential itself is never part of this
+        shape: the token lives in the OS keyring under `secret_ref`, and
+        neither the token nor the keyring key is returned by the API.
+      additionalProperties: false
+      required: [id, kind, name, status, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+        kind:
+          $ref: "#/components/schemas/ConnectionKind"
+        name:
+          type: string
+          description: User-chosen name, unique per kind.
+        status:
+          $ref: "#/components/schemas/ConnectionStatus"
+        login:
+          type: string
+          description: |
+            GitHub login recorded by the last successful test. Absent when the
+            connection has never succeeded.
+        hint:
+          type: string
+          description: |
+            Human-readable explanation of the last failed test (never a token
+            or a GitHub response body). Absent after a successful test.
+        last_checked_at:
+          type: string
+          format: date-time
+          description: When the connection was last tested.
+        created_at:
+          type: string
+          format: date-time
+    ConnectionKind:
+      type: string
+      title: ConnectionKind
+      description: |
+        Integration kind. v0.1 only creates `github` connections; the other
+        values exist because the database and later phases use them.
+      enum: [github, aws, docker]
+    ConnectionStatus:
+      type: string
+      title: ConnectionStatus
+      description: Result of the last test.
+      enum: [ok, error, unknown]
+    CreateConnectionRequest:
+      type: object
+      title: CreateConnectionRequest
+      additionalProperties: false
+      required: [kind, name, token]
+      properties:
+        kind:
+          type: string
+          description: Only `github` can be created in v0.1.
+          enum: [github]
+        name:
+          type: string
+          minLength: 1
+          description: User-chosen name, unique per kind.
+        token:
+          type: string
+          writeOnly: true
+          minLength: 1
+          description: |
+            GitHub personal access token (classic or fine-grained, read-only).
+            Stored in the OS keyring, never persisted in SQLite, logged or
+            returned by the API.
+    DiscoverReposResponse:
+      type: object
+      title: DiscoverReposResponse
+      additionalProperties: false
+      required: [repos]
+      properties:
+        repos:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscoveredRepo"
+    DiscoveredRepo:
+      type: object
+      title: DiscoveredRepo
+      description: A repository the connection can add as an asset.
+      additionalProperties: false
+      required: [full_name, default_branch, private, archived, already_added]
+      properties:
+        full_name:
+          type: string
+          description: Canonical `owner/repo` reference.
+          examples: ["octo/hello"]
+        default_branch:
+          type: string
+          examples: ["main"]
+        private:
+          type: boolean
+        archived:
+          type: boolean
+        already_added:
+          type: boolean
+          description: |
+            True when an asset with this `owner/repo` reference already exists,
+            whichever connection (or the CLI) added it.
     Problem:
       type: object
       title: Problem

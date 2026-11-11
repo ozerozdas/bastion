@@ -11,21 +11,161 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/oapi-codegen/runtime"
 )
+
+// Defines values for ConnectionKind.
+const (
+	ConnectionKindAws    ConnectionKind = "aws"
+	ConnectionKindDocker ConnectionKind = "docker"
+	ConnectionKindGithub ConnectionKind = "github"
+)
+
+// Valid indicates whether the value is a known member of the ConnectionKind enum.
+func (e ConnectionKind) Valid() bool {
+	switch e {
+	case ConnectionKindAws:
+		return true
+	case ConnectionKindDocker:
+		return true
+	case ConnectionKindGithub:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectionStatus.
+const (
+	ConnectionStatusError   ConnectionStatus = "error"
+	ConnectionStatusOk      ConnectionStatus = "ok"
+	ConnectionStatusUnknown ConnectionStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ConnectionStatus enum.
+func (e ConnectionStatus) Valid() bool {
+	switch e {
+	case ConnectionStatusError:
+		return true
+	case ConnectionStatusOk:
+		return true
+	case ConnectionStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateConnectionRequestKind.
+const (
+	CreateConnectionRequestKindGithub CreateConnectionRequestKind = "github"
+)
+
+// Valid indicates whether the value is a known member of the CreateConnectionRequestKind enum.
+func (e CreateConnectionRequestKind) Valid() bool {
+	switch e {
+	case CreateConnectionRequestKindGithub:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for HealthStatus.
 const (
-	Ok HealthStatus = "ok"
+	HealthStatusOk HealthStatus = "ok"
 )
 
 // Valid indicates whether the value is a known member of the HealthStatus enum.
 func (e HealthStatus) Valid() bool {
 	switch e {
-	case Ok:
+	case HealthStatusOk:
 		return true
 	default:
 		return false
 	}
+}
+
+// Connection A configured integration. The credential itself is never part of this
+// shape: the token lives in the OS keyring under `secret_ref`, and
+// neither the token nor the keyring key is returned by the API.
+type Connection struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Hint Human-readable explanation of the last failed test (never a token
+	// or a GitHub response body). Absent after a successful test.
+	Hint *string `json:"hint,omitempty"`
+	Id   int64   `json:"id"`
+
+	// Kind Integration kind. v0.1 only creates `github` connections; the other
+	// values exist because the database and later phases use them.
+	Kind ConnectionKind `json:"kind"`
+
+	// LastCheckedAt When the connection was last tested.
+	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
+
+	// Login GitHub login recorded by the last successful test. Absent when the
+	// connection has never succeeded.
+	Login *string `json:"login,omitempty"`
+
+	// Name User-chosen name, unique per kind.
+	Name string `json:"name"`
+
+	// Status Result of the last test.
+	Status ConnectionStatus `json:"status"`
+}
+
+// ConnectionKind Integration kind. v0.1 only creates `github` connections; the other
+// values exist because the database and later phases use them.
+type ConnectionKind string
+
+// ConnectionList Every configured connection.
+type ConnectionList struct {
+	Connections []Connection `json:"connections"`
+}
+
+// ConnectionStatus Result of the last test.
+type ConnectionStatus string
+
+// CreateConnectionRequest defines model for CreateConnectionRequest.
+type CreateConnectionRequest struct {
+	// Kind Only `github` can be created in v0.1.
+	Kind CreateConnectionRequestKind `json:"kind"`
+
+	// Name User-chosen name, unique per kind.
+	Name string `json:"name"`
+
+	// Token GitHub personal access token (classic or fine-grained, read-only).
+	// Stored in the OS keyring, never persisted in SQLite, logged or
+	// returned by the API.
+	Token *string `json:"token,omitempty"`
+}
+
+// CreateConnectionRequestKind Only `github` can be created in v0.1.
+type CreateConnectionRequestKind string
+
+// DiscoverReposResponse defines model for DiscoverReposResponse.
+type DiscoverReposResponse struct {
+	Repos []DiscoveredRepo `json:"repos"`
+}
+
+// DiscoveredRepo A repository the connection can add as an asset.
+type DiscoveredRepo struct {
+	// AlreadyAdded True when an asset with this `owner/repo` reference already exists,
+	// whichever connection (or the CLI) added it.
+	AlreadyAdded bool `json:"already_added"`
+	Archived     bool `json:"archived"`
+
+	// DefaultBranch Examples: main
+	DefaultBranch string `json:"default_branch"`
+
+	// FullName Canonical `owner/repo` reference.
+	//
+	// Examples: octo/hello
+	FullName string `json:"full_name"`
+	Private  bool   `json:"private"`
 }
 
 // Health Liveness of the local API.
@@ -64,6 +204,12 @@ type Problem struct {
 	Type                 string                 `json:"type"`
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
+
+// ConnectionID defines model for ConnectionID.
+type ConnectionID = int64
+
+// CreateConnectionJSONRequestBody defines body for CreateConnection for application/json ContentType.
+type CreateConnectionJSONRequestBody = CreateConnectionRequest
 
 // Getter for additional properties for Problem. Returns the specified
 // element and whether it was found
@@ -189,6 +335,21 @@ func (a Problem) MarshalJSON() ([]byte, error) {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListConnections List configured connections.
+	// (GET /api/connections)
+	ListConnections(w http.ResponseWriter, r *http.Request)
+	// CreateConnection Add a connection and test it.
+	// (POST /api/connections)
+	CreateConnection(w http.ResponseWriter, r *http.Request)
+	// DeleteConnection Remove a connection and its stored secret.
+	// (DELETE /api/connections/{id})
+	DeleteConnection(w http.ResponseWriter, r *http.Request, id ConnectionID)
+	// DiscoverConnectionRepos List repositories the connection can add.
+	// (GET /api/connections/{id}/discover)
+	DiscoverConnectionRepos(w http.ResponseWriter, r *http.Request, id ConnectionID)
+	// TestConnection Test a connection and record the result.
+	// (POST /api/connections/{id}/test)
+	TestConnection(w http.ResponseWriter, r *http.Request, id ConnectionID)
 	// GetHealth Liveness and version probe.
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -202,6 +363,112 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListConnections operation middleware
+func (siw *ServerInterfaceWrapper) ListConnections(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListConnections(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateConnection operation middleware
+func (siw *ServerInterfaceWrapper) CreateConnection(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateConnection(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteConnection operation middleware
+func (siw *ServerInterfaceWrapper) DeleteConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ConnectionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteConnection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DiscoverConnectionRepos operation middleware
+func (siw *ServerInterfaceWrapper) DiscoverConnectionRepos(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ConnectionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DiscoverConnectionRepos(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestConnection operation middleware
+func (siw *ServerInterfaceWrapper) TestConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ConnectionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestConnection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
@@ -338,6 +605,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections", wrapper.ListConnections)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections", wrapper.CreateConnection)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/connections/{id}", wrapper.DeleteConnection)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections/{id}/test", wrapper.TestConnection)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections/{id}/discover", wrapper.DiscoverConnectionRepos)
 
 	return m
 }
@@ -349,6 +621,750 @@ type ProblemApplicationProblemPlusJSONResponse struct {
 	Body Problem
 
 	Headers ProblemResponseHeaders
+}
+
+type ListConnectionsRequestObject struct {
+}
+
+type ListConnectionsResponseObject interface {
+	VisitListConnectionsResponse(w http.ResponseWriter) error
+}
+
+type ListConnections200JSONResponse ConnectionList
+
+func (response ListConnections200JSONResponse) VisitListConnectionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListConnections401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListConnections401ApplicationProblemPlusJSONResponse) VisitListConnectionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListConnections403ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListConnections403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListConnections403ResponseHeaders
+}
+
+func (response ListConnections403ApplicationProblemPlusJSONResponse) VisitListConnectionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListConnections421ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListConnections421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListConnections421ResponseHeaders
+}
+
+func (response ListConnections421ApplicationProblemPlusJSONResponse) VisitListConnectionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListConnections500ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListConnections500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListConnections500ResponseHeaders
+}
+
+func (response ListConnections500ApplicationProblemPlusJSONResponse) VisitListConnectionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateConnectionRequestObject struct {
+	Body *CreateConnectionJSONRequestBody
+}
+
+type CreateConnectionResponseObject interface {
+	VisitCreateConnectionResponse(w http.ResponseWriter) error
+}
+
+type CreateConnection201JSONResponse Connection
+
+func (response CreateConnection201JSONResponse) VisitCreateConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateConnection400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateConnection400ApplicationProblemPlusJSONResponse) VisitCreateConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateConnection401ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateConnection401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateConnection401ResponseHeaders
+}
+
+func (response CreateConnection401ApplicationProblemPlusJSONResponse) VisitCreateConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateConnection403ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateConnection403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateConnection403ResponseHeaders
+}
+
+func (response CreateConnection403ApplicationProblemPlusJSONResponse) VisitCreateConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateConnection409ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateConnection409ApplicationProblemPlusJSONResponse) VisitCreateConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateConnection421ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateConnection421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateConnection421ResponseHeaders
+}
+
+func (response CreateConnection421ApplicationProblemPlusJSONResponse) VisitCreateConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateConnection500ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateConnection500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateConnection500ResponseHeaders
+}
+
+func (response CreateConnection500ApplicationProblemPlusJSONResponse) VisitCreateConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteConnectionRequestObject struct {
+	Id ConnectionID `json:"id"`
+}
+
+type DeleteConnectionResponseObject interface {
+	VisitDeleteConnectionResponse(w http.ResponseWriter) error
+}
+
+type DeleteConnection204Response struct {
+}
+
+func (response DeleteConnection204Response) VisitDeleteConnectionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteConnection401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteConnection401ApplicationProblemPlusJSONResponse) VisitDeleteConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteConnection403ResponseHeaders struct {
+	ContentType *string
+}
+
+type DeleteConnection403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DeleteConnection403ResponseHeaders
+}
+
+func (response DeleteConnection403ApplicationProblemPlusJSONResponse) VisitDeleteConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteConnection404ResponseHeaders struct {
+	ContentType *string
+}
+
+type DeleteConnection404ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DeleteConnection404ResponseHeaders
+}
+
+func (response DeleteConnection404ApplicationProblemPlusJSONResponse) VisitDeleteConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteConnection421ResponseHeaders struct {
+	ContentType *string
+}
+
+type DeleteConnection421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DeleteConnection421ResponseHeaders
+}
+
+func (response DeleteConnection421ApplicationProblemPlusJSONResponse) VisitDeleteConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteConnection500ResponseHeaders struct {
+	ContentType *string
+}
+
+type DeleteConnection500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DeleteConnection500ResponseHeaders
+}
+
+func (response DeleteConnection500ApplicationProblemPlusJSONResponse) VisitDeleteConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverConnectionReposRequestObject struct {
+	Id ConnectionID `json:"id"`
+}
+
+type DiscoverConnectionReposResponseObject interface {
+	VisitDiscoverConnectionReposResponse(w http.ResponseWriter) error
+}
+
+type DiscoverConnectionRepos200JSONResponse DiscoverReposResponse
+
+func (response DiscoverConnectionRepos200JSONResponse) VisitDiscoverConnectionReposResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverConnectionRepos400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response DiscoverConnectionRepos400ApplicationProblemPlusJSONResponse) VisitDiscoverConnectionReposResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverConnectionRepos401ResponseHeaders struct {
+	ContentType *string
+}
+
+type DiscoverConnectionRepos401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DiscoverConnectionRepos401ResponseHeaders
+}
+
+func (response DiscoverConnectionRepos401ApplicationProblemPlusJSONResponse) VisitDiscoverConnectionReposResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverConnectionRepos403ResponseHeaders struct {
+	ContentType *string
+}
+
+type DiscoverConnectionRepos403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DiscoverConnectionRepos403ResponseHeaders
+}
+
+func (response DiscoverConnectionRepos403ApplicationProblemPlusJSONResponse) VisitDiscoverConnectionReposResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverConnectionRepos404ResponseHeaders struct {
+	ContentType *string
+}
+
+type DiscoverConnectionRepos404ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DiscoverConnectionRepos404ResponseHeaders
+}
+
+func (response DiscoverConnectionRepos404ApplicationProblemPlusJSONResponse) VisitDiscoverConnectionReposResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverConnectionRepos409ApplicationProblemPlusJSONResponse Problem
+
+func (response DiscoverConnectionRepos409ApplicationProblemPlusJSONResponse) VisitDiscoverConnectionReposResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverConnectionRepos421ResponseHeaders struct {
+	ContentType *string
+}
+
+type DiscoverConnectionRepos421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DiscoverConnectionRepos421ResponseHeaders
+}
+
+func (response DiscoverConnectionRepos421ApplicationProblemPlusJSONResponse) VisitDiscoverConnectionReposResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverConnectionRepos500ResponseHeaders struct {
+	ContentType *string
+}
+
+type DiscoverConnectionRepos500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DiscoverConnectionRepos500ResponseHeaders
+}
+
+func (response DiscoverConnectionRepos500ApplicationProblemPlusJSONResponse) VisitDiscoverConnectionReposResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DiscoverConnectionRepos502ApplicationProblemPlusJSONResponse Problem
+
+func (response DiscoverConnectionRepos502ApplicationProblemPlusJSONResponse) VisitDiscoverConnectionReposResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestConnectionRequestObject struct {
+	Id ConnectionID `json:"id"`
+}
+
+type TestConnectionResponseObject interface {
+	VisitTestConnectionResponse(w http.ResponseWriter) error
+}
+
+type TestConnection200JSONResponse Connection
+
+func (response TestConnection200JSONResponse) VisitTestConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestConnection400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response TestConnection400ApplicationProblemPlusJSONResponse) VisitTestConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestConnection401ResponseHeaders struct {
+	ContentType *string
+}
+
+type TestConnection401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers TestConnection401ResponseHeaders
+}
+
+func (response TestConnection401ApplicationProblemPlusJSONResponse) VisitTestConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestConnection403ResponseHeaders struct {
+	ContentType *string
+}
+
+type TestConnection403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers TestConnection403ResponseHeaders
+}
+
+func (response TestConnection403ApplicationProblemPlusJSONResponse) VisitTestConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestConnection404ResponseHeaders struct {
+	ContentType *string
+}
+
+type TestConnection404ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers TestConnection404ResponseHeaders
+}
+
+func (response TestConnection404ApplicationProblemPlusJSONResponse) VisitTestConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestConnection421ResponseHeaders struct {
+	ContentType *string
+}
+
+type TestConnection421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers TestConnection421ResponseHeaders
+}
+
+func (response TestConnection421ApplicationProblemPlusJSONResponse) VisitTestConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestConnection500ResponseHeaders struct {
+	ContentType *string
+}
+
+type TestConnection500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers TestConnection500ResponseHeaders
+}
+
+func (response TestConnection500ApplicationProblemPlusJSONResponse) VisitTestConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetHealthRequestObject struct {
@@ -465,6 +1481,21 @@ func (response GetHealth500ApplicationProblemPlusJSONResponse) VisitGetHealthRes
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListConnections List configured connections.
+	// (GET /api/connections)
+	ListConnections(ctx context.Context, request ListConnectionsRequestObject) (ListConnectionsResponseObject, error)
+	// CreateConnection Add a connection and test it.
+	// (POST /api/connections)
+	CreateConnection(ctx context.Context, request CreateConnectionRequestObject) (CreateConnectionResponseObject, error)
+	// DeleteConnection Remove a connection and its stored secret.
+	// (DELETE /api/connections/{id})
+	DeleteConnection(ctx context.Context, request DeleteConnectionRequestObject) (DeleteConnectionResponseObject, error)
+	// DiscoverConnectionRepos List repositories the connection can add.
+	// (GET /api/connections/{id}/discover)
+	DiscoverConnectionRepos(ctx context.Context, request DiscoverConnectionReposRequestObject) (DiscoverConnectionReposResponseObject, error)
+	// TestConnection Test a connection and record the result.
+	// (POST /api/connections/{id}/test)
+	TestConnection(ctx context.Context, request TestConnectionRequestObject) (TestConnectionResponseObject, error)
 	// GetHealth Liveness and version probe.
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -507,6 +1538,139 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListConnections operation middleware
+func (sh *strictHandler) ListConnections(w http.ResponseWriter, r *http.Request) {
+	var request ListConnectionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListConnections(ctx, request.(ListConnectionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListConnections")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListConnectionsResponseObject); ok {
+		if err := validResponse.VisitListConnectionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateConnection operation middleware
+func (sh *strictHandler) CreateConnection(w http.ResponseWriter, r *http.Request) {
+	var request CreateConnectionRequestObject
+
+	var body CreateConnectionJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateConnection(ctx, request.(CreateConnectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateConnection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateConnectionResponseObject); ok {
+		if err := validResponse.VisitCreateConnectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteConnection operation middleware
+func (sh *strictHandler) DeleteConnection(w http.ResponseWriter, r *http.Request, id ConnectionID) {
+	var request DeleteConnectionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteConnection(ctx, request.(DeleteConnectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteConnection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteConnectionResponseObject); ok {
+		if err := validResponse.VisitDeleteConnectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DiscoverConnectionRepos operation middleware
+func (sh *strictHandler) DiscoverConnectionRepos(w http.ResponseWriter, r *http.Request, id ConnectionID) {
+	var request DiscoverConnectionReposRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DiscoverConnectionRepos(ctx, request.(DiscoverConnectionReposRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DiscoverConnectionRepos")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DiscoverConnectionReposResponseObject); ok {
+		if err := validResponse.VisitDiscoverConnectionReposResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TestConnection operation middleware
+func (sh *strictHandler) TestConnection(w http.ResponseWriter, r *http.Request, id ConnectionID) {
+	var request TestConnectionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestConnection(ctx, request.(TestConnectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestConnection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestConnectionResponseObject); ok {
+		if err := validResponse.VisitTestConnectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetHealth operation middleware

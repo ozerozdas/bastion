@@ -12,7 +12,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ozerozdas/bastion/internal/app"
 	"github.com/ozerozdas/bastion/internal/httpapi"
+	"github.com/ozerozdas/bastion/internal/secrets"
+	"github.com/ozerozdas/bastion/internal/store"
 )
 
 // TestServeIsTheDefaultCommand: plain `bastion` must start the server, and
@@ -33,7 +36,7 @@ func TestServeIsTheDefaultCommand(t *testing.T) {
 
 			var stderr bytes.Buffer
 			cmd := newRootCmd()
-			cmd.SetArgs(tc.args)
+			cmd.SetArgs(append(tc.args, "--data-dir", t.TempDir()))
 			cmd.SetOut(io.Discard)
 			cmd.SetErr(&stderr)
 
@@ -63,7 +66,7 @@ func TestServePrintsTokenWithoutLoggingIt(t *testing.T) {
 
 	var stderr bytes.Buffer
 	cmd := newRootCmd()
-	cmd.SetArgs([]string{"serve", "--port", "0", "--no-browser", "--log-format", "json"})
+	cmd.SetArgs([]string{"serve", "--port", "0", "--no-browser", "--log-format", "json", "--data-dir", t.TempDir()})
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(&stderr)
 
@@ -89,7 +92,7 @@ func TestServePrintsTokenWithoutLoggingIt(t *testing.T) {
 }
 
 func TestServeFlags(t *testing.T) {
-	cmd := newServeCmd()
+	cmd := newServeCmd(&rootOptions{})
 
 	port := cmd.Flags().Lookup("port")
 	if port == nil {
@@ -138,14 +141,16 @@ func TestRunServeBrowserHandling(t *testing.T) {
 				notifyContext: func(context.Context) (context.Context, context.CancelFunc) {
 					return context.WithCancel(canceled)
 				},
-				newServer: httpapi.New,
+				newServer:      httpapi.New,
+				openDB:         store.Open,
+				newSecretStore: func() secrets.Store { return secrets.NewMemoryStore() },
 			}
 
 			cmd := &cobra.Command{}
 			cmd.SetOut(io.Discard)
 			cmd.SetErr(io.Discard)
 
-			err := runServe(cmd, &serveOptions{port: 0, noBrowser: tc.noBrowser}, deps)
+			err := runServe(cmd, &serveOptions{port: 0, noBrowser: tc.noBrowser, paths: app.Paths{DataDir: t.TempDir()}}, deps)
 			if err != nil {
 				t.Fatalf("runServe: %v", err)
 			}
