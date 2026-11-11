@@ -15,32 +15,6 @@
     },
     {
       "asset_id": 1,
-      "type": "license",
-      "rule_id": "MIT",
-      "severity": "low",
-      "title": "MIT license",
-      "package_name": "lodash",
-      "package_version": "4.17.15",
-      "location": "package-lock.json",
-      "description": "notice",
-      "scanner": "trivy",
-      "fingerprint": "6b45576b3e45461e7acd2c59216c71715349e7d5c4ed426698189ddded862674"
-    },
-    {
-      "asset_id": 1,
-      "type": "license",
-      "rule_id": "MIT",
-      "severity": "low",
-      "title": "MIT license",
-      "package_name": "minimist",
-      "package_version": "1.2.0",
-      "location": "package-lock.json",
-      "description": "notice",
-      "scanner": "trivy",
-      "fingerprint": "b9be0ced969822af0f938c2c7ef462dbea88accddd77eb90ded25629693891d8"
-    },
-    {
-      "asset_id": 1,
       "type": "misconfig",
       "rule_id": "DS-0001",
       "severity": "medium",

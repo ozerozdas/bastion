@@ -99,6 +99,12 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 		}
 
 		for _, l := range res.Licenses {
+			// Permissive licences carry no action for the user; reporting them
+			// would bury real issues (a Go module alone yields hundreds).
+			switch strings.ToLower(l.Category) {
+			case "notice", "permissive", "unencumbered":
+				continue
+			}
 			// Trivy licence severities are policy categories, not exploit
 			// risk: restricted licences are reported as high, notice
 			// obligations as low. They are mapped onto §5 severities as-is so

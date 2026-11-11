@@ -94,7 +94,7 @@ func TestScanDirRejectsFileTarget(t *testing.T) {
 
 func TestRedactMatch(t *testing.T) {
 	tests := map[string]string{
-		"AKIAQ7W3ZR5M4N2P6T3V": "AKIA****",
+		"AKIAQ7W3ZR5M4N2P6T3V": "AKIA****", // gitleaks:allow (fake test key)
 		"abcd":                 "****",
 		"abc":                  "****",
 		"":                     "****",
