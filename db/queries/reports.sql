@@ -1,4 +1,4 @@
--- Dashboard aggregates (PROJECT_SPEC.md §6, §7.1). Every number counts only
+-- Dashboard aggregates (PROJECT_SPEC.md sections 6 and 7.1). Every number counts only
 -- open findings of each non-archived asset's most recent succeeded scan: a
 -- failed or running scan does not shadow the last complete report, and a
 -- finding_states decision hides its finding (status is computed the same way

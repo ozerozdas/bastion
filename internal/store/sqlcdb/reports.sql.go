@@ -11,8 +11,6 @@ import (
 )
 
 const reportLastScans = `-- name: ReportLastScans :many
-d;
-
 SELECT s.asset_id, a.display_name, s.id AS scan_id, s.status, s.finished_at
 FROM scans s
 JOIN assets a ON a.id = s.asset_id
@@ -22,7 +20,7 @@ WHERE a.archived_at IS NULL
       FROM scans s2
       WHERE s2.asset_id = s.asset_id
   )
-ORDER BY s.asset_
+ORDER BY s.asset_id
 `
 
 type ReportLastScansRow struct {
@@ -65,8 +63,6 @@ func (q *Queries) ReportLastScans(ctx context.Context) ([]ReportLastScansRow, er
 }
 
 const reportTopAssets = `-- name: ReportTopAssets :many
-e;
-
 SELECT
     f.asset_id,
     a.display_name,
@@ -99,7 +95,7 @@ WHERE a.archived_at IS NULL
 GROUP BY f.asset_id
 HAVING score > 0
 ORDER BY score DESC, a.display_name, f.asset_id
-LIMIT
+LIMIT 5
 `
 
 type ReportTopAssetsRow struct {
@@ -166,7 +162,7 @@ WHERE a.archived_at IS NULL
   AND f.status = 'open'
   AND fs.id IS NULL
 GROUP BY f.severity
-ORDER BY f.severi
+ORDER BY f.severity
 `
 
 type ReportTotalsBySeverityRow struct {
@@ -174,7 +170,7 @@ type ReportTotalsBySeverityRow struct {
 	FindingCount int64
 }
 
-// Dashboard aggregates (PROJECT_SPEC.md §6, §7.1). Every number counts only
+// Dashboard aggregates (PROJECT_SPEC.md sections 6 and 7.1). Every number counts only
 // open findings of each non-archived asset's most recent succeeded scan: a
 // failed or running scan does not shadow the last complete report, and a
 // finding_states decision hides its finding (status is computed the same way
@@ -206,8 +202,6 @@ func (q *Queries) ReportTotalsBySeverity(ctx context.Context) ([]ReportTotalsByS
 }
 
 const reportTotalsByType = `-- name: ReportTotalsByType :many
-y;
-
 SELECT f.type, COUNT(*) AS finding_count
 FROM findings f
 JOIN scans s ON s.id = f.scan_id
@@ -224,7 +218,7 @@ WHERE a.archived_at IS NULL
   AND f.status = 'open'
   AND fs.id IS NULL
 GROUP BY f.type
-ORDER BY f.ty
+ORDER BY f.type
 `
 
 type ReportTotalsByTypeRow struct {
@@ -258,8 +252,6 @@ func (q *Queries) ReportTotalsByType(ctx context.Context) ([]ReportTotalsByTypeR
 }
 
 const reportTrendScans = `-- name: ReportTrendScans :many
-5;
-
 WITH ranked AS (
     SELECT
         s.id AS scan_id,
@@ -287,7 +279,7 @@ LEFT JOIN findings f
    )
 WHERE r.scan_rank <= 10
 GROUP BY r.asset_id, r.scan_id, r.finished_at
-ORDER BY r.asset_id, r.scan_
+ORDER BY r.asset_id, r.scan_id
 `
 
 type ReportTrendScansRow struct {
