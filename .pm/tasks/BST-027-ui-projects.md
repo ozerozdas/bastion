@@ -2,7 +2,7 @@
 id: BST-027
 title: "UI: Projects page, discover dialog, scan + live progress"
 phase: P1
-status: in_progress
+status: done
 owner_role: coder
 depends_on: [BST-023, BST-024, BST-026]
 estimate: L
