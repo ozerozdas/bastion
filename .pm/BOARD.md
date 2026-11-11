@@ -25,7 +25,7 @@
 | BST-021 | GitHub tarball source | P1 | done | coder | 019 |
 | BST-022 | Job system | P1 | done | coder | 016, 021 |
 | BST-023 | SSE /api/events | P1 | in_progress | coder | 022 |
-| BST-024 | Assets, scans, finding-state API | P1 | in_progress | coder | 017, 020, 022 |
+| BST-024 | Assets, scans, finding-state API | P1 | done | coder | 017, 020, 022 |
 | BST-025 | Reports API | P1 | done | coder | 017 |
 | BST-026 | UI Connections | P1 | done | coder | 020 |
 | BST-027 | UI Projects + scan progress | P1 | todo | coder | 023, 024, 026 |
