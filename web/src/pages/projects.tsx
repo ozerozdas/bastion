@@ -550,7 +550,9 @@ function DiscoverRepos({ connections }: { connections: Connection[] }) {
 
   const connection =
     connections.find((item) => item.id === connectionId) ?? connections[0]
-  const discover = useQuery(discoverQuery(connection.id))
+  // ADR-005: GitHub is called only on user action, so listing waits for a click.
+  const [requested, setRequested] = useState(false)
+  const discover = useQuery({ ...discoverQuery(connection.id), enabled: requested })
   const repos = discover.data ?? []
   const needle = search.trim().toLowerCase()
   const shown =
@@ -661,7 +663,13 @@ function DiscoverRepos({ connections }: { connections: Connection[] }) {
         </Button>
       </div>
 
-      {discover.isPending ? (
+      {!requested ? (
+        <div>
+          <Button type="button" variant="outline" onClick={() => setRequested(true)}>
+            List repositories
+          </Button>
+        </div>
+      ) : discover.isPending ? (
         <p className="text-muted">Loading repositories…</p>
       ) : null}
 
