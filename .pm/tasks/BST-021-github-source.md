@@ -2,7 +2,7 @@
 id: BST-021
 title: GitHub tarball source (internal/sources/github)
 phase: P1
-status: todo
+status: in_progress
 owner_role: coder
 depends_on: [BST-019]
 estimate: M

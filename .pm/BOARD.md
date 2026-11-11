@@ -21,8 +21,8 @@
 | BST-017 | finding_states + latest findings | P1 | in_progress | coder | 016 |
 | BST-018 | `scan --path` persists (real asset id) | P1 | in_progress | coder | 016 |
 | BST-019 | GitHub API client | P1 | done | coder | 015 |
-| BST-020 | Connections service + API | P1 | todo | coder | 016, 019 |
-| BST-021 | GitHub tarball source | P1 | todo | coder | 019 |
+| BST-020 | Connections service + API | P1 | in_progress | coder | 016, 019 |
+| BST-021 | GitHub tarball source | P1 | in_progress | coder | 019 |
 | BST-022 | Job system | P1 | todo | coder | 016, 021 |
 | BST-023 | SSE /api/events | P1 | todo | coder | 022 |
 | BST-024 | Assets, scans, finding-state API | P1 | todo | coder | 017, 020, 022 |
