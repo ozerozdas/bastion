@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/web"
 )
@@ -57,6 +58,9 @@ type Config struct {
 	Port    int
 	// Logger receives request logs. Defaults to slog.Default().
 	Logger *slog.Logger
+	// Connections serves /api/connections. serve wires the SQLite-backed
+	// service; nil answers those endpoints with 500 (the API is still up).
+	Connections *connections.Service
 }
 
 // Server serves the bastion API and UI. Create it with New, take its handler
@@ -65,6 +69,11 @@ type Server struct {
 	version string
 	port    int
 	log     *slog.Logger
+
+	// connections backs /api/connections. It is nil only when a caller builds
+	// a Server without a database (some tests); those endpoints then answer
+	// 500 instead of panicking.
+	connections *connections.Service
 
 	// token arrives once, in the browser URL. session is the cookie value that
 	// replaces it. They are distinct values: a token that leaked into shell
@@ -92,11 +101,12 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		version: cfg.Version,
-		port:    cfg.Port,
-		log:     logger,
-		token:   token,
-		session: session,
+		version:     cfg.Version,
+		port:        cfg.Port,
+		log:         logger,
+		connections: cfg.Connections,
+		token:       token,
+		session:     session,
 	}
 	s.handler = s.buildHandler()
 	return s, nil
@@ -130,7 +140,7 @@ func (s *Server) Handler() http.Handler {
 // GetHealth implements gen.StrictServerInterface.
 func (s *Server) GetHealth(_ context.Context, _ gen.GetHealthRequestObject) (gen.GetHealthResponseObject, error) {
 	return gen.GetHealth200JSONResponse{
-		Status:  gen.Ok,
+		Status:  gen.HealthStatusOk,
 		Version: s.version,
 	}, nil
 }
@@ -145,7 +155,19 @@ func (s *Server) GetHealth(_ context.Context, _ gen.GetHealthRequestObject) (gen
 func (s *Server) buildHandler() http.Handler {
 	mux := http.NewServeMux()
 
-	gen.HandlerWithOptions(gen.NewStrictHandler(s, nil), gen.StdHTTPServerOptions{
+	gen.HandlerWithOptions(gen.NewStrictHandlerWithOptions(s, nil, gen.StrictHTTPServerOptions{
+		// Malformed request bodies and handler failures are problem+json too:
+		// the strict handler's defaults would answer with text/plain, breaking
+		// the API's single error shape (§6).
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
+			writeProblem(w, http.StatusBadRequest, "Bad Request", "the request body is not valid JSON")
+		},
+		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
+			s.log.Error("write API response", "error", err)
+			writeProblem(w, http.StatusInternalServerError, "Internal Server Error",
+				"the response could not be written; see the server log")
+		},
+	}), gen.StdHTTPServerOptions{
 		BaseRouter: mux,
 	})
 
@@ -171,14 +193,20 @@ func writeProblem(w http.ResponseWriter, status int, title, detail string) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(status)
 
-	problem := gen.Problem{
+	problem := newProblem(status, title, detail)
+	if err := json.NewEncoder(w).Encode(problem); err != nil {
+		slog.Debug("write problem response", "status", status, "error", err)
+	}
+}
+
+// newProblem builds the body the generated problem responses carry, so the
+// strict handlers and writeProblem cannot drift apart.
+func newProblem(status int, title, detail string) gen.Problem {
+	return gen.Problem{
 		Type:   "about:blank",
 		Title:  title,
 		Status: status,
 		Detail: &detail,
-	}
-	if err := json.NewEncoder(w).Encode(problem); err != nil {
-		slog.Debug("write problem response", "status", status, "error", err)
 	}
 }
 

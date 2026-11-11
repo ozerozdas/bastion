@@ -25,6 +25,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List configured connections.
+         * @description Returns every connection, ordered by kind and name. Tokens and keyring
+         *     references are never part of the response.
+         */
+        get: operations["listConnections"];
+        put?: never;
+        /**
+         * Add a connection and test it.
+         * @description Stores the token in the OS keyring under `bastion.connection.<id>`, then
+         *     tests it with `GET /user`. A failed test still creates the connection: it
+         *     is returned with `status: error` and a human-readable `hint`, so the user
+         *     can correct the token or keyring without losing the entry. If the token
+         *     cannot be stored, the row is removed again and no connection is created.
+         */
+        post: operations["createConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a connection and its stored secret. */
+        delete: operations["deleteConnection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test a connection and record the result.
+         * @description Calls `GET /user` with the stored token and records `status`,
+         *     `last_checked_at` and the GitHub login in the connection's non-secret
+         *     config. A failed test returns the connection with `status: error` and a
+         *     `hint`; it is not an API error.
+         */
+        post: operations["testConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connections/{id}/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List repositories the connection can add.
+         * @description Calls GitHub's repository list and marks the ones that already exist as
+         *     assets with `already_added: true`.
+         */
+        get: operations["discoverConnectionRepos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -45,6 +135,97 @@ export interface components {
              * @example 0.1.0
              */
             version: string;
+        };
+        /**
+         * ConnectionList
+         * @description Every configured connection.
+         */
+        ConnectionList: {
+            connections: components["schemas"]["Connection"][];
+        };
+        /**
+         * Connection
+         * @description A configured integration. The credential itself is never part of this
+         *     shape: the token lives in the OS keyring under `secret_ref`, and
+         *     neither the token nor the keyring key is returned by the API.
+         */
+        Connection: {
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["ConnectionKind"];
+            /** @description User-chosen name, unique per kind. */
+            name: string;
+            status: components["schemas"]["ConnectionStatus"];
+            /**
+             * @description GitHub login recorded by the last successful test. Absent when the
+             *     connection has never succeeded.
+             */
+            login?: string;
+            /**
+             * @description Human-readable explanation of the last failed test (never a token
+             *     or a GitHub response body). Absent after a successful test.
+             */
+            hint?: string;
+            /**
+             * Format: date-time
+             * @description When the connection was last tested.
+             */
+            last_checked_at?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /**
+         * ConnectionKind
+         * @description Integration kind. v0.1 only creates `github` connections; the other
+         *     values exist because the database and later phases use them.
+         * @enum {string}
+         */
+        ConnectionKind: "github" | "aws" | "docker";
+        /**
+         * ConnectionStatus
+         * @description Result of the last test.
+         * @enum {string}
+         */
+        ConnectionStatus: "ok" | "error" | "unknown";
+        /** CreateConnectionRequest */
+        CreateConnectionRequest: {
+            /**
+             * @description Only `github` can be created in v0.1.
+             * @enum {string}
+             */
+            kind: "github";
+            /** @description User-chosen name, unique per kind. */
+            name: string;
+            /**
+             * @description GitHub personal access token (classic or fine-grained, read-only).
+             *     Stored in the OS keyring, never persisted in SQLite, logged or
+             *     returned by the API.
+             */
+            token: string;
+        };
+        /** DiscoverReposResponse */
+        DiscoverReposResponse: {
+            repos: components["schemas"]["DiscoveredRepo"][];
+        };
+        /**
+         * DiscoveredRepo
+         * @description A repository the connection can add as an asset.
+         */
+        DiscoveredRepo: {
+            /**
+             * @description Canonical `owner/repo` reference.
+             * @example octo/hello
+             */
+            full_name: string;
+            /** @example main */
+            default_branch: string;
+            private: boolean;
+            archived: boolean;
+            /**
+             * @description True when an asset with this `owner/repo` reference already exists,
+             *     whichever connection (or the CLI) added it.
+             */
+            already_added: boolean;
         };
         /**
          * Problem
@@ -90,7 +271,10 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /** @description Connection id. */
+        ConnectionID: number;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -119,6 +303,174 @@ export interface operations {
             403: components["responses"]["Problem"];
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
+        };
+    };
+    listConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The configured connections. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    createConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description The connection was created (and tested). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Connection"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description A connection with the same kind and name already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    deleteConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connection id. */
+                id: components["parameters"]["ConnectionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connection and its keyring entry were removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    testConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connection id. */
+                id: components["parameters"]["ConnectionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connection after the test, successful or not. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Connection"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    discoverConnectionRepos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connection id. */
+                id: components["parameters"]["ConnectionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Repositories visible to the connection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverReposResponse"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description The connection has no token and the environment fallback is unset. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+            /**
+             * @description GitHub rejected or failed the request. `detail` carries the
+             *     human-readable hint from the GitHub client (for example "token
+             *     invalid or expired").
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
 }
