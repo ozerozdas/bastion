@@ -10,9 +10,9 @@
 | BST-006 | SQLite + goose + sqlc | P0 | done | coder | 005 |
 | BST-007 | OpenAPI + codegen | P0 | done | coder | 001 |
 | BST-008 | HTTP server + §4.3 security | P0 | done | coder | 007 |
-| BST-009 | Web scaffold + embed | P0 | ready | coder | 008 |
+| BST-009 | Web scaffold + embed | P0 | done | coder | 008 |
 | BST-010 | Scanner interface + fingerprint | P0 | done | coder | 003, 004 |
 | BST-011 | `scan --path` + golden tests | P0 | done | coder | 010 |
 | BST-012 | `doctor` | P0 | done | coder | 005, 006 |
 | BST-013 | Keyring wrapper | P0 | done | coder | 005 |
-| BST-014 | P0 exit check | P0 | todo | tester | all |
+| BST-014 | P0 exit check | P0 | ready | tester | all |

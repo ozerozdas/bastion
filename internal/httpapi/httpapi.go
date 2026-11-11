@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
+	"github.com/ozerozdas/bastion/web"
 )
 
 const (
@@ -43,8 +44,8 @@ const (
 	readHeaderTimeout = 10 * time.Second
 )
 
-// placeholderHTML is the stand-in UI. BST-009 replaces it with an embed of the
-// built SPA (web/dist).
+// placeholderHTML is served when the SPA has not been built: web/dist then
+// carries only its .gitkeep, and a bare page still explains what to do.
 //
 //go:embed index.html
 var placeholderHTML []byte
@@ -153,7 +154,8 @@ func (s *Server) buildHandler() http.Handler {
 		writeProblem(w, http.StatusNotFound, "Not Found",
 			"no such API endpoint: "+Redact(r.URL.Path))
 	})
-	mux.HandleFunc("/", s.handleUI)
+	// Everything else is the embedded SPA, including its client-side routes.
+	mux.Handle("/", newUIHandler(web.Dist(), s.log))
 
 	var h http.Handler = mux
 	h = s.requireSession(h)
@@ -161,32 +163,6 @@ func (s *Server) buildHandler() http.Handler {
 	h = securityHeaders(h)
 	h = s.logRequests(h)
 	return h
-}
-
-// handleUI serves the embedded UI. BST-009 replaces the placeholder with the
-// built SPA; the CSP stays as is, so the bundle must not rely on inline script
-// or style.
-func (s *Server) handleUI(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		writeProblem(w, http.StatusNotFound, "Not Found", "no such path: "+Redact(r.URL.Path))
-		return
-	}
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		writeProblem(w, http.StatusMethodNotAllowed, "Method Not Allowed",
-			"the UI is only served over GET")
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'")
-	w.WriteHeader(http.StatusOK)
-	if r.Method == http.MethodHead {
-		return
-	}
-	if _, err := w.Write(placeholderHTML); err != nil {
-		s.log.Debug("write UI response", "error", err)
-	}
 }
 
 // writeProblem writes an RFC 9457 problem+json response. All bastion errors use

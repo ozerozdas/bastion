@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+/*
+ * The palette follows concept-design.html: warm-neutral greys, one accent, and
+ * severity colours that appear only on badges and small marks (§7).
+ * Values switch on the OS preference; there is no theme toggle.
+ */
+:root {
+  color-scheme: light;
+
+  --b-bg: #fafafa;
+  --b-sidebar: #f4f4f5;
+  --b-surface: #ffffff;
+  --b-border-subtle: #e4e4e7;
+  --b-border-strong: #d4d4d8;
+  --b-fg: #18181b;
+  --b-muted: #52525b;
+  --b-faint: #6b6b75;
+  --b-hover: #ebebed;
+  --b-active: #ffffff;
+  --b-accent: #18181b;
+  --b-accent-fg: #ffffff;
+
+  --b-critical: #c81e1e;
+  --b-high: #b9410c;
+  --b-medium: #946006;
+  --b-low: #2155d6;
+  --b-ok: #15803d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --b-bg: #0b0b0d;
+    --b-sidebar: #0e0e11;
+    --b-surface: #111114;
+    --b-border-subtle: #1f1f24;
+    --b-border-strong: #2a2a30;
+    --b-fg: #ededf0;
+    --b-muted: #a1a1aa;
+    --b-faint: #84848e;
+    --b-hover: #16161a;
+    --b-active: #1a1a1f;
+    --b-accent: #ededf0;
+    --b-accent-fg: #0b0b0d;
+
+    --b-critical: #ff6b6b;
+    --b-high: #ff9f43;
+    --b-medium: #f5c451;
+    --b-low: #7aa7ff;
+    --b-ok: #4ade80;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--b-bg);
+  --color-sidebar: var(--b-sidebar);
+  --color-surface: var(--b-surface);
+  --color-border-subtle: var(--b-border-subtle);
+  --color-border-strong: var(--b-border-strong);
+  --color-fg: var(--b-fg);
+  --color-muted: var(--b-muted);
+  --color-faint: var(--b-faint);
+  --color-hover: var(--b-hover);
+  --color-active: var(--b-active);
+  --color-accent: var(--b-accent);
+  --color-accent-fg: var(--b-accent-fg);
+
+  --color-critical: var(--b-critical);
+  --color-high: var(--b-high);
+  --color-medium: var(--b-medium);
+  --color-low: var(--b-low);
+  --color-ok: var(--b-ok);
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+
+  --radius-card: 10px;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--b-bg);
+  color: var(--b-fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--b-muted);
+  outline-offset: 2px;
+}

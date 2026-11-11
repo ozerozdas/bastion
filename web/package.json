@@ -3,11 +3,33 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Bastion web UI. Scaffolded fully in BST-009; for now this package only contains the OpenAPI type generation.",
+  "description": "Bastion web UI: React + TypeScript + Vite, embedded into the Go binary (PROJECT_SPEC.md §3).",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
-    "gen:api": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts"
+    "gen:api": "openapi-typescript ../api/openapi.yaml -o src/api/schema.d.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.107.1",
+    "@tanstack/react-router": "1.170.46",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
-    "openapi-typescript": "7.13.0"
+    "@tailwindcss/vite": "4.3.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "openapi-typescript": "7.13.0",
+    "tailwindcss": "4.3.5",
+    "typescript": "7.0.2",
+    "vite": "8.3.8"
   }
 }

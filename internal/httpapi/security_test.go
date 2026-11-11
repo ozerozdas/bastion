@@ -322,7 +322,7 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 	}
 }
 
-func TestUIServesPlaceholderWithCSP(t *testing.T) {
+func TestUIServesSPAWithCSP(t *testing.T) {
 	ts := newTestServer(t)
 	cookie := ts.login(t)
 
@@ -340,8 +340,8 @@ func TestUIServesPlaceholderWithCSP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	if !strings.Contains(string(body), "bastion is running") {
-		t.Errorf("body does not contain the placeholder text: %q", body)
+	if !strings.Contains(string(body), `<div id="root">`) {
+		t.Errorf("body is not the SPA entry point: %q", body)
 	}
 }
 

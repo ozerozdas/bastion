@@ -16,6 +16,12 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # make check builds the UI (embed) before go build.
       - run: make check
 
   cross-build:
@@ -31,4 +37,12 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # web/dist is gitignored but embedded (web/embed.go), so each build
+      # produces the UI first; otherwise the binary would ship the placeholder.
+      - run: npm --prefix web ci --no-audit --no-fund && npm --prefix web run build
       - run: CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -trimpath -o /dev/null ./cmd/bastion
