@@ -2,7 +2,7 @@
 id: BST-028
 title: "UI: Security Reports (findings table, drawer, ignore)"
 phase: P1
-status: todo
+status: in_progress
 owner_role: coder
 depends_on: [BST-024, BST-025]
 estimate: L

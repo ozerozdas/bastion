@@ -2,7 +2,7 @@
 id: BST-030
 title: "UI: Scan History (list)"
 phase: P1
-status: todo
+status: in_progress
 owner_role: coder
 depends_on: [BST-024]
 estimate: S
