@@ -1,0 +1,39 @@
+name: release
+
+# Publishes a GitHub release, the archives + checksums.txt and the Homebrew
+# cask whenever the human pushes a version tag (PROJECT_SPEC.md §11.3.7).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The changelog is built from the full git history.
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # GoReleaser's `before` hook runs `make web-build` (the UI is embedded),
+      # which installs node_modules if the lockfile changed.
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          # Keep in sync with GORELEASER_VERSION in the Makefile.
+          version: v2.20.1
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Fine-grained PAT with contents:write on ozerozdas/homebrew-tap.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
