@@ -336,6 +336,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream scan lifecycle events.
+         * @description Server-Sent Events stream of everything the scan queue does
+         *     (PROJECT_SPEC.md §6). Each frame is `event: <type>` plus one
+         *     `data: <ScanEvent JSON>` line, where the event type is `scan.queued`,
+         *     `scan.progress` or `scan.finished`. An idle stream sends a `: ping`
+         *     comment every 15 seconds; comments are not events.
+         *
+         *     There is no replay: the stream continues with the next event after it
+         *     opens, so a client that reconnects refetches the state it missed. A
+         *     client that falls too far behind is dropped, so a slow reader can never
+         *     stall a scan worker. Like every other `/api/*` route the stream
+         *     requires the `bastion_session` cookie; mutating-request CSRF does not
+         *     apply to this GET.
+         */
+        get: operations["streamEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -816,6 +847,33 @@ export interface components {
             instance?: string;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * ScanEvent
+         * @description One scan lifecycle event, carried in the `data:` line of an
+         *     `/api/events` frame. Optional fields are absent when they do not apply
+         *     to the event type.
+         */
+        ScanEvent: {
+            /**
+             * @description The SSE event name.
+             * @enum {string}
+             */
+            type: "scan.queued" | "scan.progress" | "scan.finished";
+            /** Format: int64 */
+            scan_id: number;
+            /** Format: int64 */
+            asset_id: number;
+            status: components["schemas"]["ScanStatus"];
+            /**
+             * @description Pipeline stage of a `scan.progress` event.
+             * @enum {string}
+             */
+            stage?: "resolve" | "fetch" | "scan" | "normalize";
+            /** @description Scanner a `scan.progress` event belongs to, when any. */
+            scanner?: string;
+            /** @description Why the scan failed, on a failed `scan.finished` event. */
+            error?: string;
         };
     };
     responses: {
@@ -1517,6 +1575,29 @@ export interface operations {
             403: components["responses"]["Problem"];
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
+        };
+    };
+    streamEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The event stream, open until the client disconnects. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ScanEvent"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
         };
     };
 }

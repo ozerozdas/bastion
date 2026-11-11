@@ -10,3 +10,8 @@ generate:
   models: true
 output-options:
   skip-prune: true
+  # /api/events is a hand-written streaming handler (internal/httpapi/events.go):
+  # the generated strict server writes one response per handler call and cannot
+  # flush per event. The operation stays in the spec as documentation.
+  exclude-operation-ids:
+    - streamEvents
