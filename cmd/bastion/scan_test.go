@@ -416,6 +416,16 @@ func TestScanOptionsValidate(t *testing.T) {
 			opts: scanOptions{path: "/tmp", format: scanFormatJSON, failOn: "severe"},
 			want: "unsupported --fail-on",
 		},
+		{
+			name: "absolute skip dir",
+			opts: scanOptions{path: "/tmp", format: scanFormatJSON, skipDirs: []string{"/tmp/testdata"}},
+			want: "relative to the scan root",
+		},
+		{
+			name: "escaping skip dir",
+			opts: scanOptions{path: "/tmp", format: scanFormatJSON, skipDirs: []string{"../up"}},
+			want: "relative to the scan root",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -430,6 +440,7 @@ func TestScanOptionsValidate(t *testing.T) {
 		{path: "/tmp", format: scanFormatJSON},
 		{path: "/tmp", format: scanFormatTable, failOn: "high"},
 		{repo: "acme/widgets", format: scanFormatSARIF, failOn: "low"},
+		{path: "/tmp", format: scanFormatJSON, skipDirs: []string{"testdata", "web/dist"}},
 	} {
 		if err := opts.validate(); err != nil {
 			t.Errorf("validate(%+v) = %v, want nil", opts, err)

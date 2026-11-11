@@ -43,7 +43,11 @@ var scanMu sync.Mutex
 //
 // All Trivy state (vulnerability DB, misconfiguration checks bundle, Java DB)
 // lives under cacheDir; no other directory is written to.
-func ScanFS(ctx context.Context, dir, cacheDir string) (out json.RawMessage, err error) {
+//
+// skipDirs are directories to leave out, each relative to dir. Trivy receives
+// them as its --skip-dirs patterns (doublestar globs, see skipPatterns), so a
+// plain directory name excludes that subtree while "**/node_modules" works too.
+func ScanFS(ctx context.Context, dir, cacheDir string, skipDirs []string) (out json.RawMessage, err error) {
 	scanMu.Lock()
 	defer scanMu.Unlock()
 
@@ -58,7 +62,11 @@ func ScanFS(ctx context.Context, dir, cacheDir string) (out json.RawMessage, err
 		return nil, fmt.Errorf("trivy: create cache dir %q: %w", cacheDir, err)
 	}
 
-	opts, err := newOptions(cacheDir, target)
+	skip, err := skipPatterns(target, skipDirs)
+	if err != nil {
+		return nil, err
+	}
+	opts, err := newOptions(cacheDir, target, skip)
 	if err != nil {
 		return nil, err
 	}
@@ -112,10 +120,34 @@ func resolveTarget(dir string) (string, error) {
 	return abs, nil
 }
 
+// skipPatterns resolves skipDirs against target, the scan root.
+//
+// Trivy interprets its --skip-dirs values relative to the process working
+// directory (fanal/walker.FS.BuildSkipPaths takes filepath.Abs of each value
+// and makes it relative to the scan root), so a caller's "testdata" would
+// silently mean nothing when bastion is not started from the scan root. Handing
+// Trivy the absolute path of "target/skipDir" is the only form that means
+// "relative to the scan root" from any working directory. Glob metacharacters
+// survive filepath.Join, so Trivy's doublestar matching still applies.
+func skipPatterns(target string, skipDirs []string) ([]string, error) {
+	if len(skipDirs) == 0 {
+		return nil, nil
+	}
+	patterns := make([]string, 0, len(skipDirs))
+	for _, dir := range skipDirs {
+		rel := filepath.FromSlash(dir)
+		if rel == "." || !filepath.IsLocal(rel) {
+			return nil, fmt.Errorf("trivy: skip dir %q must be a path relative to the scan root", dir)
+		}
+		patterns = append(patterns, filepath.Join(target, rel))
+	}
+	return patterns, nil
+}
+
 // newOptions builds Trivy's flag.Options the same way the Trivy CLI does:
 // register its flag groups on a throwaway command, bind them to Viper, parse
 // our fixed argument list, then convert to Options.
-func newOptions(cacheDir, target string) (flag.Options, error) {
+func newOptions(cacheDir, target string, skipDirs []string) (flag.Options, error) {
 	// Trivy's Flags.AddFlags/Bind deliberately skip the "Global" group; its CLI
 	// registers those on the root command itself. Do the same here, while
 	// keeping the group in the list because ToOptions walks every entry.
@@ -149,7 +181,7 @@ func newOptions(cacheDir, target string) (flag.Options, error) {
 		return flag.Options{}, fmt.Errorf("trivy: bind flags: %w", err)
 	}
 	// ParseFlags merges persistent flags (e.g. --cache-dir) into the local set.
-	if err := cmd.ParseFlags(scanArgs(cacheDir)); err != nil {
+	if err := cmd.ParseFlags(scanArgs(cacheDir, skipDirs)); err != nil {
 		return flag.Options{}, fmt.Errorf("trivy: parse flags: %w", err)
 	}
 	// ToOptions takes the positional arguments; a single argument becomes the
@@ -162,8 +194,10 @@ func newOptions(cacheDir, target string) (flag.Options, error) {
 }
 
 // scanArgs is the fixed Trivy CLI surface bastion uses for a filesystem scan.
-func scanArgs(cacheDir string) []string {
-	return []string{
+// skipDirs are absolute paths under the scan root (see skipPatterns); Trivy's
+// flag is a string slice, so repeating --skip-dirs accumulates.
+func scanArgs(cacheDir string, skipDirs []string) []string {
+	args := []string{
 		"--cache-dir", cacheDir,
 		"--scanners", enabledScanners,
 		"--format", "json",
@@ -174,4 +208,8 @@ func scanArgs(cacheDir string) []string {
 		"--skip-version-check",
 		"--disable-telemetry",
 	}
+	for _, dir := range skipDirs {
+		args = append(args, "--skip-dirs", dir)
+	}
+	return args
 }

@@ -24,6 +24,41 @@ jobs:
       # make check builds the UI (embed) before go build.
       - run: make check
 
+  # bastion scans its own repository. testdata holds intentional fixture
+  # vulnerabilities, so it is skipped. SARIF upload to code scanning needs extra
+  # permissions and arrives with the Phase 4 GitHub Action.
+  self-scan:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - id: week
+        run: echo "key=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      # The Trivy DB is ~1.7 GB; refresh it weekly.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/bastion/trivy
+          key: trivy-db-${{ runner.os }}-${{ steps.week.outputs.key }}
+      - run: make build
+      - name: scan
+        run: |
+          export BASTION_HMAC_KEY="$(openssl rand -base64 32)"
+          ./bin/bastion --cache-dir "$HOME/.cache/bastion" scan --path . --no-store \
+            --skip-dirs testdata --format sarif --fail-on critical > bastion.sarif
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bastion-sarif
+          path: bastion.sarif
+
   cross-build:
     needs: check
     runs-on: ubuntu-latest

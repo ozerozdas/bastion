@@ -20,6 +20,10 @@ type Options struct {
 	// HMACKey keys secret fingerprints (Gitleaks). It must never be logged or
 	// persisted; adapters that do not scan secrets may ignore it.
 	HMACKey []byte
+	// SkipDirs are directories to leave out of the scan, each relative to the
+	// scanned workspace root (e.g. "testdata"). Their findings must not appear
+	// in the result. Empty scans everything.
+	SkipDirs []string
 }
 
 // RawResult is one scanner's output, before normalization.

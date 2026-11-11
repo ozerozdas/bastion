@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/zricethezav/gitleaks/v8/config"
 	"github.com/zricethezav/gitleaks/v8/detect"
 	"github.com/zricethezav/gitleaks/v8/logging"
+	glregexp "github.com/zricethezav/gitleaks/v8/regexp"
 	"github.com/zricethezav/gitleaks/v8/sources"
 )
 
@@ -66,8 +68,12 @@ type Finding struct {
 // ScanDir scans the working tree under dir (no git history) with Gitleaks'
 // default configuration. Results are sorted by file, line and rule id.
 //
+// skipDirs are directories to leave out, each relative to dir. They become an
+// extra global allowlist (see skipAllowlist), so Gitleaks never reads files
+// under them.
+//
 // key is bastion's local HMAC key (secrets.LocalKey); it must be non-empty.
-func ScanDir(ctx context.Context, dir string, key []byte) ([]Finding, error) {
+func ScanDir(ctx context.Context, dir string, key []byte, skipDirs []string) ([]Finding, error) {
 	if len(key) == 0 {
 		return nil, errors.New("gitleaks: HMAC key is required")
 	}
@@ -80,6 +86,16 @@ func ScanDir(ctx context.Context, dir string, key []byte) ([]Finding, error) {
 		return nil, defaultCfgErr
 	}
 	cfg := defaultCfg
+	if len(skipDirs) > 0 {
+		allowlist, err := skipAllowlist(target, skipDirs)
+		if err != nil {
+			return nil, err
+		}
+		// cfg is a copy, but its Allowlists slice shares a backing array with
+		// the package-level config. Clone before appending so concurrent scans
+		// never write into that shared array.
+		cfg.Allowlists = append(slices.Clone(cfg.Allowlists), allowlist)
+	}
 
 	detector := detect.NewDetector(cfg)
 	raw, err := detector.DetectSource(ctx, &sources.Files{
@@ -138,6 +154,42 @@ func defaultConfig() (config.Config, error) {
 		return config.Config{}, fmt.Errorf("gitleaks: translate default config: %w", err)
 	}
 	return cfg, nil
+}
+
+// skipAllowlist builds the global allowlist that leaves skipDirs (relative to
+// root) and everything under them out of the scan. Gitleaks allowlists match
+// paths with regexes, not globs, so each entry becomes an anchored path regex;
+// sources.Files then returns filepath.SkipDir before a skipped directory is
+// walked, so its files are never read.
+func skipAllowlist(root string, skipDirs []string) (*config.Allowlist, error) {
+	paths := make([]*glregexp.Regexp, 0, len(skipDirs))
+	for _, dir := range skipDirs {
+		re, err := skipRegexp(root, dir)
+		if err != nil {
+			return nil, fmt.Errorf("gitleaks: %w", err)
+		}
+		paths = append(paths, re)
+	}
+	allowlist := &config.Allowlist{Description: "bastion --skip-dirs", Paths: paths}
+	if err := allowlist.Validate(); err != nil {
+		return nil, fmt.Errorf("gitleaks: skip dirs: %w", err)
+	}
+	return allowlist, nil
+}
+
+// skipRegexp turns dir, relative to root, into an anchored path regex. Both
+// separators are accepted so a Windows path matches as well as a slash path.
+func skipRegexp(root, dir string) (*glregexp.Regexp, error) {
+	rel := filepath.FromSlash(dir)
+	if rel == "." || !filepath.IsLocal(rel) {
+		return nil, fmt.Errorf("skip dir %q must be a path relative to the scan root", dir)
+	}
+	parts := strings.Split(filepath.ToSlash(filepath.Join(root, rel)), "/")
+	for i, part := range parts {
+		parts[i] = regexp.QuoteMeta(part)
+	}
+	// QuoteMeta leaves no metacharacters, so MustCompile cannot panic here.
+	return glregexp.MustCompile(`^` + strings.Join(parts, `[\\/]`) + `([\\/]|$)`), nil
 }
 
 // resolveDir validates dir and returns its absolute path so reported file names
