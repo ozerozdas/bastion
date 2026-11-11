@@ -2,7 +2,7 @@
 id: BST-031
 title: "CLI: `scan --repo owner/name` and `--format json|table|sarif`"
 phase: P1
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-018, BST-021]
 estimate: M

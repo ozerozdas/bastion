@@ -2,7 +2,7 @@
 id: BST-024
 title: Assets, scans and finding-state API
 phase: P1
-status: todo
+status: in_progress
 owner_role: coder
 depends_on: [BST-017, BST-020, BST-022]
 estimate: M

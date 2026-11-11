@@ -2,7 +2,7 @@
 id: BST-023
 title: SSE /api/events
 phase: P1
-status: todo
+status: in_progress
 owner_role: coder
 depends_on: [BST-022]
 estimate: S
