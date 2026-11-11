@@ -1,6 +1,6 @@
 # ADR-005: GitHub API and tarball downloads (Phase 1 outbound calls)
 
-- Status: proposed (needs Özer's approval, §11.3.5)
+- Status: accepted (Özer, 2026-11-11)
 - Date: 2026-11-11
 - Task: BST-015; used by BST-019, BST-020, BST-021, BST-031
 - Spec refs: §8 Phase 1, §9.6 (new outbound calls need an ADR), §4.3
