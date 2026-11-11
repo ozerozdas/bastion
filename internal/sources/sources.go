@@ -7,7 +7,6 @@ package sources
 
 import (
 	"context"
-	"path/filepath"
 )
 
 // TargetKind is the kind of artifact a target points at.
@@ -59,9 +58,4 @@ type Source interface {
 	Kind() TargetKind
 	// Fetch materializes t into a workspace.
 	Fetch(ctx context.Context, t Target) (*Workspace, error)
-}
-
-// AbsDir returns ref as an absolute, cleaned directory path.
-func AbsDir(ref string) (string, error) {
-	return filepath.Abs(ref)
 }

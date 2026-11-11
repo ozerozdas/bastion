@@ -64,8 +64,7 @@ func newRootCmd() *cobra.Command {
 			return err
 		},
 	})
-	root.AddCommand(newSpikeTrivyCmd(opts))
-	root.AddCommand(newSpikeGitleaksCmd())
+	root.AddCommand(newScanCmd(opts))
 	root.AddCommand(newDoctorCmd(opts))
 	return root
 }

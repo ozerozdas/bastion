@@ -1,0 +1,29 @@
+{
+  "findings": [
+    {
+      "asset_id": 1,
+      "type": "secret",
+      "rule_id": "aws-access-token",
+      "severity": "high",
+      "title": "Secret detected: aws-access-token",
+      "location": "deploy/.env:3",
+      "scanner": "gitleaks",
+      "match": "AKIA****",
+      "secret_hmac": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "fingerprint": "44bb1dc6b14fc04af89ff6929d8364589e771669bcca09bf02fe2fc2b76e2f0e"
+    },
+    {
+      "asset_id": 1,
+      "type": "secret",
+      "rule_id": "github-pat",
+      "severity": "high",
+      "title": "Secret detected: github-pat",
+      "location": "src/config.ts:12",
+      "scanner": "gitleaks",
+      "match": "ghp_****",
+      "secret_hmac": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "fingerprint": "9fb0a9c303e8b785bc86073447ae220b3e603103b0a71e165996e6600a599bfd"
+    }
+  ],
+  "packages": []
+}

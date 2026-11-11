@@ -1,0 +1,17 @@
+{
+  "findings": [
+    {
+      "asset_id": 1,
+      "type": "secret",
+      "rule_id": "aws-access-token",
+      "severity": "high",
+      "title": "Secret detected: aws-access-token",
+      "location": "config/credentials:1",
+      "scanner": "gitleaks",
+      "match": "AKIA****",
+      "secret_hmac": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "c6c4f6e9c758111ef46d4398c73c382bd330dc3c199c4c858d033d30c26b91e7"
+    }
+  ],
+  "packages": []
+}

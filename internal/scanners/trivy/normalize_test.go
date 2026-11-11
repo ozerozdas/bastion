@@ -1,0 +1,51 @@
+package trivy
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/ozerozdas/bastion/internal/findings"
+	"github.com/ozerozdas/bastion/internal/scanners"
+	"github.com/ozerozdas/bastion/internal/testutil"
+)
+
+func TestNormalizeGolden(t *testing.T) {
+	inputs, err := filepath.Glob(filepath.Join("..", "..", "..", "testdata", "trivy", "*", "input.json"))
+	if err != nil {
+		t.Fatalf("glob cases: %v", err)
+	}
+	if len(inputs) == 0 {
+		t.Fatal("no testdata/trivy cases found")
+	}
+
+	for _, input := range inputs {
+		dir := filepath.Dir(input)
+		name := filepath.Base(dir)
+		t.Run(name, func(t *testing.T) {
+			//nolint:gosec // input is a testdata path from filepath.Glob.
+			raw, err := os.ReadFile(input)
+			if err != nil {
+				t.Fatalf("read input: %v", err)
+			}
+			asset := findings.Asset{
+				ID:          1,
+				Kind:        findings.AssetKindPath,
+				DisplayName: name,
+				Ref:         filepath.ToSlash(filepath.Join("testdata", "trivy", name)),
+			}
+			fs, pkgs, err := New().Normalize(&scanners.RawResult{
+				Scanner: "trivy",
+				Version: Version,
+				Raw:     raw,
+			}, asset)
+			if err != nil {
+				t.Fatalf("Normalize: %v", err)
+			}
+			testutil.AssertJSON(t, filepath.Join(dir, "expected.json"), struct {
+				Findings []findings.Finding `json:"findings"`
+				Packages []findings.Package `json:"packages"`
+			}{Findings: fs, Packages: pkgs})
+		})
+	}
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "rule_id": "github-pat",
+    "file": "src/config.ts",
+    "line": 12,
+    "match": "ghp_****",
+    "secret_hmac": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  {
+    "rule_id": "aws-access-token",
+    "file": "deploy/.env",
+    "line": 3,
+    "match": "AKIA****",
+    "secret_hmac": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+]
