@@ -2,7 +2,7 @@
 id: BST-007
 title: OpenAPI with /api/health; make gen runs oapi-codegen + openapi-typescript
 phase: P0
-status: review
+status: done
 owner_role: coder
 depends_on: [BST-001]
 estimate: S

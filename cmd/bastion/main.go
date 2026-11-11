@@ -38,13 +38,21 @@ func newRootCmd() *cobra.Command {
 	cobra.EnableTraverseRunHooks = true
 	opts := &rootOptions{}
 
+	// `bastion` with no subcommand runs the local server (§3: "serve (default)").
+	serveOpts := &serveOptions{}
 	root := &cobra.Command{
 		Use:               "bastion",
 		Short:             "Local-first security center",
+		Long:              "Local-first security center.\n\nRun without a subcommand to start the local UI and API server.",
 		SilenceUsage:      true,
 		SilenceErrors:     false,
+		Args:              cobra.NoArgs,
 		PersistentPreRunE: opts.persistentPreRunE,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runServe(cmd, serveOpts, defaultServeDeps())
+		},
 	}
+	addServeFlags(root, serveOpts)
 
 	pf := root.PersistentFlags()
 	pf.StringVar(&opts.dataDir, "data-dir", "",
@@ -64,6 +72,7 @@ func newRootCmd() *cobra.Command {
 			return err
 		},
 	})
+	root.AddCommand(newServeCmd())
 	root.AddCommand(newScanCmd(opts))
 	root.AddCommand(newDoctorCmd(opts))
 	return root

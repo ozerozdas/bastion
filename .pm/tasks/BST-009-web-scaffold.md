@@ -2,7 +2,7 @@
 id: BST-009
 title: Web scaffold: Vite + React + TS + Tailwind + shadcn + TanStack; go:embed with SPA fallback
 phase: P0
-status: todo
+status: ready
 owner_role: coder
 depends_on: [BST-008]
 estimate: M
