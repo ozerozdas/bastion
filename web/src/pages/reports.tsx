@@ -17,6 +17,7 @@ import {
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { isHttpsUrl } from '../lib/urls'
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
@@ -671,11 +672,6 @@ function ErrorNote({ error, fix }: { error: unknown; fix?: string }) {
       </span>
     </p>
   )
-}
-
-/** isHttpsUrl allows a reference to become a link only over https (§4.3). */
-function isHttpsUrl(value: string): boolean {
-  return value.trim().toLowerCase().startsWith('https://')
 }
 
 function capitalize(value: string): string {

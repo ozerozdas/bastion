@@ -22,7 +22,8 @@ export type FindingFilter = {
 
 export const findingsKey = ['findings'] as const
 
-function filterParams(f: FindingFilter): string {
+/** filterParams renders the finding filters as a query string ("" when none). */
+export function filterParams(f: FindingFilter): string {
   const params = new URLSearchParams()
   if (f.assetId !== undefined) params.set('asset_id', String(f.assetId))
   if (f.type) params.set('type', f.type)

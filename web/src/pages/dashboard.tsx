@@ -13,13 +13,7 @@ import {
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { buttonVariants } from '../components/ui/button'
-
-const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
-
-const relativeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+import { formatDateTime, relativeTime } from '../lib/time'
 
 /** severityTiles is the fixed order of the four severity totals (§7.1). */
 const severityTiles: {
@@ -205,11 +199,13 @@ export function DashboardPage() {
                       className="py-2 text-right whitespace-nowrap text-muted tabular-nums"
                       title={
                         scan.finished_at
-                          ? dateTimeFormat.format(new Date(scan.finished_at))
+                          ? formatDateTime(scan.finished_at)
                           : undefined
                       }
                     >
-                      {relativeTime(scan.finished_at)}
+                      {scan.finished_at
+                        ? relativeTime(scan.finished_at)
+                        : 'not finished'}
                     </td>
                   </tr>
                 )
@@ -420,32 +416,6 @@ function assetNames(
     names.set(scan.asset_id, scan.display_name)
   }
   return names
-}
-
-/** relativeTime says when a scan finished, falling back to the full date. */
-function relativeTime(timestamp: string | undefined): string {
-  if (!timestamp) {
-    return 'not finished'
-  }
-  const then = new Date(timestamp).getTime()
-  if (Number.isNaN(then)) {
-    return 'unknown'
-  }
-  const seconds = (then - Date.now()) / 1000
-  const magnitude = Math.abs(seconds)
-  if (magnitude < 45) {
-    return 'just now'
-  }
-  if (magnitude < 3600) {
-    return relativeFormat.format(Math.round(seconds / 60), 'minute')
-  }
-  if (magnitude < 86_400) {
-    return relativeFormat.format(Math.round(seconds / 3600), 'hour')
-  }
-  if (magnitude < 2_592_000) {
-    return relativeFormat.format(Math.round(seconds / 86_400), 'day')
-  }
-  return dateTimeFormat.format(new Date(then))
 }
 
 /** ErrorNote shows the problem detail the API returned, plus what to do next. */
