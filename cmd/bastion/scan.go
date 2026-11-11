@@ -2,14 +2,21 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/ozerozdas/bastion/internal/app"
 	"github.com/ozerozdas/bastion/internal/findings"
 	"github.com/ozerozdas/bastion/internal/scanners"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
@@ -17,10 +24,15 @@ import (
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/sources"
 	"github.com/ozerozdas/bastion/internal/sources/localpath"
+	"github.com/ozerozdas/bastion/internal/store"
 )
 
 // scanFormatJSON is the only output format until the report UI needs others.
 const scanFormatJSON = "json"
+
+// scanSaveTimeout bounds the final write. It has its own context because
+// Ctrl-C cancels the scan context the scanners ran under.
+const scanSaveTimeout = 10 * time.Second
 
 // adapter is a scanner that also normalizes its own output. Keeping both
 // halves in the scanner package keeps the library import behind §4.2's
@@ -31,13 +43,15 @@ type adapter interface {
 }
 
 type scanOptions struct {
-	path   string
-	format string
+	path    string
+	format  string
+	noStore bool
 }
 
 // scanOutput is the `bastion scan --format json` document.
 type scanOutput struct {
 	Asset       findings.Asset     `json:"asset"`
+	ScanID      int64              `json:"scan_id,omitempty"`
 	Findings    []findings.Finding `json:"findings"`
 	Packages    []findings.Package `json:"packages"`
 	ScannerRuns []scannerRun       `json:"scanner_runs"`
@@ -52,6 +66,18 @@ type scannerRun struct {
 	Error          string `json:"error,omitempty"`
 }
 
+// scanDeps isolates the side effects of `bastion scan` so tests can run the
+// pipeline with fake scanners and a temporary database, without touching the
+// real keyring.
+type scanDeps struct {
+	paths         app.Paths
+	openDB        func(ctx context.Context, path string) (*sql.DB, error)
+	closeDB       func(db *sql.DB) error
+	notifyContext func(parent context.Context) (context.Context, context.CancelFunc)
+	newScanners   func() []scanners.Scanner
+	hmacKey       func() ([]byte, error)
+}
+
 func newScanCmd(root *rootOptions) *cobra.Command {
 	opts := &scanOptions{format: scanFormatJSON}
 	cmd := &cobra.Command{
@@ -59,22 +85,50 @@ func newScanCmd(root *rootOptions) *cobra.Command {
 		Short: "Scan a local path and print normalized findings",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return opts.run(cmd, root)
+			return runScan(cmd.Context(), cmd.OutOrStdout(), opts, newScanDeps(root))
 		},
 	}
 	cmd.Flags().StringVar(&opts.path, "path", "", "directory to scan (required)")
 	cmd.Flags().StringVar(&opts.format, "format", scanFormatJSON, "output format: "+scanFormatJSON)
+	cmd.Flags().BoolVar(&opts.noStore, "no-store", false, "print findings without writing to the database")
 	_ = cmd.MarkFlagRequired("path")
 	return cmd
 }
 
-func (o *scanOptions) run(cmd *cobra.Command, root *rootOptions) error {
-	if o.format != scanFormatJSON {
-		return fmt.Errorf("scan: unsupported format %q (supported: %s)", o.format, scanFormatJSON)
+// newScanDeps wires the production implementations.
+func newScanDeps(root *rootOptions) scanDeps {
+	return scanDeps{
+		paths:   root.paths,
+		openDB:  store.Open,
+		closeDB: (*sql.DB).Close,
+		notifyContext: func(parent context.Context) (context.Context, context.CancelFunc) {
+			return signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+		},
+		newScanners: func() []scanners.Scanner {
+			// Trivy serializes itself (ADR-001); running adapters one after
+			// another also keeps Gitleaks independent of that lock.
+			return []scanners.Scanner{trivy.New(), gitleaks.New()}
+		},
+		hmacKey: func() ([]byte, error) { return secrets.LocalKey(secrets.NewStore()) },
 	}
-	ctx := cmd.Context()
+}
 
-	ws, err := localpath.New().Fetch(ctx, sources.Target{Kind: sources.KindPath, Ref: o.path})
+// runScan resolves the target, scans it, persists the result and prints the
+// JSON document. Persistence is the default: a finding's fingerprint includes
+// the asset id (PROJECT_SPEC.md §5), so a scan against a throwaway id could
+// never be diffed against the next one. --no-store keeps the P0 stdout-only
+// behaviour and does not even open the database file.
+func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDeps) error {
+	if opts.format != scanFormatJSON {
+		return fmt.Errorf("scan: unsupported format %q (supported: %s)", opts.format, scanFormatJSON)
+	}
+
+	// Ctrl-C cancels the scan instead of killing the process, so the result
+	// can still be stored as canceled.
+	ctx, stop := deps.notifyContext(ctx)
+	defer stop()
+
+	ws, err := localpath.New().Fetch(ctx, sources.Target{Kind: sources.KindPath, Ref: opts.path})
 	if err != nil {
 		return err
 	}
@@ -82,31 +136,119 @@ func (o *scanOptions) run(cmd *cobra.Command, root *rootOptions) error {
 
 	// The HMAC key makes secret fingerprints stable across scans. It comes
 	// from the OS keyring or BASTION_HMAC_KEY and is never logged.
-	key, err := secrets.LocalKey(secrets.NewStore())
+	key, err := deps.hmacKey()
 	if err != nil {
 		return err
 	}
 
-	asset := findings.Asset{
-		Kind:        findings.AssetKindPath,
-		DisplayName: filepath.Base(ws.Dir),
-		Ref:         ws.Dir,
+	asset, err := pathAsset(ws.Dir)
+	if err != nil {
+		return err
 	}
-	// Trivy serializes itself (ADR-001); running adapters one after another
-	// also keeps Gitleaks independent of that lock.
-	out, scanErr := scanTarget(ctx, sources.KindPath, []scanners.Scanner{trivy.New(), gitleaks.New()}, ws, asset, scanners.Options{
-		CacheDir: root.paths.TrivyCacheDir(),
+
+	var (
+		db     *sql.DB
+		scanID int64
+	)
+	if !opts.noStore {
+		db, err = deps.openDB(ctx, deps.paths.DBPath())
+		if err != nil {
+			return fmt.Errorf("scan: open database: %w", err)
+		}
+		defer func() { _ = deps.closeDB(db) }()
+
+		// Scanners normalize against the stored asset, so their fingerprints
+		// use the id the next scan of this path resolves to as well.
+		asset, err = store.GetOrCreateAsset(ctx, db, asset)
+		if err != nil {
+			return fmt.Errorf("scan: %w", err)
+		}
+		scanID, err = store.StartScan(ctx, db, asset.ID, store.ScanTriggerCLI)
+		if err != nil {
+			return fmt.Errorf("scan: %w", err)
+		}
+		if err := store.MarkScanRunning(ctx, db, scanID); err != nil {
+			return fmt.Errorf("scan: %w", err)
+		}
+	}
+
+	result, scanErr := scanTarget(ctx, sources.KindPath, deps.newScanners(), ws, asset, scanners.Options{
+		CacheDir: deps.paths.TrivyCacheDir(),
 		HMACKey:  key,
 	})
+	result.ScanID = scanID
+
+	var saveErr error
+	if db != nil {
+		saveErr = saveScan(ctx, db, scanID, result, scanErr)
+	}
 
 	// Partial results are still printed: one broken scanner must not hide the
 	// findings of the others. The returned error keeps the exit code non-zero.
-	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(out); err != nil {
-		return fmt.Errorf("write scan output: %w", err)
+	if err := enc.Encode(result); err != nil {
+		return errors.Join(fmt.Errorf("write scan output: %w", err), saveErr)
 	}
-	return scanErr
+	if ctx.Err() != nil {
+		return errors.Join(ctx.Err(), saveErr)
+	}
+	return errors.Join(scanErr, saveErr)
+}
+
+// pathAsset builds the asset a local-path scan belongs to. The ref is the
+// absolute cleaned path: the (kind, ref) key keeps repeated scans of one
+// directory on the same row, and the row's id feeds the fingerprints.
+func pathAsset(dir string) (findings.Asset, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return findings.Asset{}, fmt.Errorf("scan: resolve path %q: %w", dir, err)
+	}
+	ref := filepath.Clean(abs)
+	return findings.Asset{
+		Kind:        findings.AssetKindPath,
+		DisplayName: filepath.Base(ref),
+		Ref:         ref,
+	}, nil
+}
+
+// saveScan persists one finished scan with its final status. A failure names
+// the failed scanners and keeps the partial results, matching what was printed;
+// a canceled scan is stored as canceled with the interrupted output.
+func saveScan(ctx context.Context, db *sql.DB, scanID int64, result scanOutput, scanErr error) error {
+	status, errText := store.ScanStatusSucceeded, ""
+	switch {
+	case ctx.Err() != nil:
+		status, errText = store.ScanStatusCanceled, ctx.Err().Error()
+	case scanErr != nil:
+		status, errText = store.ScanStatusFailed, scanErr.Error()
+	}
+
+	runs := make([]store.ScannerRun, 0, len(result.ScannerRuns))
+	for _, run := range result.ScannerRuns {
+		duration := run.DurationMS
+		runs = append(runs, store.ScannerRun{
+			Scanner:        run.Scanner,
+			ScannerVersion: run.ScannerVersion,
+			Status:         run.Status,
+			DurationMS:     &duration,
+			Error:          run.Error,
+		})
+	}
+
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), scanSaveTimeout)
+	defer cancel()
+
+	if err := store.SaveScanResult(saveCtx, db, scanID, store.ScanResult{
+		Status:      status,
+		Error:       errText,
+		ScannerRuns: runs,
+		Packages:    result.Packages,
+		Findings:    result.Findings,
+	}); err != nil {
+		return fmt.Errorf("save scan %d: %w", scanID, err)
+	}
+	return nil
 }
 
 // scanTarget runs every scanner that supports kind, normalizes the output and

@@ -13,12 +13,86 @@ import (
 )
 
 // Final scan statuses (PROJECT_SPEC.md §5 scans.status). queued and running are
-// intermediate: CreateScan starts a scan, MarkScanRunning moves it on.
+// intermediate: StartScan queues a scan, MarkScanRunning moves it on.
 const (
 	ScanStatusSucceeded = "succeeded"
 	ScanStatusFailed    = "failed"
 	ScanStatusCanceled  = "canceled"
 )
+
+// ScanTriggerCLI is the scans.trigger value for a scan started from the CLI.
+const ScanTriggerCLI = "cli"
+
+// scanStatusQueued is the state StartScan creates a scan in.
+const scanStatusQueued = "queued"
+
+// GetOrCreateAsset resolves the asset a scan targets and returns it with its
+// real id, creating the row the first time the target is seen. A repeat target
+// keeps its id, which matters because fingerprints include it (PROJECT_SPEC.md
+// §5): a scan that does not use the stored id can never be diffed. The id on
+// asset is ignored.
+func GetOrCreateAsset(ctx context.Context, db *sql.DB, asset findings.Asset) (findings.Asset, error) {
+	if db == nil {
+		return findings.Asset{}, errors.New("store: get or create asset: database is required")
+	}
+	if asset.Kind == "" || asset.Ref == "" {
+		return findings.Asset{}, errors.New("store: get or create asset: kind and ref are required")
+	}
+
+	row, err := sqlcdb.New(db).GetOrCreateAsset(ctx, sqlcdb.GetOrCreateAssetParams{
+		Kind:         string(asset.Kind),
+		DisplayName:  asset.DisplayName,
+		Ref:          asset.Ref,
+		MetadataJSON: "{}",
+		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		return findings.Asset{}, fmt.Errorf("store: get or create asset %s %q: %w", asset.Kind, asset.Ref, err)
+	}
+
+	return findings.Asset{
+		ID:          row.ID,
+		Kind:        findings.AssetKind(row.Kind),
+		DisplayName: row.DisplayName,
+		Ref:         row.Ref,
+	}, nil
+}
+
+// StartScan queues a scan of assetID with the given trigger and returns its id.
+// The scan stays queued until MarkScanRunning, so a crash between the two
+// leaves a visible queued scan rather than a phantom running one.
+func StartScan(ctx context.Context, db *sql.DB, assetID int64, trigger string) (int64, error) {
+	if db == nil {
+		return 0, errors.New("store: start scan: database is required")
+	}
+
+	scan, err := sqlcdb.New(db).CreateScan(ctx, sqlcdb.CreateScanParams{
+		AssetID: assetID,
+		Status:  scanStatusQueued,
+		Trigger: trigger,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("store: start scan for asset %d: %w", assetID, err)
+	}
+	return scan.ID, nil
+}
+
+// MarkScanRunning records that the scanners of a queued scan are about to
+// start. A later call keeps the first started_at.
+func MarkScanRunning(ctx context.Context, db *sql.DB, scanID int64) error {
+	if db == nil {
+		return errors.New("store: mark scan running: database is required")
+	}
+
+	err := sqlcdb.New(db).MarkScanRunning(ctx, sqlcdb.MarkScanRunningParams{
+		StartedAt: nullString(time.Now().UTC().Format(time.RFC3339)),
+		ID:        scanID,
+	})
+	if err != nil {
+		return fmt.Errorf("store: mark scan %d running: %w", scanID, err)
+	}
+	return nil
+}
 
 // ScannerRun is one scanner's result inside a scan (§5 scanner_runs). The
 // unset strings and the nil duration are stored as NULL.
