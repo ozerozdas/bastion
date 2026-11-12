@@ -4,12 +4,17 @@ Precedence everywhere: **flag > environment variable > platform default**.
 
 ## Directories
 
-| What | macOS default | Linux default | Override |
-|---|---|---|---|
-| Data dir (SQLite `bastion.db`) | `~/Library/Application Support/bastion` | `~/.config/bastion` | `--data-dir`, `BASTION_DATA_DIR` |
-| Cache dir | `~/Library/Caches/bastion` | `~/.cache/bastion` | `--cache-dir`, `BASTION_CACHE_DIR` |
-| Trivy DB and checks | `<cache>/trivy` | `<cache>/trivy` | via cache dir |
-| Repo workspaces | `<cache>/workspaces` | `<cache>/workspaces` | via cache dir |
+| What | macOS default | Linux default | Windows default | Override |
+|---|---|---|---|---|
+| Data dir (SQLite `bastion.db`) | `~/Library/Application Support/bastion` | `~/.config/bastion` | `%AppData%\bastion` | `--data-dir`, `BASTION_DATA_DIR` |
+| Cache dir | `~/Library/Caches/bastion` | `~/.cache/bastion` | `%LocalAppData%\bastion` | `--cache-dir`, `BASTION_CACHE_DIR` |
+| Trivy DB and checks | `<cache>/trivy` | `<cache>/trivy` | `<cache>\trivy` | via cache dir |
+| Repo workspaces | `<cache>/workspaces` | `<cache>/workspaces` | `<cache>\workspaces` | via cache dir |
+
+The defaults follow Go's `os.UserConfigDir()` and `os.UserCacheDir()`. On Windows that is
+`%AppData%` (`C:\Users\<user>\AppData\Roaming`) for data and `%LocalAppData%`
+(`C:\Users\<user>\AppData\Local`) for cache. Run `bastion doctor` to see the directories
+bastion actually resolved on your machine.
 
 - The **data dir** holds your projects, scans, findings and ignore decisions. Back it up if
   you care about them.
