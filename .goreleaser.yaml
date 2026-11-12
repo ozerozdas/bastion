@@ -48,17 +48,30 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# `github` links each commit and credits the author's login, which matters once
+# outside contributors land PRs. Filters and groups match the commit subject only.
 changelog:
+  use: github
   sort: asc
+  format: "{{ .Message }}{{ with .AuthorUsername }} (@{{ . }}){{ end }}"
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - "^pm:"
+      - '^(docs|test|chore|pm)(\(.+\))?!?:'
       - "merge conflict"
-      - "Merge branch"
-      - "Merge pull request"
+      - "^Merge branch"
+      - "^Merge pull request"
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?!?:'
+      order: 0
+    - title: Fixes
+      regexp: '^fix(\(.+\))?!?:'
+      order: 1
+    - title: Dependencies
+      regexp: '^build\(deps(-dev)?\)'
+      order: 2
+    - title: Other
+      order: 999
 
 # `brews` (formulas) is deprecated since v2.10 and replaced by casks. A cask
 # installs the prebuilt binary from the release archive, which is what a
