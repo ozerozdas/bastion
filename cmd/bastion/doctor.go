@@ -20,6 +20,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
+	"github.com/ozerozdas/bastion/internal/update"
 )
 
 // doctorDeps is everything `bastion doctor` inspects. It is a struct of
@@ -42,6 +43,10 @@ type doctorDeps struct {
 	keyringAvailable func() error
 	secretStore      secrets.Store
 	getenv           func(string) string
+
+	// updateStatus is a read-only snapshot of the release check; doctor never
+	// waits for the network.
+	updateStatus func() update.Status
 }
 
 // doctorReport is the printed result. No field holds a credential: the HMAC key
@@ -59,6 +64,7 @@ type doctorReport struct {
 	GitleaksVersion string           `json:"gitleaks_version"`
 	Keyring         doctorStatus     `json:"keyring"`
 	HMACKey         doctorStatus     `json:"hmac_key"`
+	Update          doctorUpdate     `json:"update"`
 	Warnings        []string         `json:"warnings,omitempty"`
 }
 
@@ -133,6 +139,7 @@ func newDoctorDeps(opts *rootOptions) doctorDeps {
 		keyringAvailable: secrets.Available,
 		secretStore:      secrets.NewStore(),
 		getenv:           os.Getenv,
+		updateStatus:     newUpdateChecker(opts.paths).Snapshot,
 	}
 }
 
@@ -174,6 +181,11 @@ func runDoctor(ctx context.Context, deps doctorDeps) (doctorReport, error) {
 	case !report.TrivyCache.Present:
 		report.Warnings = append(report.Warnings,
 			"no trivy cache yet: first scan will download the vulnerability DB")
+	}
+
+	report.Update = doctorUpdate{State: string(update.ConsentUnset)}
+	if deps.updateStatus != nil {
+		report.Update = doctorUpdateFromStatus(deps.updateStatus())
 	}
 
 	database, err := deps.openDB(ctx, deps.paths.DBPath())
@@ -283,6 +295,7 @@ func writeDoctorText(w io.Writer, report doctorReport) error {
 		{"gitleaks", report.GitleaksVersion},
 		{"keyring", report.Keyring.summary()},
 		{"hmac key", report.HMACKey.summary()},
+		{"update", report.Update.summary()},
 	}
 
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)

@@ -24,6 +24,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
+	"github.com/ozerozdas/bastion/internal/update"
 )
 
 // serveOptions are the flags of `bastion serve`, which is also what plain
@@ -171,6 +172,11 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		return errors.Join(fmt.Errorf("create assets service: %w", err), ln.Close())
 	}
 
+	updateChecker := update.New(update.Config{
+		CurrentVersion: version,
+		DataDir:        opts.paths.DataDir,
+		CacheDir:       opts.paths.CacheDir,
+	})
 	srv, err := deps.newServer(httpapi.Config{
 		Version:     version,
 		Port:        port,
@@ -178,6 +184,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		Reports:     reportService,
 		Assets:      assetService,
 		Events:      bus,
+		Update:      updateChecker,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())
@@ -188,6 +195,10 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	// Terminal write errors are not actionable; the server runs either way.
 	_, _ = fmt.Fprintf(out, "bastion %s is running at %s\n", version, url)
 	_, _ = fmt.Fprintln(out, "press Ctrl+C to stop")
+	// The notice goes to stderr too, never stdout: `bastion scan` and its
+	// machine-readable output stay untouched. Status() never waits for the
+	// network, so startup is not delayed by the check.
+	writeUpdateNotice(out, updateChecker.Status())
 
 	if !opts.noBrowser {
 		// Opening the browser must not block startup: a failure (headless box,

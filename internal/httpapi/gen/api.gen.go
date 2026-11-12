@@ -320,6 +320,27 @@ func (e Severity) Valid() bool {
 	}
 }
 
+// Defines values for UpdateConsent.
+const (
+	Off   UpdateConsent = "off"
+	On    UpdateConsent = "on"
+	Unset UpdateConsent = "unset"
+)
+
+// Valid indicates whether the value is a known member of the UpdateConsent enum.
+func (e UpdateConsent) Valid() bool {
+	switch e {
+	case Off:
+		return true
+	case On:
+		return true
+	case Unset:
+		return true
+	default:
+		return false
+	}
+}
+
 // Asset One tracked repository or path.
 type Asset struct {
 	// ConnectionId The connection repo scans authenticate with.
@@ -742,6 +763,12 @@ type SetFindingStateRequest struct {
 	State FindingState `json:"state"`
 }
 
+// SetUpdateConsentRequest defines model for SetUpdateConsentRequest.
+type SetUpdateConsentRequest struct {
+	// Enabled True turns the daily release check on; false turns it off.
+	Enabled bool `json:"enabled"`
+}
+
 // Severity Normalized severity scale (`unknown` when a scanner gave no usable level).
 type Severity string
 
@@ -772,6 +799,35 @@ type TypeTotals struct {
 	Sast          int `json:"sast"`
 	Secret        int `json:"secret"`
 	Vulnerability int `json:"vulnerability"`
+}
+
+// UpdateConsent The user's answer to the release-check question. `unset` and `off` both
+// mean no network request; only `on` allows the daily check.
+type UpdateConsent string
+
+// UpdateStatus The release check as the UI and the CLI see it. Optional fields are
+// absent when there is no successful check or no newer release.
+type UpdateStatus struct {
+	// Command Command that updates this installation (Homebrew or the install.sh
+	// one-liner). Absent on Windows and when no update is available.
+	Command *string `json:"command,omitempty"`
+
+	// Consent The user's answer to the release-check question. `unset` and `off` both
+	// mean no network request; only `on` allows the daily check.
+	Consent UpdateConsent `json:"consent"`
+
+	// Current Version of the running binary (`dev` for local builds).
+	Current string `json:"current"`
+
+	// Latest Newest release tag from the cached check. Absent before the first
+	// successful check.
+	Latest *string `json:"latest,omitempty"`
+
+	// ReleaseUrl Release-notes page for `latest`; absent when no update is available.
+	ReleaseUrl *string `json:"release_url,omitempty"`
+
+	// UpdateAvailable True when `latest` is a newer semver than `current`.
+	UpdateAvailable bool `json:"update_available"`
 }
 
 // AssetID defines model for AssetID.
@@ -859,6 +915,9 @@ type SetFindingStateJSONRequestBody = SetFindingStateRequest
 
 // CreateScansJSONRequestBody defines body for CreateScans for application/json ContentType.
 type CreateScansJSONRequestBody = CreateScansRequest
+
+// SetUpdateConsentJSONRequestBody defines body for SetUpdateConsent for application/json ContentType.
+type SetUpdateConsentJSONRequestBody = SetUpdateConsentRequest
 
 // Getter for additional properties for Problem. Returns the specified
 // element and whether it was found
@@ -1038,6 +1097,12 @@ type ServerInterface interface {
 	// ListScanFindings Findings of one scan.
 	// (GET /api/scans/{id}/findings)
 	ListScanFindings(w http.ResponseWriter, r *http.Request, id ScanID, params ListScanFindingsParams)
+	// GetUpdateStatus Report the release check state.
+	// (GET /api/update)
+	GetUpdateStatus(w http.ResponseWriter, r *http.Request)
+	// SetUpdateConsent Store the release-check choice.
+	// (PUT /api/update/consent)
+	SetUpdateConsent(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1557,6 +1622,34 @@ func (siw *ServerInterfaceWrapper) ListScanFindings(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetUpdateStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetUpdateStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUpdateStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetUpdateConsent operation middleware
+func (siw *ServerInterfaceWrapper) SetUpdateConsent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetUpdateConsent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1678,6 +1771,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/update", wrapper.GetUpdateStatus)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/update/consent", wrapper.SetUpdateConsent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections", wrapper.ListConnections)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections", wrapper.CreateConnection)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/connections/{id}", wrapper.DeleteConnection)
@@ -4229,6 +4324,255 @@ func (response ListScanFindings500ApplicationProblemPlusJSONResponse) VisitListS
 	return err
 }
 
+type GetUpdateStatusRequestObject struct {
+}
+
+type GetUpdateStatusResponseObject interface {
+	VisitGetUpdateStatusResponse(w http.ResponseWriter) error
+}
+
+type GetUpdateStatus200JSONResponse UpdateStatus
+
+func (response GetUpdateStatus200JSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpdateStatus401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetUpdateStatus401ApplicationProblemPlusJSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpdateStatus403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetUpdateStatus403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetUpdateStatus403ResponseHeaders
+}
+
+func (response GetUpdateStatus403ApplicationProblemPlusJSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpdateStatus421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetUpdateStatus421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetUpdateStatus421ResponseHeaders
+}
+
+func (response GetUpdateStatus421ApplicationProblemPlusJSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpdateStatus500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetUpdateStatus500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetUpdateStatus500ResponseHeaders
+}
+
+func (response GetUpdateStatus500ApplicationProblemPlusJSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUpdateConsentRequestObject struct {
+	Body *SetUpdateConsentJSONRequestBody
+}
+
+type SetUpdateConsentResponseObject interface {
+	VisitSetUpdateConsentResponse(w http.ResponseWriter) error
+}
+
+type SetUpdateConsent200JSONResponse UpdateStatus
+
+func (response SetUpdateConsent200JSONResponse) VisitSetUpdateConsentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUpdateConsent400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetUpdateConsent400ApplicationProblemPlusJSONResponse) VisitSetUpdateConsentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUpdateConsent401ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetUpdateConsent401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetUpdateConsent401ResponseHeaders
+}
+
+func (response SetUpdateConsent401ApplicationProblemPlusJSONResponse) VisitSetUpdateConsentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUpdateConsent403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetUpdateConsent403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetUpdateConsent403ResponseHeaders
+}
+
+func (response SetUpdateConsent403ApplicationProblemPlusJSONResponse) VisitSetUpdateConsentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUpdateConsent421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetUpdateConsent421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetUpdateConsent421ResponseHeaders
+}
+
+func (response SetUpdateConsent421ApplicationProblemPlusJSONResponse) VisitSetUpdateConsentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUpdateConsent500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetUpdateConsent500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetUpdateConsent500ResponseHeaders
+}
+
+func (response SetUpdateConsent500ApplicationProblemPlusJSONResponse) VisitSetUpdateConsentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ListAssets List tracked assets.
@@ -4285,6 +4629,12 @@ type StrictServerInterface interface {
 	// ListScanFindings Findings of one scan.
 	// (GET /api/scans/{id}/findings)
 	ListScanFindings(ctx context.Context, request ListScanFindingsRequestObject) (ListScanFindingsResponseObject, error)
+	// GetUpdateStatus Report the release check state.
+	// (GET /api/update)
+	GetUpdateStatus(ctx context.Context, request GetUpdateStatusRequestObject) (GetUpdateStatusResponseObject, error)
+	// SetUpdateConsent Store the release-check choice.
+	// (PUT /api/update/consent)
+	SetUpdateConsent(ctx context.Context, request SetUpdateConsentRequestObject) (SetUpdateConsentResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -4803,6 +5153,61 @@ func (sh *strictHandler) ListScanFindings(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListScanFindingsResponseObject); ok {
 		if err := validResponse.VisitListScanFindingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUpdateStatus operation middleware
+func (sh *strictHandler) GetUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetUpdateStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUpdateStatus(ctx, request.(GetUpdateStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUpdateStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUpdateStatusResponseObject); ok {
+		if err := validResponse.VisitGetUpdateStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetUpdateConsent operation middleware
+func (sh *strictHandler) SetUpdateConsent(w http.ResponseWriter, r *http.Request) {
+	var request SetUpdateConsentRequestObject
+
+	var body SetUpdateConsentJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetUpdateConsent(ctx, request.(SetUpdateConsentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetUpdateConsent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetUpdateConsentResponseObject); ok {
+		if err := validResponse.VisitSetUpdateConsentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
