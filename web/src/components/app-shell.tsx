@@ -1,9 +1,10 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { HealthChip } from './health-chip'
-import { Logo } from './icons'
+import { Logo, MoonIcon, SunIcon } from './icons'
 import { navItemFor, navItems } from '../lib/nav'
+import { applyTheme, currentTheme, type Theme } from '../lib/theme'
 import { cn } from '../lib/utils'
 
 /**
@@ -16,7 +17,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-bg text-fg">
-      <aside className="flex w-[232px] shrink-0 flex-col gap-[18px] border-r border-border-subtle bg-sidebar px-3 py-4">
+      <aside className="sticky top-0 flex h-screen w-[232px] shrink-0 flex-col gap-[18px] overflow-y-auto border-r border-border-subtle bg-sidebar px-3 py-4">
         <div className="flex items-center gap-2.5 px-2 py-1">
           <span className="flex size-6 items-center justify-center rounded-md bg-accent">
             <Logo className="stroke-accent-fg" />
@@ -58,7 +59,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <HealthChip />
+        <HealthChip action={<ThemeToggle />} />
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
@@ -69,6 +70,28 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="flex flex-col gap-4 px-7 py-6">{children}</div>
       </main>
     </div>
+  )
+}
+
+/** ThemeToggle flips between light and dark and remembers the choice. */
+function ThemeToggle() {
+  const [theme, setTheme] = useState<Theme>(currentTheme)
+  const next: Theme = theme === 'dark' ? 'light' : 'dark'
+  const label = `Switch to ${next} theme`
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        applyTheme(next)
+        setTheme(next)
+      }}
+      className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
+    >
+      {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+    </button>
   )
 }
 

@@ -3,8 +3,12 @@ import { RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
+import { applyTheme, storedTheme } from './lib/theme'
 import { router } from './router'
 import './styles.css'
+
+// The CSP forbids inline scripts, so a pinned theme is applied here, before the first render.
+applyTheme(storedTheme())
 
 const queryClient = new QueryClient({
   defaultOptions: {
