@@ -555,8 +555,12 @@ function DiscoverRepos({ connections }: { connections: Connection[] }) {
     })
   }
 
-  async function addChosen() {
-    if (chosen.length === 0) {
+  // Discovery lists only the token owner's repos; a public repo of someone
+  // else is added by typing its full name.
+  const typedName = /^[\w.-]+\/[\w.-]+$/.test(search.trim()) ? search.trim() : ''
+
+  async function addChosen(names = chosen.map((repo) => repo.full_name)) {
+    if (names.length === 0) {
       return
     }
     setAdding(true)
@@ -566,16 +570,16 @@ function DiscoverRepos({ connections }: { connections: Connection[] }) {
 
     // One request per repo keeps the per-repo error visible, which a single
     // bulk call could not do (§7).
-    for (const repo of chosen) {
+    for (const fullName of names) {
       try {
         await create.mutateAsync({
           kind: 'repo',
-          ref: repo.full_name,
+          ref: fullName,
           connection_id: connection.id,
         })
-        added.push(repo.full_name)
+        added.push(fullName)
       } catch (error) {
-        errors.push({ ref: repo.full_name, ...addErrorNote(error) })
+        errors.push({ ref: fullName, ...addErrorNote(error) })
       }
     }
 
@@ -620,7 +624,7 @@ function DiscoverRepos({ connections }: { connections: Connection[] }) {
 
         <div className="flex min-w-64 flex-1 flex-col gap-1">
           <label htmlFor="discover-search" className="text-xs font-medium text-muted">
-            Search repositories
+            Search, or type any owner/repo
           </label>
           <input
             id="discover-search"
@@ -641,6 +645,17 @@ function DiscoverRepos({ connections }: { connections: Connection[] }) {
         >
           {adding ? 'Adding…' : `Add ${String(chosen.length)}`}
         </Button>
+
+        {typedName && !repos.some((repo) => repo.full_name === typedName) ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void addChosen([typedName])}
+            disabled={adding}
+          >
+            Add {typedName}
+          </Button>
+        ) : null}
       </div>
 
       {!requested ? (

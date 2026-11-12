@@ -95,7 +95,8 @@ export function DashboardPage() {
     data.totals_by_severity.critical +
     data.totals_by_severity.high +
     data.totals_by_severity.medium +
-    data.totals_by_severity.low
+    data.totals_by_severity.low +
+    data.totals_by_severity.unknown
 
   return (
     <>

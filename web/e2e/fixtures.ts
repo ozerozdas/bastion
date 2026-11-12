@@ -22,7 +22,7 @@ const binary = resolve(dirname(fileURLToPath(import.meta.url)), '../../bin/basti
  * startServer runs `bastion serve` on a free port with throwaway state. The URL
  * line goes to stderr, so both streams are scanned.
  */
-async function startServer(
+export async function startServer(
   dataDir: string,
   cacheDir: string,
 ): Promise<{ child: ChildProcess; url: string }> {
@@ -88,7 +88,7 @@ async function startServer(
 }
 
 /** stopServer asks for a clean shutdown, then escalates if it hangs. */
-function stopServer(child: ChildProcess): Promise<void> {
+export function stopServer(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) {
     return Promise.resolve()
   }
