@@ -92,6 +92,40 @@ test('renders all five nav pages without browser errors', async ({
   expect(problems).toEqual([])
 })
 
+test('normalizes a stale project id in the reports URL', async ({
+  page,
+  server,
+}) => {
+  const problems = watch(page)
+  await openSession(page, server)
+
+  // One project: the page has something to fall back to when the id is gone.
+  await page.getByRole('link', { name: 'Projects', exact: true }).click()
+  await page.getByLabel('Or add a local path').fill(server.projectDir)
+  await page.getByRole('button', { name: 'Add path' }).click()
+
+  const name = basename(server.projectDir)
+  const reportLink = page
+    .getByRole('row', { name: new RegExp(name) })
+    .getByRole('link', { name: 'View report' })
+  await expect(reportLink).toBeVisible()
+
+  const origin = new URL(page.url()).origin
+  const href = await reportLink.getAttribute('href')
+  const assetId = new URL(href ?? '', origin).searchParams.get('asset')
+  if (assetId === null) {
+    throw new Error(`View report link has no ?asset= id: ${href ?? ''}`)
+  }
+
+  // A removed project id used to stay in the address bar while another project
+  // was shown; the page rewrites it to the one on screen.
+  await page.goto(`${origin}/security-reports?asset=999`)
+  await expect(page).toHaveURL(`${origin}/security-reports?asset=${assetId}`)
+  await expect(page.locator('#reports-asset')).toHaveValue(assetId)
+
+  expect(problems).toEqual([])
+})
+
 test('adds a local path project through the UI', async ({ page, server }) => {
   const problems = watch(page)
   await openSession(page, server)

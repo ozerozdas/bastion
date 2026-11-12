@@ -87,6 +87,19 @@ export function ReportsPage() {
   // The URL wins; otherwise the first project keeps the page useful on arrival.
   const selected = assetList.find((asset) => asset.id === search.asset) ?? assetList[0]
 
+  // A removed project id must not stay in the URL: once the list has loaded,
+  // point the URL at the project actually shown, as the select does.
+  const selectedId = selected?.id
+  useEffect(() => {
+    if (search.asset === undefined || selectedId === undefined) return
+    if (search.asset === selectedId) return
+    void navigate({
+      to: '/security-reports',
+      search: { asset: selectedId },
+      replace: true,
+    })
+  }, [navigate, search.asset, selectedId])
+
   const findings = useQuery({
     ...latestFindingsQuery({
       assetId: selected?.id,
