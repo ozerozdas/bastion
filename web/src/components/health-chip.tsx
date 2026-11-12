@@ -20,19 +20,17 @@ export function HealthChip({ action }: { action?: ReactNode }) {
     ? 'API unreachable'
     : isPending
       ? 'Local · connecting…'
-      : `Local · v${data?.version ?? 'unknown'}`
+      : // Release builds already report "v0.1.0"; only prefix bare versions.
+        `Local · ${data?.version ? data.version.replace(/^v?/, 'v') : 'unknown'}`
 
   return (
     <div className="mt-auto flex items-center gap-2 rounded-lg border border-border-subtle py-2.5 pr-2 pl-3">
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn('size-1.5 rounded-full', dot)}
-            title={isError ? 'The local API is not answering' : 'Connected'}
-          />
-          <span className="font-mono text-[11px] text-muted">{label}</span>
-        </div>
-        <div className="text-[11px] text-faint">Nothing leaves your machine</div>
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          className={cn('size-1.5 shrink-0 rounded-full', dot)}
+          title={isError ? 'The local API is not answering' : 'Connected'}
+        />
+        <span className="font-mono text-[11px] text-muted">{label}</span>
       </div>
       {action ? <div className="ml-auto shrink-0">{action}</div> : null}
     </div>
