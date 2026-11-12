@@ -5,7 +5,8 @@ account; it does not trust the network or the code it scans.
 
 ## Network calls
 
-Nothing else is called. No telemetry, no update check, no analytics.
+Nothing else is called. No telemetry, no analytics, and no update check unless you turn
+it on.
 
 | Destination | When | Why |
 |---|---|---|
@@ -14,9 +15,12 @@ Nothing else is called. No telemetry, no update check, no analytics.
 | `mirror.gcr.io/aquasec/trivy-checks:2` | Misconfiguration scanning | IaC checks bundle (~2.6 MB) |
 | `api.github.com` | **Only on your action**: test connection, list repos, add, scan | Identity, repo list, commit SHA, tarball |
 | `codeload.github.com` | Redirect of the tarball call | The repository archive |
+| `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed |
 
-GitHub is never contacted in the background, and request URLs are never logged
-(private-repo redirects carry a short-lived token).
+GitHub is contacted in the background only by the daily release check; every scan,
+discovery and download call happens on your action. Request URLs are never logged
+(private-repo redirects carry a short-lived token). The release check is disabled by
+`BASTION_NO_UPDATE_CHECK=1`, in CI, and in `dev` builds, whatever the stored choice.
 
 ## The local server
 

@@ -29,6 +29,11 @@ servers:
 tags:
   - name: system
     description: Process and API liveness.
+  - name: update
+    description: |
+      The opt-in release check (ADR-006). Consent, not the database, decides
+      whether bastion may contact github.com; `unset` and `off` send nothing.
+      `GET /api/update` never blocks on the network.
   - name: connections
     description: |
       Credentialed integrations used to discover and fetch sources. Tokens live
@@ -68,6 +73,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/update:
+    get:
+      operationId: getUpdateStatus
+      summary: Report the release check state.
+      description: |
+        Returns the running version, the stored consent and the cached check
+        result. With consent `unset` or `off` no request is made. With consent
+        `on`, a cached result older than 24 hours is refreshed in the
+        background; this response carries the cached values immediately.
+      tags: [update]
+      responses:
+        "200":
+          description: The current release check state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateStatus"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/update/consent:
+    put:
+      operationId: setUpdateConsent
+      summary: Store the release-check choice.
+      description: |
+        Only the UI calls this. `enabled: false` stops every future request;
+        the choice lives in a small file in the data directory, so no database
+        migration is involved. The response is the updated status.
+      tags: [update]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetUpdateConsentRequest"
+      responses:
+        "200":
+          description: The choice was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateStatus"
+        "400":
+          $ref: "#/components/responses/Problem"
         "401":
           $ref: "#/components/responses/Problem"
         "403":
@@ -808,6 +870,59 @@ components:
             Build version of the running binary (`dev` for local builds,
             otherwise the release tag).
           examples: ["0.1.0"]
+    UpdateConsent:
+      type: string
+      title: UpdateConsent
+      description: |
+        The user's answer to the release-check question. `unset` and `off` both
+        mean no network request; only `on` allows the daily check.
+      enum: [unset, on, off]
+    UpdateStatus:
+      type: object
+      title: UpdateStatus
+      description: |
+        The release check as the UI and the CLI see it. Optional fields are
+        absent when there is no successful check or no newer release.
+      additionalProperties: false
+      required: [current, update_available, consent, disabled]
+      properties:
+        current:
+          type: string
+          description: Version of the running binary (`dev` for local builds).
+        disabled:
+          type: boolean
+          description: |
+            True when no check can run whatever the consent says
+            (`BASTION_NO_UPDATE_CHECK`, a CI environment or a `dev` build). The
+            UI then does not ask.
+        latest:
+          type: string
+          description: |
+            Newest release tag from the cached check. Absent before the first
+            successful check.
+        update_available:
+          type: boolean
+          description: True when `latest` is a newer semver than `current`.
+        consent:
+          $ref: "#/components/schemas/UpdateConsent"
+        command:
+          type: string
+          description: |
+            Command that updates this installation (Homebrew or the install.sh
+            one-liner). Absent on Windows and when no update is available.
+        release_url:
+          type: string
+          format: uri
+          description: Release-notes page for `latest`; absent when no update is available.
+    SetUpdateConsentRequest:
+      type: object
+      title: SetUpdateConsentRequest
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: True turns the daily release check on; false turns it off.
     ConnectionList:
       type: object
       title: ConnectionList

@@ -44,6 +44,9 @@ export async function startServer(
         // serve needs a local HMAC key; CI and this test are headless, so the
         // environment key replaces the OS keychain.
         BASTION_HMAC_KEY: randomBytes(32).toString('base64'),
+        // The release check must never reach github.com from a test run, even
+        // after the UI turns consent on.
+        BASTION_NO_UPDATE_CHECK: '1',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },

@@ -27,6 +27,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
+	"github.com/ozerozdas/bastion/internal/update"
 )
 
 // fakeGitHub stands in for internal/connections/github. Handler tests never
@@ -120,6 +121,14 @@ func newTestServer(t *testing.T) *testServer {
 // GitHub. A nil fake gets one whose User succeeds as "octocat".
 func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 	t.Helper()
+	return newTestServerWithUpdate(t, fake, nil)
+}
+
+// newTestServerWithUpdate is newTestServerWithGitHub with a caller-controlled
+// release checker. A nil checker gets unset consent and throwaway directories,
+// so no test accidentally reads or writes the user's data.
+func newTestServerWithUpdate(t *testing.T, fake *fakeGitHub, checker *update.Checker) *testServer {
+	t.Helper()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -173,6 +182,14 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 	}
 
 	logs := &syncBuffer{}
+	if checker == nil {
+		checker = update.New(update.Config{
+			CurrentVersion: "test-version",
+			DataDir:        t.TempDir(),
+			CacheDir:       t.TempDir(),
+			Getenv:         func(string) string { return "" },
+		})
+	}
 	srv, err := New(Config{
 		Version:     "test-version",
 		Port:        port,
@@ -181,6 +198,7 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 		Reports:     reportService,
 		Assets:      assetService,
 		Events:      bus,
+		Update:      checker,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

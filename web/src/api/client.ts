@@ -77,5 +77,12 @@ export const api = {
         ? { method: 'POST' }
         : { method: 'POST', body: JSON.stringify(body) },
     ),
+  put: <T>(path: string, body?: unknown): Promise<T> =>
+    request<T>(
+      path,
+      body === undefined
+        ? { method: 'PUT' }
+        : { method: 'PUT', body: JSON.stringify(body) },
+    ),
   remove: <T>(path: string): Promise<T> => request<T>(path, { method: 'DELETE' }),
 }
