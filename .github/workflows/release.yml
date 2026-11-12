@@ -13,6 +13,8 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
+      # Six Trivy-sized builds in one job overflow the runner's ~14 GB disk.
+      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
       - uses: actions/checkout@v7
         with:
           # The changelog is built from the full git history.

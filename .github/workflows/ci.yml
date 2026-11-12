@@ -93,6 +93,8 @@ jobs:
         goos: [darwin, linux, windows]
         goarch: [amd64, arm64]
     steps:
+      # Trivy's dependency tree fills the runner's ~14 GB at link time.
+      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
