@@ -289,18 +289,22 @@ Goal: **retire the biggest technical risk** (Trivy + Gitleaks as libraries insid
 
 **Exit:** 5-minute first report on a fresh machine; golden tests for both normalizers; self-scan in CI.
 
-### Phase 2 — Containers & diff (v0.2)
-- AWS connection (profile/SSO via default credential chain; identity via STS)
-- ECR discovery (repositories, recent tags with digests), image scan via go-containerregistry → Trivy image scan
-- Local Docker image scan (optional, if daemon present)
+### Phase 2a — Diff & OSV (v0.2)
 - Scan diff UI and API
-- Repo ↔ image links: manual first; then auto from OCI labels (`org.opencontainers.image.source`, `org.opencontainers.image.revision`)
 - SBOM export (CycloneDX JSON) per scan
 - OSV-Scanner adapter (library): malicious-package detection (`MAL-` advisories → `malware` findings, severity critical) and vulnerability cross-check; dedup with Trivy by (ecosystem, package, advisory alias set)
 
-**Exit:** used for real at work on actual ECR images; diff verified on two real scans.
+**Exit:** diff verified on two real scans.
 
-### Phase 3 — Actionable output (v0.3)
+### Phase 2b — Containers & links (v0.3)
+- AWS connection (profile/SSO via default credential chain; identity via STS)
+- ECR discovery (repositories, recent tags with digests), image scan via go-containerregistry → Trivy image scan
+- Local Docker image scan (optional, if daemon present)
+- Repo ↔ image links: manual first; then auto from OCI labels (`org.opencontainers.image.source`, `org.opencontainers.image.revision`)
+
+**Exit:** used for real at work on actual ECR images.
+
+### Phase 3 — Actionable output (v0.4)
 - Fix plan: group vulnerability findings by (package, minimal fixed version) → "upgrade X to Y closes N (C critical, H high)"
 - Prioritization score: severity × fix available × EPSS (FIRST.org feed, cached, opt-in download) × "in latest image tag"
 - **Outdated packages** (opt-in, clearly labeled as an outbound call): latest-version lookup via deps.dev or ecosystem registries. Only package names/versions are sent. Off by default.
@@ -309,7 +313,7 @@ Goal: **retire the biggest technical risk** (Trivy + Gitleaks as libraries insid
 - SAST as opt-in module (ADR-002): pinned Opengrep binary downloaded on demand, checksum-verified, output normalized to `sast` findings
 - License policy: allow/deny lists, global or per asset
 
-### Phase 4 — AI & automation (v0.4)
+### Phase 4 — AI & automation (v0.5)
 - MCP server (`bastion mcp` stdio + optional HTTP): tools `list_assets`, `list_findings`, `get_fix_plan`, `diff_scans`, `trigger_scan`
 - Open dependency-upgrade PRs on GitHub from a fix plan (user confirms each PR)
 - Notifications: Slack webhook, email (SMTP) on new critical/high
@@ -357,7 +361,7 @@ Goal: **retire the biggest technical risk** (Trivy + Gitleaks as libraries insid
 | Keyring unavailable (headless Linux) | Detect in `bastion doctor`; fallback to env vars (`BASTION_GITHUB_TOKEN`), never to plaintext file |
 | False positives erode trust | Ignore with reason, persisted by fingerprint; show scanner + rule for every finding |
 | Local-first means no monitoring when closed | Documented as trade-off; CI integration (Phase 4) and server mode (Phase 5) cover it |
-| Scope creep | Phase exit criteria are hard gates; new ideas go to `.pm/backlog.md`, not into current phase |
+| Scope creep | Phase exit criteria are hard gates; new ideas go to GitHub issues (no milestone, or `needs-discussion`), not into current phase |
 
 ---
 
@@ -367,7 +371,7 @@ Goal: **retire the biggest technical risk** (Trivy + Gitleaks as libraries insid
 ```
 .pm/
   BOARD.md            index of all tasks: id | title | phase | status | owner_role | depends_on
-  backlog.md          unscheduled ideas (one line each)
+  backlog.md          pointer: unscheduled ideas live in GitHub issues
   phases/
     P0.md … P5.md     phase goal, exit criteria, task list (ids)
   tasks/

@@ -1,6 +1,8 @@
 version: 2
-# ponytail: one grouped PR per ecosystem per week; Trivy's dependency tree would
-# otherwise open dozens. Split groups if a single PR becomes hard to review.
+# ponytail: one grouped PR per ecosystem per week for minor and patch; Trivy's
+# dependency tree would otherwise open dozens. Majors come as their own PRs so
+# one breaking bump does not block the whole group. Split groups if a single PR
+# becomes hard to review.
 updates:
   - package-ecosystem: gomod
     directories: ["/", "/tools"]
@@ -9,6 +11,7 @@ updates:
     groups:
       go:
         patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directory: /web
     schedule:
@@ -16,6 +19,12 @@ updates:
     groups:
       npm:
         patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # openapi-typescript 7.x peers on typescript ^5; drop this once it accepts
+      # a newer major (see the closed PR #9).
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -23,3 +32,4 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+        update-types: [minor, patch]

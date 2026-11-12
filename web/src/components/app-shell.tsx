@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react'
 
 import { HealthChip } from './health-chip'
 import { Logo, MoonIcon, SunIcon } from './icons'
+import { UpdateNotice } from './update-notice'
 import { navItemFor, navItems } from '../lib/nav'
 import { applyTheme, currentTheme, type Theme } from '../lib/theme'
 import { cn } from '../lib/utils'
@@ -59,7 +60,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <HealthChip action={<ThemeToggle />} />
+        <div className="mt-auto flex flex-col gap-2">
+          <UpdateNotice />
+          <HealthChip action={<ThemeToggle />} />
+        </div>
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">

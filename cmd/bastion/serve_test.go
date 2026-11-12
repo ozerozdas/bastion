@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"regexp"
@@ -16,6 +17,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/httpapi"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
+	"github.com/ozerozdas/bastion/internal/update"
 )
 
 // TestServeIsTheDefaultCommand: plain `bastion` must start the server, and
@@ -144,6 +146,14 @@ func TestRunServeBrowserHandling(t *testing.T) {
 				newServer:      httpapi.New,
 				openDB:         store.Open,
 				newSecretStore: func() secrets.Store { return secrets.NewMemoryStore() },
+				newUpdateChecker: func(paths app.Paths) *update.Checker {
+					return update.New(update.Config{
+						CurrentVersion: "v0.1.0",
+						DataDir:        paths.DataDir,
+						CacheDir:       paths.CacheDir,
+						Getenv:         func(string) string { return "" },
+					})
+				},
 			}
 
 			cmd := &cobra.Command{}
@@ -167,6 +177,65 @@ func TestRunServeBrowserHandling(t *testing.T) {
 				if tc.wantOpenCall {
 					t.Fatal("browser was not opened")
 				}
+			}
+		})
+	}
+}
+
+// TestRunServeRejectsOutOfRangePort: --port outside the TCP range is rejected
+// before the listener is bound, so the error names the flag instead of the
+// confusing "listen on 127.0.0.1:-1" (#63).
+func TestRunServeRejectsOutOfRangePort(t *testing.T) {
+	const wantMessage = "--port must be 0-65535 (0 picks a free port)"
+
+	cases := []struct {
+		name    string
+		port    int
+		wantErr bool
+	}{
+		{name: "negative", port: -1, wantErr: true},
+		{name: "above the range", port: 70000, wantErr: true},
+		{name: "free port", port: 0},
+		{name: "last valid port", port: 65535},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// The stub listener stops runServe right after validation, so the
+			// test never binds a port; reaching it at all is the signal that a
+			// valid port passed the check.
+			listened := false
+			deps := serveDeps{
+				listen: func(int) (net.Listener, error) {
+					listened = true
+					return nil, errors.New("listen stub reached")
+				},
+			}
+
+			cmd := &cobra.Command{}
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+
+			err := runServe(cmd, &serveOptions{port: tc.port}, deps)
+
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("runServe accepted an out-of-range port")
+				}
+				if err.Error() != wantMessage {
+					t.Errorf("error = %q, want %q", err, wantMessage)
+				}
+				if listened {
+					t.Error("runServe bound a listener for an out-of-range port")
+				}
+				return
+			}
+
+			if !listened {
+				t.Fatalf("runServe rejected port %d: %v", tc.port, err)
+			}
+			if err == nil || !strings.Contains(err.Error(), "start server") {
+				t.Errorf("error = %v, want the stub listener failure", err)
 			}
 		})
 	}

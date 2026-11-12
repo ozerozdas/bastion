@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"runtime"
 	"text/tabwriter"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
+	"github.com/ozerozdas/bastion/internal/update"
 )
 
 // doctorDeps is everything `bastion doctor` inspects. It is a struct of
@@ -40,23 +43,29 @@ type doctorDeps struct {
 	keyringAvailable func() error
 	secretStore      secrets.Store
 	getenv           func(string) string
+
+	// updateStatus is a read-only snapshot of the release check; doctor never
+	// waits for the network.
+	updateStatus func() update.Status
 }
 
 // doctorReport is the printed result. No field holds a credential: the HMAC key
 // is reported only as a source, never as a value (PROJECT_SPEC.md §4.3).
 type doctorReport struct {
-	BastionVersion  string         `json:"bastion_version"`
-	GoVersion       string         `json:"go_version"`
-	OS              string         `json:"os"`
-	Arch            string         `json:"arch"`
-	DataDir         string         `json:"data_dir"`
-	CacheDir        string         `json:"cache_dir"`
-	Database        doctorDatabase `json:"database"`
-	TrivyVersion    string         `json:"trivy_version"`
-	GitleaksVersion string         `json:"gitleaks_version"`
-	Keyring         doctorStatus   `json:"keyring"`
-	HMACKey         doctorStatus   `json:"hmac_key"`
-	Warnings        []string       `json:"warnings,omitempty"`
+	BastionVersion  string           `json:"bastion_version"`
+	GoVersion       string           `json:"go_version"`
+	OS              string           `json:"os"`
+	Arch            string           `json:"arch"`
+	DataDir         string           `json:"data_dir"`
+	CacheDir        string           `json:"cache_dir"`
+	Database        doctorDatabase   `json:"database"`
+	TrivyVersion    string           `json:"trivy_version"`
+	TrivyCache      doctorTrivyCache `json:"trivy_cache"`
+	GitleaksVersion string           `json:"gitleaks_version"`
+	Keyring         doctorStatus     `json:"keyring"`
+	HMACKey         doctorStatus     `json:"hmac_key"`
+	Update          doctorUpdate     `json:"update"`
+	Warnings        []string         `json:"warnings,omitempty"`
 }
 
 // doctorDatabase reports the SQLite file and its schema version.
@@ -65,6 +74,15 @@ type doctorDatabase struct {
 	Status        string `json:"status"` // "ok" or "error"
 	SchemaVersion int64  `json:"schema_version"`
 	Error         string `json:"error,omitempty"`
+}
+
+// doctorTrivyCache reports the cache that holds the Trivy vulnerability DB.
+// Absent is normal on a fresh install: the first scan downloads it.
+type doctorTrivyCache struct {
+	Path    string `json:"path"`
+	Present bool   `json:"present"`
+	Size    int64  `json:"size_bytes"`
+	Error   string `json:"error,omitempty"`
 }
 
 // doctorStatus is a one-line state plus a short non-secret explanation.
@@ -121,6 +139,7 @@ func newDoctorDeps(opts *rootOptions) doctorDeps {
 		keyringAvailable: secrets.Available,
 		secretStore:      secrets.NewStore(),
 		getenv:           os.Getenv,
+		updateStatus:     newUpdateChecker(opts.paths).Snapshot,
 	}
 }
 
@@ -152,6 +171,21 @@ func runDoctor(ctx context.Context, deps doctorDeps) (doctorReport, error) {
 	if report.HMACKey.Status == "error" {
 		report.Warnings = append(report.Warnings,
 			"local HMAC key unavailable: "+report.HMACKey.Detail)
+	}
+
+	report.TrivyCache = readTrivyCache(deps.paths.TrivyCacheDir())
+	switch {
+	case report.TrivyCache.Error != "":
+		report.Warnings = append(report.Warnings,
+			"could not read the trivy cache: "+report.TrivyCache.Error)
+	case !report.TrivyCache.Present:
+		report.Warnings = append(report.Warnings,
+			"no trivy cache yet: first scan will download the vulnerability DB")
+	}
+
+	report.Update = doctorUpdate{State: string(update.ConsentUnset)}
+	if deps.updateStatus != nil {
+		report.Update = doctorUpdateFromStatus(deps.updateStatus())
 	}
 
 	database, err := deps.openDB(ctx, deps.paths.DBPath())
@@ -199,6 +233,54 @@ func hmacKeySource(deps doctorDeps) doctorStatus {
 	}
 }
 
+// readTrivyCache measures the Trivy cache directory. A missing directory means
+// no scan has run yet; the caller turns that into a warning.
+func readTrivyCache(dir string) doctorTrivyCache {
+	cache := doctorTrivyCache{Path: dir}
+
+	info, err := os.Stat(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return cache
+	}
+	if err != nil {
+		cache.Error = err.Error()
+		return cache
+	}
+	if !info.IsDir() {
+		cache.Error = "not a directory"
+		return cache
+	}
+	cache.Present = true
+
+	// WalkDir does not descend a symlinked root, so walk its target. Symlinks
+	// inside the cache are not followed and do not count.
+	root, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		cache.Error = err.Error()
+		return cache
+	}
+	err = filepath.WalkDir(root, func(_ string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.Type().IsRegular() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		cache.Size += info.Size()
+		return nil
+	})
+	if err != nil {
+		// A partial total would read as the real size in --json.
+		cache.Size = 0
+		cache.Error = err.Error()
+	}
+	return cache
+}
+
 // writeDoctorText prints an aligned key/value report followed by warnings.
 func writeDoctorText(w io.Writer, report doctorReport) error {
 	rows := [][2]string{
@@ -209,9 +291,11 @@ func writeDoctorText(w io.Writer, report doctorReport) error {
 		{"database", report.Database.Path},
 		{"db status", report.Database.summary()},
 		{"trivy", report.TrivyVersion},
+		{"trivy cache", report.TrivyCache.summary()},
 		{"gitleaks", report.GitleaksVersion},
 		{"keyring", report.Keyring.summary()},
 		{"hmac key", report.HMACKey.summary()},
+		{"update", report.Update.summary()},
 	}
 
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -254,6 +338,34 @@ func (d doctorDatabase) summary() string {
 		return fmt.Sprintf("ok (schema version %d)", d.SchemaVersion)
 	}
 	return "error: " + d.Error
+}
+
+// summary renders the cache state as one line.
+func (c doctorTrivyCache) summary() string {
+	switch {
+	case c.Error != "":
+		return "error: " + c.Error
+	case !c.Present:
+		return "missing"
+	default:
+		return c.Path + " (" + cacheSize(c.Size) + ")"
+	}
+}
+
+// cacheSize formats a byte total for the report. The GitHub clients print exact
+// MiB budgets; a cache directory is rarely a round number, so this scales to the
+// largest unit and keeps one decimal.
+func cacheSize(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d bytes", n)
+	}
 }
 
 // summary renders a status and its detail, when present.

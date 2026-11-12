@@ -25,6 +25,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the release check state.
+         * @description Returns the running version, the stored consent and the cached check
+         *     result. With consent `unset` or `off` no request is made. With consent
+         *     `on`, a cached result older than 24 hours is refreshed in the
+         *     background; this response carries the cached values immediately.
+         */
+        get: operations["getUpdateStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/update/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Store the release-check choice.
+         * @description Only the UI calls this. `enabled: false` stops every future request;
+         *     the choice lives in a small file in the data directory, so no database
+         *     migration is involved. The response is the updated status.
+         */
+        put: operations["setUpdateConsent"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/connections": {
         parameters: {
             query?: never;
@@ -387,6 +432,51 @@ export interface components {
              * @example 0.1.0
              */
             version: string;
+        };
+        /**
+         * UpdateConsent
+         * @description The user's answer to the release-check question. `unset` and `off` both
+         *     mean no network request; only `on` allows the daily check.
+         * @enum {string}
+         */
+        UpdateConsent: "unset" | "on" | "off";
+        /**
+         * UpdateStatus
+         * @description The release check as the UI and the CLI see it. Optional fields are
+         *     absent when there is no successful check or no newer release.
+         */
+        UpdateStatus: {
+            /** @description Version of the running binary (`dev` for local builds). */
+            current: string;
+            /**
+             * @description True when no check can run whatever the consent says
+             *     (`BASTION_NO_UPDATE_CHECK`, a CI environment or a `dev` build). The
+             *     UI then does not ask.
+             */
+            disabled: boolean;
+            /**
+             * @description Newest release tag from the cached check. Absent before the first
+             *     successful check.
+             */
+            latest?: string;
+            /** @description True when `latest` is a newer semver than `current`. */
+            update_available: boolean;
+            consent: components["schemas"]["UpdateConsent"];
+            /**
+             * @description Command that updates this installation (Homebrew or the install.sh
+             *     one-liner). Absent on Windows and when no update is available.
+             */
+            command?: string;
+            /**
+             * Format: uri
+             * @description Release-notes page for `latest`; absent when no update is available.
+             */
+            release_url?: string;
+        };
+        /** SetUpdateConsentRequest */
+        SetUpdateConsentRequest: {
+            /** @description True turns the daily release check on; false turns it off. */
+            enabled: boolean;
         };
         /**
          * ConnectionList
@@ -938,6 +1028,59 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getUpdateStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current release check state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setUpdateConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetUpdateConsentRequest"];
+            };
+        };
+        responses: {
+            /** @description The choice was stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             421: components["responses"]["Problem"];

@@ -24,6 +24,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
+	"github.com/ozerozdas/bastion/internal/update"
 )
 
 // serveOptions are the flags of `bastion serve`, which is also what plain
@@ -48,6 +49,9 @@ type serveDeps struct {
 	newServer      func(httpapi.Config) (*httpapi.Server, error)
 	openDB         func(ctx context.Context, path string) (*sql.DB, error)
 	newSecretStore func() secrets.Store
+	// newUpdateChecker builds the release checker. Tests inject one with a
+	// stubbed environment, so CI=true in the test process cannot disable it.
+	newUpdateChecker func(app.Paths) *update.Checker
 }
 
 func defaultServeDeps() serveDeps {
@@ -57,9 +61,10 @@ func defaultServeDeps() serveDeps {
 		notifyContext: func(parent context.Context) (context.Context, context.CancelFunc) {
 			return signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 		},
-		newServer:      httpapi.New,
-		openDB:         store.Open,
-		newSecretStore: secrets.NewStore,
+		newServer:        httpapi.New,
+		openDB:           store.Open,
+		newSecretStore:   secrets.NewStore,
+		newUpdateChecker: newUpdateChecker,
 	}
 }
 
@@ -100,6 +105,12 @@ func newServeCmd(root *rootOptions) *cobra.Command {
 // only; it is never passed to slog, whose output may be collected, shipped or
 // pasted into an issue (§4.3).
 func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
+	// A negative or oversized port fails inside net.Listen with a message about
+	// 127.0.0.1:-1; reject it here so the user sees what the flag accepts.
+	if opts.port < 0 || opts.port > 65535 {
+		return errors.New("--port must be 0-65535 (0 picks a free port)")
+	}
+
 	ln, err := deps.listen(opts.port)
 	if err != nil {
 		return fmt.Errorf("start server: %w", err)
@@ -165,6 +176,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		return errors.Join(fmt.Errorf("create assets service: %w", err), ln.Close())
 	}
 
+	updateChecker := deps.newUpdateChecker(opts.paths)
 	srv, err := deps.newServer(httpapi.Config{
 		Version:     version,
 		Port:        port,
@@ -172,6 +184,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		Reports:     reportService,
 		Assets:      assetService,
 		Events:      bus,
+		Update:      updateChecker,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())
@@ -182,6 +195,10 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	// Terminal write errors are not actionable; the server runs either way.
 	_, _ = fmt.Fprintf(out, "bastion %s is running at %s\n", version, url)
 	_, _ = fmt.Fprintln(out, "press Ctrl+C to stop")
+	// The notice goes to stderr too, never stdout: `bastion scan` and its
+	// machine-readable output stay untouched. Status() never waits for the
+	// network, so startup is not delayed by the check.
+	writeUpdateNotice(out, updateChecker.Status())
 
 	if !opts.noBrowser {
 		// Opening the browser must not block startup: a failure (headless box,

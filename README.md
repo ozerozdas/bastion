@@ -13,11 +13,11 @@ Nothing leaves the machine except the calls listed under [Network calls](#networ
 
 ## Status
 
-**v0.1 in progress (Phase 1 — core MVP).** Working today: GitHub PAT connection (token in
+**v0.1 released (Phase 1 — core MVP).** Working today: GitHub PAT connection (token in
 the OS keyring), repo discovery and tarball fetch, scan jobs with live progress, Trivy
 (vulnerabilities, licences, IaC) and Gitleaks (working-tree secrets) adapters, ignore with
 reason, Security Reports, and `bastion scan` with JSON, table and SARIF output. Container
-images, fix plans, SAST and MCP are later phases.
+images, fix plans, SAST and MCP are later phases: see the [roadmap](docs/wiki/Roadmap.md).
 
 ## Install
 
@@ -102,8 +102,9 @@ which is what a CI runner wants.
 
 ## Network calls
 
-Nothing else is called. No telemetry, no update check, no analytics: Trivy runs with
-`--disable-telemetry --skip-version-check`, and the core has no other HTTP client.
+Nothing else is called. No telemetry, no analytics, and no update check unless you turn
+it on: Trivy runs with `--disable-telemetry --skip-version-check`, and the only other
+outbound call is the opt-in release check listed below.
 
 | Destination | When | Why |
 |---|---|---|
@@ -112,11 +113,16 @@ Nothing else is called. No telemetry, no update check, no analytics: Trivy runs 
 | `mirror.gcr.io/aquasec/trivy-checks:2` | When misconfiguration scanning runs | IaC checks bundle, ~2.6 MB |
 | `api.github.com` | Only on user action: test connection, discover repos, add asset, scan | `GET /user`, `GET /user/repos`, `GET /repos/{owner}/{repo}`, `GET /repos/{owner}/{repo}/commits/{branch}`, `GET /repos/{owner}/{repo}/tarball/{sha}` |
 | `codeload.github.com` | Redirect target of the tarball call | The repository archive itself |
+| `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed and nothing else is parsed |
 
 The three Trivy registries are OCI pulls performed by Trivy's updater; they are cached
-under `<cache>/trivy` and re-used by later scans. GitHub is never contacted in the
-background, and request URLs are never logged (private-repo redirects carry a short-lived
-token).
+under `<cache>/trivy` and re-used by later scans. GitHub is contacted in the background
+only by the daily release check; every scan, discovery and download call happens on your
+action. Request URLs are never logged (private-repo redirects carry a short-lived token).
+
+The release check is disabled by `BASTION_NO_UPDATE_CHECK=1`, in CI, and in `dev` builds,
+whatever the stored choice. Consent lives in the data directory; it is `unset` (no
+request), `on`, or `off`.
 
 ## Threat model
 

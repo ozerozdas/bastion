@@ -26,6 +26,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/update"
 	"github.com/ozerozdas/bastion/web"
 )
 
@@ -75,6 +76,9 @@ type Config struct {
 	// broker to the scan manager, so every published event reaches the UI. Nil
 	// gives the server its own broker, which then stays silent.
 	Events *events.Broker
+	// Update serves /api/update and /api/update/consent. serve wires the
+	// opt-in release checker; nil answers those endpoints with 500.
+	Update *update.Checker
 }
 
 // Server serves the bastion API and UI. Create it with New, take its handler
@@ -100,6 +104,10 @@ type Server struct {
 	// events backs /api/events. It is never nil: without a wired broker the
 	// endpoint is still valid, it just has nothing to stream.
 	events *events.Broker
+
+	// update backs /api/update and /api/update/consent. Nil means the
+	// endpoints answer 500, like the other service-backed routes.
+	update *update.Checker
 
 	// token arrives once, in the browser URL. session is the cookie value that
 	// replaces it. They are distinct values: a token that leaked into shell
@@ -138,6 +146,7 @@ func New(cfg Config) (*Server, error) {
 		reports:     cfg.Reports,
 		assets:      cfg.Assets,
 		events:      broker,
+		update:      cfg.Update,
 		token:       token,
 		session:     session,
 	}
