@@ -1,14 +1,16 @@
 # Roadmap
 
-Each phase ends with a tagged release.
+Each phase ends with a tagged release. Every item below is a GitHub issue under its
+[milestone](https://github.com/ozerozdas/bastion/milestones); want to help? Start with a
+[good first issue](https://github.com/ozerozdas/bastion/issues?q=is%3Aopen+label%3A%22good+first+issue%22).
 
 | Phase | Version | Focus | Status |
 |---|---|---|---|
 | 0 | — | Skeleton: Trivy + Gitleaks as libraries in one pure-Go binary | Done |
-| 1 | v0.1 | Core MVP: GitHub, scans, reports, CLI with SARIF | **In progress** |
-| 2 | v0.2 | Containers & diff | Planned |
-| 3 | v0.3 | Actionable output | Planned |
-| 4 | v0.4 | AI & automation | Planned |
+| 1 | v0.1 | Core MVP: GitHub, scans, reports, CLI with SARIF | Done (v0.1.0) |
+| 2 | v0.2 | Containers & diff | [Planned](https://github.com/ozerozdas/bastion/milestone/1) |
+| 3 | v0.3 | Actionable output | [Planned](https://github.com/ozerozdas/bastion/milestone/2) |
+| 4 | v0.4 | AI & automation | [Planned](https://github.com/ozerozdas/bastion/milestone/3) |
 | 5 | later | Scale-out | Ideas |
 
 ## v0.2 — Containers & diff
@@ -40,7 +42,10 @@ Each phase ends with a tagged release.
 
 ## Later
 
-Grype and Syft, git-history secret scanning, server mode with scheduled scans.
+Grype and Syft, git-history secret scanning, server mode with scheduled scans, binary
+hardening, JS bundle inspection, reachability beyond Go. These are
+[`needs-discussion`](https://github.com/ozerozdas/bastion/issues?q=is%3Aopen+label%3Aneeds-discussion) issues: comment
+before building.
 
 ## Not planned
 

@@ -2,7 +2,8 @@
 
 Thanks for helping. Bug reports, fixes and small focused PRs are welcome. For anything larger
 (new scanner, new network call, schema or API shape change), open an issue first so we can
-agree on the approach before you write code.
+agree on the approach before you write code. New here? Pick a
+[good first issue](https://github.com/ozerozdas/bastion/issues?q=is%3Aopen+label%3A%22good+first+issue%22).
 
 ## Setup
 

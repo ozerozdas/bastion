@@ -357,7 +357,7 @@ Goal: **retire the biggest technical risk** (Trivy + Gitleaks as libraries insid
 | Keyring unavailable (headless Linux) | Detect in `bastion doctor`; fallback to env vars (`BASTION_GITHUB_TOKEN`), never to plaintext file |
 | False positives erode trust | Ignore with reason, persisted by fingerprint; show scanner + rule for every finding |
 | Local-first means no monitoring when closed | Documented as trade-off; CI integration (Phase 4) and server mode (Phase 5) cover it |
-| Scope creep | Phase exit criteria are hard gates; new ideas go to `.pm/backlog.md`, not into current phase |
+| Scope creep | Phase exit criteria are hard gates; new ideas go to GitHub issues (no milestone, or `needs-discussion`), not into current phase |
 
 ---
 
@@ -367,7 +367,7 @@ Goal: **retire the biggest technical risk** (Trivy + Gitleaks as libraries insid
 ```
 .pm/
   BOARD.md            index of all tasks: id | title | phase | status | owner_role | depends_on
-  backlog.md          unscheduled ideas (one line each)
+  backlog.md          pointer: unscheduled ideas live in GitHub issues
   phases/
     P0.md … P5.md     phase goal, exit criteria, task list (ids)
   tasks/
