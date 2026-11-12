@@ -8,21 +8,29 @@ Each phase ends with a tagged release. Every item below is a GitHub issue under 
 |---|---|---|---|
 | 0 | — | Skeleton: Trivy + Gitleaks as libraries in one pure-Go binary | Done |
 | 1 | v0.1 | Core MVP: GitHub, scans, reports, CLI with SARIF | Done (v0.1.0) |
-| 2 | v0.2 | Containers & diff | [Planned](https://github.com/ozerozdas/bastion/milestone/1) |
-| 3 | v0.3 | Actionable output | [Planned](https://github.com/ozerozdas/bastion/milestone/2) |
-| 4 | v0.4 | AI & automation | [Planned](https://github.com/ozerozdas/bastion/milestone/3) |
-| 5 | later | Scale-out | Ideas |
+| 2a | v0.2 | Diff & OSV | [Planned](https://github.com/ozerozdas/bastion/milestone/1) |
+| 2b | v0.3 | Containers & links | [Planned](https://github.com/ozerozdas/bastion/milestone/4) |
+| 3 | v0.4 | Actionable output | [Planned](https://github.com/ozerozdas/bastion/milestone/2) |
+| 4 | v0.5 | AI & automation | [Planned](https://github.com/ozerozdas/bastion/milestone/3) |
+| 5 | later | Scale-out | [Ideas](https://github.com/ozerozdas/bastion/milestone/6) |
 
-## v0.2 — Containers & diff
+Patch releases (v0.1.x, v0.2.x, …) carry fixes and small chores only; see the open
+patch milestone.
+
+## v0.2 — Diff & OSV
+
+- Scan diff in UI and API: new / fixed / persisting
+- Per-severity counts in the scan list
+- SBOM export (CycloneDX)
+- OSV-Scanner: malicious-package detection, deduplicated with Trivy
+
+## v0.3 — Containers & links
 
 - AWS connection (profiles / SSO) and ECR image scanning, without a Docker daemon
 - Optional local Docker image scanning
-- Scan diff in UI and API: new / fixed / persisting
 - Repo ↔ image links (manual, then from OCI labels)
-- SBOM export (CycloneDX)
-- OSV-Scanner: malicious-package detection
 
-## v0.3 — Actionable output
+## v0.4 — Actionable output
 
 - **Fix plan:** "upgrade X to Y → closes N findings (C critical, H high)"
 - Prioritization: severity × fix available × EPSS × deployed
@@ -32,7 +40,7 @@ Each phase ends with a tagged release. Every item below is a GitHub issue under 
 - SAST as an opt-in downloaded module (Opengrep)
 - Licence allow/deny policies
 
-## v0.4 — AI & automation
+## v0.5 — AI & automation
 
 - MCP server (`bastion mcp`) so AI agents can query findings and fix plans
 - Dependency-upgrade PRs on GitHub (you confirm each one)
