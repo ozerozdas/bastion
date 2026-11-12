@@ -3,3 +3,6 @@ contact_links:
   - name: Report a security vulnerability
     url: https://github.com/ozerozdas/bastion/security/advisories/new
     about: Please report vulnerabilities privately, not as public issues.
+  - name: Question or idea
+    url: https://github.com/ozerozdas/bastion/discussions
+    about: Ask questions and discuss ideas in Discussions.
