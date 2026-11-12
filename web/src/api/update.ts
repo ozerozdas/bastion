@@ -18,6 +18,13 @@ export const updateQuery = queryOptions({
   // The answer only changes after a daily check, so a few minutes of freshness
   // avoid a request per navigation without hiding a new release for long.
   staleTime: 5 * 60_000,
+  // After opting in, the first check runs in the background. Poll until its
+  // result (latest) lands, then stop; `latest === undefined` means "not checked
+  // yet", while a set latest is either current or newer.
+  refetchInterval: (query) => {
+    const data = query.state.data
+    return data?.consent === 'on' && data.latest === undefined ? 30_000 : false
+  },
 })
 
 /** useSetUpdateConsent stores the choice and replaces the cached status. */
@@ -26,6 +33,11 @@ export function useSetUpdateConsent() {
   return useMutation({
     mutationFn: (enabled: boolean) =>
       api.put<UpdateStatus>('/api/update/consent', { enabled }),
-    onSuccess: (status) => queryClient.setQueryData(updateKey, status),
+    onSuccess: (status) => {
+      queryClient.setQueryData(updateKey, status)
+      // The enable response has no check result yet; refetch so the poll above
+      // starts from the server's current state.
+      void queryClient.invalidateQueries({ queryKey: updateKey })
+    },
   })
 }
