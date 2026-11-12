@@ -639,14 +639,14 @@ func TestSnapshotDropsInvalidCachedTag(t *testing.T) {
 func TestInstallCommandResolvesSymlinks(t *testing.T) {
 	root := t.TempDir()
 	realBinary := filepath.Join(root, "Caskroom", "bastion", "0.1.0", "bastion")
-	if err := os.MkdirAll(filepath.Dir(realBinary), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(realBinary), 0o750); err != nil {
 		t.Fatalf("mkdir caskroom: %v", err)
 	}
-	if err := os.WriteFile(realBinary, []byte("binary"), 0o755); err != nil {
+	if err := os.WriteFile(realBinary, []byte("binary"), 0o600); err != nil {
 		t.Fatalf("write binary: %v", err)
 	}
 	link := filepath.Join(root, "bin", "bastion")
-	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(link), 0o750); err != nil {
 		t.Fatalf("mkdir bin: %v", err)
 	}
 	if err := os.Symlink(realBinary, link); err != nil {
