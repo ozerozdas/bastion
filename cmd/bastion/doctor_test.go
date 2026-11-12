@@ -22,12 +22,18 @@ func testDoctorDeps(t *testing.T) doctorDeps {
 	t.Helper()
 
 	dir := t.TempDir()
+	paths := app.Paths{DataDir: dir, CacheDir: filepath.Join(dir, "cache")}
+	// An existing Trivy cache keeps the healthy fixture warning-free.
+	if err := os.MkdirAll(paths.TrivyCacheDir(), 0o750); err != nil {
+		t.Fatalf("create trivy cache dir: %v", err)
+	}
+
 	return doctorDeps{
 		bastionVersion:  "test",
 		goVersion:       "go1.27.0",
 		goos:            "darwin",
 		goarch:          "arm64",
-		paths:           app.Paths{DataDir: dir, CacheDir: filepath.Join(dir, "cache")},
+		paths:           paths,
 		openDB:          store.Open,
 		schemaVersion:   store.MigrationVersion,
 		closeDB:         (*sql.DB).Close,
@@ -146,6 +152,112 @@ func TestRunDoctorWarnsWhenKeyringUnavailable(t *testing.T) {
 	if !strings.Contains(strings.Join(report.Warnings, "\n"), "BASTION_") {
 		t.Fatalf("warnings = %v, want the environment fallback hint", report.Warnings)
 	}
+}
+
+// TestRunDoctorReportsTrivyCache: a missing cache is a warning that the first
+// scan will download the DB, a present one shows its path and total size (#64).
+func TestRunDoctorReportsTrivyCache(t *testing.T) {
+	t.Run("absent", func(t *testing.T) {
+		deps := testDoctorDeps(t)
+		// Nothing has downloaded the DB yet, so the cache directory is absent.
+		deps.paths.CacheDir = filepath.Join(t.TempDir(), "cache")
+
+		report, err := runDoctor(context.Background(), deps)
+		if err != nil {
+			t.Fatalf("runDoctor returned a hard error for a missing cache: %v", err)
+		}
+		if report.TrivyCache.Present {
+			t.Fatalf("trivy cache = %+v, want absent", report.TrivyCache)
+		}
+		if !strings.Contains(strings.Join(report.Warnings, "\n"), "first scan will download the vulnerability DB") {
+			t.Fatalf("warnings = %v, want the download hint", report.Warnings)
+		}
+
+		var out bytes.Buffer
+		if err := writeDoctorText(&out, report); err != nil {
+			t.Fatalf("writeDoctorText: %v", err)
+		}
+		if !strings.Contains(out.String(), "trivy cache") || !strings.Contains(out.String(), "missing") {
+			t.Errorf("text report has no trivy cache row:\n%s", out.String())
+		}
+	})
+
+	t.Run("present", func(t *testing.T) {
+		deps := testDoctorDeps(t)
+		cacheDir := deps.paths.TrivyCacheDir()
+		if err := os.WriteFile(filepath.Join(cacheDir, "trivy.db"), make([]byte, 1<<20), 0o600); err != nil {
+			t.Fatalf("write fake vulnerability DB: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Join(cacheDir, "db"), 0o750); err != nil {
+			t.Fatalf("create nested cache dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(cacheDir, "db", "metadata.json"), []byte("{}"), 0o600); err != nil {
+			t.Fatalf("write nested cache file: %v", err)
+		}
+		wantSize := int64(1<<20 + 2)
+
+		report, err := runDoctor(context.Background(), deps)
+		if err != nil {
+			t.Fatalf("runDoctor: %v", err)
+		}
+		if !report.TrivyCache.Present {
+			t.Fatalf("trivy cache = %+v, want present", report.TrivyCache)
+		}
+		if report.TrivyCache.Path != cacheDir {
+			t.Errorf("cache path = %q, want %q", report.TrivyCache.Path, cacheDir)
+		}
+		if report.TrivyCache.Size != wantSize {
+			t.Errorf("cache size = %d, want %d", report.TrivyCache.Size, wantSize)
+		}
+		if strings.Contains(strings.Join(report.Warnings, "\n"), "first scan") {
+			t.Errorf("warnings = %v, want none about the cache", report.Warnings)
+		}
+
+		var out bytes.Buffer
+		if err := writeDoctorText(&out, report); err != nil {
+			t.Fatalf("writeDoctorText: %v", err)
+		}
+		if !strings.Contains(out.String(), cacheDir+" (1.0 MiB)") {
+			t.Errorf("text report does not show the cache path and size:\n%s", out.String())
+		}
+
+		var asJSON bytes.Buffer
+		if err := writeDoctorJSON(&asJSON, report); err != nil {
+			t.Fatalf("writeDoctorJSON: %v", err)
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(asJSON.Bytes(), &decoded); err != nil {
+			t.Fatalf("decode JSON report: %v\n%s", err, asJSON.String())
+		}
+		cache, ok := decoded["trivy_cache"].(map[string]any)
+		if !ok {
+			t.Fatalf("trivy_cache field = %T, want object", decoded["trivy_cache"])
+		}
+		if cache["path"] != cacheDir || cache["present"] != true || cache["size_bytes"] != float64(wantSize) {
+			t.Fatalf("trivy_cache = %v, want path %q, present, size %d", cache, cacheDir, wantSize)
+		}
+	})
+
+	// A symlinked cache root is measured through its target; links inside the
+	// cache do not count.
+	t.Run("symlinked root", func(t *testing.T) {
+		target := t.TempDir()
+		if err := os.WriteFile(filepath.Join(target, "trivy.db"), make([]byte, 1<<20), 0o600); err != nil {
+			t.Fatalf("write fake vulnerability DB: %v", err)
+		}
+		if err := os.Symlink(filepath.Join(target, "trivy.db"), filepath.Join(target, "link.db")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		link := filepath.Join(t.TempDir(), "trivy")
+		if err := os.Symlink(target, link); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+
+		cache := readTrivyCache(link)
+		if !cache.Present || cache.Size != 1<<20 || cache.Error != "" || cache.Path != link {
+			t.Fatalf("trivy cache = %+v, want present, size %d, path %q", cache, 1<<20, link)
+		}
+	})
 }
 
 func TestRunDoctorFailsOnlyWhenDatabaseCannotOpen(t *testing.T) {
