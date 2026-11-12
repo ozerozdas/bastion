@@ -172,8 +172,8 @@ Defaults are `flag > environment > platform default`:
 
 | What | Default | Override |
 |---|---|---|
-| Data dir (SQLite `bastion.db`) | `<user config dir>/bastion` — `~/Library/Application Support/bastion` (macOS), `~/.config/bastion` (Linux) | `--data-dir`, `BASTION_DATA_DIR` |
-| Cache dir | `<user cache dir>/bastion` — `~/Library/Caches/bastion` (macOS), `~/.cache/bastion` (Linux) | `--cache-dir`, `BASTION_CACHE_DIR` |
+| Data dir (SQLite `bastion.db`) | `<user config dir>/bastion` — `~/Library/Application Support/bastion` (macOS), `~/.config/bastion` (Linux), `%AppData%\bastion` (Windows) | `--data-dir`, `BASTION_DATA_DIR` |
+| Cache dir | `<user cache dir>/bastion` — `~/Library/Caches/bastion` (macOS), `~/.cache/bastion` (Linux), `%LocalAppData%\bastion` (Windows) | `--cache-dir`, `BASTION_CACHE_DIR` |
 | Trivy DB and checks | `<cache>/trivy` | (cache dir) |
 | Repo workspaces | `<cache>/workspaces`, deleted after each scan | (cache dir) |
 
