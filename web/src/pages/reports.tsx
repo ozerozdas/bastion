@@ -6,6 +6,7 @@ import {
   useState,
   type ComponentProps,
   type FormEvent,
+  type KeyboardEvent,
 } from 'react'
 
 import { assetsQuery } from '../api/assets'
@@ -461,7 +462,11 @@ function FindingDrawer({
 
   // Focus moves into the drawer when it opens, so Escape and Tab work at once.
   useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null 
     panel.current?.focus()
+    return () => {
+      if (opener?.isConnected) opener.focus()
+    }
   }, [])
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -501,7 +506,9 @@ function FindingDrawer({
           if (event.key === 'Escape') {
             event.stopPropagation()
             onClose()
+            return
           }
+          if (panel.current) trapTab(event, panel.current)
         }}
         className="absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col gap-4 overflow-y-auto border-l border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
       >
@@ -853,4 +860,42 @@ function ErrorNote({ error, fix }: { error: unknown; fix?: string }) {
 
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+const focusableSelector = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
+function trapTab(event: KeyboardEvent<HTMLElement>, container: HTMLElement){
+  if (event.key !== 'Tab') return
+
+  const items = Array.from(
+    container.querySelectorAll<HTMLElement>(focusableSelector),
+  )
+  if (items.length === 0) {
+    event.preventDefault()
+    container.focus()
+    return
+  }
+
+  const first = items[0]
+  const last = items[items.length - 1]
+  const active = document.activeElement
+
+  if (!container.contains(active)) {
+    event.preventDefault()
+    first.focus()
+  } else if (event.shiftKey && (active === first || active === container)) {
+    // The panel itself holds focus right after open, so Shift+Tab from there wraps too.
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault()
+    first.focus()
+  }
 }
