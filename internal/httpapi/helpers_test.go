@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"html"
 	"io"
 	"log/slog"
 	"net"
@@ -245,14 +246,30 @@ func (ts *testServer) login(t *testing.T) *http.Cookie {
 	t.Helper()
 
 	resp := ts.do(t, http.MethodGet, "/?t="+ts.token, nil)
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("token exchange: status = %d, want %d", resp.StatusCode, http.StatusSeeOther)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("token exchange: status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 	cookies := resp.Cookies()
 	if len(cookies) != 1 {
 		t.Fatalf("token exchange: got %d cookies, want 1", len(cookies))
 	}
 	return cookies[0]
+}
+
+// refreshTarget returns the URL the token-exchange page refreshes to.
+func refreshTarget(t *testing.T, resp *http.Response) string {
+	t.Helper()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read exchange page: %v", err)
+	}
+	_, rest, ok := strings.Cut(string(body), `content="0; url=`)
+	if !ok {
+		t.Fatalf("exchange page has no refresh: %s", body)
+	}
+	target, _, _ := strings.Cut(rest, `"`)
+	return html.UnescapeString(target)
 }
 
 // withCookie attaches the session cookie to a request.

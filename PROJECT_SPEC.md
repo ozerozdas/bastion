@@ -159,7 +159,7 @@ Rule: **no package outside `internal/scanners/<name>/` may import that scanner's
 
 ### 4.3 Local server security (non-negotiable)
 - Bind to `127.0.0.1` only. Random free port unless `--port` given.
-- On start, generate a random session token; open browser at `http://127.0.0.1:<port>/?t=<token>`. The server exchanges it for an `HttpOnly; SameSite=Strict` cookie and immediately redirects (303) to the same URL without `t`, so the token does not stay in the address bar or history. The token is single-use. All `/api/*` requests require the cookie.
+- On start, generate a random session token; open browser at `http://127.0.0.1:<port>/?t=<token>`. The server exchanges it for an `HttpOnly; SameSite=Strict` cookie and immediately sends the browser on to the same URL without `t` via a page-level refresh (not 303, which keeps the cross-site context of a link opened from another app, so the Strict cookie would not be sent), so the token does not stay in the address bar or history. The token is single-use. All `/api/*` requests require the cookie.
 - Reject requests whose `Host` header is not `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding).
 - No CORS. CSRF: require custom header `X-Bastion: 1` on mutating requests.
 - Tokens/keys never returned by the API, never logged. Log redaction helper for anything credential-shaped.

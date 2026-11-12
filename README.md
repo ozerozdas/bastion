@@ -9,6 +9,8 @@ Nothing leaves the machine except the calls listed under [Network calls](#networ
 
 ![bastion: connect GitHub, add a repo, scan, read the report](docs/demo.gif)
 
+📖 **Documentation:** see the [wiki](docs/wiki/Home.md) — getting started, CLI, CI, findings, security, troubleshooting.
+
 ## Status
 
 **v0.1 in progress (Phase 1 — core MVP).** Working today: GitHub PAT connection (token in
@@ -126,8 +128,10 @@ What it does:
 - **Loopback only.** Binds `127.0.0.1`, random port unless `--port` is given. Every route,
   including the UI, is behind the session check.
 - **Single-use startup token.** The URL carries `?t=<token>`; the server trades it for an
-  `HttpOnly; SameSite=Strict` session cookie and answers `303` to the same URL without the
-  token, so it leaves the address bar and shell history immediately. A second use is
+  `HttpOnly; SameSite=Strict` session cookie and answers with a page that refreshes to the
+  same URL without the token (not a `303`: a redirect would keep the cross-site context of a
+  link opened from another app, and the Strict cookie would not be sent), so it leaves the
+  address bar and browser history immediately. A second use is
   rejected.
 - **DNS-rebinding guard.** Requests whose `Host` header is not `127.0.0.1:<port>` or
   `localhost:<port>` get `421`.

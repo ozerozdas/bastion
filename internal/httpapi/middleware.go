@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"crypto/subtle"
+	"html"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -30,8 +31,9 @@ func (s *Server) checkHost(next http.Handler) http.Handler {
 // requireSession is the authentication and CSRF middleware.
 //
 //   - A request carrying the startup token for "/" exchanges it for the session
-//     cookie and is redirected (303) to the same URL without the token, so the
-//     token leaves the address bar and history immediately. The token is
+//     cookie and is sent on to the same URL without the token by a page-level
+//     refresh (see exchangeToken), so the token leaves the address bar and
+//     history immediately. The token is
 //     single-use; a second presentation is rejected even though the cookie set
 //     by the first one keeps working for the process lifetime.
 //   - Every other request must present the session cookie, otherwise it gets
@@ -103,8 +105,19 @@ func (s *Server) exchangeToken(w http.ResponseWriter, r *http.Request, presented
 	if encoded := query.Encode(); encoded != "" {
 		target += "?" + encoded
 	}
-	w.Header().Set("Location", target)
-	w.WriteHeader(http.StatusSeeOther)
+	// Not a 303: the startup URL is opened by another app (terminal, pkg/browser),
+	// which browsers treat as a cross-site navigation, and a redirect keeps that
+	// context, so the SameSite=Strict cookie just set would not be sent on the
+	// follow-up GET (401). A refresh started by this page is same-site, so the
+	// cookie goes along; HTML refresh navigates with history replacement, so
+	// the token URL does not stay in history either.
+	header := w.Header()
+	header.Set("Content-Type", "text/html; charset=utf-8")
+	header.Set("Cache-Control", "no-store")
+	header.Set("Content-Security-Policy", "default-src 'none'")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=` +
+		html.EscapeString(target) + `"><title>bastion</title>`))
 }
 
 // validSession reports whether the request carries the session cookie. The

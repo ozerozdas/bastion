@@ -72,11 +72,14 @@ func TestTokenExchange(t *testing.T) {
 	ts := newTestServer(t)
 
 	resp := ts.do(t, http.MethodGet, "/?t="+ts.token, nil)
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusSeeOther)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-	if got, want := resp.Header.Get("Location"), "/"; got != want {
-		t.Errorf("Location = %q, want %q", got, want)
+	if got, want := refreshTarget(t, resp), "/"; got != want {
+		t.Errorf("refresh target = %q, want %q", got, want)
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
 	}
 
 	cookies := resp.Cookies()
@@ -118,11 +121,11 @@ func TestTokenExchangeStripsTokenFromRedirect(t *testing.T) {
 	ts := newTestServer(t)
 
 	resp := ts.do(t, http.MethodGet, "/?t="+ts.token+"&tab=projects&q=a%20b", nil)
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusSeeOther)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
-	location := resp.Header.Get("Location")
+	location := refreshTarget(t, resp)
 	if strings.Contains(location, "t="+ts.token) || strings.Contains(location, ts.token) {
 		t.Fatalf("Location %q still carries the token", location)
 	}
@@ -166,8 +169,8 @@ func TestUnknownTokenRejected(t *testing.T) {
 	readProblem(t, resp)
 
 	// The real token is still usable: guessing must not burn it.
-	if resp := ts.do(t, http.MethodGet, "/?t="+ts.token, nil); resp.StatusCode != http.StatusSeeOther {
-		t.Errorf("valid token after a failed guess: status = %d, want %d", resp.StatusCode, http.StatusSeeOther)
+	if resp := ts.do(t, http.MethodGet, "/?t="+ts.token, nil); resp.StatusCode != http.StatusOK {
+		t.Errorf("valid token after a failed guess: status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 }
 
