@@ -42,7 +42,7 @@ jobs:
       - run: make build
       - run: npx --prefix web playwright install --with-deps chromium
       - run: make e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
@@ -68,7 +68,7 @@ jobs:
       - id: week
         run: echo "key=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
       # The Trivy DB is ~1.7 GB; refresh it weekly.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/bastion/trivy
           key: trivy-db-${{ runner.os }}-${{ steps.week.outputs.key }}
@@ -78,7 +78,7 @@ jobs:
           export BASTION_HMAC_KEY="$(openssl rand -base64 32)"
           ./bin/bastion --cache-dir "$HOME/.cache/bastion" scan --path . --no-store \
             --skip-dirs testdata --format sarif --fail-on critical > bastion.sarif
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: bastion-sarif
