@@ -1,0 +1,25 @@
+version: 2
+# ponytail: one grouped PR per ecosystem per week; Trivy's dependency tree would
+# otherwise open dozens. Split groups if a single PR becomes hard to review.
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

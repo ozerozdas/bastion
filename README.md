@@ -184,3 +184,8 @@ the rulebook in `PROJECT_SPEC.md`).
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE). Compatible with Trivy (Apache-2.0) and Gitleaks (MIT).
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md).
