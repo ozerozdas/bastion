@@ -8,6 +8,15 @@ on:
 permissions:
   contents: read
 
+# A new push to the same PR/branch cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The Go build cache is content-addressed, so a cache from an older go.sum is
+# still mostly valid: restore-keys turn a dependency bump into a warm build
+# instead of a cold Trivy compile (~12 min). Only `check` saves it; the other
+# jobs restore it.
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -16,6 +25,14 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -27,13 +44,20 @@ jobs:
   # The smoke test drives the built binary in Chromium. `make check` must not
   # download a browser, so this job installs one and runs the five-page test.
   e2e:
-    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false
+      - uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -53,13 +77,20 @@ jobs:
   # vulnerabilities, so it is skipped. SARIF upload to code scanning needs extra
   # permissions and arrives with the Phase 4 GitHub Action.
   self-scan:
-    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false
+      - uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -84,8 +115,13 @@ jobs:
           name: bastion-sarif
           path: bastion.sarif
 
+  # Compile-only check of the release targets on master pushes. PRs skip it
+  # (it is not a required check and the tag-triggered release builds all six
+  # anyway). `go build ./...` over several packages compiles without linking,
+  # so the runner no longer runs out of disk and the UI build is not needed:
+  # an empty web/dist satisfies the embed.
   cross-build:
-    needs: check
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -93,18 +129,19 @@ jobs:
         goos: [darwin, linux, windows]
         goarch: [amd64, arm64]
     steps:
-      # Trivy's dependency tree fills the runner's ~14 GB at link time.
-      - run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v7
+          cache: false
+      # Saves module downloads; compiled objects are per GOOS/GOARCH. The path
+      # list must match check's save or the cache version differs.
+      - uses: actions/cache/restore@v6
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      # web/dist is gitignored but embedded (web/embed.go), so each build
-      # produces the UI first; otherwise the binary would ship the placeholder.
-      - run: npm --prefix web ci --no-audit --no-fund && npm --prefix web run build
-      - run: CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -trimpath -o /dev/null ./cmd/bastion
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+      - run: mkdir -p web/dist && touch web/dist/.gitkeep
+      - run: CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -trimpath ./...
