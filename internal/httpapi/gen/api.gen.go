@@ -819,6 +819,11 @@ type UpdateStatus struct {
 	// Current Version of the running binary (`dev` for local builds).
 	Current string `json:"current"`
 
+	// Disabled True when no check can run whatever the consent says
+	// (`BASTION_NO_UPDATE_CHECK`, a CI environment or a `dev` build). The
+	// UI then does not ask.
+	Disabled bool `json:"disabled"`
+
 	// Latest Newest release tag from the cached check. Absent before the first
 	// successful check.
 	Latest *string `json:"latest,omitempty"`

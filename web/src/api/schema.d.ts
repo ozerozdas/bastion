@@ -449,6 +449,12 @@ export interface components {
             /** @description Version of the running binary (`dev` for local builds). */
             current: string;
             /**
+             * @description True when no check can run whatever the consent says
+             *     (`BASTION_NO_UPDATE_CHECK`, a CI environment or a `dev` build). The
+             *     UI then does not ask.
+             */
+            disabled: boolean;
+            /**
              * @description Newest release tag from the cached check. Absent before the first
              *     successful check.
              */

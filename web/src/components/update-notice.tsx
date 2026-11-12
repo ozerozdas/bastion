@@ -19,7 +19,9 @@ import { Button } from './ui/button'
 export function UpdateNotice() {
   const { data } = useQuery(updateQuery)
 
-  if (!data) {
+  // Disabled (env switch, CI, dev build): asking would promise a check that
+  // cannot run.
+  if (!data || data.disabled) {
     return null
   }
   if (data.consent === 'unset') {

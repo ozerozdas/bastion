@@ -96,8 +96,39 @@ func TestGetUpdateStatusWithUnsetConsentMakesNoRequest(t *testing.T) {
 	if got, want := status.Current, "v0.1.0"; got != want {
 		t.Errorf("current = %q, want %q", got, want)
 	}
+	if status.Disabled {
+		t.Error("disabled = true for a release build without CI or the env switch")
+	}
 	if got := hits.Load(); got != 0 {
 		t.Fatalf("release check requests = %d, want 0 with unset consent", got)
+	}
+}
+
+// A dev build cannot check, so the UI must not ask (disabled: true).
+func TestGetUpdateStatusReportsDisabledForDevBuild(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusFound)
+	}))
+	t.Cleanup(server.Close)
+	checker := update.New(update.Config{
+		CurrentVersion: "dev",
+		DataDir:        t.TempDir(),
+		CacheDir:       t.TempDir(),
+		BaseURL:        server.URL,
+		Getenv:         func(string) string { return "" },
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	ts := newTestServerWithUpdate(t, nil, checker)
+	cookie := ts.login(t)
+
+	status := readUpdateStatus(t, ts.do(t, http.MethodGet, "/api/update", withCookie(cookie)))
+	if !status.Disabled {
+		t.Error("disabled = false for a dev build")
+	}
+	if got := hits.Load(); got != 0 {
+		t.Fatalf("release check requests = %d, want 0", got)
 	}
 }
 

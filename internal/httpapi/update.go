@@ -58,6 +58,7 @@ func updateStatusResponse(status update.Status) gen.UpdateStatus {
 		Current:         status.Current,
 		UpdateAvailable: status.UpdateAvailable,
 		Consent:         gen.UpdateConsent(status.Consent),
+		Disabled:        status.Disabled != "",
 	}
 	if status.Latest != "" {
 		out.Latest = &status.Latest

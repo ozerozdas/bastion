@@ -884,11 +884,17 @@ components:
         The release check as the UI and the CLI see it. Optional fields are
         absent when there is no successful check or no newer release.
       additionalProperties: false
-      required: [current, update_available, consent]
+      required: [current, update_available, consent, disabled]
       properties:
         current:
           type: string
           description: Version of the running binary (`dev` for local builds).
+        disabled:
+          type: boolean
+          description: |
+            True when no check can run whatever the consent says
+            (`BASTION_NO_UPDATE_CHECK`, a CI environment or a `dev` build). The
+            UI then does not ask.
         latest:
           type: string
           description: |

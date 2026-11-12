@@ -12,45 +12,73 @@ async function openSession(page: Page, url: string) {
   ).toBeVisible()
 }
 
-test('asks for the release check once and remembers "no thanks"', async ({
+/**
+ * fakeUpdateApi answers /api/update from in-page state. The e2e server runs
+ * with BASTION_NO_UPDATE_CHECK=1 (it must never call github.com), so it reports
+ * the check as disabled; the consent flow is driven through this stub, and
+ * server-side persistence is covered by the Go handler tests.
+ */
+async function fakeUpdateApi(page: Page) {
+  let consent: 'unset' | 'on' | 'off' = 'unset'
+  const body = () =>
+    JSON.stringify({
+      current: 'v0.1.1',
+      update_available: false,
+      consent,
+      disabled: false,
+    })
+  await page.route('**/api/update/consent', async (route) => {
+    const { enabled } = route.request().postDataJSON() as { enabled: boolean }
+    consent = enabled ? 'on' : 'off'
+    await route.fulfill({ status: 200, contentType: 'application/json', body: body() })
+  })
+  await page.route('**/api/update', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: body() }),
+  )
+}
+
+test('does not ask when the release check is disabled', async ({
   page,
   server,
 }) => {
   const problems = watch(page)
+  // Wait for the real answer before asserting that nothing is rendered.
+  const answered = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/update',
+  )
   await openSession(page, server.url)
-
-  await expect(page.getByText(consentQuestion, { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'No thanks' }).click()
-  await expect(page.getByText(consentQuestion, { exact: true })).toHaveCount(0)
-
-  await page.reload()
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Dashboard' }),
-  ).toBeVisible()
+  const status = (await (await answered).json()) as { disabled: boolean }
+  expect(status.disabled).toBe(true)
   await expect(page.getByText(consentQuestion, { exact: true })).toHaveCount(0)
 
   expect(problems).toEqual([])
 })
 
-test('remembers an accepted release check after reload', async ({
-  page,
-  server,
-}) => {
-  const problems = watch(page)
-  await openSession(page, server.url)
+for (const [answer, label] of [
+  ['no thanks', 'No thanks'],
+  ['an accepted check', 'Turn on'],
+] as const) {
+  test(`asks for the release check once and remembers ${answer}`, async ({
+    page,
+    server,
+  }) => {
+    const problems = watch(page)
+    await fakeUpdateApi(page)
+    await openSession(page, server.url)
 
-  await expect(page.getByText(consentQuestion, { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Turn on' }).click()
-  await expect(page.getByText(consentQuestion, { exact: true })).toHaveCount(0)
+    await expect(page.getByText(consentQuestion, { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: label }).click()
+    await expect(page.getByText(consentQuestion, { exact: true })).toHaveCount(0)
 
-  await page.reload()
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Dashboard' }),
-  ).toBeVisible()
-  await expect(page.getByText(consentQuestion, { exact: true })).toHaveCount(0)
+    await page.reload()
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Dashboard' }),
+    ).toBeVisible()
+    await expect(page.getByText(consentQuestion, { exact: true })).toHaveCount(0)
 
-  expect(problems).toEqual([])
-})
+    expect(problems).toEqual([])
+  })
+}
 
 test('shows the update command, release notes and a per-version dismiss', async ({
   page,
@@ -63,6 +91,7 @@ test('shows the update command, release notes and a per-version dismiss', async 
     latest: 'v0.1.2',
     update_available: true,
     consent: 'on',
+    disabled: false,
     command: 'brew upgrade ozerozdas/tap/bastion',
     release_url: 'https://github.com/ozerozdas/bastion/releases/tag/v0.1.2',
   }
