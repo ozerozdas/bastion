@@ -1,11 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type FormEvent,
+} from 'react'
 
 import { assetsQuery } from '../api/assets'
 import { ApiError } from '../api/client'
 import {
   latestFindingsQuery,
+  useBulkFindingState,
   useClearFindingState,
   useSetFindingState,
   type Finding,
@@ -18,6 +25,7 @@ import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { isHttpsUrl } from '../lib/urls'
+import { cn } from '../lib/utils'
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
@@ -73,6 +81,7 @@ export function ReportsPage() {
   const [severity, setSeverity] = useState<Severity | ''>('')
   const [status, setStatus] = useState<FindingStatus>('open')
   const [openFingerprint, setOpenFingerprint] = useState<string | null>(null)
+  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set())
 
   const assetList = assets.data ?? []
   // The URL wins; otherwise the first project keeps the page useful on arrival.
@@ -122,6 +131,22 @@ export function ReportsPage() {
     (finding) => finding.fingerprint === openFingerprint,
   )
   const filtered = type !== '' || severity !== ''
+  // Only rows still on screen count, so a filter change never acts on hidden findings.
+  const checkedFindings = (findings.data ?? []).filter((finding) =>
+    checked.has(finding.fingerprint),
+  )
+  const allChecked =
+    findings.data !== undefined &&
+    findings.data.length > 0 &&
+    checkedFindings.length === findings.data.length
+
+  function toggleChecked(fingerprint: string) {
+    setChecked((current) => {
+      const next = new Set(current)
+      if (!next.delete(fingerprint)) next.add(fingerprint)
+      return next
+    })
+  }
 
   return (
     <>
@@ -265,11 +290,33 @@ export function ReportsPage() {
               {findings.data.length} in the latest succeeded scan
             </span>
           </div>
+          {checkedFindings.length > 0 ? (
+            <BulkBar
+              key={status}
+              findings={checkedFindings}
+              status={status}
+              onDone={() => setChecked(new Set())}
+            />
+          ) : null}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[13px]">
               <thead className="text-xs text-faint">
                 <tr>
-                  <th className="pb-2 font-medium">Severity</th>
+                  <th className="w-6 pb-2">
+                    <Checkbox
+                      aria-label="Select all findings"
+                      checked={allChecked}
+                      indeterminate={checkedFindings.length > 0 && !allChecked}
+                      onChange={() =>
+                        setChecked(
+                          allChecked
+                            ? new Set()
+                            : new Set(findings.data.map((finding) => finding.fingerprint)),
+                        )
+                      }
+                    />
+                  </th>
+                  <th className="pb-2 pl-3 font-medium">Severity</th>
                   <th className="pb-2 pl-3 font-medium">Type</th>
                   <th className="pb-2 pl-3 font-medium">Rule</th>
                   <th className="pb-2 pl-3 font-medium">Package</th>
@@ -282,6 +329,8 @@ export function ReportsPage() {
                   <FindingRow
                     key={finding.fingerprint}
                     finding={finding}
+                    checked={checked.has(finding.fingerprint)}
+                    onCheck={() => toggleChecked(finding.fingerprint)}
                     onOpen={() => setOpenFingerprint(finding.fingerprint)}
                   />
                 ))}
@@ -305,9 +354,13 @@ export function ReportsPage() {
 /** FindingRow is one table row; the whole row opens the drawer. */
 function FindingRow({
   finding,
+  checked,
+  onCheck,
   onOpen,
 }: {
   finding: Finding
+  checked: boolean
+  onCheck: () => void
   onOpen: () => void
 }) {
   const packageLabel =
@@ -329,7 +382,19 @@ function FindingRow({
       }}
       className="cursor-pointer align-top hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
     >
-      <td className="py-2 pr-3">
+      {/* The checkbox cell must not open the drawer. */}
+      <td
+        className="py-2"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        <Checkbox
+          aria-label={`Select ${finding.title}`}
+          checked={checked}
+          onChange={onCheck}
+        />
+      </td>
+      <td className="py-2 pr-3 pl-3">
         <Badge tone={severityTone[finding.severity]}>
           {finding.severity === 'unknown' ? 'unknown' : capitalize(finding.severity)}
         </Badge>
@@ -652,6 +717,118 @@ function FindingDrawer({
         ) : null}
       </div>
     </div>
+  )
+}
+
+/**
+ * BulkBar acts on every checked finding at once: open findings get one shared
+ * decision and reason, ignored findings can be reopened together.
+ */
+function BulkBar({
+  findings,
+  status,
+  onDone,
+}: {
+  findings: Finding[]
+  status: FindingStatus
+  onDone: () => void
+}) {
+  const bulk = useBulkFindingState()
+  const [decision, setDecision] = useState<FindingState>('ignored')
+  const [reason, setReason] = useState('')
+  const count = findings.length
+  const target = {
+    assetId: findings[0].asset_id,
+    fingerprints: findings.map((finding) => finding.fingerprint),
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    bulk.mutate(
+      { ...target, decision: { state: decision, reason: reason.trim() } },
+      { onSuccess: onDone },
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border-subtle bg-bg p-3">
+      {status === 'open' ? (
+        <form
+          onSubmit={submit}
+          aria-label="Bulk decision"
+          className="flex flex-wrap items-center gap-2"
+        >
+          <span className="text-xs font-medium tabular-nums">{count} selected</span>
+          <select
+            aria-label="Hide selected findings as"
+            value={decision}
+            onChange={(event) => setDecision(event.target.value as FindingState)}
+            className={cn(inputClass, 'w-40')}
+          >
+            <option value="ignored">Ignored</option>
+            <option value="accepted_risk">Accepted risk</option>
+            <option value="false_positive">False positive</option>
+          </select>
+          <input
+            aria-label="Reason"
+            required
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Reason, shared by every selected finding"
+            className={cn(inputClass, 'w-auto min-w-48 flex-1')}
+          />
+          <Button
+            type="submit"
+            size="sm"
+            disabled={bulk.isPending || reason.trim() === ''}
+          >
+            {bulk.isPending ? 'Saving…' : `Hide ${count}`}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+            Clear
+          </Button>
+        </form>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium tabular-nums">{count} selected</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={bulk.isPending}
+            onClick={() => bulk.mutate(target, { onSuccess: onDone })}
+          >
+            {bulk.isPending ? 'Reopening…' : `Reopen ${count}`}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+            Clear
+          </Button>
+        </div>
+      )}
+      {bulk.isError ? (
+        <ErrorNote
+          error={bulk.error}
+          fix="Findings before the failure were saved; the list shows what is left."
+        />
+      ) : null}
+    </div>
+  )
+}
+
+/** Checkbox is a native checkbox that can also show the mixed (indeterminate) state. */
+function Checkbox({
+  indeterminate = false,
+  ...props
+}: Omit<ComponentProps<'input'>, 'type'> & { indeterminate?: boolean }) {
+  return (
+    <input
+      type="checkbox"
+      ref={(node) => {
+        if (node) node.indeterminate = indeterminate
+      }}
+      className="size-3.5 cursor-pointer align-middle accent-accent"
+      {...props}
+    />
   )
 }
 

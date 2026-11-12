@@ -3,54 +3,38 @@
 /*
  * The palette follows concept-design.html: warm-neutral greys, one accent, and
  * severity colours that appear only on badges and small marks (§7).
- * Values switch on the OS preference; there is no theme toggle.
+ * Each value is light-dark(light, dark): the OS preference picks by default,
+ * and the sidebar toggle pins one through data-theme (see lib/theme.ts).
  */
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
 
-  --b-bg: #fafafa;
-  --b-sidebar: #f4f4f5;
-  --b-surface: #ffffff;
-  --b-border-subtle: #e4e4e7;
-  --b-border-strong: #d4d4d8;
-  --b-fg: #18181b;
-  --b-muted: #52525b;
-  --b-faint: #6b6b75;
-  --b-hover: #ebebed;
-  --b-active: #ffffff;
-  --b-accent: #18181b;
-  --b-accent-fg: #ffffff;
+  --b-bg: light-dark(#fafafa, #0b0b0d);
+  --b-sidebar: light-dark(#f4f4f5, #0e0e11);
+  --b-surface: light-dark(#ffffff, #111114);
+  --b-border-subtle: light-dark(#e4e4e7, #1f1f24);
+  --b-border-strong: light-dark(#d4d4d8, #2a2a30);
+  --b-fg: light-dark(#18181b, #ededf0);
+  --b-muted: light-dark(#52525b, #a1a1aa);
+  --b-faint: light-dark(#6b6b75, #84848e);
+  --b-hover: light-dark(#ebebed, #16161a);
+  --b-active: light-dark(#ffffff, #1a1a1f);
+  --b-accent: light-dark(#18181b, #ededf0);
+  --b-accent-fg: light-dark(#ffffff, #0b0b0d);
 
-  --b-critical: #c81e1e;
-  --b-high: #b9410c;
-  --b-medium: #946006;
-  --b-low: #2155d6;
-  --b-ok: #15803d;
+  --b-critical: light-dark(#c81e1e, #ff6b6b);
+  --b-high: light-dark(#b9410c, #ff9f43);
+  --b-medium: light-dark(#946006, #f5c451);
+  --b-low: light-dark(#2155d6, #7aa7ff);
+  --b-ok: light-dark(#15803d, #4ade80);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
+:root[data-theme="light"] {
+  color-scheme: light;
+}
 
-    --b-bg: #0b0b0d;
-    --b-sidebar: #0e0e11;
-    --b-surface: #111114;
-    --b-border-subtle: #1f1f24;
-    --b-border-strong: #2a2a30;
-    --b-fg: #ededf0;
-    --b-muted: #a1a1aa;
-    --b-faint: #84848e;
-    --b-hover: #16161a;
-    --b-active: #1a1a1f;
-    --b-accent: #ededf0;
-    --b-accent-fg: #0b0b0d;
-
-    --b-critical: #ff6b6b;
-    --b-high: #ff9f43;
-    --b-medium: #f5c451;
-    --b-low: #7aa7ff;
-    --b-ok: #4ade80;
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @theme inline {

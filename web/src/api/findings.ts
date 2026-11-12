@@ -62,6 +62,38 @@ export function useSetFindingState() {
   })
 }
 
+/**
+ * useBulkFindingState records one decision for many findings of one asset, or
+ * reopens them all when state is omitted. It stops at the first failure; the
+ * findings before it keep their new state and the list refreshes either way.
+ */
+export function useBulkFindingState() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    // ponytail: one request per finding over the existing endpoints, sequential to spare the
+    // single-writer store; add a batch endpoint if selections grow to hundreds.
+    mutationFn: async ({
+      assetId,
+      fingerprints,
+      decision,
+    }: {
+      assetId: number
+      fingerprints: string[]
+      decision?: Omit<SetFindingStateRequest, 'asset_id'>
+    }) => {
+      for (const fingerprint of fingerprints) {
+        const path = `/api/findings/${encodeURIComponent(fingerprint)}/state`
+        if (decision) {
+          await api.post<void>(path, { asset_id: assetId, ...decision })
+        } else {
+          await api.remove<void>(`${path}?asset_id=${assetId}`)
+        }
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries(),
+  })
+}
+
 /** useClearFindingState reopens a finding by deleting its decision. */
 export function useClearFindingState() {
   const queryClient = useQueryClient()
