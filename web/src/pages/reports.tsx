@@ -442,7 +442,6 @@ function FindingRow({
     </tr>
   )
 }
-
 /**
  * FindingDrawer shows one finding's detail (§7.4). Scanner text is untrusted
  * (§4.3): the description is plain text and only https references become links.
@@ -462,7 +461,9 @@ function FindingDrawer({
 
   // Focus moves into the drawer when it opens, so Escape and Tab work at once.
   useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null 
+    const opener = document.activeElement instanceof HTMLElement 
+      ? document.activeElement 
+      : null;
     panel.current?.focus()
     return () => {
       if (opener?.isConnected) opener.focus()
@@ -899,3 +900,4 @@ function trapTab(event: KeyboardEvent<HTMLElement>, container: HTMLElement){
     first.focus()
   }
 }
+/n
