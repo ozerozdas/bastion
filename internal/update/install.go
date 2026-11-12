@@ -37,9 +37,20 @@ func installCommandFor(executablePath, goos string) string {
 	return installCommand
 }
 
-// validVersion reports whether v is a release version semver can compare.
+// validVersion reports whether v is a version semver can compare.
 func validVersion(v string) bool {
 	return semver.IsValid(normalizeVersion(v))
+}
+
+// isReleaseVersion reports whether v is a released version. A prerelease or
+// build suffix (git-describe's `v0.1.1-12-g4f36a55`, `-dirty`, or an `-rc`)
+// marks a local build, which must not check for updates (ADR-006).
+func isReleaseVersion(v string) bool {
+	v = normalizeVersion(v)
+	if !semver.IsValid(v) {
+		return false
+	}
+	return semver.Prerelease(v) == "" && semver.Build(v) == ""
 }
 
 // normalizeVersion gives a bare version its "v" prefix, so both release tags

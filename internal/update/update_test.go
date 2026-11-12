@@ -214,6 +214,13 @@ func TestInstallCommandFor(t *testing.T) {
 			want: brewCommand,
 		},
 		{
+			// An Intel Homebrew cask symlink in /usr/local/bin resolves here.
+			name: "Intel Homebrew cask target",
+			path: "/usr/local/Caskroom/bastion/0.1.0/bastion",
+			goos: "darwin",
+			want: brewCommand,
+		},
+		{
 			name: "Linuxbrew",
 			path: "/home/linuxbrew/.linuxbrew/bin/bastion",
 			goos: "linux",
@@ -426,6 +433,10 @@ func TestCheckNowDisabled(t *testing.T) {
 		{name: "CI", version: "v0.1.0", env: map[string]string{"CI": "true"}},
 		{name: "dev version", version: "dev"},
 		{name: "not semver", version: "abc1234"},
+		{name: "git describe between tags", version: "v0.1.1-12-g4f36a55"},
+		{name: "dirty git describe", version: "v0.1.1-12-g4f36a55-dirty"},
+		{name: "release candidate", version: "v0.1.2-rc.1"},
+		{name: "build metadata", version: "v0.1.2+local"},
 	}
 
 	for _, tc := range tests {
@@ -508,5 +519,147 @@ func TestStatusRefreshesInBackgroundWhenStale(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if got := env.hits.Load(); got != 1 {
 		t.Fatalf("requests = %d, want 1; the fresh cache must suppress a second check", got)
+	}
+}
+
+func TestCheckNowBudgetSurvivesUnwritableCache(t *testing.T) {
+	cacheFile := filepath.Join(t.TempDir(), "cache-is-a-file")
+	if err := os.WriteFile(cacheFile, []byte("not a directory"), 0o600); err != nil {
+		t.Fatalf("write cache placeholder: %v", err)
+	}
+	env := newTestEnv(t, nil, func(cfg *Config) { cfg.CacheDir = cacheFile })
+	if err := env.checker.SetConsent(true); err != nil {
+		t.Fatalf("SetConsent(true): %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		env.checker.CheckNow(context.Background())
+	}
+
+	if got := env.hits.Load(); got != 1 {
+		t.Fatalf("requests = %d, want 1 even when the cache cannot be written", got)
+	}
+}
+
+func TestConsentSurvivesCacheInSameDirectory(t *testing.T) {
+	dir := t.TempDir()
+	env := newTestEnv(t, nil, func(cfg *Config) {
+		cfg.DataDir = dir
+		cfg.CacheDir = dir
+	})
+	if err := env.checker.SetConsent(true); err != nil {
+		t.Fatalf("SetConsent(true): %v", err)
+	}
+
+	env.checker.CheckNow(context.Background())
+
+	if got := env.checker.Consent(); got != ConsentOn {
+		t.Fatalf("Consent() = %q after a check wrote the cache, want %q", got, ConsentOn)
+	}
+	if _, err := os.Stat(filepath.Join(dir, cacheFileName)); err != nil {
+		t.Fatalf("cache file was not written next to consent: %v", err)
+	}
+}
+
+func TestStatusSingleFlight(t *testing.T) {
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var spawned atomic.Int32
+
+	env := newTestEnv(t, func(w http.ResponseWriter, _ *http.Request) {
+		started <- struct{}{}
+		<-release
+		w.Header().Set("Location", "/ozerozdas/bastion/releases/tag/v0.2.0")
+		w.WriteHeader(http.StatusFound)
+	}, func(cfg *Config) {
+		cfg.Spawn = func(f func()) {
+			spawned.Add(1)
+			go f()
+		}
+	})
+	if err := env.checker.SetConsent(true); err != nil {
+		t.Fatalf("SetConsent(true): %v", err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			env.checker.Status()
+		}()
+	}
+	wg.Wait()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no background check started")
+	}
+	close(release)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if env.checker.Snapshot().Latest != "" {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := env.checker.Snapshot().Latest; got != "v0.2.0" {
+		t.Fatalf("cached Latest = %q, want v0.2.0", got)
+	}
+
+	if got := spawned.Load(); got != 1 {
+		t.Errorf("background checks spawned = %d, want 1", got)
+	}
+	if got := env.hits.Load(); got != 1 {
+		t.Errorf("requests = %d, want 1", got)
+	}
+}
+
+func TestSnapshotDropsInvalidCachedTag(t *testing.T) {
+	env := newTestEnv(t, nil, nil)
+	if err := os.MkdirAll(env.checker.cacheDir, 0o700); err != nil {
+		t.Fatalf("mkdir cache: %v", err)
+	}
+	if err := writeJSON(filepath.Join(env.checker.cacheDir, cacheFileName), cacheEntry{
+		CheckedAt: env.clock.Now(),
+		Latest:    "nightly",
+	}); err != nil {
+		t.Fatalf("seed cache: %v", err)
+	}
+
+	status := env.checker.Snapshot()
+
+	if status.Latest != "" || status.UpdateAvailable {
+		t.Fatalf("status = %+v, want the invalid cached tag to be ignored", status)
+	}
+}
+
+func TestInstallCommandResolvesSymlinks(t *testing.T) {
+	root := t.TempDir()
+	realBinary := filepath.Join(root, "Caskroom", "bastion", "0.1.0", "bastion")
+	if err := os.MkdirAll(filepath.Dir(realBinary), 0o755); err != nil {
+		t.Fatalf("mkdir caskroom: %v", err)
+	}
+	if err := os.WriteFile(realBinary, []byte("binary"), 0o755); err != nil {
+		t.Fatalf("write binary: %v", err)
+	}
+	link := filepath.Join(root, "bin", "bastion")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	if err := os.Symlink(realBinary, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	checker := New(Config{
+		CurrentVersion: "v0.1.0",
+		Executable:     func() (string, error) { return link, nil },
+		GOOS:           "darwin",
+	})
+
+	if got := checker.installCommand(); got != brewCommand {
+		t.Errorf("installCommand() = %q, want %q from the resolved cask path", got, brewCommand)
 	}
 }

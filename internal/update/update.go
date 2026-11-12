@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -46,7 +47,7 @@ const (
 	// scan for longer than this.
 	requestTimeout = 5 * time.Second
 
-	consentFileName = "update-check.json"
+	consentFileName = "update-consent.json"
 	cacheFileName   = "update-check.json"
 
 	releasesLatestPath = "/ozerozdas/bastion/releases/latest"
@@ -92,6 +93,9 @@ type Config struct {
 	GOOS string
 	// Logger receives the debug record a failed check writes.
 	Logger *slog.Logger
+	// Spawn runs the background check. It defaults to `go f()`; tests set it
+	// to run inline, so an assertion after Status() sees any work it started.
+	Spawn func(func())
 }
 
 // Checker performs and caches the release check. It is safe for concurrent use.
@@ -106,10 +110,20 @@ type Checker struct {
 	executable func() (string, error)
 	goos       string
 	log        *slog.Logger
+	spawn      func(func())
 
 	// mu serialises checks, so two concurrent UI requests cannot both spend
 	// the daily budget.
 	mu sync.Mutex
+
+	// lastAttempt is when the last outbound request was started. It is part of
+	// the 24-hour budget even when writing the cache fails, so an unwritable
+	// cache directory cannot turn into one request per call. Atomic because
+	// Status reads it without taking mu (it must never block on a check).
+	lastAttempt atomic.Int64
+	// inFlight is the single-flight guard for background checks: only the
+	// caller that flips false to true spawns the check.
+	inFlight atomic.Bool
 }
 
 // New wires a Checker with production defaults for the unset seams.
@@ -149,6 +163,10 @@ func New(cfg Config) *Checker {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	spawn := cfg.Spawn
+	if spawn == nil {
+		spawn = func(f func()) { go f() }
+	}
 
 	return &Checker{
 		current:    cfg.CurrentVersion,
@@ -161,6 +179,7 @@ func New(cfg Config) *Checker {
 		executable: executable,
 		goos:       goos,
 		log:        logger,
+		spawn:      spawn,
 	}
 }
 
@@ -222,15 +241,24 @@ func (c *Checker) Snapshot() Status {
 
 // Status returns the cached view and starts one background check when consent
 // is on and the cache is older than 24 hours. It never waits for the network,
-// so API handlers and `bastion serve` stay fast.
+// so API handlers and `bastion serve` stay fast. Concurrent stale calls share
+// the single in-flight check.
 func (c *Checker) Status() Status {
 	status := c.Snapshot()
 	if status.Consent != ConsentOn || status.Disabled != "" || !c.due() {
 		return status
 	}
+	// Only the caller that flips false to true spawns a check, so a burst of
+	// page loads cannot start a burst of requests.
+	if !c.inFlight.CompareAndSwap(false, true) {
+		return status
+	}
 	// The request context belongs to the handler and is canceled when it
 	// returns, so the background check gets its own bounded context.
-	go func() { _ = c.CheckNow(context.Background()) }()
+	c.spawn(func() {
+		defer c.inFlight.Store(false)
+		_ = c.CheckNow(context.Background())
+	})
 	return status
 }
 
@@ -248,6 +276,9 @@ func (c *Checker) CheckNow(ctx context.Context) Status {
 	}
 
 	checkedAt := c.now()
+	// Record the attempt before the request: if the cache write fails, the
+	// daily budget still holds.
+	c.lastAttempt.Store(checkedAt.UnixNano())
 	latest, err := c.fetchLatest(ctx)
 	if err != nil {
 		// Debug only: the next check is a day away, and a failed release check
@@ -300,7 +331,7 @@ func (c *Checker) disabledReason() string {
 	if c.getenv("CI") != "" {
 		return "CI environment"
 	}
-	if !validVersion(c.current) {
+	if !isReleaseVersion(c.current) {
 		return "dev build"
 	}
 	return ""
@@ -331,7 +362,9 @@ type consentFile struct {
 	Consent Consent `json:"consent"`
 }
 
-// readCache returns the cached entry when the file exists and decodes.
+// readCache returns the cached entry when the file exists and decodes. An
+// entry whose latest tag is not a valid semver tag is ignored, so a damaged or
+// hand-edited file cannot make Snapshot compare nonsense.
 func (c *Checker) readCache() (cacheEntry, bool) {
 	data, err := os.ReadFile(filepath.Join(c.cacheDir, cacheFileName))
 	if err != nil {
@@ -342,6 +375,9 @@ func (c *Checker) readCache() (cacheEntry, bool) {
 		return cacheEntry{}, false
 	}
 	if entry.CheckedAt.IsZero() {
+		return cacheEntry{}, false
+	}
+	if entry.Latest != "" && !validVersion(entry.Latest) {
 		return cacheEntry{}, false
 	}
 	return entry, true
@@ -355,13 +391,23 @@ func (c *Checker) writeCache(entry cacheEntry) error {
 	return writeJSON(filepath.Join(c.cacheDir, cacheFileName), entry)
 }
 
-// due reports whether the daily budget allows another request.
+// due reports whether the daily budget allows another request. The cache's
+// checked_at and the in-memory last attempt both count, so a failed cache write
+// cannot bypass the budget.
 func (c *Checker) due() bool {
-	entry, ok := c.readCache()
-	if !ok {
+	var last time.Time
+	if entry, ok := c.readCache(); ok {
+		last = entry.CheckedAt
+	}
+	if nanos := c.lastAttempt.Load(); nanos != 0 {
+		if attempt := time.Unix(0, nanos); attempt.After(last) {
+			last = attempt
+		}
+	}
+	if last.IsZero() {
 		return true
 	}
-	return c.now().Sub(entry.CheckedAt) >= checkInterval
+	return c.now().Sub(last) >= checkInterval
 }
 
 // writeJSON writes data with owner-only permissions through a temporary file
