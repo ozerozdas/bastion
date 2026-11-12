@@ -13,7 +13,7 @@ GORELEASER := go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 # out of bastion's own self-scan.
 TOOL := go tool -modfile=tools/go.mod
 
-.PHONY: build check fmt lint test gen web-build web-check e2e release-snapshot
+.PHONY: build check fmt lint test test-race gen web-build web-check e2e release-snapshot
 
 # The UI is embedded into the binary (web/embed.go), so it must be built
 # before go build. node_modules is a file target: npm ci runs only when the
@@ -39,6 +39,11 @@ lint:
 
 test:
 	go test ./...
+
+# The job runner and the SSE broker are concurrent, so CI also runs the suite
+# under the race detector. -race needs cgo, which build pins off.
+test-race:
+	CGO_ENABLED=1 go test -race ./...
 
 gen:
 	@# sqlc v1.31 shifts byte offsets on non-ASCII input and emits corrupt SQL silently.
