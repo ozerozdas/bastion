@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Go 1.27+ (dev tools are pinned in `go.mod` and run with `go tool …` — no global installs)
+- Go 1.27+ (dev tools are pinned in `tools/go.mod` and run with `go tool -modfile=tools/go.mod …` — no global installs)
 - Node 24 (for the web UI)
 
 ## Everyday commands

@@ -7,7 +7,8 @@ agree on the approach before you write code.
 ## Setup
 
 Requirements: Go (version in `go.mod`), Node 24, make. Dev tools (sqlc, oapi-codegen,
-golangci-lint) are pinned as `go.mod` tool directives and run via `go tool`; nothing to
+golangci-lint) are pinned as tool directives in `tools/go.mod` (a separate module, so their
+dependencies stay out of the binary) and run via `make`; nothing to
 install globally.
 
 ```sh

@@ -31,7 +31,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
           restore-keys: go-${{ runner.os }}-
       - uses: actions/setup-node@v7
         with:
@@ -56,7 +56,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
           restore-keys: go-${{ runner.os }}-
       - uses: actions/setup-node@v7
         with:
@@ -74,7 +74,8 @@ jobs:
           retention-days: 7
 
   # bastion scans its own repository. testdata holds intentional fixture
-  # vulnerabilities, so it is skipped. SARIF upload to code scanning needs extra
+  # vulnerabilities, so it is skipped. tools/ is the dev-tool module (linters,
+  # codegen); it never ships in the binary and dependabot keeps it current. SARIF upload to code scanning needs extra
   # permissions and arrives with the Phase 4 GitHub Action.
   self-scan:
     runs-on: ubuntu-latest
@@ -89,7 +90,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
           restore-keys: go-${{ runner.os }}-
       - uses: actions/setup-node@v7
         with:
@@ -108,7 +109,7 @@ jobs:
         run: |
           export BASTION_HMAC_KEY="$(openssl rand -base64 32)"
           ./bin/bastion --cache-dir "$HOME/.cache/bastion" scan --path . --no-store \
-            --skip-dirs testdata --format sarif --fail-on critical > bastion.sarif
+            --skip-dirs testdata --skip-dirs tools --format sarif --fail-on critical > bastion.sarif
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -141,7 +142,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
           restore-keys: go-${{ runner.os }}-
       - run: mkdir -p web/dist && touch web/dist/.gitkeep
       - run: CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -trimpath ./...
