@@ -13,11 +13,11 @@ Nothing leaves the machine except the calls listed under [Network calls](#networ
 
 ## Status
 
-**v0.1 in progress (Phase 1 — core MVP).** Working today: GitHub PAT connection (token in
+**v0.1 released (Phase 1 — core MVP).** Working today: GitHub PAT connection (token in
 the OS keyring), repo discovery and tarball fetch, scan jobs with live progress, Trivy
 (vulnerabilities, licences, IaC) and Gitleaks (working-tree secrets) adapters, ignore with
 reason, Security Reports, and `bastion scan` with JSON, table and SARIF output. Container
-images, fix plans, SAST and MCP are later phases.
+images, fix plans, SAST and MCP are later phases: see the [roadmap](docs/wiki/Roadmap.md).
 
 ## Install
 
