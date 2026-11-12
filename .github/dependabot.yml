@@ -3,7 +3,7 @@ version: 2
 # otherwise open dozens. Split groups if a single PR becomes hard to review.
 updates:
   - package-ecosystem: gomod
-    directory: /
+    directories: ["/", "/tools"]
     schedule:
       interval: weekly
     groups:

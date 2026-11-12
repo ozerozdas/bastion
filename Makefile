@@ -8,6 +8,11 @@ NPM := npm --prefix web
 GORELEASER_VERSION := v2.20.1
 GORELEASER := go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 
+# Dev tools (golangci-lint, sqlc, oapi-codegen) live in their own module so their
+# dependencies (GPL linters among them) stay out of the binary's module graph and
+# out of bastion's own self-scan.
+TOOL := go tool -modfile=tools/go.mod
+
 .PHONY: build check fmt lint test gen web-build web-check e2e release-snapshot
 
 # The UI is embedded into the binary (web/embed.go), so it must be built
@@ -30,7 +35,7 @@ fmt:
 	@test -z "$$(gofmt -l .)" || (gofmt -l . && echo "run gofmt -w ." && exit 1)
 
 lint:
-	go tool golangci-lint run ./...
+	$(TOOL) golangci-lint run ./...
 
 test:
 	go test ./...
@@ -38,8 +43,8 @@ test:
 gen:
 	@# sqlc v1.31 shifts byte offsets on non-ASCII input and emits corrupt SQL silently.
 	@! LC_ALL=C grep -n '[^ -~	]' db/queries/*.sql || { echo "db/queries: non-ASCII characters break sqlc"; exit 1; }
-	go tool sqlc generate
-	go tool oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+	$(TOOL) sqlc generate
+	$(TOOL) oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
 	@test -d web/node_modules || $(NPM) ci --no-audit --no-fund
 	$(NPM) run gen:api
 
