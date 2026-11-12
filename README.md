@@ -7,7 +7,7 @@ through one normalized view. It does not build its own security engine: Trivy an
 are imported as Go libraries, so there is no Docker daemon, no Python and no external CLI.
 Nothing leaves the machine except the calls listed under [Network calls](#network-calls).
 
-<!-- demo GIF: recorded at v0.1.0 (BST-036) -->
+![bastion: connect GitHub, add a repo, scan, read the report](docs/demo.gif)
 
 ## Status
 

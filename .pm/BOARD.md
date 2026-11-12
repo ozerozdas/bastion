@@ -37,4 +37,4 @@
 | BST-033 | CI self-scan + `make gen` cleanup | P1 | done | coder | 031 |
 | BST-034 | README, threat model, network calls | P1 | done | coder | 027, 028, 031 |
 | BST-035 | Release pipeline | P1 | done | coder | 033 |
-| BST-036 | P1 exit check | P1 | in_progress | tester | all |
+| BST-036 | P1 exit check | P1 | done | tester | all |
