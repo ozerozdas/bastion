@@ -1,6 +1,8 @@
-## What and why
+Closes #
 
-<!-- Link the issue if there is one. -->
+<!-- Put the issue number after "Closes #" so it closes on merge; delete the line if there is no issue. -->
+
+## What and why
 
 ## Verification
 
