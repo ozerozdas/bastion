@@ -100,6 +100,12 @@ func newServeCmd(root *rootOptions) *cobra.Command {
 // only; it is never passed to slog, whose output may be collected, shipped or
 // pasted into an issue (§4.3).
 func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
+	// A negative or oversized port fails inside net.Listen with a message about
+	// 127.0.0.1:-1; reject it here so the user sees what the flag accepts.
+	if opts.port < 0 || opts.port > 65535 {
+		return errors.New("--port must be 0-65535 (0 picks a free port)")
+	}
+
 	ln, err := deps.listen(opts.port)
 	if err != nil {
 		return fmt.Errorf("start server: %w", err)
