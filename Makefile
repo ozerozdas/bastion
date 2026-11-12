@@ -43,7 +43,9 @@ gen:
 	@test -d web/node_modules || $(NPM) ci --no-audit --no-fund
 	$(NPM) run gen:api
 
-check: fmt lint web-check web-build test build
+# web-build first: lint and test compile web/embed.go, which needs web/dist
+# (absent on a clean checkout, e.g. CI).
+check: web-check web-build fmt lint test build
 
 # e2e drives the real binary in Chromium, so it needs a browser that `check`
 # does not: run `npx --prefix web playwright install chromium`, then `make e2e`.
