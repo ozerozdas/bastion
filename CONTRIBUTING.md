@@ -35,8 +35,7 @@ make gen     # regenerate sqlc, Go server and TS client code
 - Tests: external APIs behind interfaces with fakes (no live calls in unit tests);
   normalizer changes come with golden tests in `testdata/` (update with `-update` and say why).
 
-`PROJECT_SPEC.md` is the full rulebook (§9 engineering rules); `.pm/` holds tasks and
-decision records.
+`PROJECT_SPEC.md` is the full rulebook (§9 engineering rules).
 
 ## Commits and PRs
 
