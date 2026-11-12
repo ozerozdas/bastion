@@ -98,46 +98,89 @@ func TestWriteUpdateNotice(t *testing.T) {
 	}
 }
 
-// TestRunServePrintsConsentHint drives the real runServe path with an unset
-// consent, so the notice is on stderr and no request can be made.
-func TestRunServePrintsConsentHint(t *testing.T) {
-	previous := version
-	version = "v0.1.0"
-	t.Cleanup(func() { version = previous })
-
-	canceled, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	deps := serveDeps{
-		listen:      httpapi.Listen,
-		openBrowser: func(string) error { return nil },
-		notifyContext: func(context.Context) (context.Context, context.CancelFunc) {
-			return context.WithCancel(canceled)
+// TestRunServeUpdateNotice drives the real runServe path. The injected checker
+// stubs the environment, because GitHub Actions sets CI=true for the whole test
+// process and that would otherwise disable the check the test wants to see.
+func TestRunServeUpdateNotice(t *testing.T) {
+	tests := []struct {
+		name      string
+		getenv    func(string) string
+		want      string
+		wantEmpty bool
+	}{
+		{
+			name:   "unset consent explains how to turn it on",
+			getenv: func(string) string { return "" },
+			want:   "Release checks are off",
 		},
-		newServer:      httpapi.New,
-		openDB:         store.Open,
-		newSecretStore: func() secrets.Store { return secrets.NewMemoryStore() },
+		{
+			name: "disabled check prints nothing",
+			getenv: func(name string) string {
+				if name == update.EnvNoUpdateCheck {
+					return "1"
+				}
+				return ""
+			},
+			wantEmpty: true,
+		},
 	}
 
-	var stderr bytes.Buffer
-	cmd := &cobra.Command{}
-	cmd.SetOut(io.Discard)
-	cmd.SetErr(&stderr)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			previous := version
+			version = "v0.1.0"
+			t.Cleanup(func() { version = previous })
 
-	dir := t.TempDir()
-	err := runServe(cmd, &serveOptions{
-		noBrowser: true,
-		paths:     app.Paths{DataDir: dir, CacheDir: dir},
-	}, deps)
-	if err != nil {
-		t.Fatalf("runServe: %v", err)
-	}
+			canceled, cancel := context.WithCancel(context.Background())
+			cancel()
 
-	if !strings.Contains(stderr.String(), "Release checks are off") {
-		t.Fatalf("stderr has no consent hint:\n%s", stderr.String())
-	}
-	if strings.Contains(stderr.String(), "is available") {
-		t.Fatalf("stderr announces an update without consent:\n%s", stderr.String())
+			deps := serveDeps{
+				listen:      httpapi.Listen,
+				openBrowser: func(string) error { return nil },
+				notifyContext: func(context.Context) (context.Context, context.CancelFunc) {
+					return context.WithCancel(canceled)
+				},
+				newServer:      httpapi.New,
+				openDB:         store.Open,
+				newSecretStore: func() secrets.Store { return secrets.NewMemoryStore() },
+				newUpdateChecker: func(paths app.Paths) *update.Checker {
+					return update.New(update.Config{
+						CurrentVersion: "v0.1.0",
+						DataDir:        paths.DataDir,
+						CacheDir:       paths.CacheDir,
+						Getenv:         tc.getenv,
+					})
+				},
+			}
+
+			var stderr bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(&stderr)
+
+			dir := t.TempDir()
+			err := runServe(cmd, &serveOptions{
+				noBrowser: true,
+				paths:     app.Paths{DataDir: dir, CacheDir: dir},
+			}, deps)
+			if err != nil {
+				t.Fatalf("runServe: %v", err)
+			}
+
+			if tc.wantEmpty {
+				if strings.Contains(stderr.String(), "Release checks are off") ||
+					strings.Contains(stderr.String(), "is available") {
+					t.Fatalf("disabled check printed a notice:\n%s", stderr.String())
+				}
+				return
+			}
+			if !strings.Contains(stderr.String(), tc.want) {
+				t.Fatalf("stderr does not contain %q:\n%s", tc.want, stderr.String())
+			}
+			if strings.Contains(stderr.String(), "is available") {
+				t.Fatalf("stderr announces an update without consent:\n%s", stderr.String())
+			}
+		})
 	}
 }
 

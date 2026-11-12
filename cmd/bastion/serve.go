@@ -49,6 +49,9 @@ type serveDeps struct {
 	newServer      func(httpapi.Config) (*httpapi.Server, error)
 	openDB         func(ctx context.Context, path string) (*sql.DB, error)
 	newSecretStore func() secrets.Store
+	// newUpdateChecker builds the release checker. Tests inject one with a
+	// stubbed environment, so CI=true in the test process cannot disable it.
+	newUpdateChecker func(app.Paths) *update.Checker
 }
 
 func defaultServeDeps() serveDeps {
@@ -58,9 +61,10 @@ func defaultServeDeps() serveDeps {
 		notifyContext: func(parent context.Context) (context.Context, context.CancelFunc) {
 			return signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 		},
-		newServer:      httpapi.New,
-		openDB:         store.Open,
-		newSecretStore: secrets.NewStore,
+		newServer:        httpapi.New,
+		openDB:           store.Open,
+		newSecretStore:   secrets.NewStore,
+		newUpdateChecker: newUpdateChecker,
 	}
 }
 
@@ -172,11 +176,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		return errors.Join(fmt.Errorf("create assets service: %w", err), ln.Close())
 	}
 
-	updateChecker := update.New(update.Config{
-		CurrentVersion: version,
-		DataDir:        opts.paths.DataDir,
-		CacheDir:       opts.paths.CacheDir,
-	})
+	updateChecker := deps.newUpdateChecker(opts.paths)
 	srv, err := deps.newServer(httpapi.Config{
 		Version:     version,
 		Port:        port,

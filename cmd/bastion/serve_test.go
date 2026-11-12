@@ -17,6 +17,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/httpapi"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
+	"github.com/ozerozdas/bastion/internal/update"
 )
 
 // TestServeIsTheDefaultCommand: plain `bastion` must start the server, and
@@ -145,6 +146,14 @@ func TestRunServeBrowserHandling(t *testing.T) {
 				newServer:      httpapi.New,
 				openDB:         store.Open,
 				newSecretStore: func() secrets.Store { return secrets.NewMemoryStore() },
+				newUpdateChecker: func(paths app.Paths) *update.Checker {
+					return update.New(update.Config{
+						CurrentVersion: "v0.1.0",
+						DataDir:        paths.DataDir,
+						CacheDir:       paths.CacheDir,
+						Getenv:         func(string) string { return "" },
+					})
+				},
 			}
 
 			cmd := &cobra.Command{}
