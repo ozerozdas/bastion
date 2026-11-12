@@ -37,6 +37,9 @@ func updateTestChecker(t *testing.T, hits *atomic.Int32) *update.Checker {
 		Executable:     func() (string, error) { return "/home/me/.local/bin/bastion", nil },
 		GOOS:           "darwin",
 		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		// Run background checks inline: the handler test then observes any
+		// request a request-spawning bug would make before it asserts zero.
+		Spawn: func(f func()) { f() },
 	})
 }
 
@@ -119,6 +122,7 @@ func TestGetUpdateStatusReportsDisabledForDevBuild(t *testing.T) {
 		BaseURL:        server.URL,
 		Getenv:         func(string) string { return "" },
 		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Spawn:          func(f func()) { f() },
 	})
 	ts := newTestServerWithUpdate(t, nil, checker)
 	cookie := ts.login(t)
