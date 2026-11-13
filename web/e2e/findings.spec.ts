@@ -124,7 +124,20 @@ test('lists findings across projects with no filter, critical first', async ({
   await expect(page.getByRole('columnheader', { name: 'Project' })).toBeVisible()
   await expect(page.locator('#findings-project')).toHaveValue('')
 
+  const origin = new URL(page.url()).origin
+  // Grouped is the default, so a fresh visit has no view param and folds the
+  // five findings into four rules (#106).
+  await expect(page).toHaveURL(`${origin}/findings`)
+  await expect(page.getByRole('button', { name: 'Grouped' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
   const rows = page.locator('tbody tr')
+  await expect(rows).toHaveCount(4)
+
+  // Single is the opt-out and stays in the URL.
+  await page.getByRole('button', { name: 'Single' }).click()
+  await expect(page).toHaveURL(`${origin}/findings?view=single`)
   await expect(rows).toHaveCount(5)
   // Severity order comes from the API; the list must not regroup it by project.
   await expect(rows.nth(0)).toContainText('Critical in beta')
@@ -138,18 +151,19 @@ test('lists findings across projects with no filter, critical first', async ({
     expect(url.searchParams.has('asset_id')).toBe(false)
   }
 
-  // The Project filter narrows the same list to one project.
+  // The Project filter narrows the same list to one project and forces single,
+  // so the view toggle is not offered any more.
   requested.length = 0
-  const origin = new URL(page.url()).origin
   await page.locator('#findings-project').selectOption(String(beta.id))
   await expect(rows).toHaveCount(3)
   await expect(rows.nth(0)).toContainText('beta')
   await expect(page).toHaveURL(`${origin}/findings?asset=${String(beta.id)}`)
+  await expect(page.getByRole('group', { name: 'Findings view' })).toHaveCount(0)
   expect(requested.at(-1)?.searchParams.get('asset_id')).toBe(String(beta.id))
 
-  // Back to every project.
+  // Back to every project, which returns to the grouped default.
   await page.locator('#findings-project').selectOption('')
-  await expect(rows).toHaveCount(5)
+  await expect(rows).toHaveCount(4)
   await expect(page).toHaveURL(`${origin}/findings`)
 
   expect(problems).toEqual([])
@@ -178,13 +192,8 @@ test('groups one CVE across projects and keeps the view in the URL', async ({
   await page.getByRole('link', { name: /^Findings/ }).click()
   const origin = new URL(page.url()).origin
 
-  await expect(page.getByRole('button', { name: 'Single' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  )
-
-  await page.getByRole('button', { name: 'Grouped' }).click()
-  await expect(page).toHaveURL(`${origin}/findings?view=grouped`)
+  // Grouped is the default, so the fleet-wide list opens grouped (#106).
+  await expect(page).toHaveURL(`${origin}/findings`)
   await expect(page.getByRole('button', { name: 'Grouped' })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -199,7 +208,7 @@ test('groups one CVE across projects and keeps the view in the URL', async ({
   await expect(shared).toContainText('2 projects')
   await expect(shared).toContainText('4.17.21')
 
-  // The view is in the URL, so a reload stays grouped.
+  // A reload stays grouped: the bare URL is the grouped default.
   await page.reload()
   await expect(
     page.getByRole('heading', { level: 1, name: 'Findings' }),
@@ -234,10 +243,15 @@ test('groups one CVE across projects and keeps the view in the URL', async ({
     page.locator('tbody tr').filter({ hasText: 'CVE-2024-4444' }),
   ).toBeFocused()
 
-  // Single is still one row per finding, and the URL loses the view.
+  // Single is one row per finding, and opting out is in the URL; grouped is
+  // the bare path again.
   await page.getByRole('button', { name: 'Single' }).click()
-  await expect(page).toHaveURL(`${origin}/findings`)
+  await expect(page).toHaveURL(`${origin}/findings?view=single`)
   await expect(page.locator('tbody tr')).toHaveCount(5)
+
+  await page.getByRole('button', { name: 'Grouped' }).click()
+  await expect(page).toHaveURL(`${origin}/findings`)
+  await expect(page.locator('tbody tr')).toHaveCount(4)
 
   expect(problems).toEqual([])
 })

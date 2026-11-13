@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isHttpsUrl,
   parseAssetSearch,
+  parseConnectionsTab,
   parseFindingsSearch,
   parseProjectsTabSearch,
   parseScanDiffSearch,
@@ -47,29 +48,29 @@ describe('parseAssetSearch', () => {
 })
 
 describe('parseFindingsSearch', () => {
-  it('keeps the grouped view in the URL so a reload stays grouped', () => {
-    expect(parseFindingsSearch({ view: 'grouped' })).toEqual({ view: 'grouped' })
-  })
-
-  it('treats single as the bare path', () => {
+  it('treats grouped as the default, so it is the bare path (#106)', () => {
     expect(parseFindingsSearch({})).toEqual({})
     expect(parseFindingsSearch({ view: undefined })).toEqual({})
-    expect(parseFindingsSearch({ view: 'single' })).toEqual({})
+    expect(parseFindingsSearch({ view: 'grouped' })).toEqual({})
+  })
+
+  it('keeps view=single so opting out survives a reload', () => {
+    expect(parseFindingsSearch({ view: 'single' })).toEqual({ view: 'single' })
   })
 
   it('drops an unknown view instead of failing the route', () => {
     expect(parseFindingsSearch({ view: 'grid' })).toEqual({})
-    expect(parseFindingsSearch({ view: ['grouped'] })).toEqual({})
+    expect(parseFindingsSearch({ view: ['single'] })).toEqual({})
   })
 
-  it('keeps the project filter and the view together (#90)', () => {
-    expect(parseFindingsSearch({ view: 'grouped', asset: '7' })).toEqual({
-      view: 'grouped',
+  it('keeps the project filter and ignores the view with it (#106)', () => {
+    expect(parseFindingsSearch({ view: 'single', asset: '7' })).toEqual({
       asset: 7,
     })
-    expect(parseFindingsSearch({ view: 'grouped', asset: 'x' })).toEqual({
-      view: 'grouped',
+    expect(parseFindingsSearch({ view: 'single', asset: 'x' })).toEqual({
+      view: 'single',
     })
+    expect(parseFindingsSearch({ asset: '7' })).toEqual({ asset: 7 })
   })
 })
 
@@ -122,5 +123,25 @@ describe('parseProjectsTabSearch', () => {
       tab: 'scans',
     })
     expect(parseProjectsTabSearch({ asset: 7 })).toEqual({})
+  })
+})
+
+describe('parseConnectionsTab', () => {
+  it('keeps the Registry tab so the URL stays copyable and reload-safe', () => {
+    expect(parseConnectionsTab({ tab: 'registry' })).toEqual({
+      tab: 'registry',
+    })
+  })
+
+  it('treats the default Repository tab as the bare path', () => {
+    expect(parseConnectionsTab({})).toEqual({})
+    expect(parseConnectionsTab({ tab: undefined })).toEqual({})
+    expect(parseConnectionsTab({ tab: 'repository' })).toEqual({})
+  })
+
+  it('drops an unknown tab instead of hiding the GitHub setup', () => {
+    expect(parseConnectionsTab({ tab: 'docker' })).toEqual({})
+    expect(parseConnectionsTab({ tab: 1 })).toEqual({})
+    expect(parseConnectionsTab({ tab: ['registry'] })).toEqual({})
   })
 })

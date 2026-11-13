@@ -9,6 +9,7 @@ import {
 import { AppShell } from './components/app-shell'
 import {
   parseAssetSearch,
+  parseConnectionsTab,
   parseFindingsSearch,
   parseProjectsTabSearch,
   parseScanDiffSearch,
@@ -40,6 +41,9 @@ const dashboardRoute = createRoute({
 const connectionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/connections',
+  // ?tab=registry shows the registry placeholders; the bare path is the
+  // repository sources (#107).
+  validateSearch: parseConnectionsTab,
   component: ConnectionsPage,
 })
 
@@ -54,9 +58,9 @@ const projectsRoute = createRoute({
 const findingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/findings',
-  // ?asset=<id> narrows the list to one project and ?view=grouped groups it by
-  // rule, so both survive reloads and links; without them every project's
-  // findings are shown one per row.
+  // Grouped is the default view; ?view=single opts out, and ?asset=<id>
+  // narrows the list to one project, which is always single. Both survive
+  // reloads and links.
   validateSearch: parseFindingsSearch,
   component: FindingsPage,
 })

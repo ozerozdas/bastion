@@ -25,7 +25,7 @@ const navPages = [
     label: 'Projects',
     path: '/projects',
     subtitle: 'Repositories and images you scan',
-    marker: 'Add projects',
+    marker: 'Add a local path',
   },
   {
     label: 'Connections',
@@ -179,6 +179,44 @@ test('Projects tabs live in the URL and move with arrow keys', async ({
   expect(problems).toEqual([])
 })
 
+test('Connections tabs live in the URL', async ({ page, server }) => {
+  const problems = watch(page)
+  await openSession(page, server)
+  await page.getByRole('link', { name: 'Connections', exact: true }).click()
+
+  const repositoryTab = page.getByRole('tab', {
+    name: 'Repository',
+    exact: true,
+  })
+  const registryTab = page.getByRole('tab', { name: 'Registry', exact: true })
+  await expect(repositoryTab).toHaveAttribute('aria-selected', 'true')
+  await expect(
+    page.getByRole('heading', { name: 'Add GitHub connection' }),
+  ).toBeVisible()
+
+  // Registry is the bare path's alternative, so it is in the URL (#107).
+  await registryTab.click()
+  const origin = new URL(page.url()).origin
+  await expect(page).toHaveURL(`${origin}/connections?tab=registry`)
+  await expect(
+    page.getByRole('heading', { name: 'AWS' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Add GitHub connection' }),
+  ).toHaveCount(0)
+
+  await page.reload()
+  await expect(
+    page.getByRole('tab', { name: 'Registry', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true')
+  await expect(page).toHaveURL(`${origin}/connections?tab=registry`)
+
+  await page.getByRole('tab', { name: 'Repository', exact: true }).click()
+  await expect(page).toHaveURL(`${origin}/connections`)
+
+  expect(problems).toEqual([])
+})
+
 test('redirects /scan-history to the Scans tab', async ({ page, server }) => {
   const problems = watch(page)
   await openSession(page, server)
@@ -205,6 +243,7 @@ test('drops a stale project id from the findings URL', async ({
 
   // One project: the page has something to fall back to when the id is gone.
   await page.getByRole('link', { name: 'Projects', exact: true }).click()
+  await page.getByRole('button', { name: 'Add project' }).click()
   await page.getByLabel('Or add a local path').fill(server.projectDir)
   await page.getByRole('button', { name: 'Add path' }).click()
 
@@ -240,14 +279,12 @@ test('adds a local path project through the UI', async ({ page, server }) => {
   await page.getByRole('link', { name: 'Projects', exact: true }).click()
 
   const name = basename(server.projectDir)
+  await page.getByRole('button', { name: 'Add project' }).click()
   await page.getByLabel('Or add a local path').fill(server.projectDir)
   await page.getByRole('button', { name: 'Add path' }).click()
 
-  await expect(
-    page.getByText(
-      'Local path added. Press Scan on its row to run the first scan.',
-    ),
-  ).toBeVisible()
+  // Success closes the modal; the new row is what proves the add worked.
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 
   const row = page.getByRole('row', { name: new RegExp(name) })
   await expect(row).toBeVisible()

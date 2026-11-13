@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 import { HealthChip } from './health-chip'
-import { Logo, MoonIcon, SunIcon } from './icons'
+import { MoonIcon, SunIcon } from './icons'
 import { TrivyDBChip } from './trivy-db-chip'
 import { UpdateNotice } from './update-notice'
 import { assetsQuery } from '../api/assets'
@@ -11,6 +12,18 @@ import { dashboardQuery, openFindingTotal } from '../api/reports'
 import { navBadge, navGroups, navItemFor, type NavCounts } from '../lib/nav'
 import { applyTheme, currentTheme, type Theme } from '../lib/theme'
 import { cn } from '../lib/utils'
+
+const pageActionsId = 'page-actions'
+
+/** PageActions renders its children at the right end of the page header. */
+export function PageActions({ children }: { children: ReactNode }) {
+  // ponytail: portal into the header slot; a context slot if pages need more.
+  const [target, setTarget] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setTarget(document.getElementById(pageActionsId))
+  }, [])
+  return target ? createPortal(children, target) : null
+}
 
 /**
  * AppShell is the concept's layout: a fixed 232px sidebar with the ADR-007
@@ -33,9 +46,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen bg-bg text-fg">
       <aside className="sticky top-0 flex h-screen w-[232px] shrink-0 flex-col gap-[18px] overflow-y-auto border-r border-border-subtle bg-sidebar px-3 py-4">
         <div className="flex items-center gap-2.5 px-2 py-1">
-          <span className="flex size-6 items-center justify-center rounded-md bg-accent">
-            <Logo className="stroke-accent-fg" />
-          </span>
+          {/* The app icon is the same file the favicon uses: one asset, served
+              from the bundle, never fetched at runtime. */}
+          <img src="/icon.svg" alt="" width={24} height={24} className="size-6" />
           <span className="text-sm font-semibold">Bastion</span>
         </div>
 
@@ -116,6 +129,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="flex min-h-14 flex-wrap items-center gap-3 border-b border-border-subtle px-7 py-2.5">
           <h1 className="text-[15px] font-semibold">{current.label}</h1>
           <span className="text-faint">{current.subtitle}</span>
+          <div id={pageActionsId} className="ml-auto flex items-center gap-2" />
         </header>
         <div className="flex flex-col gap-4 px-7 py-6">{children}</div>
       </main>

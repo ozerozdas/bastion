@@ -55,6 +55,7 @@ test('first report: connect GitHub, add a repo, scan, read the report', async ({
     await pause()
 
     await page.getByRole('link', { name: 'Projects' }).click()
+    await page.getByRole('button', { name: 'Add project' }).click()
     await page.locator('#discover-search').pressSequentially(repo, { delay: 40 })
     await page.getByRole('button', { name: `Add ${repo}` }).click()
     const row = page.getByRole('row').filter({ hasText: repo.split('/')[1] })

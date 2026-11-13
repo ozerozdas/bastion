@@ -215,11 +215,15 @@ export function DashboardPage() {
             {data.trend.map((trend) => (
               <li
                 key={trend.asset_id}
-                className="flex items-center justify-between gap-4 py-2 first:pt-0 last:pb-0"
+                className="-mx-2 flex items-center justify-between gap-4 rounded px-2 py-2 hover:bg-hover"
               >
-                <span className="truncate text-[13px]">
+                <Link
+                  to="/findings"
+                  search={{ asset: trend.asset_id }}
+                  className="truncate text-[13px] hover:underline"
+                >
                   {names.get(trend.asset_id) ?? `Asset ${String(trend.asset_id)}`}
-                </span>
+                </Link>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-faint tabular-nums">
                     {trend.scans.at(-1)?.critical_high_open ?? 0} open
@@ -256,8 +260,16 @@ export function DashboardPage() {
               {data.last_scans.map((scan) => {
                 const status = statusView[scan.status]
                 return (
-                  <tr key={scan.asset_id}>
-                    <td className="py-2 pr-3">{scan.display_name}</td>
+                  <tr key={scan.asset_id} className="hover:bg-hover">
+                    <td className="py-2 pr-3">
+                      <Link
+                        to="/findings"
+                        search={{ asset: scan.asset_id }}
+                        className="hover:underline"
+                      >
+                        {scan.display_name}
+                      </Link>
+                    </td>
                     <td className="py-2 pr-3">
                       <Badge tone={status.tone}>{status.label}</Badge>
                     </td>
@@ -445,7 +457,7 @@ function RiskiestAssets({ assets }: { assets: AssetRisk[] }) {
             </thead>
             <tbody className="divide-y divide-border-subtle">
               {assets.map((asset) => (
-                <tr key={asset.asset_id}>
+                <tr key={asset.asset_id} className="hover:bg-hover">
                   <td className="py-2 pr-3">
                     <Link
                       to="/findings"

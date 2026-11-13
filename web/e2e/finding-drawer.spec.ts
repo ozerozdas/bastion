@@ -67,6 +67,8 @@ async function openReports(
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
   await page.getByRole('link', { name: 'Findings', exact: true }).click()
+  // These tests need one row per finding; grouped is the default (#106).
+  await page.getByRole('button', { name: 'Single' }).click()
   await expect(page.locator('tbody tr')).toHaveCount(list.length)
 }
 
