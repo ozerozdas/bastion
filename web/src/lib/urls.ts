@@ -24,6 +24,32 @@ export function parseAssetSearch(search: Record<string, unknown>): AssetSearch {
   return {}
 }
 
+/** FindingsView names the two ways the Findings page lists rows (#90). */
+export type FindingsView = 'single' | 'grouped'
+
+/** FindingsSearch is the Findings route's search params; the default view is absent. */
+export type FindingsSearch = {
+  /** ?view=grouped shows one row per rule + type across projects. */
+  view?: 'grouped'
+  /** Narrows the list to one project; absent means every project. */
+  asset?: number
+}
+
+/**
+ * parseFindingsSearch reads ?view=grouped and ?asset=<id> from the Findings
+ * route. Single is the default, so its URL stays the bare path, and an unknown
+ * view falls back to it rather than hiding rows. ?asset= keeps the validation
+ * the old reports route had.
+ */
+export function parseFindingsSearch(
+  search: Record<string, unknown>,
+): FindingsSearch {
+  return {
+    ...(search.view === 'grouped' ? { view: 'grouped' as const } : {}),
+    ...parseAssetSearch(search),
+  }
+}
+
 /** ProjectsTab names the two views of the Projects section (#88). */
 export type ProjectsTab = 'projects' | 'scans'
 

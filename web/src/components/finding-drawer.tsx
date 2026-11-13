@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from 'react'
+import { useState, type FormEvent } from 'react'
 
 import {
   useClearFindingState,
@@ -14,6 +8,7 @@ import {
 } from '../api/findings'
 import { capitalize, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
 import { isHttpsUrl } from '../lib/urls'
+import { useDrawerFocus } from './drawer-focus'
 import { ErrorNote } from './error-note'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -44,25 +39,11 @@ export function FindingDrawer({
   onRemoving,
   onRemoveFailed,
 }: FindingDrawerProps) {
-  const panel = useRef<HTMLDivElement>(null)
+  const { panel, onKeyDown } = useDrawerFocus(onClose)
   const setState = useSetFindingState()
   const clearState = useClearFindingState()
   const [decision, setDecision] = useState<FindingState>('ignored')
   const [reason, setReason] = useState('')
-
-  // Focus moves into the drawer when it opens, so Escape and Tab work at once.
-  // Closing without a decision gives it back to the opener row; a decision
-  // removes that row, so the page restores focus once the list refreshes (#69).
-  useEffect(() => {
-    const opener =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null
-    panel.current?.focus()
-    return () => {
-      if (opener?.isConnected) opener.focus()
-    }
-  }, [])
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -98,14 +79,7 @@ export function FindingDrawer({
         aria-modal="true"
         aria-labelledby="finding-title"
         tabIndex={-1}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.stopPropagation()
-            onClose()
-            return
-          }
-          if (panel.current) trapTab(event, panel.current)
-        }}
+        onKeyDown={onKeyDown}
         className="absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col gap-4 overflow-y-auto border-l border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
       >
         <div className="flex items-start gap-3">
@@ -322,42 +296,4 @@ export function FindingDrawer({
       </div>
     </div>
   )
-}
-
-const focusableSelector = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',')
-
-function trapTab(event: KeyboardEvent<HTMLElement>, container: HTMLElement) {
-  if (event.key !== 'Tab') return
-
-  const items = Array.from(
-    container.querySelectorAll<HTMLElement>(focusableSelector),
-  )
-  if (items.length === 0) {
-    event.preventDefault()
-    container.focus()
-    return
-  }
-
-  const first = items[0]
-  const last = items[items.length - 1]
-  const active = document.activeElement
-
-  if (!container.contains(active)) {
-    event.preventDefault()
-    first.focus()
-  } else if (event.shiftKey && (active === first || active === container)) {
-    // The panel itself holds focus right after open, so Shift+Tab from there wraps too.
-    event.preventDefault()
-    last.focus()
-  } else if (!event.shiftKey && active === last) {
-    event.preventDefault()
-    first.focus()
-  }
 }

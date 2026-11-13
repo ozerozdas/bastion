@@ -40,6 +40,7 @@ const baseFinding = {
 const findings = [
   {
     ...baseFinding,
+    rule_id: 'CVE-2021-1111',
     id: 1,
     asset_id: beta.id,
     fingerprint: 'fp-beta-critical',
@@ -48,6 +49,7 @@ const findings = [
   },
   {
     ...baseFinding,
+    rule_id: 'CVE-2022-2222',
     id: 2,
     asset_id: alpha.id,
     fingerprint: 'fp-alpha-high',
@@ -56,11 +58,31 @@ const findings = [
   },
   {
     ...baseFinding,
+    rule_id: 'CVE-2023-3333',
     id: 3,
     asset_id: beta.id,
     fingerprint: 'fp-beta-medium',
     severity: 'medium',
     title: 'Medium in beta',
+  },
+  // One CVE in both projects: grouped mode folds the pair into a single row.
+  {
+    ...baseFinding,
+    rule_id: 'CVE-2024-4444',
+    id: 4,
+    asset_id: alpha.id,
+    fingerprint: 'fp-alpha-shared',
+    severity: 'high',
+    title: 'Shared vulnerability',
+  },
+  {
+    ...baseFinding,
+    rule_id: 'CVE-2024-4444',
+    id: 5,
+    asset_id: beta.id,
+    fingerprint: 'fp-beta-shared',
+    severity: 'high',
+    title: 'Shared vulnerability',
   },
 ]
 
@@ -103,7 +125,7 @@ test('lists findings across projects with no filter, critical first', async ({
   await expect(page.locator('#findings-project')).toHaveValue('')
 
   const rows = page.locator('tbody tr')
-  await expect(rows).toHaveCount(3)
+  await expect(rows).toHaveCount(5)
   // Severity order comes from the API; the list must not regroup it by project.
   await expect(rows.nth(0)).toContainText('Critical in beta')
   await expect(rows.nth(0)).toContainText('beta')
@@ -120,15 +142,102 @@ test('lists findings across projects with no filter, critical first', async ({
   requested.length = 0
   const origin = new URL(page.url()).origin
   await page.locator('#findings-project').selectOption(String(beta.id))
-  await expect(rows).toHaveCount(2)
+  await expect(rows).toHaveCount(3)
   await expect(rows.nth(0)).toContainText('beta')
   await expect(page).toHaveURL(`${origin}/findings?asset=${String(beta.id)}`)
   expect(requested.at(-1)?.searchParams.get('asset_id')).toBe(String(beta.id))
 
   // Back to every project.
   await page.locator('#findings-project').selectOption('')
-  await expect(rows).toHaveCount(3)
+  await expect(rows).toHaveCount(5)
   await expect(page).toHaveURL(`${origin}/findings`)
+
+  expect(problems).toEqual([])
+})
+
+test('groups one CVE across projects and keeps the view in the URL', async ({
+  page,
+  server,
+}) => {
+  const problems = watch(page)
+
+  await page.route('**/api/assets', (route) =>
+    route.fulfill({ json: { assets: [alpha, beta] } }),
+  )
+  await page.route('**/api/findings?**', (route) => {
+    const url = new URL(route.request().url())
+    const assetId = url.searchParams.get('asset_id')
+    const rows =
+      assetId === null
+        ? findings
+        : findings.filter((finding) => finding.asset_id === Number(assetId))
+    return route.fulfill({ json: { findings: rows } })
+  })
+
+  await openDashboard(page, server.url)
+  await page.getByRole('link', { name: /^Findings/ }).click()
+  const origin = new URL(page.url()).origin
+
+  await expect(page.getByRole('button', { name: 'Single' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+
+  await page.getByRole('button', { name: 'Grouped' }).click()
+  await expect(page).toHaveURL(`${origin}/findings?view=grouped`)
+  await expect(page.getByRole('button', { name: 'Grouped' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+
+  const rows = page.locator('tbody tr')
+  // Three single-project rules plus the CVE alpha and beta share.
+  await expect(rows).toHaveCount(4)
+  const shared = rows.filter({ hasText: 'CVE-2024-4444' })
+  await expect(shared).toHaveCount(1)
+  await expect(shared).toContainText('Shared vulnerability')
+  await expect(shared).toContainText('2 projects')
+  await expect(shared).toContainText('4.17.21')
+
+  // The view is in the URL, so a reload stays grouped.
+  await page.reload()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Findings' }),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Grouped' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.locator('tbody tr')).toHaveCount(4)
+
+  // The drawer lists every affected project with installed and fixed version.
+  await page.locator('tbody tr').filter({ hasText: 'CVE-2024-4444' }).click()
+  const drawer = page.getByRole('dialog')
+  await expect(
+    drawer.getByRole('heading', { name: 'Shared vulnerability' }),
+  ).toBeVisible()
+  await expect(drawer.getByRole('button', { name: /alpha/ })).toContainText(
+    'lodash@4.17.0',
+  )
+  await expect(drawer.getByRole('button', { name: /beta/ })).toContainText(
+    'lodash@4.17.0',
+  )
+  await expect(drawer.getByRole('button', { name: /beta/ })).toContainText('4.17.21')
+
+  // Opening one project's finding swaps the drawer; closing it gives focus
+  // back to the grouped row, not to the page body.
+  await drawer.getByRole('button', { name: /alpha/ }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(
+    page.locator('tbody tr').filter({ hasText: 'CVE-2024-4444' }),
+  ).toBeFocused()
+
+  // Single is still one row per finding, and the URL loses the view.
+  await page.getByRole('button', { name: 'Single' }).click()
+  await expect(page).toHaveURL(`${origin}/findings`)
+  await expect(page.locator('tbody tr')).toHaveCount(5)
 
   expect(problems).toEqual([])
 })

@@ -22,9 +22,11 @@ import { EmptyState } from '../components/empty-state'
 import { ErrorNote } from '../components/error-note'
 import { FilterBar, type FilterField } from '../components/filter-bar'
 import { FindingDrawer } from '../components/finding-drawer'
+import { GroupDrawer } from '../components/group-drawer'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { capitalize, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
+import { groupFindings, type FindingGroup } from '../lib/group-findings'
 import { cn } from '../lib/utils'
 
 const inputClass =
@@ -161,21 +163,100 @@ function findingColumns(
 }
 
 /**
+ * groupedColumns builds the table for one row per rule and type (#90): the
+ * worst severity, the rule, how many projects it reaches and the fix.
+ */
+function groupedColumns(
+  assetNames: ReadonlyMap<number, string>,
+): DataTableColumn<FindingGroup>[] {
+  const projects = (group: FindingGroup) =>
+    group.projectCount === 1
+      ? '1 project'
+      : `${String(group.projectCount)} projects`
+
+  return [
+    {
+      id: 'severity',
+      header: 'Severity',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pr-3 pl-3 whitespace-nowrap',
+      cell: (group) => (
+        <Badge tone={severityTone[group.severity]}>
+          {group.severity === 'unknown' ? 'unknown' : capitalize(group.severity)}
+        </Badge>
+      ),
+    },
+    {
+      id: 'rule',
+      header: 'Finding',
+      headerClassName: 'pl-3',
+      cellClassName: 'max-w-[46ch] py-2 pl-3',
+      cell: (group) => (
+        <>
+          <span className="block">{group.title}</span>
+          <span className="font-mono text-xs text-muted">
+            {group.ruleId ?? `${typeLabels[group.type]} finding`}
+          </span>
+        </>
+      ),
+    },
+    {
+      id: 'projects',
+      header: 'Projects',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3 whitespace-nowrap',
+      cellTitle: (group) =>
+        group.assetIds
+          .map((id) => assetNames.get(id) ?? `Asset ${String(id)}`)
+          .join(', '),
+      cell: (group) => <span className="tabular-nums">{projects(group)}</span>,
+    },
+    {
+      id: 'fixed',
+      header: 'Fixed in',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap',
+      cellTitle: (group) =>
+        group.fixedVersions.length > 1 ? group.fixedVersions.join(', ') : undefined,
+      cell: (group) =>
+        group.fixedVersion !== undefined ? (
+          group.fixedVersion
+        ) : group.fixedVersions.length > 1 ? (
+          <span className="text-muted">varies</span>
+        ) : (
+          <span className="text-faint">—</span>
+        ),
+    },
+  ]
+}
+
+/**
  * FindingsPage is §7.4: findings of every project, or of one when the Project
- * filter is set, with a detail drawer shared across projects.
+ * filter is set, with a detail drawer shared across projects. The view toggle
+ * groups them by rule across projects (#90).
  */
 export function FindingsPage() {
   const search = useSearch({ from: '/findings' })
   const navigate = useNavigate()
   const assets = useQuery(assetsQuery)
 
+  const grouped = search.view === 'grouped'
   const [type, setType] = useState<FindingType | ''>('')
   const [severity, setSeverity] = useState<Severity | ''>('')
   const [status, setStatus] = useState<FindingStatus>('open')
   const [openFingerprint, setOpenFingerprint] = useState<string | null>(null)
+  const [openGroupKey, setOpenGroupKey] = useState<string | null>(null)
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set())
+  const [checkedGroups, setCheckedGroups] = useState<ReadonlySet<string>>(
+    new Set(),
+  )
   const openedAt = useRef(0)
+  const openedGroupAt = useRef(0)
   const findingsHeading = useRef<HTMLHeadingElement>(null)
+
+  // The view lives in the URL, so switching keeps the project filter and the
+  // other way round.
+  const viewSearch = grouped ? { view: 'grouped' as const } : {}
 
   const assetList = useMemo(() => assets.data ?? [], [assets.data])
   // No project in the URL means every project: the list is fleet-wide unless
@@ -190,8 +271,12 @@ export function FindingsPage() {
   useEffect(() => {
     if (search.asset === undefined || assets.data === undefined) return
     if (assets.data.some((asset) => asset.id === search.asset)) return
-    void navigate({ to: '/findings', search: {}, replace: true })
-  }, [assets.data, navigate, search.asset])
+    void navigate({
+      to: '/findings',
+      search: search.view === 'grouped' ? { view: 'grouped' } : {},
+      replace: true,
+    })
+  }, [assets.data, navigate, search.asset, search.view])
 
   const findings = useQuery({
     ...latestFindingsQuery({
@@ -210,6 +295,11 @@ export function FindingsPage() {
     [assetList],
   )
   const columns = useMemo(() => findingColumns(assetNames), [assetNames])
+  const groupColumns = useMemo(() => groupedColumns(assetNames), [assetNames])
+  const groups = useMemo(
+    () => (findings.data === undefined ? undefined : groupFindings(findings.data)),
+    [findings.data],
+  )
 
   // A decision removes the row that opened the drawer, so the drawer's own
   // focus restore lands on nothing: keep focus in the table once the refreshed
@@ -219,6 +309,13 @@ export function FindingsPage() {
     rowKey: (finding) => finding.fingerprint,
     fallback: findingsHeading,
     onRemoved: () => setOpenFingerprint(null),
+  })
+  // Grouped rows can disappear the same way when every member is hidden.
+  const groupFocus = useRowRemovalFocus({
+    rows: groups,
+    rowKey: (group) => group.key,
+    fallback: findingsHeading,
+    onRemoved: () => setOpenGroupKey(null),
   })
 
   if (assets.isPending) {
@@ -254,15 +351,25 @@ export function FindingsPage() {
   const openFinding = findings.data?.find(
     (finding) => finding.fingerprint === openFingerprint,
   )
+  const openGroup = groups?.find((group) => group.key === openGroupKey)
   const filtered = type !== '' || severity !== ''
-  // Only rows still on screen count, so a filter change never acts on hidden findings.
-  const checkedFindings = (findings.data ?? []).filter((finding) =>
-    checked.has(finding.fingerprint),
+  // Grouped mode selects groups; a group stands for every member finding, so
+  // the bulk bar and the drawer act on all of them across projects.
+  const checkedGroupRows = (groups ?? []).filter((group) =>
+    checkedGroups.has(group.key),
   )
+  // Only rows still on screen count, so a filter change never acts on hidden findings.
+  const checkedFindings = grouped
+    ? checkedGroupRows.flatMap((group) => group.findings)
+    : (findings.data ?? []).filter((finding) => checked.has(finding.fingerprint))
   const allChecked =
     findings.data !== undefined &&
     findings.data.length > 0 &&
     checkedFindings.length === findings.data.length
+  const allGroupsChecked =
+    groups !== undefined &&
+    groups.length > 0 &&
+    checkedGroupRows.length === groups.length
 
   function toggleChecked(fingerprint: string) {
     setChecked((current) => {
@@ -270,6 +377,34 @@ export function FindingsPage() {
       if (!next.delete(fingerprint)) next.add(fingerprint)
       return next
     })
+  }
+
+  function toggleGroupChecked(key: string) {
+    setCheckedGroups((current) => {
+      const next = new Set(current)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
+  }
+
+  function setView(next: 'single' | 'grouped') {
+    void navigate({
+      to: '/findings',
+      search:
+        next === 'grouped'
+          ? {
+              view: 'grouped',
+              ...(search.asset === undefined ? {} : { asset: search.asset }),
+            }
+          : search.asset === undefined
+            ? {}
+            : { asset: search.asset },
+      replace: true,
+    })
+    setOpenFingerprint(null)
+    setOpenGroupKey(null)
+    setChecked(new Set())
+    setCheckedGroups(new Set())
   }
 
   const filters: FilterField[] = [
@@ -288,11 +423,16 @@ export function FindingsPage() {
       onChange: (value) => {
         void navigate({
           to: '/findings',
-          search: value === '' ? {} : { asset: Number(value) },
+          search:
+            value === ''
+              ? viewSearch
+              : { ...viewSearch, asset: Number(value) },
           replace: true,
         })
         setOpenFingerprint(null)
+        setOpenGroupKey(null)
         setChecked(new Set())
+        setCheckedGroups(new Set())
       },
     },
     {
@@ -307,6 +447,7 @@ export function FindingsPage() {
       onChange: (value) => {
         setType(value as FindingType | '')
         setOpenFingerprint(null)
+        setOpenGroupKey(null)
       },
     },
     {
@@ -324,6 +465,7 @@ export function FindingsPage() {
       onChange: (value) => {
         setSeverity(value as Severity | '')
         setOpenFingerprint(null)
+        setOpenGroupKey(null)
       },
     },
     {
@@ -338,6 +480,7 @@ export function FindingsPage() {
       onChange: (value) => {
         setStatus(value as FindingStatus)
         setOpenFingerprint(null)
+        setOpenGroupKey(null)
       },
     },
   ]
@@ -365,9 +508,57 @@ export function FindingsPage() {
     headerClassName: 'w-6',
   }
 
+  const groupSelection: DataTableSelection<FindingGroup> = {
+    all: {
+      checked: allGroupsChecked,
+      indeterminate: checkedGroupRows.length > 0 && !allGroupsChecked,
+      onChange: () =>
+        setCheckedGroups(
+          allGroupsChecked
+            ? new Set()
+            : new Set((groups ?? []).map((group) => group.key)),
+        ),
+      label: 'Select all grouped findings',
+      checkboxClassName: 'cursor-pointer align-middle',
+    },
+    row: (group) => ({
+      checked: checkedGroups.has(group.key),
+      onChange: () => toggleGroupChecked(group.key),
+      label: `Select ${group.title} in every project`,
+      cellClassName: 'py-2',
+      checkboxClassName: 'cursor-pointer align-middle',
+    }),
+    headerClassName: 'w-6',
+  }
+
   return (
     <>
       <FilterBar label="Finding filters" fields={filters}>
+        <div
+          role="group"
+          aria-label="Findings view"
+          className="flex items-center gap-1 rounded-md border border-border-subtle bg-bg p-0.5"
+        >
+          {(['single', 'grouped'] as const).map((option) => {
+            const active = grouped === (option === 'grouped')
+            return (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setView(option)}
+                className={cn(
+                  'rounded px-2.5 py-1 text-[13px] transition-colors',
+                  active
+                    ? 'bg-surface text-fg shadow-sm'
+                    : 'text-muted hover:text-fg',
+                )}
+              >
+                {option === 'single' ? 'Single' : 'Grouped'}
+              </button>
+            )
+          })}
+        </div>
         <p className="ml-auto text-xs text-faint">
           {selected === undefined
             ? 'Findings of every project’s latest succeeded scan'
@@ -426,32 +617,69 @@ export function FindingsPage() {
               Findings
             </h2>
             <span className="text-faint">
-              {findings.data.length}{' '}
-              {selected === undefined
-                ? 'across all projects'
-                : 'in the latest succeeded scan'}
+              {grouped
+                ? `${String(groups?.length ?? 0)} grouped rules from ${String(findings.data.length)} findings`
+                : `${String(findings.data.length)} ${
+                    selected === undefined
+                      ? 'across all projects'
+                      : 'in the latest succeeded scan'
+                  }`}
             </span>
           </div>
           {checkedFindings.length > 0 ? (
             <BulkBar
-              key={status}
+              key={`${status}-${String(grouped)}`}
               findings={checkedFindings}
               status={status}
-              onDone={() => setChecked(new Set())}
+              onDone={() => {
+                setChecked(new Set())
+                setCheckedGroups(new Set())
+              }}
             />
           ) : null}
-          <DataTable
-            rows={findings.data}
-            columns={columns}
-            rowKey={(finding) => finding.fingerprint}
-            selection={selection}
-            onRowActivate={(finding, index) => {
-              openedAt.current = index
-              setOpenFingerprint(finding.fingerprint)
-            }}
-            bodyRef={rowFocus.bodyRef}
-          />
+          {grouped ? (
+            <DataTable
+              rows={groups ?? []}
+              columns={groupColumns}
+              rowKey={(group) => group.key}
+              selection={groupSelection}
+              onRowActivate={(group, index) => {
+                openedGroupAt.current = index
+                setOpenGroupKey(group.key)
+              }}
+              bodyRef={groupFocus.bodyRef}
+            />
+          ) : (
+            <DataTable
+              rows={findings.data}
+              columns={columns}
+              rowKey={(finding) => finding.fingerprint}
+              selection={selection}
+              onRowActivate={(finding, index) => {
+                openedAt.current = index
+                setOpenFingerprint(finding.fingerprint)
+              }}
+              bodyRef={rowFocus.bodyRef}
+            />
+          )}
         </section>
+      ) : null}
+
+      {openGroup ? (
+        <GroupDrawer
+          key={openGroup.key}
+          group={openGroup}
+          assetNames={assetNames}
+          onClose={() => setOpenGroupKey(null)}
+          onRemoving={() =>
+            groupFocus.beginRemoval(openGroup.key, openedGroupAt.current)
+          }
+          onRemoveFailed={groupFocus.cancelRemoval}
+          onOpenFinding={(finding) => {
+            setOpenGroupKey(null)
+            setOpenFingerprint(finding.fingerprint)
+          }}
+        />
       ) : null}
 
       {openFinding ? (
