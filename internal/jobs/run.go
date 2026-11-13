@@ -118,7 +118,13 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 
 		m.progress(job, StageScan, sc.Name())
 		start := time.Now()
-		fs, pkgs, scanErr := m.runScanner(ctx, job, sc, ws, asset)
+		// The options copy is per scanner: Progress publishes the stage the
+		// adapter is waiting on as an ordinary progress event for this scan.
+		scanOpts := m.options
+		scanOpts.Progress = func(stage string) {
+			m.progress(job, stage, sc.Name())
+		}
+		fs, pkgs, scanErr := m.runScanner(ctx, job, sc, ws, scanOpts, asset)
 		duration := time.Since(start).Milliseconds()
 		run.DurationMS = &duration
 		release()
@@ -147,13 +153,13 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 }
 
 // runScanner scans one workspace and normalizes the raw output.
-func (m *Manager) runScanner(ctx context.Context, job *scanJob, sc scanners.Scanner, ws *sources.Workspace, asset findings.Asset) ([]findings.Finding, []findings.Package, error) {
+func (m *Manager) runScanner(ctx context.Context, job *scanJob, sc scanners.Scanner, ws *sources.Workspace, opts scanners.Options, asset findings.Asset) ([]findings.Finding, []findings.Package, error) {
 	norm := m.normalizers[sc.Name()]
 	if norm == nil {
 		return nil, nil, fmt.Errorf("%s: no normalizer configured", sc.Name())
 	}
 
-	raw, err := sc.Scan(ctx, ws, m.options)
+	raw, err := sc.Scan(ctx, ws, opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", sc.Name(), err)
 	}

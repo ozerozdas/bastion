@@ -290,7 +290,7 @@ func TestGetDashboard(t *testing.T) {
 	if len(dashboard.LastScans) != 2 {
 		t.Fatalf("last_scans = %+v, want one per asset", dashboard.LastScans)
 	}
-	if dashboard.LastScans[0].ScanId != criticalScan || dashboard.LastScans[0].Status != gen.Succeeded {
+	if dashboard.LastScans[0].ScanId != criticalScan || dashboard.LastScans[0].Status != gen.ScanStatusSucceeded {
 		t.Errorf("alpha last scan = %+v, want scan %d succeeded", dashboard.LastScans[0], criticalScan)
 	}
 	if dashboard.LastScans[0].FinishedAt == nil {

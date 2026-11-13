@@ -22,6 +22,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/httpapi"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
 	"github.com/ozerozdas/bastion/internal/update"
@@ -155,7 +156,11 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	// One broker feeds both the scan workers (publish) and /api/events
 	// (subscribe), so the UI sees every lifecycle event of the scans it starts.
 	bus := events.NewBroker()
-	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore, bus)
+	// One manager backs both the scan pipeline and /api/trivy-db, so a download
+	// started in the UI is the one a scan waits for instead of a second one.
+	trivyDB := trivy.NewManager(opts.paths.TrivyCacheDir())
+	defer trivyDB.Close()
+	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore, bus, trivyDB)
 	if err != nil {
 		return errors.Join(err, ln.Close())
 	}
@@ -185,6 +190,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		Assets:      assetService,
 		Events:      bus,
 		Update:      updateChecker,
+		TrivyDB:     trivyDB,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())

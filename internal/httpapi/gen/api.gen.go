@@ -227,6 +227,7 @@ const (
 	ScanEventStageNormalize ScanEventStage = "normalize"
 	ScanEventStageResolve   ScanEventStage = "resolve"
 	ScanEventStageScan      ScanEventStage = "scan"
+	ScanEventStageWaitDb    ScanEventStage = "wait_db"
 )
 
 // Valid indicates whether the value is a known member of the ScanEventStage enum.
@@ -239,6 +240,8 @@ func (e ScanEventStage) Valid() bool {
 	case ScanEventStageResolve:
 		return true
 	case ScanEventStageScan:
+		return true
+	case ScanEventStageWaitDb:
 		return true
 	default:
 		return false
@@ -268,25 +271,25 @@ func (e ScanEventType) Valid() bool {
 
 // Defines values for ScanStatus.
 const (
-	Canceled  ScanStatus = "canceled"
-	Failed    ScanStatus = "failed"
-	Queued    ScanStatus = "queued"
-	Running   ScanStatus = "running"
-	Succeeded ScanStatus = "succeeded"
+	ScanStatusCanceled  ScanStatus = "canceled"
+	ScanStatusFailed    ScanStatus = "failed"
+	ScanStatusQueued    ScanStatus = "queued"
+	ScanStatusRunning   ScanStatus = "running"
+	ScanStatusSucceeded ScanStatus = "succeeded"
 )
 
 // Valid indicates whether the value is a known member of the ScanStatus enum.
 func (e ScanStatus) Valid() bool {
 	switch e {
-	case Canceled:
+	case ScanStatusCanceled:
 		return true
-	case Failed:
+	case ScanStatusFailed:
 		return true
-	case Queued:
+	case ScanStatusQueued:
 		return true
-	case Running:
+	case ScanStatusRunning:
 		return true
-	case Succeeded:
+	case ScanStatusSucceeded:
 		return true
 	default:
 		return false
@@ -314,6 +317,48 @@ func (e Severity) Valid() bool {
 	case SeverityMedium:
 		return true
 	case SeverityUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrivyDBState.
+const (
+	TrivyDBStateDownloading TrivyDBState = "downloading"
+	TrivyDBStateFailed      TrivyDBState = "failed"
+	TrivyDBStateMissing     TrivyDBState = "missing"
+	TrivyDBStateReady       TrivyDBState = "ready"
+)
+
+// Valid indicates whether the value is a known member of the TrivyDBState enum.
+func (e TrivyDBState) Valid() bool {
+	switch e {
+	case TrivyDBStateDownloading:
+		return true
+	case TrivyDBStateFailed:
+		return true
+	case TrivyDBStateMissing:
+		return true
+	case TrivyDBStateReady:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrivyDBStatusTrigger.
+const (
+	TrivyDBStatusTriggerScan TrivyDBStatusTrigger = "scan"
+	TrivyDBStatusTriggerUser TrivyDBStatusTrigger = "user"
+)
+
+// Valid indicates whether the value is a known member of the TrivyDBStatusTrigger enum.
+func (e TrivyDBStatusTrigger) Valid() bool {
+	switch e {
+	case TrivyDBStatusTriggerScan:
+		return true
+	case TrivyDBStatusTriggerUser:
 		return true
 	default:
 		return false
@@ -790,6 +835,33 @@ type TrendScan struct {
 	ScanId     int64      `json:"scan_id"`
 }
 
+// TrivyDBState State of the Trivy vulnerability DB. `missing` and `failed` both mean a
+// scan downloads it first; only `ready` means scans run straight away.
+type TrivyDBState string
+
+// TrivyDBStatus The vulnerability DB as the UI and the CLI see it. Optional fields are
+// absent when they do not apply to the state.
+type TrivyDBStatus struct {
+	// Error Why the last download failed; present only when `failed`.
+	Error *string `json:"error,omitempty"`
+
+	// State State of the Trivy vulnerability DB. `missing` and `failed` both mean a
+	// scan downloads it first; only `ready` means scans run straight away.
+	State TrivyDBState `json:"state"`
+
+	// Trigger What started the download in flight, or the last one. Absent before
+	// the first download.
+	Trigger *TrivyDBStatusTrigger `json:"trigger,omitempty"`
+
+	// UpdatedAt When the DB was built, from Trivy's metadata. Absent unless the
+	// state is `ready` and the metadata carries it.
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// TrivyDBStatusTrigger What started the download in flight, or the last one. Absent before
+// the first download.
+type TrivyDBStatusTrigger string
+
 // TypeTotals Open findings per type; types without findings are zero.
 type TypeTotals struct {
 	License       int `json:"license"`
@@ -1102,6 +1174,12 @@ type ServerInterface interface {
 	// ListScanFindings Findings of one scan.
 	// (GET /api/scans/{id}/findings)
 	ListScanFindings(w http.ResponseWriter, r *http.Request, id ScanID, params ListScanFindingsParams)
+	// GetTrivyDB Report the vulnerability DB state.
+	// (GET /api/trivy-db)
+	GetTrivyDB(w http.ResponseWriter, r *http.Request)
+	// DownloadTrivyDB Start a vulnerability DB download.
+	// (POST /api/trivy-db/download)
+	DownloadTrivyDB(w http.ResponseWriter, r *http.Request)
 	// GetUpdateStatus Report the release check state.
 	// (GET /api/update)
 	GetUpdateStatus(w http.ResponseWriter, r *http.Request)
@@ -1627,6 +1705,34 @@ func (siw *ServerInterfaceWrapper) ListScanFindings(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetTrivyDB operation middleware
+func (siw *ServerInterfaceWrapper) GetTrivyDB(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrivyDB(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadTrivyDB operation middleware
+func (siw *ServerInterfaceWrapper) DownloadTrivyDB(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadTrivyDB(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetUpdateStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetUpdateStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -1778,6 +1884,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/update", wrapper.GetUpdateStatus)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/update/consent", wrapper.SetUpdateConsent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/trivy-db", wrapper.GetTrivyDB)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/trivy-db/download", wrapper.DownloadTrivyDB)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections", wrapper.ListConnections)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections", wrapper.CreateConnection)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/connections/{id}", wrapper.DeleteConnection)
@@ -4329,6 +4437,230 @@ func (response ListScanFindings500ApplicationProblemPlusJSONResponse) VisitListS
 	return err
 }
 
+type GetTrivyDBRequestObject struct {
+}
+
+type GetTrivyDBResponseObject interface {
+	VisitGetTrivyDBResponse(w http.ResponseWriter) error
+}
+
+type GetTrivyDB200JSONResponse TrivyDBStatus
+
+func (response GetTrivyDB200JSONResponse) VisitGetTrivyDBResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrivyDB401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetTrivyDB401ApplicationProblemPlusJSONResponse) VisitGetTrivyDBResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrivyDB403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetTrivyDB403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetTrivyDB403ResponseHeaders
+}
+
+func (response GetTrivyDB403ApplicationProblemPlusJSONResponse) VisitGetTrivyDBResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrivyDB421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetTrivyDB421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetTrivyDB421ResponseHeaders
+}
+
+func (response GetTrivyDB421ApplicationProblemPlusJSONResponse) VisitGetTrivyDBResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrivyDB500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetTrivyDB500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetTrivyDB500ResponseHeaders
+}
+
+func (response GetTrivyDB500ApplicationProblemPlusJSONResponse) VisitGetTrivyDBResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadTrivyDBRequestObject struct {
+}
+
+type DownloadTrivyDBResponseObject interface {
+	VisitDownloadTrivyDBResponse(w http.ResponseWriter) error
+}
+
+type DownloadTrivyDB202JSONResponse TrivyDBStatus
+
+func (response DownloadTrivyDB202JSONResponse) VisitDownloadTrivyDBResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadTrivyDB401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response DownloadTrivyDB401ApplicationProblemPlusJSONResponse) VisitDownloadTrivyDBResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadTrivyDB403ResponseHeaders struct {
+	ContentType *string
+}
+
+type DownloadTrivyDB403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DownloadTrivyDB403ResponseHeaders
+}
+
+func (response DownloadTrivyDB403ApplicationProblemPlusJSONResponse) VisitDownloadTrivyDBResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadTrivyDB421ResponseHeaders struct {
+	ContentType *string
+}
+
+type DownloadTrivyDB421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DownloadTrivyDB421ResponseHeaders
+}
+
+func (response DownloadTrivyDB421ApplicationProblemPlusJSONResponse) VisitDownloadTrivyDBResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadTrivyDB500ResponseHeaders struct {
+	ContentType *string
+}
+
+type DownloadTrivyDB500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DownloadTrivyDB500ResponseHeaders
+}
+
+func (response DownloadTrivyDB500ApplicationProblemPlusJSONResponse) VisitDownloadTrivyDBResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetUpdateStatusRequestObject struct {
 }
 
@@ -4634,6 +4966,12 @@ type StrictServerInterface interface {
 	// ListScanFindings Findings of one scan.
 	// (GET /api/scans/{id}/findings)
 	ListScanFindings(ctx context.Context, request ListScanFindingsRequestObject) (ListScanFindingsResponseObject, error)
+	// GetTrivyDB Report the vulnerability DB state.
+	// (GET /api/trivy-db)
+	GetTrivyDB(ctx context.Context, request GetTrivyDBRequestObject) (GetTrivyDBResponseObject, error)
+	// DownloadTrivyDB Start a vulnerability DB download.
+	// (POST /api/trivy-db/download)
+	DownloadTrivyDB(ctx context.Context, request DownloadTrivyDBRequestObject) (DownloadTrivyDBResponseObject, error)
 	// GetUpdateStatus Report the release check state.
 	// (GET /api/update)
 	GetUpdateStatus(ctx context.Context, request GetUpdateStatusRequestObject) (GetUpdateStatusResponseObject, error)
@@ -5158,6 +5496,54 @@ func (sh *strictHandler) ListScanFindings(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListScanFindingsResponseObject); ok {
 		if err := validResponse.VisitListScanFindingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTrivyDB operation middleware
+func (sh *strictHandler) GetTrivyDB(w http.ResponseWriter, r *http.Request) {
+	var request GetTrivyDBRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTrivyDB(ctx, request.(GetTrivyDBRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTrivyDB")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrivyDBResponseObject); ok {
+		if err := validResponse.VisitGetTrivyDBResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadTrivyDB operation middleware
+func (sh *strictHandler) DownloadTrivyDB(w http.ResponseWriter, r *http.Request) {
+	var request DownloadTrivyDBRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadTrivyDB(ctx, request.(DownloadTrivyDBRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadTrivyDB")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadTrivyDBResponseObject); ok {
+		if err := validResponse.VisitDownloadTrivyDBResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

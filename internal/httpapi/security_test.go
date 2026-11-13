@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -465,7 +466,13 @@ func TestServeShutsDownGracefully(t *testing.T) {
 		t.Fatalf("Listen: %v", err)
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
-	srv, err := New(Config{Version: "test", Port: port})
+	// A logger of its own: the default one belongs to the process, and this
+	// test must not write to it from a serving goroutine.
+	srv, err := New(Config{
+		Version: "test",
+		Port:    port,
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

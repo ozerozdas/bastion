@@ -102,7 +102,7 @@ func waitForState(t *testing.T, m *Manager, want DBState) DBStatus {
 
 func TestManagerMissingThenReady(t *testing.T) {
 	updater := newStubUpdater()
-	m := newManagerWithUpdater(t.TempDir(), updater.update)
+	m := NewManagerWithUpdater(t.TempDir(), updater.update)
 	t.Cleanup(m.Close)
 
 	if got := m.Status(); got.State != DBMissing {
@@ -137,7 +137,7 @@ func TestManagerMissingThenReady(t *testing.T) {
 
 func TestStartDownloadIsSingleFlight(t *testing.T) {
 	updater := newStubUpdater()
-	m := newManagerWithUpdater(t.TempDir(), updater.update)
+	m := NewManagerWithUpdater(t.TempDir(), updater.update)
 	t.Cleanup(m.Close)
 
 	m.StartDownload()
@@ -162,7 +162,7 @@ func TestStartDownloadIsSingleFlight(t *testing.T) {
 // must not start a second one.
 func TestEnsureReadyJoinsUserDownload(t *testing.T) {
 	updater := newStubUpdater()
-	m := newManagerWithUpdater(t.TempDir(), updater.update)
+	m := NewManagerWithUpdater(t.TempDir(), updater.update)
 	t.Cleanup(m.Close)
 
 	m.StartDownload()
@@ -188,7 +188,7 @@ func TestEnsureReadyJoinsUserDownload(t *testing.T) {
 
 func TestEnsureReadyDownloadsWhenMissing(t *testing.T) {
 	updater := newStubUpdater()
-	m := newManagerWithUpdater(t.TempDir(), updater.update)
+	m := NewManagerWithUpdater(t.TempDir(), updater.update)
 	t.Cleanup(m.Close)
 
 	errs := make(chan error, 1)
@@ -211,7 +211,7 @@ func TestEnsureReadyDownloadsWhenMissing(t *testing.T) {
 
 func TestEnsureReadyContextCancelWhileWaiting(t *testing.T) {
 	updater := newStubUpdater()
-	m := newManagerWithUpdater(t.TempDir(), updater.update)
+	m := NewManagerWithUpdater(t.TempDir(), updater.update)
 	t.Cleanup(m.Close)
 
 	m.StartDownload()
@@ -230,7 +230,7 @@ func TestEnsureReadyContextCancelWhileWaiting(t *testing.T) {
 func TestFailedDownloadKeepsErrorThenRetrySucceeds(t *testing.T) {
 	updater := newStubUpdater()
 	updater.setErr(errors.New("registry unreachable"))
-	m := newManagerWithUpdater(t.TempDir(), updater.update)
+	m := NewManagerWithUpdater(t.TempDir(), updater.update)
 	t.Cleanup(m.Close)
 
 	m.StartDownload()
@@ -263,7 +263,7 @@ func TestEnsureReadyReportsFailedDownload(t *testing.T) {
 	updater.setErr(errors.New("registry unreachable"))
 	// No blocking: EnsureReady runs the attempt itself.
 	updater.release = nil
-	m := newManagerWithUpdater(t.TempDir(), updater.update)
+	m := NewManagerWithUpdater(t.TempDir(), updater.update)
 	t.Cleanup(m.Close)
 
 	err := m.EnsureReady(t.Context())

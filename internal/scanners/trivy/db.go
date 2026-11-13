@@ -78,12 +78,14 @@ type Manager struct {
 
 // NewManager returns a manager for the vulnerability DB under cacheDir.
 func NewManager(cacheDir string) *Manager {
-	return newManagerWithUpdater(cacheDir, defaultUpdater)
+	return NewManagerWithUpdater(cacheDir, defaultUpdater)
 }
 
-// newManagerWithUpdater is NewManager with a caller-supplied updater, so tests
-// drive the state machine without touching the network.
-func newManagerWithUpdater(cacheDir string, updater func(ctx context.Context, cacheDir string) error) *Manager {
+// NewManagerWithUpdater is NewManager with a caller-supplied updater function.
+// It exists for tests, which drive the state machine without touching the
+// network, and for callers that fetch the DB another way (a mirror, an offline
+// bundle). Production code uses NewManager.
+func NewManagerWithUpdater(cacheDir string, updater func(ctx context.Context, cacheDir string) error) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
 		cacheDir: cacheDir,
@@ -231,6 +233,10 @@ func defaultUpdater(ctx context.Context, cacheDir string) error {
 	if err := os.MkdirAll(dbDir, 0o750); err != nil {
 		return fmt.Errorf("trivy: create db dir %q: %w", dbDir, err)
 	}
+	// Trivy's library state is process-global (ADR-001) and the download
+	// rewrites the DB a scan may be reading, so it takes the same lock scans do.
+	scanMu.Lock()
+	defer scanMu.Unlock()
 	if err := trivydb.NewClient(dbDir, true).Download(ctx, dbDir, ftypes.RegistryOptions{}); err != nil {
 		return fmt.Errorf("download vulnerability DB: %w", err)
 	}
