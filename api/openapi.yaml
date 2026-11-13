@@ -1191,7 +1191,7 @@ components:
     SeverityTotals:
       type: object
       title: SeverityTotals
-      description: Open findings per severity; severities without findings are zero.
+      description: Findings per severity; severities without findings are zero.
       additionalProperties: false
       required: [critical, high, medium, low, unknown]
       properties:
@@ -1430,10 +1430,12 @@ components:
       type: object
       title: Scan
       description: |
-        One scan of one asset. `scanner_runs` is filled by the single-scan read
-        only; the list omits it.
+        One scan of one asset. `counts` are every finding this scan recorded,
+        per severity; decisions on the asset do not rewrite history, and a scan
+        that recorded nothing is all zeros. `scanner_runs` is filled by the
+        single-scan read only; the list omits it.
       additionalProperties: false
-      required: [id, asset_id, status, trigger]
+      required: [id, asset_id, status, trigger, counts]
       properties:
         id:
           type: integer
@@ -1463,6 +1465,8 @@ components:
         error:
           type: string
           description: Why a failed scan failed; absent otherwise.
+        counts:
+          $ref: "#/components/schemas/SeverityTotals"
         scanner_runs:
           type: array
           description: One entry per scanner, in execution order (single-scan read only).

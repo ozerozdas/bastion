@@ -66,8 +66,35 @@ VALUES (
 
 -- name: ListScans :many
 -- Newest first, optionally narrowed to one asset. Ids increase with time, so
--- ordering by id is stable even when two scans share a started_at.
-SELECT * FROM scans
-WHERE (sqlc.narg(asset_id) IS NULL OR asset_id = sqlc.narg(asset_id))
-ORDER BY id DESC
+-- ordering by id is stable even when two scans share a started_at. The counts
+-- are every finding the scan recorded, per severity, in one statement; the
+-- correlated subqueries read only the findings of the listed scans (see
+-- idx_findings_scan).
+SELECT
+    sqlc.embed(s),
+    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'critical' THEN 1 ELSE 0 END)
+                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS critical_count,
+    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'high' THEN 1 ELSE 0 END)
+                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS high_count,
+    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'medium' THEN 1 ELSE 0 END)
+                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS medium_count,
+    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'low' THEN 1 ELSE 0 END)
+                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS low_count,
+    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'unknown' THEN 1 ELSE 0 END)
+                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS unknown_count
+FROM scans s
+WHERE (sqlc.narg(asset_id) IS NULL OR s.asset_id = sqlc.narg(asset_id))
+ORDER BY s.id DESC
 LIMIT sqlc.arg(limit);
+
+-- name: CountFindingsByScan :one
+-- Every finding one scan recorded, per severity: the single-scan read shows
+-- the same counts as the scan list. A scan that recorded nothing is all zeros.
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN f.severity = 'critical' THEN 1 ELSE 0 END), 0) AS INTEGER) AS critical_count,
+    CAST(COALESCE(SUM(CASE WHEN f.severity = 'high' THEN 1 ELSE 0 END), 0) AS INTEGER) AS high_count,
+    CAST(COALESCE(SUM(CASE WHEN f.severity = 'medium' THEN 1 ELSE 0 END), 0) AS INTEGER) AS medium_count,
+    CAST(COALESCE(SUM(CASE WHEN f.severity = 'low' THEN 1 ELSE 0 END), 0) AS INTEGER) AS low_count,
+    CAST(COALESCE(SUM(CASE WHEN f.severity = 'unknown' THEN 1 ELSE 0 END), 0) AS INTEGER) AS unknown_count
+FROM findings f
+WHERE f.scan_id = sqlc.arg(scan_id);

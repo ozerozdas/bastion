@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { Fragment, useState, type FormEvent } from 'react'
 
 import { assetsQuery, useArchiveAsset, useCreateAsset, type Asset } from '../api/assets'
@@ -12,11 +12,21 @@ import {
 } from '../api/connections'
 import { useScanEvents, type LiveScan } from '../api/events'
 import { scansQuery, useCancelScan, useStartScans, type Scan } from '../api/scans'
+import {
+  DataTable,
+  DataTableRow,
+  type DataTableColumn,
+  type DataTableSelection,
+} from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { CountBadge, severityCounts } from '../components/severity-counts'
+import { Tabs, type TabItem } from '../components/ui/tabs'
 import { suggestFix } from '../lib/hints'
 import { relativeTime } from '../lib/time'
+import type { ProjectsTab } from '../lib/urls'
+import { ScansPanel } from './history'
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
@@ -40,19 +50,56 @@ const kindLabels: Record<Asset['kind'], string> = {
   image: 'image',
 }
 
-/** severities is the fixed order of the four open-finding counts. */
-const severities: {
-  key: keyof Asset['open_counts']
-  tone: 'critical' | 'high' | 'medium' | 'low'
-}[] = [
-  { key: 'critical', tone: 'critical' },
-  { key: 'high', tone: 'high' },
-  { key: 'medium', tone: 'medium' },
-  { key: 'low', tone: 'low' },
+/**
+ * projectColumns are the table headers; ProjectRow renders its own cells
+ * because it owns the per-row mutations and inline detail rows.
+ */
+const projectColumns: DataTableColumn<Asset>[] = [
+  { id: 'project', header: 'Project' },
+  { id: 'kind', header: 'Kind', headerClassName: 'pl-3' },
+  { id: 'ref', header: 'Ref', headerClassName: 'pl-3' },
+  { id: 'last-scan', header: 'Last scan', headerClassName: 'pl-3' },
+  { id: 'open-findings', header: 'Open findings', headerClassName: 'pl-3' },
+  { id: 'actions', header: 'Actions', headerClassName: 'pl-3 text-right' },
 ]
 
-/** ProjectsPage is §7.3: the assets table plus the inline add panel. */
+/** projectTabs are the two views of §7's Projects section (#88). */
+const projectTabs: TabItem<ProjectsTab>[] = [
+  { value: 'projects', label: 'Projects' },
+  { value: 'scans', label: 'Scans' },
+]
+
+/**
+ * ProjectsPage is §7.3: the assets table and the scan list as two tabs, so a
+ * scan history stays with the projects it belongs to (#88).
+ */
 export function ProjectsPage() {
+  const search = useSearch({ from: '/projects' })
+  const navigate = useNavigate()
+  const tab: ProjectsTab = search.tab ?? 'projects'
+
+  return (
+    <Tabs
+      label="Projects views"
+      items={projectTabs}
+      value={tab}
+      onChange={(next) => {
+        // The URL owns the tab, so a reload or a copied link lands on it.
+        // replace: switching tabs is not a step the Back button should undo.
+        void navigate({
+          to: '/projects',
+          search: next === 'scans' ? { tab: 'scans' } : {},
+          replace: true,
+        })
+      }}
+    >
+      {tab === 'scans' ? <ScansPanel /> : <ProjectsPanel />}
+    </Tabs>
+  )
+}
+
+/** ProjectsPanel is §7.3: the assets table plus the inline add panel. */
+function ProjectsPanel() {
   const assets = useQuery(assetsQuery)
   const live = useScanEvents()
   const list = assets.data ?? []
@@ -146,6 +193,21 @@ function ProjectsTable({
     setSelected(allSelected ? new Set() : new Set(assets.map((asset) => asset.id)))
   }
 
+  const selection: DataTableSelection<Asset> = {
+    all: {
+      checked: allSelected,
+      onChange: toggleAll,
+      label: 'Select all projects',
+    },
+    row: (asset) => ({
+      checked: selected.has(asset.id),
+      onChange: () => toggle(asset.id),
+      label: `Select ${asset.display_name}`,
+      cellClassName: 'py-2 align-top',
+    }),
+    headerClassName: 'w-8',
+  }
+
   return (
     <>
       {selectedIds.length > 0 ? (
@@ -181,40 +243,15 @@ function ProjectsTable({
         />
       ) : null}
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-[13px]">
-          <thead className="text-xs text-faint">
-            <tr>
-              <th className="w-8 pb-2">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  aria-label="Select all projects"
-                  className="size-3.5 accent-accent"
-                />
-              </th>
-              <th className="pb-2 font-medium">Project</th>
-              <th className="pb-2 pl-3 font-medium">Kind</th>
-              <th className="pb-2 pl-3 font-medium">Ref</th>
-              <th className="pb-2 pl-3 font-medium">Last scan</th>
-              <th className="pb-2 pl-3 font-medium">Open findings</th>
-              <th className="pb-2 pl-3 text-right font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border-subtle">
-            {assets.map((asset) => (
-              <ProjectRow
-                key={asset.id}
-                asset={asset}
-                live={live.get(asset.id)}
-                selected={selected.has(asset.id)}
-                onToggle={() => toggle(asset.id)}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        rows={assets}
+        columns={projectColumns}
+        rowKey={(asset) => String(asset.id)}
+        selection={selection}
+        renderRow={(asset) => (
+          <ProjectRow asset={asset} live={live.get(asset.id)} selection={selection} />
+        )}
+      />
     </>
   )
 }
@@ -223,13 +260,12 @@ function ProjectsTable({
 function ProjectRow({
   asset,
   live,
-  selected,
-  onToggle,
+  selection,
 }: {
   asset: Asset
   live: LiveScan | undefined
-  selected: boolean
-  onToggle: () => void
+  /** The table's selection config, so the shared row keeps its checkbox. */
+  selection: DataTableSelection<Asset>
 }) {
   const start = useStartScans()
   const cancel = useCancelScan()
@@ -253,16 +289,7 @@ function ProjectRow({
 
   return (
     <Fragment>
-      <tr>
-        <td className="py-2 align-top">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={onToggle}
-            aria-label={`Select ${asset.display_name}`}
-            className="size-3.5 accent-accent"
-          />
-        </td>
+      <DataTableRow selection={selection.row(asset)}>
         <td className="max-w-[24ch] py-2 pr-3 align-top">
           <span className="block truncate font-medium" title={asset.display_name}>
             {asset.display_name}
@@ -294,7 +321,7 @@ function ProjectRow({
         </td>
         <td className="py-2 pl-3 align-top">
           <span className="flex flex-wrap gap-1">
-            {severities.map((severity) => (
+            {severityCounts.map((severity) => (
               <CountBadge
                 key={severity.key}
                 count={asset.open_counts[severity.key]}
@@ -327,11 +354,11 @@ function ProjectRow({
               </Button>
             ) : null}
             <Link
-              to="/security-reports"
+              to="/findings"
               search={{ asset: asset.id }}
               className={buttonVariants({ variant: 'ghost', size: 'sm' })}
             >
-              View report
+              View findings
             </Link>
             <Button
               type="button"
@@ -346,15 +373,15 @@ function ProjectRow({
             </Button>
           </div>
         </td>
-      </tr>
+      </DataTableRow>
 
       {confirming ? (
         <tr>
           <td colSpan={7} className="pb-2">
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
               <span>
-                Remove “{asset.display_name}”? Its existing scans stay in Scan
-                History.
+                Remove “{asset.display_name}”? Its existing scans stay in the
+                Scans tab.
               </span>
               <Button
                 type="button"
@@ -421,27 +448,6 @@ function ProjectRow({
         </tr>
       ) : null}
     </Fragment>
-  )
-}
-
-/** CountBadge keeps severity colour on the badge and greys out zero counts. */
-function CountBadge({
-  count,
-  tone,
-  label,
-}: {
-  count: number
-  tone: 'critical' | 'high' | 'medium' | 'low'
-  label: string
-}) {
-  return (
-    <Badge
-      tone={tone}
-      className={count === 0 ? 'tabular-nums opacity-40' : 'tabular-nums'}
-      aria-label={`${String(count)} open ${label} findings`}
-    >
-      {count}
-    </Badge>
   )
 }
 

@@ -16,7 +16,7 @@ Nothing leaves the machine except the calls listed under [Network calls](#networ
 **v0.1 released (Phase 1 — core MVP).** Working today: GitHub PAT connection (token in
 the OS keyring), repo discovery and tarball fetch, scan jobs with live progress, Trivy
 (vulnerabilities, licences, IaC) and Gitleaks (working-tree secrets) adapters, ignore with
-reason, Security Reports, and `bastion scan` with JSON, table and SARIF output. Container
+reason, Findings, and `bastion scan` with JSON, table and SARIF output. Container
 images, fix plans, SAST and MCP are later phases: see the [roadmap](docs/wiki/Roadmap.md).
 
 ## Install
@@ -62,11 +62,12 @@ first scan additionally downloads a ~1.7 GB vulnerability DB into the cache dire
    run locally, at most `--concurrency` (default 2) at a time; progress streams into the
    project row.
    No GitHub? Use **Add a local path** with an absolute directory instead.
-4. **Security Reports** shows one project's latest findings, filterable, with the fixed
-   version that closes each one. Hide a finding as *ignored*, *accepted risk* or *false
-   positive*; a reason is required and the decision applies to later scans of that project.
-5. **Scan History** lists past scans. Stuck setup? `bastion doctor` prints paths, versions,
-   keyring availability and database health (`--json` for scripting).
+4. **Findings** lists the latest findings across every project, filterable by project,
+   type, severity and status, with the fixed version that closes each one. Hide a finding
+   as *ignored*, *accepted risk* or *false positive*; a reason is required and the decision
+   applies to later scans of that project.
+5. **Projects → Scans** lists past scans. Stuck setup? `bastion doctor` prints paths,
+   versions, keyring availability and database health (`--json` for scripting).
 
 ## CLI
 

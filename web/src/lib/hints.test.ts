@@ -27,10 +27,12 @@ describe('suggestFix', () => {
     )
   })
 
-  it('falls back to Scan History for anything else', () => {
+  it('falls back to the Scans tab for anything else', () => {
     expect(suggestFix('gitleaks: exit status 1')).toBe(
-      'See Scan History for details.',
+      'See the Scans tab under Projects for details.',
     )
-    expect(suggestFix(undefined)).toBe('See Scan History for details.')
+    expect(suggestFix(undefined)).toBe(
+      'See the Scans tab under Projects for details.',
+    )
   })
 })

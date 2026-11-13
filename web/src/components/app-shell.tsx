@@ -7,12 +7,12 @@ import { Logo, MoonIcon, SunIcon } from './icons'
 import { UpdateNotice } from './update-notice'
 import { assetsQuery } from '../api/assets'
 import { dashboardQuery, openFindingTotal } from '../api/reports'
-import { navBadge, navItemFor, navItems, type NavCounts } from '../lib/nav'
+import { navBadge, navGroups, navItemFor, type NavCounts } from '../lib/nav'
 import { applyTheme, currentTheme, type Theme } from '../lib/theme'
 import { cn } from '../lib/utils'
 
 /**
- * AppShell is the concept's layout: a fixed 232px sidebar with the five
+ * AppShell is the concept's layout: a fixed 232px sidebar with the ADR-007
  * sections, a 56px header for the page title, and a scrolling page area.
  */
 export function AppShell({ children }: { children: ReactNode }) {
@@ -51,37 +51,57 @@ export function AppShell({ children }: { children: ReactNode }) {
           </span>
         </button>
 
-        <nav aria-label="Primary" className="flex flex-col gap-0.5">
-          {navItems.map((item) => {
-            const active = item.to === current.to
-            const Icon = item.icon
-            const badge = navBadge(item, counts)
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                aria-label={badge.name}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'flex h-[34px] items-center gap-2.5 rounded-md px-2.5 text-[13px] text-muted transition-colors hover:bg-hover hover:text-fg',
-                  active && 'bg-active text-fg shadow-[0_0_0_1px_var(--b-border-subtle)]',
-                )}
-              >
-                <Icon />
-                {item.label}
-                {badge.count === null ? null : (
-                  // The accessible name already carries the number, so the pill
-                  // must not be read a second time.
-                  <span
-                    aria-hidden="true"
-                    className="ml-auto min-w-[18px] rounded-full bg-surface px-1 text-center font-mono text-[11px] leading-[16px] tabular-nums"
+        <nav aria-label="Primary" className="flex flex-col gap-3">
+          {navGroups().map((group) => (
+            <div
+              key={group.section}
+              role={group.label === null ? undefined : 'group'}
+              aria-labelledby={
+                group.label === null ? undefined : `nav-${group.section}`
+              }
+              className="flex flex-col gap-0.5"
+            >
+              {group.label === null ? null : (
+                <h2
+                  id={`nav-${group.section}`}
+                  className="px-2.5 pt-1 pb-1 text-[10px] font-semibold tracking-[0.08em] text-faint uppercase"
+                >
+                  {group.label}
+                </h2>
+              )}
+              {group.items.map((item) => {
+                const active = item.to === current.to
+                const Icon = item.icon
+                const badge = navBadge(item, counts)
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    aria-label={badge.name}
+                    aria-current={active ? 'page' : undefined}
+                    className={cn(
+                      'flex h-[34px] items-center gap-2.5 rounded-md px-2.5 text-[13px] text-muted transition-colors hover:bg-hover hover:text-fg',
+                      active &&
+                        'bg-active text-fg shadow-[0_0_0_1px_var(--b-border-subtle)]',
+                    )}
                   >
-                    {badge.count}
-                  </span>
-                )}
-              </Link>
-            )
-          })}
+                    <Icon />
+                    {item.label}
+                    {badge.count === null ? null : (
+                      // The accessible name already carries the number, so the pill
+                      // must not be read a second time.
+                      <span
+                        aria-hidden="true"
+                        className="ml-auto min-w-[18px] rounded-full bg-surface px-1 text-center font-mono text-[11px] leading-[16px] tabular-nums"
+                      >
+                        {badge.count}
+                      </span>
+                    )}
+                  </Link>
+                )
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="mt-auto flex flex-col gap-2">
