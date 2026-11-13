@@ -40,6 +40,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
       # make check builds the UI (embed) before go build.
       - run: make check
+      # Concurrent job runner and SSE broker: run the same suite under the
+      # race detector, reusing the build cache make check just filled.
+      - run: make test-race
 
   # The smoke test drives the built binary in Chromium. `make check` must not
   # download a browser, so this job installs one and runs the five-page test.
