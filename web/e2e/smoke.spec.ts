@@ -5,8 +5,8 @@ import type { Page } from '@playwright/test'
 import { expect, test, watch, type Server } from './fixtures'
 
 /**
- * navPages mirrors web/src/lib/nav.tsx: the five sections of §7, the heading the
- * header shows and the subtitle under it.
+ * navPages mirrors web/src/lib/nav.tsx: the ADR-007 sections in order, the
+ * heading the header shows and the subtitle under it.
  */
 const navPages = [
   {
@@ -16,10 +16,10 @@ const navPages = [
     marker: 'No scans yet',
   },
   {
-    label: 'Connections',
-    path: '/connections',
-    subtitle: 'GitHub, AWS and Docker sources',
-    marker: 'Add GitHub connection',
+    label: 'Findings',
+    path: '/findings',
+    subtitle: 'Across every project, with fixes',
+    marker: 'No projects yet',
   },
   {
     label: 'Projects',
@@ -28,16 +28,10 @@ const navPages = [
     marker: 'Add projects',
   },
   {
-    label: 'Findings',
-    path: '/findings',
-    subtitle: 'Across every project, with fixes',
-    marker: 'No projects yet',
-  },
-  {
-    label: 'Scan History',
-    path: '/scan-history',
-    subtitle: 'Every scan, comparable side by side',
-    marker: 'No scans yet — add a project and press Scan',
+    label: 'Connections',
+    path: '/connections',
+    subtitle: 'GitHub, AWS and Docker sources',
+    marker: 'Add GitHub connection',
   },
 ]
 
@@ -66,7 +60,7 @@ test('exchanges the startup token for a session cookie', async ({
   expect(problems).toEqual([])
 })
 
-test('renders all five nav pages without browser errors', async ({
+test('renders all four nav pages without browser errors', async ({
   page,
   server,
 }) => {
@@ -88,6 +82,116 @@ test('renders all five nav pages without browser errors', async ({
     ).toBeVisible()
     expect(new URL(page.url()).pathname).toBe(item.path)
   }
+
+  expect(problems).toEqual([])
+})
+
+test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => {
+  const problems = watch(page)
+  await openSession(page, server)
+
+  const aside = page.locator('aside')
+  await expect(
+    aside.getByRole('heading', { name: 'ASSETS', exact: true }),
+  ).toBeVisible()
+  await expect(
+    aside.getByRole('heading', { name: 'SETTINGS', exact: true }),
+  ).toBeVisible()
+
+  // Order is the ADR-007 one: Findings moved up, Connections moved down.
+  const labels = await aside
+    .getByRole('link')
+    .evaluateAll((links) =>
+      links.map((link) => link.getAttribute('aria-label')),
+    )
+  expect(labels).toEqual(['Dashboard', 'Findings', 'Projects', 'Connections'])
+
+  // Scan History is a tab now, not a sidebar entry.
+  await expect(aside.getByRole('link', { name: /Scan History/ })).toHaveCount(0)
+
+  expect(problems).toEqual([])
+})
+
+test('Projects tabs live in the URL and move with arrow keys', async ({
+  page,
+  server,
+}) => {
+  const problems = watch(page)
+  await openSession(page, server)
+  await page.getByRole('link', { name: 'Projects', exact: true }).click()
+
+  const projectsTab = page.getByRole('tab', { name: 'Projects', exact: true })
+  const scansTab = page.getByRole('tab', { name: 'Scans', exact: true })
+  await expect(projectsTab).toHaveAttribute('aria-selected', 'true')
+  await expect(projectsTab).toHaveAttribute('tabindex', '0')
+  await expect(scansTab).toHaveAttribute('aria-selected', 'false')
+  await expect(scansTab).toHaveAttribute('tabindex', '-1')
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Projects' }),
+  ).toBeVisible()
+
+  const origin = new URL(page.url()).origin
+
+  // Clicking the tab changes only the URL; the tablist is not local state.
+  await scansTab.click()
+  await expect(page).toHaveURL(`${origin}/projects?tab=scans`)
+  await expect(scansTab).toHaveAttribute('aria-selected', 'true')
+  await expect(
+    page.getByText('No scans yet — add a project and press Scan', {
+      exact: true,
+    }),
+  ).toBeVisible()
+
+  // The panel is labelled by the selected tab, and vice versa.
+  const scansId = await scansTab.getAttribute('id')
+  await expect(page.getByRole('tabpanel')).toHaveAttribute(
+    'aria-labelledby',
+    scansId ?? '',
+  )
+
+  // Reload keeps the tab, because it is in the URL.
+  await page.reload()
+  await expect(
+    page.getByRole('tab', { name: 'Scans', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true')
+  await expect(page).toHaveURL(`${origin}/projects?tab=scans`)
+
+  // Automatic activation: ArrowLeft/ArrowRight wrap, Home/End jump.
+  await scansTab.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(projectsTab).toBeFocused()
+  await expect(projectsTab).toHaveAttribute('aria-selected', 'true')
+  await expect(page).toHaveURL(`${origin}/projects`)
+
+  await page.keyboard.press('ArrowRight')
+  await expect(scansTab).toBeFocused()
+  await expect(scansTab).toHaveAttribute('aria-selected', 'true')
+  await expect(page).toHaveURL(`${origin}/projects?tab=scans`)
+
+  await page.keyboard.press('Home')
+  await expect(projectsTab).toBeFocused()
+  await expect(projectsTab).toHaveAttribute('aria-selected', 'true')
+
+  await page.keyboard.press('End')
+  await expect(scansTab).toBeFocused()
+  await expect(scansTab).toHaveAttribute('aria-selected', 'true')
+
+  expect(problems).toEqual([])
+})
+
+test('redirects /scan-history to the Scans tab', async ({ page, server }) => {
+  const problems = watch(page)
+  await openSession(page, server)
+  const origin = new URL(page.url()).origin
+
+  await page.goto(`${origin}/scan-history`)
+  await expect(page).toHaveURL(`${origin}/projects?tab=scans`)
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Projects' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('tab', { name: 'Scans', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true')
 
   expect(problems).toEqual([])
 })

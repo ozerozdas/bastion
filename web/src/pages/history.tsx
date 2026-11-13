@@ -31,7 +31,8 @@ const triggerLabels: Record<Scan['trigger'], string> = {
   api: 'API',
 }
 
-export function HistoryPage() {
+/** ScansPanel is the Projects page's Scans tab: every scan of every project. */
+export function ScansPanel() {
   const [assetId, setAssetId] = useState<number | undefined>(undefined)
   const assets = useQuery(assetsQuery)
 

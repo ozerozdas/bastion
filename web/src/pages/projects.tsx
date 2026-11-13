@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { Fragment, useState, type FormEvent } from 'react'
 
 import { assetsQuery, useArchiveAsset, useCreateAsset, type Asset } from '../api/assets'
@@ -21,8 +21,11 @@ import {
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { Tabs, type TabItem } from '../components/ui/tabs'
 import { suggestFix } from '../lib/hints'
 import { relativeTime } from '../lib/time'
+import type { ProjectsTab } from '../lib/urls'
+import { ScansPanel } from './history'
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
@@ -70,8 +73,41 @@ const projectColumns: DataTableColumn<Asset>[] = [
   { id: 'actions', header: 'Actions', headerClassName: 'pl-3 text-right' },
 ]
 
-/** ProjectsPage is §7.3: the assets table plus the inline add panel. */
+/** projectTabs are the two views of §7's Projects section (#88). */
+const projectTabs: TabItem<ProjectsTab>[] = [
+  { value: 'projects', label: 'Projects' },
+  { value: 'scans', label: 'Scans' },
+]
+
+/**
+ * ProjectsPage is §7.3: the assets table and the scan list as two tabs, so a
+ * scan history stays with the projects it belongs to (#88).
+ */
 export function ProjectsPage() {
+  const search = useSearch({ from: '/projects' })
+  const navigate = useNavigate()
+  const tab: ProjectsTab = search.tab ?? 'projects'
+
+  return (
+    <Tabs
+      label="Projects views"
+      items={projectTabs}
+      value={tab}
+      onChange={(next) => {
+        // The URL owns the tab, so reload and back/forward both land on it.
+        void navigate({
+          to: '/projects',
+          search: next === 'scans' ? { tab: 'scans' } : {},
+        })
+      }}
+    >
+      {tab === 'scans' ? <ScansPanel /> : <ProjectsPanel />}
+    </Tabs>
+  )
+}
+
+/** ProjectsPanel is §7.3: the assets table plus the inline add panel. */
+function ProjectsPanel() {
   const assets = useQuery(assetsQuery)
   const live = useScanEvents()
   const list = assets.data ?? []

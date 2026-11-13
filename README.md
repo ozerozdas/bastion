@@ -66,8 +66,8 @@ first scan additionally downloads a ~1.7 GB vulnerability DB into the cache dire
    type, severity and status, with the fixed version that closes each one. Hide a finding
    as *ignored*, *accepted risk* or *false positive*; a reason is required and the decision
    applies to later scans of that project.
-5. **Scan History** lists past scans. Stuck setup? `bastion doctor` prints paths, versions,
-   keyring availability and database health (`--json` for scripting).
+5. **Projects → Scans** lists past scans. Stuck setup? `bastion doctor` prints paths,
+   versions, keyring availability and database health (`--json` for scripting).
 
 ## CLI
 

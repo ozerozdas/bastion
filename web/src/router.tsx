@@ -7,11 +7,10 @@ import {
 } from '@tanstack/react-router'
 
 import { AppShell } from './components/app-shell'
-import { parseAssetSearch } from './lib/urls'
+import { parseAssetSearch, parseProjectsTabSearch } from './lib/urls'
 import { ConnectionsPage } from './pages/connections'
 import { DashboardPage } from './pages/dashboard'
 import { FindingsPage } from './pages/findings'
-import { HistoryPage } from './pages/history'
 import { ProjectsPage } from './pages/projects'
 
 function RootLayout() {
@@ -41,6 +40,8 @@ const connectionsRoute = createRoute({
 const projectsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects',
+  // ?tab=scans shows the scan list; without it the project list is shown.
+  validateSearch: parseProjectsTabSearch,
   component: ProjectsPage,
 })
 
@@ -77,7 +78,10 @@ const legacySecurityReportsRoute = createRoute({
 const historyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/scan-history',
-  component: HistoryPage,
+  // Scan History is the Scans tab now (#88); the old URL opens that tab.
+  beforeLoad: () => {
+    throw redirect({ to: '/projects', search: { tab: 'scans' }, replace: true })
+  },
 })
 
 const routeTree = rootRoute.addChildren([

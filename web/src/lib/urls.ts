@@ -23,3 +23,22 @@ export function parseAssetSearch(search: Record<string, unknown>): AssetSearch {
   }
   return {}
 }
+
+/** ProjectsTab names the two views of the Projects section (#88). */
+export type ProjectsTab = 'projects' | 'scans'
+
+/** ProjectsSearch is the Projects route's search params; the default tab is absent. */
+export type ProjectsSearch = {
+  tab?: 'scans'
+}
+
+/**
+ * parseProjectsTabSearch reads ?tab=scans from the Projects route. Every other
+ * value, including a missing one, is the Projects tab, so /projects stays
+ * canonical and a mistyped tab never hides the project list.
+ */
+export function parseProjectsTabSearch(
+  search: Record<string, unknown>,
+): ProjectsSearch {
+  return search.tab === 'scans' ? { tab: 'scans' } : {}
+}

@@ -10,5 +10,5 @@ export function suggestFix(error: string | undefined): string {
   if (text.includes('not found') || text.includes('404')) {
     return 'Check the token has access to this repository.'
   }
-  return 'See Scan History for details.'
+  return 'See the Scans tab under Projects for details.'
 }

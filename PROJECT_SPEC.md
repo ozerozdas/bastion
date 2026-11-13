@@ -249,13 +249,12 @@ Errors: RFC 9457 problem+json.
 
 ## 7. UI
 
-Five sections, left nav. Calm, minimal, dark + light themes. Severity colors used sparingly (badges and charts only).
+Four sections, left nav; Projects holds the **Projects | Scans** tabs. Calm, minimal, dark + light themes. Severity colors used sparingly (badges and charts only).
 
 1. **Dashboard** — totals by severity (critical/high/medium/low), findings by type, top 5 riskiest projects, trend of open critical+high over recent scans, last scan time per asset.
-2. **Connections** — cards for GitHub / AWS / Docker; add, test, remove. Shows status and which identity it is (GitHub login, AWS account id via STS).
-3. **Projects** — table of assets with last scan status, severity counts, "Scan" action; "Add projects" opens discover dialog with search + multi-select.
-4. **Findings** — across all projects: findings table (filter by project/type/severity/status), finding detail drawer (description, fixed version, references, ignore with reason). A Projects row opens this list filtered to that project. Phase 3: "Fix plan" tab grouping by package upgrade.
-5. **Scan History** — list of scans; select two to see diff (new / fixed / persisting).
+2. **Findings** — across all projects: findings table (filter by project/type/severity/status), finding detail drawer (description, fixed version, references, ignore with reason). A Projects row opens this list filtered to that project. Phase 3: "Fix plan" tab grouping by package upgrade.
+3. **Projects** — table of assets with last scan status, severity counts, "Scan" action; "Add projects" opens discover dialog with search + multi-select. The **Scans** tab lists past scans; select two to see the diff (new / fixed / persisting).
+4. **Connections** — cards for GitHub / AWS / Docker; add, test, remove. Shows status and which identity it is (GitHub login, AWS account id via STS).
 
 Empty states must explain the next step. Every scan error must show a human-readable cause and a suggested fix (e.g. "AWS SSO session expired → run `aws sso login --profile X`").
 
@@ -283,7 +282,7 @@ Goal: **retire the biggest technical risk** (Trivy + Gitleaks as libraries insid
 - Scan jobs: worker pool (default concurrency 2), SSE progress, cancel
 - Trivy (vulnerabilities + package inventory + misconfig/IaC + licenses) and Gitleaks (working-tree secrets) adapters + normalizers. License findings in v0.1 are informational; allow/deny policy comes in Phase 3
 - Fingerprinting, findings persistence, finding_states (ignore with reason)
-- UI: Dashboard, Connections (GitHub), Projects, Findings, Scan History (list only)
+- UI: Dashboard, Findings, Projects (Projects | Scans tabs), Connections
 - `bastion scan --repo owner/name --format json|table|sarif` for CLI use
 - README with quickstart, demo GIF, threat model section
 

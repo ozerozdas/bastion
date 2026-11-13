@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isHttpsUrl, parseAssetSearch } from './urls'
+import { isHttpsUrl, parseAssetSearch, parseProjectsTabSearch } from './urls'
 
 describe('isHttpsUrl', () => {
   it('accepts https references, ignoring case and surrounding space', () => {
@@ -37,5 +37,23 @@ describe('parseAssetSearch', () => {
     expect(parseAssetSearch({ asset: '1.5' })).toEqual({})
     expect(parseAssetSearch({ asset: 'abc' })).toEqual({})
     expect(parseAssetSearch({ asset: ['7'] })).toEqual({})
+  })
+})
+
+describe('parseProjectsTabSearch', () => {
+  it('keeps the Scans tab so the URL stays copyable and reload-safe', () => {
+    expect(parseProjectsTabSearch({ tab: 'scans' })).toEqual({ tab: 'scans' })
+  })
+
+  it('treats the default Projects tab as the bare path', () => {
+    expect(parseProjectsTabSearch({})).toEqual({})
+    expect(parseProjectsTabSearch({ tab: undefined })).toEqual({})
+    expect(parseProjectsTabSearch({ tab: 'projects' })).toEqual({})
+  })
+
+  it('drops an unknown tab instead of hiding the project list', () => {
+    expect(parseProjectsTabSearch({ tab: 'history' })).toEqual({})
+    expect(parseProjectsTabSearch({ tab: 1 })).toEqual({})
+    expect(parseProjectsTabSearch({ tab: ['scans'] })).toEqual({})
   })
 })

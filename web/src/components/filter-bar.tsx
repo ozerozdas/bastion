@@ -46,7 +46,7 @@ export function FilterBar({
   children,
 }: FilterBarProps) {
   const stacked = layout === 'stacked'
-  // Findings has always wrapped its filters in a section; Scan History's inline
+  // Findings has always wrapped its filters in a section; the Scans tab's inline
   // row is a plain div on the page.
   const Wrapper = stacked ? 'section' : 'div'
 

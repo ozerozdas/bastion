@@ -3,7 +3,6 @@ import type { ComponentType } from 'react'
 import {
   ConnectionsIcon,
   DashboardIcon,
-  HistoryIcon,
   ProjectsIcon,
   ReportsIcon,
 } from '../components/icons'
@@ -16,6 +15,9 @@ export type NavCounts = {
   openFindings?: number
 }
 
+/** NavSection is where an entry sits in the sidebar; the top group has no heading. */
+export type NavSection = 'main' | 'assets' | 'settings'
+
 export type NavItem = {
   /** Route path; "/" is the dashboard. */
   to: string
@@ -25,28 +27,17 @@ export type NavItem = {
   icon: ComponentType
   /** Which sidebar count this entry shows, if any. */
   count?: keyof NavCounts
+  /** Heading group; omitted means the unheaded top group (ADR-007). */
+  section?: Exclude<NavSection, 'main'>
 }
 
-/** navItems is the five sections of PROJECT_SPEC.md §7, in the concept order. */
+/** navItems follows ADR-007: Findings is a main view, Projects owns the scans. */
 export const navItems: NavItem[] = [
   {
     to: '/',
     label: 'Dashboard',
     subtitle: 'Open findings across your projects',
     icon: DashboardIcon,
-  },
-  {
-    to: '/connections',
-    label: 'Connections',
-    subtitle: 'GitHub, AWS and Docker sources',
-    icon: ConnectionsIcon,
-  },
-  {
-    to: '/projects',
-    label: 'Projects',
-    subtitle: 'Repositories and images you scan',
-    icon: ProjectsIcon,
-    count: 'projects',
   },
   {
     to: '/findings',
@@ -56,17 +47,55 @@ export const navItems: NavItem[] = [
     count: 'openFindings',
   },
   {
-    to: '/scan-history',
-    label: 'Scan History',
-    subtitle: 'Every scan, comparable side by side',
-    icon: HistoryIcon,
+    to: '/projects',
+    label: 'Projects',
+    subtitle: 'Repositories and images you scan',
+    icon: ProjectsIcon,
+    count: 'projects',
+    section: 'assets',
+  },
+  {
+    to: '/connections',
+    label: 'Connections',
+    subtitle: 'GitHub, AWS and Docker sources',
+    icon: ConnectionsIcon,
+    section: 'settings',
   },
 ]
 
+/** NavGroup is one heading and the entries under it. */
+export type NavGroup = {
+  section: NavSection
+  /** Heading above the group; null for the top entries. */
+  label: string | null
+  items: NavItem[]
+}
+
+/** navGroups splits navItems into the ADR-007 sections, in their order. */
+export function navGroups(items: NavItem[] = navItems): NavGroup[] {
+  const groups: NavGroup[] = [
+    { section: 'main', label: null, items: [] },
+    { section: 'assets', label: 'ASSETS', items: [] },
+    { section: 'settings', label: 'SETTINGS', items: [] },
+  ]
+  for (const item of items) {
+    const group = groups.find((entry) => entry.section === (item.section ?? 'main'))
+    group?.items.push(item)
+  }
+  // A section without entries would render a heading over nothing.
+  return groups.filter((group) => group.items.length > 0)
+}
+
+/** legacyPathnames keeps the header sensible for URLs that redirect (#88). */
+const legacyPathnames: Record<string, string> = {
+  '/scan-history': '/projects',
+}
+
 /** navItemFor returns the nav entry for a pathname. */
 export function navItemFor(pathname: string): NavItem {
+  const path = legacyPathnames[pathname] ?? pathname
   const match = navItems.find((item) =>
-    item.to === '/' ? pathname === '/' : pathname.startsWith(item.to),
+    item.to === '/' ? path === '/' : path.startsWith(item.to),
   )
   return match ?? navItems[0]
 }

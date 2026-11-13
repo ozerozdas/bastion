@@ -56,15 +56,6 @@ export function ReportsIcon(props: IconProps) {
   )
 }
 
-export function HistoryIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3 2" />
-    </Icon>
-  )
-}
-
 export function SunIcon(props: IconProps) {
   return (
     <Icon {...props}>
