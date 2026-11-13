@@ -83,6 +83,16 @@ export function ReportsPage() {
   const [status, setStatus] = useState<FindingStatus>('open')
   const [openFingerprint, setOpenFingerprint] = useState<string | null>(null)
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set())
+  // A decision removes the row that opened the drawer, so the drawer's own
+  // focus restore lands on nothing: remember where the row was and move focus
+  // once the refreshed list has dropped it (issue #75).
+  const [focusAfterRemove, setFocusAfterRemove] = useState<{
+    fingerprint: string
+    index: number
+  } | null>(null)
+  const openedAt = useRef(0)
+  const tableBody = useRef<HTMLTableSectionElement>(null)
+  const findingsHeading = useRef<HTMLHeadingElement>(null)
 
   const assetList = assets.data ?? []
   // The URL wins; otherwise the first project keeps the page useful on arrival.
@@ -110,6 +120,33 @@ export function ReportsPage() {
     }),
     enabled: selected !== undefined,
   })
+
+  const findingsData = findings.data
+  useEffect(() => {
+    if (focusAfterRemove === null || findingsData === undefined) return
+    // The refresh that drops the row is the moment to move: until it lands,
+    // the row (and the focus the drawer gave back) is still valid.
+    if (findingsData.some((f) => f.fingerprint === focusAfterRemove.fingerprint)) {
+      return
+    }
+    setFocusAfterRemove(null)
+    // The drawer unmounted with its row; drop the id so it cannot reopen later.
+    setOpenFingerprint(null)
+    // A click or Tab after the close wins over restoring focus.
+    if (document.activeElement !== document.body && document.activeElement !== null) {
+      return
+    }
+
+    const rows = tableBody.current?.rows
+    if (rows !== undefined && rows.length > 0) {
+      // The row after the removed one slides into its place; if it was the
+      // last row, this is the one before it.
+      const index = Math.min(focusAfterRemove.index, rows.length - 1)
+      rows[index]?.focus()
+      return
+    }
+    findingsHeading.current?.focus()
+  }, [findingsData, focusAfterRemove])
 
   if (assets.isPending) {
     return (
@@ -276,7 +313,11 @@ export function ReportsPage() {
 
       {findings.isSuccess && findings.data.length === 0 ? (
         <section className="rounded-card border border-border-subtle bg-surface p-8">
-          <h2 className="text-[15px] font-semibold tracking-[-0.01em]">
+          <h2
+            ref={findingsHeading}
+            tabIndex={-1}
+            className="text-[15px] font-semibold tracking-[-0.01em]"
+          >
             {status === 'open' && !filtered
               ? 'No open findings in the latest scan'
               : status === 'ignored' && !filtered
@@ -297,7 +338,12 @@ export function ReportsPage() {
           className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
         >
           <div className="flex flex-wrap items-baseline gap-2.5">
-            <h2 id="findings-heading" className="text-[13px] font-semibold">
+            <h2
+              ref={findingsHeading}
+              id="findings-heading"
+              tabIndex={-1}
+              className="text-[13px] font-semibold"
+            >
               Findings
             </h2>
             <span className="text-faint">
@@ -338,14 +384,17 @@ export function ReportsPage() {
                   <th className="pb-2 pl-3 font-medium">Scanner</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-subtle">
-                {findings.data.map((finding) => (
+              <tbody ref={tableBody} className="divide-y divide-border-subtle">
+                {findings.data.map((finding, index) => (
                   <FindingRow
                     key={finding.fingerprint}
                     finding={finding}
                     checked={checked.has(finding.fingerprint)}
                     onCheck={() => toggleChecked(finding.fingerprint)}
-                    onOpen={() => setOpenFingerprint(finding.fingerprint)}
+                    onOpen={() => {
+                      openedAt.current = index
+                      setOpenFingerprint(finding.fingerprint)
+                    }}
                   />
                 ))}
               </tbody>
@@ -359,6 +408,13 @@ export function ReportsPage() {
           key={openFinding.fingerprint}
           finding={openFinding}
           onClose={() => setOpenFingerprint(null)}
+          onRemoving={() =>
+            setFocusAfterRemove({
+              fingerprint: openFinding.fingerprint,
+              index: openedAt.current,
+            })
+          }
+          onRemoveFailed={() => setFocusAfterRemove(null)}
         />
       ) : null}
     </>
@@ -462,9 +518,19 @@ function FindingRow({
 function FindingDrawer({
   finding,
   onClose,
+  onRemoving,
+  onRemoveFailed,
 }: {
   finding: Finding
   onClose: () => void
+  /**
+   * onRemoving runs before a decision or reopen is sent. It cannot wait for
+   * success: the refetch can drop the row and unmount this drawer first, and
+   * then mutate's own callbacks never run.
+   */
+  onRemoving: () => void
+  /** onRemoveFailed undoes onRemoving when the request fails. */
+  onRemoveFailed: () => void
 }) {
   const panel = useRef<HTMLDivElement>(null)
   const setState = useSetFindingState()
@@ -473,10 +539,13 @@ function FindingDrawer({
   const [reason, setReason] = useState('')
 
   // Focus moves into the drawer when it opens, so Escape and Tab work at once.
+  // Closing without a decision gives it back to the opener row; a decision
+  // removes that row, so ReportsPage restores focus once the list refreshes.
   useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement 
-      ? document.activeElement 
-      : null;
+    const opener =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
     panel.current?.focus()
     return () => {
       if (opener?.isConnected) opener.focus()
@@ -485,6 +554,7 @@ function FindingDrawer({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    onRemoving()
     setState.mutate(
       {
         asset_id: finding.asset_id,
@@ -492,7 +562,7 @@ function FindingDrawer({
         state: decision,
         reason: reason.trim(),
       },
-      { onSuccess: onClose },
+      { onSuccess: onClose, onError: onRemoveFailed },
     )
   }
 
@@ -636,12 +706,13 @@ function FindingDrawer({
                   size="sm"
                   variant="outline"
                   onClick={() => {
+                    onRemoving()
                     clearState.mutate(
                       {
                         fingerprint: finding.fingerprint,
                         assetId: finding.asset_id,
                       },
-                      { onSuccess: onClose },
+                      { onSuccess: onClose, onError: onRemoveFailed },
                     )
                   }}
                   disabled={clearState.isPending}
