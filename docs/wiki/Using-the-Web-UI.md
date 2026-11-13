@@ -11,6 +11,11 @@ The overview across all projects:
 - the riskiest projects,
 - when each project was last scanned.
 
+A **Get started** card at the top ticks off four steps — connect GitHub, add a
+project, run the first scan and scan in CI or from the CLI — from the data the
+page already has. It hides once all four are done, or when you dismiss it; the
+CLI step and the dismissal are remembered in this browser only.
+
 ## Findings
 
 Findings from the **latest scan of every project** — one list for "what is critical
