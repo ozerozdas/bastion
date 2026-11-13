@@ -16,6 +16,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/scanners"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
+	"github.com/ozerozdas/bastion/internal/scanners/osv"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/sources"
@@ -39,6 +40,9 @@ type pipelineConfig struct {
 	Sources map[sources.TargetKind]sources.Source
 	// Options are the scanner options (cache dir, HMAC key).
 	Options scanners.Options
+	// Advisories enriches the merged package inventory with external
+	// advisories; nil disables the lookup.
+	Advisories jobs.AdvisoryMatcher
 	// Concurrency is the worker count; zero means jobs.DefaultConcurrency.
 	Concurrency int
 	// Events receives scan lifecycle events; nil means none.
@@ -62,6 +66,7 @@ func newScanManager(cfg pipelineConfig) (*jobs.Manager, error) {
 		Sources:     cfg.Sources,
 		Scanners:    cfg.ScannerList,
 		Normalizers: normalizers,
+		Advisories:  cfg.Advisories,
 		Options:     func() scanners.Options { return cfg.Options },
 		Concurrency: cfg.Concurrency,
 		Events:      cfg.Events,
@@ -211,6 +216,7 @@ func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, t
 			CacheDir: opts.paths.TrivyCacheDir(),
 			HMACKey:  hmacKey,
 		},
+		Advisories:  osv.New(version),
 		Concurrency: opts.concurrency,
 		Events:      bus,
 		Resolve:     newRepoResolver(db, tokens, version),

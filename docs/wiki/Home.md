@@ -8,9 +8,9 @@ opens a web UI in your browser and reports, for GitHub repositories and local di
 - **IaC misconfigurations** (Dockerfile, Terraform, Kubernetes, …),
 - leaked **secrets** in the working tree.
 
-Trivy and Gitleaks are compiled in as Go libraries — no Docker daemon, no Python, no
-external CLI. No telemetry; the only network calls are listed in
-[Security and Privacy](Security-and-Privacy.md#network-calls).
+Trivy and Gitleaks are compiled in as Go libraries; OSV advisories are queried over
+HTTPS — no Docker daemon, no Python, no external CLI. No telemetry; the only network calls
+are listed in [Security and Privacy](Security-and-Privacy.md#network-calls).
 
 > **Status:** v0.1 (Phase 1 — core MVP). Container images, fix plans, SAST and MCP come in
 > later phases — see [Roadmap](Roadmap.md).
@@ -33,7 +33,7 @@ external CLI. No telemetry; the only network calls are listed in
  you ──▶ bastion (one binary, 127.0.0.1 only)
            ├── web UI + API          (browser, session cookie)
            ├── sources               GitHub tarball │ local path
-           ├── scanners              Trivy │ Gitleaks   (in-process)
+           ├── scanners              Trivy │ Gitleaks │ OSV API   (in-process)
            ├── findings              normalize → fingerprint → store
            └── SQLite + cache        your data dir / cache dir
 ```

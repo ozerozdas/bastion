@@ -100,6 +100,19 @@ type nopPublisher struct{}
 
 func (nopPublisher) Publish(Event) {}
 
+// AdvisoryMatcher enriches a scan's package inventory with advisories from an
+// external database. It is not a Scanner: it reads the packages other scanners
+// produced rather than the workspace, so it runs once after they finish.
+type AdvisoryMatcher interface {
+	// Name is the stable scanner id stored in scanner_runs.
+	Name() string
+	// Version identifies the advisory source's API surface.
+	Version() string
+	// Match returns findings for the inventory. An error means the lookup
+	// failed; the scan's own findings are unaffected.
+	Match(ctx context.Context, packages []findings.Package, asset findings.Asset) ([]findings.Finding, error)
+}
+
 // Asset is the target a scan was enqueued for, copied from the store at
 // enqueue time so a worker does not depend on the asset row still existing.
 type Asset struct {
@@ -129,6 +142,9 @@ type Config struct {
 	// Normalizers maps a scanner name to the normalizer for its output. A
 	// scanner without one fails its scanner_run instead of running unnormalized.
 	Normalizers map[string]findings.Normalizer
+	// Advisories enriches the merged package inventory with external
+	// advisories. Nil disables the lookup; a failure never fails the scan.
+	Advisories AdvisoryMatcher
 	// Options is called once at construction; the result is passed to every
 	// scanner (cache dir, HMAC key).
 	Options func() scanners.Options
@@ -152,6 +168,7 @@ type Manager struct {
 	options     scanners.Options
 	events      Publisher
 	resolve     ResolveFunc
+	advisories  AdvisoryMatcher
 
 	runCtx  context.Context
 	cancel  context.CancelFunc
@@ -216,6 +233,7 @@ func New(cfg Config) (*Manager, error) {
 		options:     options,
 		events:      events,
 		resolve:     resolve,
+		advisories:  cfg.Advisories,
 		runCtx:      runCtx,
 		cancel:      cancel,
 		done:        make(chan struct{}),

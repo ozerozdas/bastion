@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -27,6 +28,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/report/sarif"
 	"github.com/ozerozdas/bastion/internal/scanners"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
+	"github.com/ozerozdas/bastion/internal/scanners/osv"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/sources"
@@ -106,6 +108,9 @@ type scanDeps struct {
 	closeDB       func(db *sql.DB) error
 	notifyContext func(parent context.Context) (context.Context, context.CancelFunc)
 	newScanners   func() []scanners.Scanner
+	// newAdvisories builds the OSV matcher. Nil disables the advisory lookup,
+	// which is what tests that do not exercise it want.
+	newAdvisories func() *osv.Matcher
 	hmacKey       func() ([]byte, error)
 	// githubToken resolves the --repo credential. db is nil for --no-store,
 	// which never opens the database and therefore only honours the
@@ -153,7 +158,8 @@ func newScanDeps(root *rootOptions) scanDeps {
 			// another also keeps Gitleaks independent of that lock.
 			return []scanners.Scanner{trivy.New(), gitleaks.New()}
 		},
-		hmacKey: func() ([]byte, error) { return secrets.LocalKey(secrets.NewStore()) },
+		newAdvisories: func() *osv.Matcher { return osv.New(version) },
+		hmacKey:       func() ([]byte, error) { return secrets.LocalKey(secrets.NewStore()) },
 		githubToken: func(ctx context.Context, db *sql.DB) (string, error) {
 			if db == nil {
 				return connections.EnvToken()
@@ -288,6 +294,19 @@ func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDep
 	return checkFailOn(opts.failOn, result.open)
 }
 
+// advisoryMatcher returns the OSV matcher, or a nil interface when none is
+// wired (tests that do not exercise the advisory lookup). The return type is
+// the jobs interface so a nil matcher stays nil.
+func (d scanDeps) advisoryMatcher() jobs.AdvisoryMatcher {
+	if d.newAdvisories == nil {
+		return nil
+	}
+	if m := d.newAdvisories(); m != nil {
+		return m
+	}
+	return nil
+}
+
 // repoTarget is a resolved --repo target: the parsed spec, the repository's
 // default branch, the commit SHA the scan reads, and the client that fetches
 // it.
@@ -417,6 +436,7 @@ func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, ass
 		ScannerList: scannerList,
 		Sources:     srcs,
 		Options:     scanOpts,
+		Advisories:  deps.advisoryMatcher(),
 		Concurrency: 1,
 		Events:      waiter,
 		Resolve:     resolve,
@@ -535,7 +555,7 @@ func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.
 	}
 	defer func() { _ = ws.Close() }()
 
-	result, scanErr := scanTarget(ctx, kind, deps.newScanners(), ws, asset, scanOpts)
+	result, scanErr := scanTarget(ctx, kind, deps.newScanners(), deps.advisoryMatcher(), ws, asset, scanOpts)
 	// Without a database there are no ignore decisions: every finding is open.
 	result.open = result.Findings
 	return result, scanErr
@@ -734,7 +754,7 @@ func pathAsset(dir string) (findings.Asset, error) {
 // findings; the returned error names every failed scanner.
 //
 // It backs --no-store; a stored scan runs the same steps inside jobs.Manager.
-func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Scanner, ws *sources.Workspace, asset findings.Asset, opts scanners.Options) (scanOutput, error) {
+func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Scanner, advisories jobs.AdvisoryMatcher, ws *sources.Workspace, asset findings.Asset, opts scanners.Options) (scanOutput, error) {
 	out := scanOutput{
 		Asset:       asset,
 		Findings:    []findings.Finding{},
@@ -762,6 +782,32 @@ func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Sca
 		} else {
 			out.Findings = append(out.Findings, fs...)
 			out.Packages = append(out.Packages, pkgs...)
+		}
+		out.ScannerRuns = append(out.ScannerRuns, run)
+	}
+
+	// OSV matches the inventory the scanners produced, not the workspace, so
+	// it runs once over the merged packages. A failure is recorded and logged
+	// but does not fail the scan: the scan's findings are complete without it.
+	if advisories != nil && len(out.Packages) > 0 && ctx.Err() == nil {
+		run := scannerRun{
+			Scanner:        advisories.Name(),
+			ScannerVersion: advisories.Version(),
+			Status:         "succeeded",
+		}
+		start := time.Now()
+		afs, err := advisories.Match(ctx, out.Packages, asset)
+		run.DurationMS = time.Since(start).Milliseconds()
+		switch {
+		case err != nil && ctx.Err() != nil:
+			run.Status = "canceled"
+			run.Error = err.Error()
+		case err != nil:
+			slog.Warn("scan: OSV advisory lookup failed", "error", err)
+			run.Status = "failed"
+			run.Error = err.Error()
+		default:
+			out.Findings = append(out.Findings, afs...)
 		}
 		out.ScannerRuns = append(out.ScannerRuns, run)
 	}

@@ -28,7 +28,8 @@ is the short tour.
    (default concurrency 2).
 2. **Fetch** — a `Source` turns the target into a local workspace: a GitHub tarball of a
    resolved commit SHA, or a local directory.
-3. **Scan** — each `Scanner` (Trivy, Gitleaks) runs in-process on the workspace.
+3. **Scan** — each `Scanner` (Trivy, Gitleaks) runs in-process on the workspace; the OSV
+   matcher then queries advisories for the package inventory they produced.
 4. **Normalize** — raw results become findings and packages, each with a fingerprint.
 5. **Store** — saved to SQLite; previous ignore decisions apply by fingerprint.
 6. **Report** — progress events go out over SSE; the workspace is deleted.
@@ -43,7 +44,7 @@ is the short tour.
 | `internal/connections/` | GitHub connection management |
 | `internal/secrets/` | Keyring wrapper (with an in-memory fake for tests) |
 | `internal/sources/` | GitHub tarball and local path sources |
-| `internal/scanners/` | `Scanner` interface; `trivy/` and `gitleaks/` adapters |
+| `internal/scanners/` | `Scanner` interface; `trivy/` and `gitleaks/` adapters, `osv/` advisory matcher |
 | `internal/findings/` | Model, normalization, fingerprint, diff |
 | `internal/jobs/` | Queue, worker pool, lifecycle |
 | `internal/reports/` | Dashboard aggregations |
@@ -65,7 +66,7 @@ is the short tour.
 ## Tech stack
 
 Go 1.27 · stdlib `net/http` · Cobra · `log/slog` · SQLite (modernc) · sqlc · goose ·
-OpenAPI 3.1 (oapi-codegen, openapi-typescript) · Trivy · Gitleaks v8 · go-github ·
+OpenAPI 3.1 (oapi-codegen, openapi-typescript) · Trivy · Gitleaks v8 · OSV API · go-github ·
 go-keyring · React · TanStack Query/Router · Tailwind + shadcn/ui · Recharts · GoReleaser.
 
 Design decisions are recorded as ADRs in `.pm/decisions/`.
