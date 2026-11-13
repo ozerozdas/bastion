@@ -218,7 +218,7 @@ export function useRowRemovalFocus<T>({
     null,
   )
   const bodyRef = useRef<HTMLTableSectionElement>(null)
-  // ReportsPage recreates these props every render; keep the effect keyed on
+  // FindingsPage recreates these props every render; keep the effect keyed on
   // the data alone, with the latest callbacks in refs.
   const rowKeyRef = useRef(rowKey)
   const fallbackTarget = useRef(fallback)

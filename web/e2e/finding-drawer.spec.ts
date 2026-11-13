@@ -66,7 +66,7 @@ async function openReports(
   await expect(
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
-  await page.getByRole('link', { name: 'Security Reports', exact: true }).click()
+  await page.getByRole('link', { name: 'Findings', exact: true }).click()
   await expect(page.locator('tbody tr')).toHaveCount(list.length)
 }
 

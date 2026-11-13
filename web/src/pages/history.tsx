@@ -31,7 +31,8 @@ const triggerLabels: Record<Scan['trigger'], string> = {
   api: 'API',
 }
 
-export function HistoryPage() {
+/** ScansPanel is the Projects page's Scans tab: every scan of every project. */
+export function ScansPanel() {
   const [assetId, setAssetId] = useState<number | undefined>(undefined)
   const assets = useQuery(assetsQuery)
 
@@ -128,10 +129,10 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
           names.get(scan.asset_id) ?? `Asset ${String(scan.asset_id)}`
         return (
           <Link
-            to="/security-reports"
+            to="/findings"
             search={{ asset: scan.asset_id }}
             className="hover:underline"
-            title={`${project}: open the security report`}
+            title={`${project}: open its findings`}
           >
             {project}
           </Link>

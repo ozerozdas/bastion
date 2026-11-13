@@ -62,9 +62,15 @@ export function useSetFindingState() {
   })
 }
 
+/** FindingRef names one finding's decision key: a fingerprint only exists within its asset. */
+export type FindingRef = {
+  assetId: number
+  fingerprint: string
+}
+
 /**
- * useBulkFindingState records one decision for many findings of one asset, or
- * reopens them all when state is omitted. It stops at the first failure; the
+ * useBulkFindingState records one decision for many findings, across projects,
+ * or reopens them all when state is omitted. It stops at the first failure; the
  * findings before it keep their new state and the list refreshes either way.
  */
 export function useBulkFindingState() {
@@ -73,15 +79,13 @@ export function useBulkFindingState() {
     // ponytail: one request per finding over the existing endpoints, sequential to spare the
     // single-writer store; add a batch endpoint if selections grow to hundreds.
     mutationFn: async ({
-      assetId,
-      fingerprints,
+      findings,
       decision,
     }: {
-      assetId: number
-      fingerprints: string[]
+      findings: FindingRef[]
       decision?: Omit<SetFindingStateRequest, 'asset_id'>
     }) => {
-      for (const fingerprint of fingerprints) {
+      for (const { assetId, fingerprint } of findings) {
         const path = `/api/findings/${encodeURIComponent(fingerprint)}/state`
         if (decision) {
           await api.post<void>(path, { asset_id: assetId, ...decision })

@@ -35,7 +35,7 @@ Run `make check` before every commit; CI runs the same thing.
 - **Normalizers and diff** — golden tests: raw scanner output → expected JSON.
 - **Store** — against a temporary SQLite file.
 - **GitHub and other external APIs** — interfaces + fakes; no live calls in unit tests.
-- **Frontend** — Vitest for logic, Playwright smoke test for the five pages.
+- **Frontend** — Vitest for logic, Playwright smoke test for every sidebar section.
 
 ## Releases
 

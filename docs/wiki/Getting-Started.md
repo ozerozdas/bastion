@@ -74,9 +74,9 @@ Or **Add a local path** with an absolute directory.
 Progress streams live into the project row. At most `--concurrency` scans (default 2) run
 at the same time.
 
-## 5. Read the report
+## 5. Read the findings
 
-**Security Reports** shows the latest findings of one project, filterable by type,
+**Findings** lists the latest findings across all projects, filterable by project, type,
 severity and status, with the fixed version that closes each vulnerability. Continue with
 [Using the Web UI](Using-the-Web-UI.md) and [Findings](Findings.md).
 

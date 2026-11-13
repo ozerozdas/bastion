@@ -303,7 +303,8 @@ function RiskiestAssets({ assets }: { assets: AssetRisk[] }) {
                 <tr key={asset.asset_id}>
                   <td className="py-2 pr-3">
                     <Link
-                      to="/security-reports"
+                      to="/findings"
+                      search={{ asset: asset.asset_id }}
                       className="hover:underline"
                       title={`${asset.kind}: ${asset.display_name}`}
                     >
