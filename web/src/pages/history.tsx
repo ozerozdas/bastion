@@ -5,7 +5,9 @@ import { useMemo, useState } from 'react'
 import { assetsQuery, type Asset } from '../api/assets'
 import { ApiError } from '../api/client'
 import { scansQuery, type Scan } from '../api/scans'
+import { DataTable, type DataTableColumn } from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
+import { FilterBar } from '../components/filter-bar'
 import { Badge } from '../components/ui/badge'
 import { buttonVariants } from '../components/ui/button'
 import { formatDateTime, relativeTime, scanDuration } from '../lib/time'
@@ -29,9 +31,6 @@ const triggerLabels: Record<Scan['trigger'], string> = {
   api: 'API',
 }
 
-const selectClass =
-  'h-8 rounded-md border border-border-strong bg-surface px-2 text-[13px] text-fg'
-
 export function HistoryPage() {
   const [assetId, setAssetId] = useState<number | undefined>(undefined)
   const assets = useQuery(assetsQuery)
@@ -53,6 +52,24 @@ export function HistoryPage() {
     return <ScansEmpty />
   }
 
+  const filters = [
+    {
+      id: 'scan-asset-filter',
+      label: 'Project',
+      value: assetId === undefined ? '' : String(assetId),
+      options: [
+        { value: '', label: 'All projects' },
+        ...(assets.data ?? []).map((asset) => ({
+          value: String(asset.id),
+          label: asset.display_name,
+        })),
+      ],
+      onChange: (value: string) => {
+        setAssetId(value === '' ? undefined : Number(value))
+      },
+    },
+  ]
+
   return (
     <>
       <section
@@ -68,30 +85,11 @@ export function HistoryPage() {
           </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="scan-asset-filter" className="text-xs text-muted">
-            Project
-          </label>
-          <select
-            id="scan-asset-filter"
-            className={selectClass}
-            value={assetId === undefined ? '' : String(assetId)}
-            onChange={(event) => {
-              const value = event.target.value
-              setAssetId(value === '' ? undefined : Number(value))
-            }}
-          >
-            <option value="">All projects</option>
-            {(assets.data ?? []).map((asset) => (
-              <option key={asset.id} value={asset.id}>
-                {asset.display_name}
-              </option>
-            ))}
-          </select>
+        <FilterBar fields={filters} layout="inline" bordered={false}>
           <span className="text-xs text-faint">
             Comparing two scans arrives in v0.2.
           </span>
-        </div>
+        </FilterBar>
 
         {scans.isPending ? <p className="text-muted">Loading scans…</p> : null}
 
@@ -120,77 +118,83 @@ export function HistoryPage() {
 /** ScanTable lists scans with the one link that matters: open the report. */
 function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
   const names = useMemo(() => assetNames(assets), [assets])
+  const columns: DataTableColumn<Scan>[] = [
+    {
+      id: 'project',
+      header: 'Project',
+      cellClassName: 'max-w-[22ch] truncate py-2 pr-3',
+      cell: (scan) => {
+        const project =
+          names.get(scan.asset_id) ?? `Asset ${String(scan.asset_id)}`
+        return (
+          <Link
+            to="/security-reports"
+            search={{ asset: scan.asset_id }}
+            className="hover:underline"
+            title={`${project}: open the security report`}
+          >
+            {project}
+          </Link>
+        )
+      },
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3',
+      cell: (scan) => {
+        const status = statusView[scan.status]
+        return <Badge tone={status.tone}>{status.label}</Badge>
+      },
+    },
+    {
+      id: 'trigger',
+      header: 'Trigger',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3 text-muted',
+      cell: (scan) => triggerLabels[scan.trigger],
+    },
+    {
+      id: 'started',
+      header: 'Started',
+      headerClassName: 'pl-3 text-right',
+      cellClassName:
+        'py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums',
+      cellTitle: (scan) =>
+        scan.started_at ? formatDateTime(scan.started_at) : undefined,
+      cell: (scan) => relativeTime(scan.started_at),
+    },
+    {
+      id: 'duration',
+      header: 'Duration',
+      headerClassName: 'pl-3 text-right',
+      cellClassName:
+        'py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums',
+      cell: (scan) => scanDuration(scan),
+    },
+    {
+      id: 'error',
+      header: 'Error',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3',
+      cell: (scan) =>
+        scan.error ? (
+          <span
+            className="block max-w-[32ch] truncate text-critical"
+            title={scan.error}
+          >
+            {scan.error}
+          </span>
+        ) : (
+          <span aria-hidden="true" className="text-faint">
+            —
+          </span>
+        ),
+    },
+  ]
 
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-[13px]">
-        <thead className="text-xs text-faint">
-          <tr>
-            <th className="pb-2 font-medium">Project</th>
-            <th className="pb-2 pl-3 font-medium">Status</th>
-            <th className="pb-2 pl-3 font-medium">Trigger</th>
-            <th className="pb-2 pl-3 text-right font-medium">Started</th>
-            <th className="pb-2 pl-3 text-right font-medium">Duration</th>
-            <th className="pb-2 pl-3 font-medium">Error</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border-subtle">
-          {scans.map((scan) => {
-            const status = statusView[scan.status]
-            const project =
-              names.get(scan.asset_id) ?? `Asset ${String(scan.asset_id)}`
-            return (
-              <tr key={scan.id}>
-                <td className="max-w-[22ch] truncate py-2 pr-3">
-                  <Link
-                    to="/security-reports"
-                    search={{ asset: scan.asset_id }}
-                    className="hover:underline"
-                    title={`${project}: open the security report`}
-                  >
-                    {project}
-                  </Link>
-                </td>
-                <td className="py-2 pl-3">
-                  <Badge tone={status.tone}>{status.label}</Badge>
-                </td>
-                <td className="py-2 pl-3 text-muted">
-                  {triggerLabels[scan.trigger]}
-                </td>
-                <td
-                  className="py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums"
-                  title={
-                    scan.started_at
-                      ? formatDateTime(scan.started_at)
-                      : undefined
-                  }
-                >
-                  {relativeTime(scan.started_at)}
-                </td>
-                <td className="py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums">
-                  {scanDuration(scan)}
-                </td>
-                <td className="py-2 pl-3">
-                  {scan.error ? (
-                    <span
-                      className="block max-w-[32ch] truncate text-critical"
-                      title={scan.error}
-                    >
-                      {scan.error}
-                    </span>
-                  ) : (
-                    <span aria-hidden="true" className="text-faint">
-                      —
-                    </span>
-                  )}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
+  return <DataTable rows={scans} columns={columns} rowKey={(scan) => scan.id} />
 }
 
 /** ScansEmpty explains how to get the first scan. */
