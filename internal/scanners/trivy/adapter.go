@@ -10,10 +10,19 @@ import (
 )
 
 // Scanner adapts ScanFS to the scanners.Scanner interface.
-type Scanner struct{}
+type Scanner struct {
+	// manager owns the vulnerability DB. Nil means no up-front download: Trivy
+	// fetches the DB itself during the scan, as the CLI does.
+	manager *Manager
+}
 
 // New returns a Trivy scanner adapter.
 func New() *Scanner { return &Scanner{} }
+
+// NewWithManager returns a Trivy scanner that makes sure the vulnerability DB
+// is on disk before it scans, so the download is observable and shared with a
+// user-triggered one.
+func NewWithManager(m *Manager) *Scanner { return &Scanner{manager: m} }
 
 // Name returns the stable scanner id.
 func (*Scanner) Name() string { return "trivy" }
@@ -38,6 +47,19 @@ func (*Scanner) Serialized() bool { return true }
 func (s *Scanner) Scan(ctx context.Context, ws *sources.Workspace, opts scanners.Options) (*scanners.RawResult, error) {
 	if ws == nil {
 		return nil, errors.New("trivy: workspace is required")
+	}
+	if s.manager != nil {
+		// A scan without the DB makes Trivy download it itself, inside ScanFS,
+		// where nobody can see it happen. Report the wait and share the
+		// download with any other caller instead.
+		if s.manager.Status().State != DBReady {
+			if opts.Progress != nil {
+				opts.Progress(scanners.PhaseWaitingDB)
+			}
+			if err := s.manager.EnsureReady(ctx); err != nil {
+				return nil, fmt.Errorf("trivy: vulnerability DB: %w", err)
+			}
+		}
 	}
 	raw, err := ScanFS(ctx, ws.Dir, opts.CacheDir, opts.SkipDirs)
 	if err != nil {

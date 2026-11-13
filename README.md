@@ -62,6 +62,8 @@ first scan additionally downloads a ~1.7 GB vulnerability DB into the cache dire
    run locally, at most `--concurrency` (default 2) at a time; progress streams into the
    project row.
    No GitHub? Use **Add a local path** with an absolute directory instead.
+   The first scan needs a ~1.7 GB vulnerability DB; **Download** above the version chip
+   in the sidebar starts that fetch ahead of time.
 4. **Findings** lists the latest findings across every project, filterable by project,
    type, severity and status, with the fixed version that closes each one. Hide a finding
    as *ignored*, *accepted risk* or *false positive*; a reason is required and the decision
@@ -109,7 +111,7 @@ outbound call is the opt-in release check listed below.
 
 | Destination | When | Why |
 |---|---|---|
-| `mirror.gcr.io/aquasec/trivy-db`, `ghcr.io/aquasecurity/trivy-db` | First scan, then on DB refresh | Vulnerabilities, package advisories. ~1.7 GB on first download |
+| `mirror.gcr.io/aquasec/trivy-db`, `ghcr.io/aquasecurity/trivy-db` | **Download** in the sidebar, or the first scan that needs it; then on DB refresh | Vulnerabilities, package advisories. ~1.7 GB on first download |
 | `mirror.gcr.io/aquasec/trivy-java-db`, `ghcr.io/aquasecurity/trivy-java-db` | Scan containing Java artifacts | Java index DB, needed to map `.jar` files to artifacts |
 | `mirror.gcr.io/aquasec/trivy-checks:2` | When misconfiguration scanning runs | IaC checks bundle, ~2.6 MB |
 | `api.github.com` | Only on user action: test connection, discover repos, add asset, scan | `GET /user`, `GET /user/repos`, `GET /repos/{owner}/{repo}`, `GET /repos/{owner}/{repo}/commits/{branch}`, `GET /repos/{owner}/{repo}/tarball/{sha}` |
@@ -117,9 +119,11 @@ outbound call is the opt-in release check listed below.
 | `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed and nothing else is parsed |
 
 The three Trivy registries are OCI pulls performed by Trivy's updater; they are cached
-under `<cache>/trivy` and re-used by later scans. GitHub is contacted in the background
-only by the daily release check; every scan, discovery and download call happens on your
-action. Request URLs are never logged (private-repo redirects carry a short-lived token).
+under `<cache>/trivy` and re-used by later scans. Nothing is downloaded at startup: the
+sidebar only reads the DB status, and the DB arrives when you press **Download** there or
+when a scan needs it. GitHub is contacted in the background only by the daily release
+check; every scan, discovery and download call happens on your action. Request URLs are
+never logged (private-repo redirects carry a short-lived token).
 
 The release check is disabled by `BASTION_NO_UPDATE_CHECK=1`, in CI, and in `dev` builds,
 whatever the stored choice. Consent lives in the data directory; it is `unset` (no

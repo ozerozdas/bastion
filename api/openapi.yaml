@@ -34,6 +34,11 @@ tags:
       The opt-in release check (ADR-006). Consent, not the database, decides
       whether bastion may contact github.com; `unset` and `off` send nothing.
       `GET /api/update` never blocks on the network.
+  - name: trivy-db
+    description: |
+      The Trivy vulnerability DB a scan needs. `GET /api/trivy-db` never blocks
+      on the network; `POST /api/trivy-db/download` starts one download and is
+      idempotent while a download is in flight.
   - name: connections
     description: |
       Credentialed integrations used to discover and fetch sources. Tokens live
@@ -130,6 +135,57 @@ paths:
                 $ref: "#/components/schemas/UpdateStatus"
         "400":
           $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/trivy-db:
+    get:
+      operationId: getTrivyDB
+      summary: Report the vulnerability DB state.
+      description: |
+        Returns the state of the Trivy vulnerability DB a scan needs: `missing`
+        when it is not on disk, `downloading` while a download runs, `ready`
+        when it is usable, `failed` when the last download failed. This endpoint
+        never waits for a download.
+      tags: [trivy-db]
+      responses:
+        "200":
+          description: The current DB state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrivyDBStatus"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/trivy-db/download:
+    post:
+      operationId: downloadTrivyDB
+      summary: Start a vulnerability DB download.
+      description: |
+        Starts one download in the background and returns the state it started
+        in (`downloading`). It is idempotent: while a download is in flight,
+        whatever started it, the call starts no second one and reports that
+        download's state. Scans wait for the DB themselves, so downloading
+        ahead of time only shortens them.
+      tags: [trivy-db]
+      responses:
+        "202":
+          description: A download is in flight.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrivyDBStatus"
         "401":
           $ref: "#/components/responses/Problem"
         "403":
@@ -923,6 +979,39 @@ components:
         enabled:
           type: boolean
           description: True turns the daily release check on; false turns it off.
+    TrivyDBState:
+      type: string
+      title: TrivyDBState
+      description: |
+        State of the Trivy vulnerability DB. `missing` and `failed` both mean a
+        scan downloads it first; only `ready` means scans run straight away.
+      enum: [missing, downloading, ready, failed]
+    TrivyDBStatus:
+      type: object
+      title: TrivyDBStatus
+      description: |
+        The vulnerability DB as the UI and the CLI see it. Optional fields are
+        absent when they do not apply to the state.
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          $ref: "#/components/schemas/TrivyDBState"
+        updated_at:
+          type: string
+          format: date-time
+          description: |
+            When the DB was built, from Trivy's metadata. Absent unless the
+            state is `ready` and the metadata carries it.
+        error:
+          type: string
+          description: Why the last download failed; present only when `failed`.
+        trigger:
+          type: string
+          description: |
+            What started the download in flight, or the last one. Absent before
+            the first download.
+          enum: [user, scan]
     ConnectionList:
       type: object
       title: ConnectionList
@@ -1608,7 +1697,7 @@ components:
         stage:
           type: string
           description: Pipeline stage of a `scan.progress` event.
-          enum: [resolve, fetch, scan, normalize]
+          enum: [resolve, fetch, scan, normalize, wait_db]
         scanner:
           type: string
           description: Scanner a `scan.progress` event belongs to, when any.

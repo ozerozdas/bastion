@@ -70,6 +70,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/trivy-db": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the vulnerability DB state.
+         * @description Returns the state of the Trivy vulnerability DB a scan needs: `missing`
+         *     when it is not on disk, `downloading` while a download runs, `ready`
+         *     when it is usable, `failed` when the last download failed. This endpoint
+         *     never waits for a download.
+         */
+        get: operations["getTrivyDB"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trivy-db/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a vulnerability DB download.
+         * @description Starts one download in the background and returns the state it started
+         *     in (`downloading`). It is idempotent: while a download is in flight,
+         *     whatever started it, the call starts no second one and reports that
+         *     download's state. Scans wait for the DB themselves, so downloading
+         *     ahead of time only shortens them.
+         */
+        post: operations["downloadTrivyDB"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/connections": {
         parameters: {
             query?: never;
@@ -477,6 +524,35 @@ export interface components {
         SetUpdateConsentRequest: {
             /** @description True turns the daily release check on; false turns it off. */
             enabled: boolean;
+        };
+        /**
+         * TrivyDBState
+         * @description State of the Trivy vulnerability DB. `missing` and `failed` both mean a
+         *     scan downloads it first; only `ready` means scans run straight away.
+         * @enum {string}
+         */
+        TrivyDBState: "missing" | "downloading" | "ready" | "failed";
+        /**
+         * TrivyDBStatus
+         * @description The vulnerability DB as the UI and the CLI see it. Optional fields are
+         *     absent when they do not apply to the state.
+         */
+        TrivyDBStatus: {
+            state: components["schemas"]["TrivyDBState"];
+            /**
+             * Format: date-time
+             * @description When the DB was built, from Trivy's metadata. Absent unless the
+             *     state is `ready` and the metadata carries it.
+             */
+            updated_at?: string;
+            /** @description Why the last download failed; present only when `failed`. */
+            error?: string;
+            /**
+             * @description What started the download in flight, or the last one. Absent before
+             *     the first download.
+             * @enum {string}
+             */
+            trigger?: "user" | "scan";
         };
         /**
          * ConnectionList
@@ -962,7 +1038,7 @@ export interface components {
              * @description Pipeline stage of a `scan.progress` event.
              * @enum {string}
              */
-            stage?: "resolve" | "fetch" | "scan" | "normalize";
+            stage?: "resolve" | "fetch" | "scan" | "normalize" | "wait_db";
             /** @description Scanner a `scan.progress` event belongs to, when any. */
             scanner?: string;
             /** @description Why the scan failed, on a failed `scan.finished` event. */
@@ -1084,6 +1160,54 @@ export interface operations {
                 };
             };
             400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getTrivyDB: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current DB state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrivyDBStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    downloadTrivyDB: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A download is in flight. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrivyDBStatus"];
+                };
+            };
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             421: components["responses"]["Problem"];

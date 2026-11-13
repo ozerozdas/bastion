@@ -25,6 +25,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
 	"github.com/ozerozdas/bastion/internal/update"
@@ -129,6 +130,21 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 // so no test accidentally reads or writes the user's data.
 func newTestServerWithUpdate(t *testing.T, fake *fakeGitHub, checker *update.Checker) *testServer {
 	t.Helper()
+	return newTestServerWithConfig(t, fake, checker, nil)
+}
+
+// newTestServerWithTrivyDB is newTestServer with a caller-controlled
+// vulnerability DB manager, so handler tests observe real manager states
+// without ever reaching the network.
+func newTestServerWithTrivyDB(t *testing.T, manager *trivy.Manager) *testServer {
+	t.Helper()
+	return newTestServerWithConfig(t, nil, nil, manager)
+}
+
+// newTestServerWithConfig builds the test server with every optional service a
+// caller wants to control. Nil values get the defaults described above.
+func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Checker, manager *trivy.Manager) *testServer {
+	t.Helper()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -199,6 +215,7 @@ func newTestServerWithUpdate(t *testing.T, fake *fakeGitHub, checker *update.Che
 		Assets:      assetService,
 		Events:      bus,
 		Update:      checker,
+		TrivyDB:     manager,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

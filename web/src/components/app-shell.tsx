@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react'
 
 import { HealthChip } from './health-chip'
 import { Logo, MoonIcon, SunIcon } from './icons'
+import { TrivyDBChip } from './trivy-db-chip'
 import { UpdateNotice } from './update-notice'
 import { assetsQuery } from '../api/assets'
 import { dashboardQuery, openFindingTotal } from '../api/reports'
@@ -106,6 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="mt-auto flex flex-col gap-2">
           <UpdateNotice />
+          <TrivyDBChip />
           <HealthChip action={<ThemeToggle />} />
         </div>
       </aside>

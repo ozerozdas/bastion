@@ -184,8 +184,9 @@ const serverScanShutdownGrace = 10 * time.Second
 // asset's connection token for repositories. Scans left unfinished by the
 // previous process are failed before the server accepts requests, so a queued
 // scan can never stay queued forever. bus receives the lifecycle events the
-// SSE endpoint streams.
-func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher) (*jobs.Manager, error) {
+// SSE endpoint streams. trivyDB is the vulnerability DB manager the scans and
+// the /api/trivy-db endpoints share.
+func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager) (*jobs.Manager, error) {
 	hmacKey, err := secrets.LocalKey(secretStore)
 	if err != nil {
 		// Only secret fingerprints need the key; everything else still works,
@@ -201,7 +202,7 @@ func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, t
 		DB: db,
 		// Trivy serializes itself (ADR-001); running adapters one after
 		// another also keeps Gitleaks independent of that lock.
-		ScannerList: []scanners.Scanner{trivy.New(), gitleaks.New()},
+		ScannerList: []scanners.Scanner{trivy.NewWithManager(trivyDB), gitleaks.New()},
 		Sources: map[sources.TargetKind]sources.Source{
 			sources.KindPath: localpath.New(),
 			sources.KindRepo: repoSource,

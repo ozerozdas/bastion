@@ -24,7 +24,16 @@ type Options struct {
 	// scanned workspace root (e.g. "testdata"). Their findings must not appear
 	// in the result. Empty scans everything.
 	SkipDirs []string
+	// Progress receives the pipeline stage an adapter is waiting on before it
+	// can start scanning, e.g. PhaseWaitingDB while the vulnerability DB is
+	// downloaded. It is called from the scanning goroutine and must not block.
+	// Nil means no reporting.
+	Progress func(stage string)
 }
+
+// PhaseWaitingDB is the stage a scanner reports through Options.Progress while
+// it waits for data it needs before scanning, such as Trivy's vulnerability DB.
+const PhaseWaitingDB = "wait_db"
 
 // RawResult is one scanner's output, before normalization.
 type RawResult struct {

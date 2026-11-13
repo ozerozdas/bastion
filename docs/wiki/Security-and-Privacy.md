@@ -10,7 +10,7 @@ it on.
 
 | Destination | When | Why |
 |---|---|---|
-| `mirror.gcr.io/aquasec/trivy-db`, `ghcr.io/aquasecurity/trivy-db` | First scan, then on DB refresh | Vulnerability advisories (~1.7 GB first time) |
+| `mirror.gcr.io/aquasec/trivy-db`, `ghcr.io/aquasecurity/trivy-db` | **Download** in the sidebar, or the first scan that needs it; then on DB refresh | Vulnerability advisories (~1.7 GB first time) |
 | `mirror.gcr.io/aquasec/trivy-java-db`, `ghcr.io/aquasecurity/trivy-java-db` | Scans with Java artifacts | Maps `.jar` files to artifacts |
 | `mirror.gcr.io/aquasec/trivy-checks:2` | Misconfiguration scanning | IaC checks bundle (~2.6 MB) |
 | `api.github.com` | **Only on your action**: test connection, list repos, add, scan | Identity, repo list, commit SHA, tarball |
@@ -18,9 +18,11 @@ it on.
 | `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed |
 
 GitHub is contacted in the background only by the daily release check; every scan,
-discovery and download call happens on your action. Request URLs are never logged
-(private-repo redirects carry a short-lived token). The release check is disabled by
-`BASTION_NO_UPDATE_CHECK=1`, in CI, and in `dev` builds, whatever the stored choice.
+discovery and download call happens on your action. Opening the UI downloads nothing: the
+vulnerability DB arrives when you press **Download** in the sidebar or when a scan needs
+it. Request URLs are never logged (private-repo redirects carry a short-lived token). The
+release check is disabled by `BASTION_NO_UPDATE_CHECK=1`, in CI, and in `dev` builds,
+whatever the stored choice.
 
 ## The local server
 
