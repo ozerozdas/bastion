@@ -29,3 +29,10 @@ export const dashboardQuery = queryOptions({
   queryKey: ['dashboard'],
   queryFn: () => api.get<Dashboard>('/api/reports/dashboard'),
 })
+
+/** openFindingTotal sums the severity totals into one count of open findings. */
+export function openFindingTotal(totals: SeverityTotals): number {
+  return (
+    totals.critical + totals.high + totals.medium + totals.low + totals.unknown
+  )
+}

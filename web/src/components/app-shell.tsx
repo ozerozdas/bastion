@@ -1,10 +1,13 @@
+import { useQuery } from '@tanstack/react-query'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 
 import { HealthChip } from './health-chip'
 import { Logo, MoonIcon, SunIcon } from './icons'
 import { UpdateNotice } from './update-notice'
-import { navItemFor, navItems } from '../lib/nav'
+import { assetsQuery } from '../api/assets'
+import { dashboardQuery, openFindingTotal } from '../api/reports'
+import { navBadge, navItemFor, navItems, type NavCounts } from '../lib/nav'
 import { applyTheme, currentTheme, type Theme } from '../lib/theme'
 import { cn } from '../lib/utils'
 
@@ -15,6 +18,15 @@ import { cn } from '../lib/utils'
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const current = navItemFor(pathname)
+  const assets = useQuery(assetsQuery)
+  const dashboard = useQuery(dashboardQuery)
+  const counts: NavCounts = {
+    // The API lists non-archived assets only, so the length is the count.
+    projects: assets.data?.length,
+    openFindings: dashboard.data
+      ? openFindingTotal(dashboard.data.totals_by_severity)
+      : undefined,
+  }
 
   return (
     <div className="flex min-h-screen bg-bg text-fg">
@@ -43,10 +55,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           {navItems.map((item) => {
             const active = item.to === current.to
             const Icon = item.icon
+            const badge = navBadge(item, counts)
             return (
               <Link
                 key={item.to}
                 to={item.to}
+                aria-label={badge.name}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'flex h-[34px] items-center gap-2.5 rounded-md px-2.5 text-[13px] text-muted transition-colors hover:bg-hover hover:text-fg',
@@ -55,6 +69,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Icon />
                 {item.label}
+                {badge.count === null ? null : (
+                  // The accessible name already carries the number, so the pill
+                  // must not be read a second time.
+                  <span
+                    aria-hidden="true"
+                    className="ml-auto min-w-[18px] rounded-full bg-surface px-1 text-center font-mono text-[11px] leading-[16px] tabular-nums"
+                  >
+                    {badge.count}
+                  </span>
+                )}
               </Link>
             )
           })}
