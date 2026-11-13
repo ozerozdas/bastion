@@ -19,6 +19,7 @@ const scan = (id: number, assetId: number) => ({
   trigger: 'ui',
   started_at: '2026-01-01T00:00:00Z',
   finished_at: '2026-01-01T00:00:05Z',
+  counts: { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 },
 })
 const scans = [scan(1, alpha.id), scan(2, beta.id)]
 

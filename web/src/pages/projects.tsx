@@ -21,6 +21,7 @@ import {
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { CountBadge, severityCounts } from '../components/severity-counts'
 import { Tabs, type TabItem } from '../components/ui/tabs'
 import { suggestFix } from '../lib/hints'
 import { relativeTime } from '../lib/time'
@@ -48,17 +49,6 @@ const kindLabels: Record<Asset['kind'], string> = {
   path: 'path',
   image: 'image',
 }
-
-/** severities is the fixed order of the four open-finding counts. */
-const severities: {
-  key: keyof Asset['open_counts']
-  tone: 'critical' | 'high' | 'medium' | 'low'
-}[] = [
-  { key: 'critical', tone: 'critical' },
-  { key: 'high', tone: 'high' },
-  { key: 'medium', tone: 'medium' },
-  { key: 'low', tone: 'low' },
-]
 
 /**
  * projectColumns are the table headers; ProjectRow renders its own cells
@@ -331,7 +321,7 @@ function ProjectRow({
         </td>
         <td className="py-2 pl-3 align-top">
           <span className="flex flex-wrap gap-1">
-            {severities.map((severity) => (
+            {severityCounts.map((severity) => (
               <CountBadge
                 key={severity.key}
                 count={asset.open_counts[severity.key]}
@@ -458,27 +448,6 @@ function ProjectRow({
         </tr>
       ) : null}
     </Fragment>
-  )
-}
-
-/** CountBadge keeps severity colour on the badge and greys out zero counts. */
-function CountBadge({
-  count,
-  tone,
-  label,
-}: {
-  count: number
-  tone: 'critical' | 'high' | 'medium' | 'low'
-  label: string
-}) {
-  return (
-    <Badge
-      tone={tone}
-      className={count === 0 ? 'tabular-nums opacity-40' : 'tabular-nums'}
-      aria-label={`${String(count)} open ${label} findings`}
-    >
-      {count}
-    </Badge>
   )
 }
 

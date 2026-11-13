@@ -8,6 +8,7 @@ import { scansQuery, type Scan } from '../api/scans'
 import { DataTable, type DataTableColumn } from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
 import { FilterBar } from '../components/filter-bar'
+import { SeverityCountBadges } from '../components/severity-counts'
 import { Badge } from '../components/ui/badge'
 import { buttonVariants } from '../components/ui/button'
 import { formatDateTime, relativeTime, scanDuration } from '../lib/time'
@@ -165,6 +166,13 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
         const status = statusView[scan.status]
         return <Badge tone={status.tone}>{status.label}</Badge>
       },
+    },
+    {
+      id: 'findings',
+      header: 'Findings',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3',
+      cell: (scan) => <SeverityCountBadges counts={scan.counts} />,
     },
     {
       id: 'trigger',
