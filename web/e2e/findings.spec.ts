@@ -224,7 +224,15 @@ test('groups one CVE across projects and keeps the view in the URL', async ({
   )
   await expect(drawer.getByRole('button', { name: /beta/ })).toContainText('4.17.21')
 
-  await drawer.getByRole('button', { name: 'Close' }).click()
+  // Opening one project's finding swaps the drawer; closing it gives focus
+  // back to the grouped row, not to the page body.
+  await drawer.getByRole('button', { name: /alpha/ }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(
+    page.locator('tbody tr').filter({ hasText: 'CVE-2024-4444' }),
+  ).toBeFocused()
 
   // Single is still one row per finding, and the URL loses the view.
   await page.getByRole('button', { name: 'Single' }).click()
