@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { ApiError } from '../api/client'
 import {
   dashboardQuery,
+  openFindingTotal,
   type AssetRisk,
   type AssetTrend,
   type LastScan,
@@ -91,12 +92,7 @@ export function DashboardPage() {
   }
 
   const names = assetNames(data.last_scans, data.top_assets)
-  const total =
-    data.totals_by_severity.critical +
-    data.totals_by_severity.high +
-    data.totals_by_severity.medium +
-    data.totals_by_severity.low +
-    data.totals_by_severity.unknown
+  const total = openFindingTotal(data.totals_by_severity)
 
   return (
     <>
