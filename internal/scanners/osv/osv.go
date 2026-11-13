@@ -2,9 +2,9 @@
 //
 // It is not a Scanner: it does not read the workspace. It takes the packages
 // another scanner (Trivy) already extracted, queries OSV's batch API for
-// advisories affecting them, and turns MAL- advisory ids into malware
-// findings. The cross-check of non-MAL advisories is deferred to the
-// deduplication work (issue #23), so only malware is reported here.
+// advisories affecting them, and turns them into findings: MAL- advisories
+// become malware findings, everything else a vulnerability finding. The scan
+// pipeline merges advisories Trivy already reported by their alias sets.
 package osv
 
 import (
@@ -35,9 +35,10 @@ const (
 	// maxBatchSize is OSV's documented limit for POST /v1/querybatch.
 	maxBatchSize = 1000
 	// maxDetailLookups bounds the number of advisory detail requests one scan
-	// makes. Ids beyond the bound still produce findings, without a summary or
-	// details.
-	maxDetailLookups = 100
+	// makes. Ids beyond the bound still produce findings, without a summary,
+	// severity or aliases. 500 covers a normal application's advisory count
+	// while keeping a pathological inventory from hammering the API.
+	maxDetailLookups = 500
 	// detailWorkers bounds concurrent advisory detail requests.
 	detailWorkers = 8
 	// maxPaginationRounds bounds page_token follow-ups for one batch. A
@@ -79,9 +80,11 @@ func (*Matcher) Name() string { return "osv" }
 // Version is the OSV API surface the matcher speaks.
 func (*Matcher) Version() string { return Version }
 
-// Match queries OSV for the packages in inventory and returns one malware
-// finding per inventory entry affected by a MAL- advisory. Packages without a
-// version, or in an ecosystem OSV does not name, are skipped.
+// Match queries OSV for the packages in inventory and returns one finding per
+// inventory entry and advisory. MAL- advisories become malware findings (always
+// critical); the rest become vulnerability findings whose severity comes from
+// the advisory. Packages without a version, or in an ecosystem OSV does not
+// name, are skipped.
 //
 // A query failure is returned so the caller can record the run as failed; the
 // scan itself must continue without these findings.
@@ -100,7 +103,7 @@ func (m *Matcher) Match(ctx context.Context, inventory []findings.Package, asset
 	return m.findings(asset, inventory, ids, details), nil
 }
 
-// query runs the batch queries and returns the MAL- ids per inventory key.
+// query runs the batch queries and returns the advisory ids per inventory key.
 // Each batch follows next_page_token up to maxPaginationRounds, re-issuing only
 // the queries that returned a token.
 func (m *Matcher) query(ctx context.Context, queries []query, keys []pkgKey) (map[pkgKey][]string, error) {
@@ -126,11 +129,6 @@ func (m *Matcher) query(ctx context.Context, queries []query, keys []pkgKey) (ma
 			for i, res := range resp.Results {
 				key := pendingKeys[i]
 				for _, v := range res.Vulns {
-					// Non-MAL advisories belong to Trivy's vulnerability
-					// findings and are deduplicated in #23.
-					if !strings.HasPrefix(v.ID, malwarePrefix) {
-						continue
-					}
 					if !slices.Contains(ids[key], v.ID) {
 						ids[key] = append(ids[key], v.ID)
 					}
@@ -165,10 +163,11 @@ func (m *Matcher) postBatch(ctx context.Context, queries []query, out *batchResp
 	return m.do(ctx, http.MethodPost, "/v1/querybatch", batchRequest{Queries: queries}, out)
 }
 
-// lookupDetails fetches summaries and descriptions for the malware ids,
-// concurrently and best effort: a failed detail request falls back to the
-// advisory id and package name, because the id alone already proves the
-// package is malicious. Failures are summarised in one log line.
+// lookupDetails fetches the summary, description, severity and aliases for the
+// advisories, concurrently and best effort: a failed detail request falls back
+// to the advisory id, and the finding is still emitted (for MAL- the id alone
+// already proves the package is malicious). Failures are summarised in one log
+// line.
 func (m *Matcher) lookupDetails(ctx context.Context, ids map[pkgKey][]string) map[string]vulnerability {
 	unique := make([]string, 0)
 	for _, list := range ids {
@@ -219,22 +218,33 @@ func (m *Matcher) findings(asset findings.Asset, inventory []findings.Package, i
 	out := make([]findings.Finding, 0)
 	for _, p := range inventory {
 		for _, id := range ids[pkgKey{p.Ecosystem, p.Name, p.Version}] {
-			summary := details[id].Summary
-			if summary == "" {
-				summary = "Malicious package " + p.Name
-			}
+			detail := details[id]
 			f := findings.Finding{
 				AssetID:        asset.ID,
-				Type:           findings.TypeMalware,
 				RuleID:         id,
-				Severity:       findings.SeverityCritical,
-				Title:          summary,
+				Title:          detail.Summary,
 				PackageName:    p.Name,
 				PackageVersion: p.Version,
 				Ecosystem:      p.Ecosystem,
 				Location:       p.Path,
-				Description:    details[id].Details,
+				Description:    detail.Details,
 				Scanner:        m.Name(),
+				Aliases:        detail.Aliases,
+			}
+			if strings.HasPrefix(id, malwarePrefix) {
+				f.Type = findings.TypeMalware
+				f.Severity = findings.SeverityCritical
+				if f.Title == "" {
+					f.Title = "Malicious package " + p.Name
+				}
+			} else {
+				f.Type = findings.TypeVulnerability
+				f.Severity = detailSeverity(detail)
+				if f.Title == "" {
+					// The advisory id is still a useful title, and the schema
+					// requires one.
+					f.Title = id
+				}
 			}
 			f.Fingerprint = findings.Fingerprint(asset.ID, f)
 			out = append(out, f)
@@ -242,6 +252,24 @@ func (m *Matcher) findings(asset findings.Asset, inventory []findings.Package, i
 	}
 	findings.SortFindings(out)
 	return out
+}
+
+// detailSeverity maps OSV's database_specific severity onto the §5 scale.
+// MODERATE is OSV's name for medium. A missing or unrecognised value is
+// unknown rather than guessed.
+func detailSeverity(v vulnerability) findings.Severity {
+	switch strings.ToUpper(strings.TrimSpace(v.DatabaseSpecific.Severity)) {
+	case "CRITICAL":
+		return findings.SeverityCritical
+	case "HIGH":
+		return findings.SeverityHigh
+	case "MODERATE", "MEDIUM":
+		return findings.SeverityMedium
+	case "LOW":
+		return findings.SeverityLow
+	default:
+		return findings.SeverityUnknown
+	}
 }
 
 // pkgKey identifies one version of one package in the inventory. The
@@ -381,7 +409,15 @@ type vulnID struct {
 }
 
 type vulnerability struct {
-	ID      string `json:"id"`
-	Summary string `json:"summary"`
-	Details string `json:"details"`
+	ID               string           `json:"id"`
+	Summary          string           `json:"summary"`
+	Details          string           `json:"details"`
+	Aliases          []string         `json:"aliases"`
+	DatabaseSpecific databaseSpecific `json:"database_specific"`
+}
+
+// databaseSpecific carries the fields OSV stores per source. bastion consumes
+// only the severity OSV's own records publish there.
+type databaseSpecific struct {
+	Severity string `json:"severity"`
 }

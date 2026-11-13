@@ -8,6 +8,9 @@
       "title": "Secret detected: aws-access-token",
       "location": "deploy/.env:3",
       "scanner": "gitleaks",
+      "scanners": [
+        "gitleaks"
+      ],
       "match": "AKIA****",
       "secret_hmac": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "fingerprint": "9841f9d0352b646fa087f961299f44fa817ecd075fa88623dc62367b00c873b6",
@@ -21,6 +24,9 @@
       "title": "Secret detected: github-pat",
       "location": "src/config.ts:12",
       "scanner": "gitleaks",
+      "scanners": [
+        "gitleaks"
+      ],
       "match": "ghp_****",
       "secret_hmac": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "fingerprint": "96d82654dcff56c68ea708f664b98263e40eb9477c6147196ac49b03becc7656",

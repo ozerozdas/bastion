@@ -80,7 +80,18 @@ type Finding struct {
 	Description string   `json:"description,omitempty"`
 	References  []string `json:"references,omitempty"`
 
+	// Scanner is the primary scanner: the one whose fingerprint is stored and
+	// which scan diffs and finding states key on.
 	Scanner string `json:"scanner"`
+	// Scanners lists every scanner that reported the finding. A finding
+	// deduplicated across scanners (Trivy and OSV) keeps Trivy's fingerprint
+	// and lists both here. Merge fills it; a finding from one scanner has a
+	// single entry.
+	Scanners []string `json:"scanners,omitempty"`
+	// Aliases are the advisory ids that identify the same issue (for example a
+	// CVE and its GHSA). They are used only to merge findings across scanners
+	// before persistence, so they are never stored.
+	Aliases []string `json:"-"`
 	// Match is the redacted secret (first 4 chars plus "****"); raw secrets are
 	// never stored. Empty for non-secret findings.
 	Match string `json:"match,omitempty"`

@@ -58,6 +58,7 @@ INSERT INTO findings (
     description,
     references_json,
     scanner,
+    scanners,
     first_seen_scan_id,
     created_at
 )
@@ -80,7 +81,8 @@ VALUES (
     ?16,
     ?17,
     ?18,
-    ?19
+    ?19,
+    ?20
 )
 `
 
@@ -102,6 +104,7 @@ type InsertFindingParams struct {
 	Description     sql.NullString
 	ReferencesJSON  string
 	Scanner         string
+	Scanners        string
 	FirstSeenScanID sql.NullInt64
 	CreatedAt       string
 }
@@ -125,6 +128,7 @@ func (q *Queries) InsertFinding(ctx context.Context, arg InsertFindingParams) er
 		arg.Description,
 		arg.ReferencesJSON,
 		arg.Scanner,
+		arg.Scanners,
 		arg.FirstSeenScanID,
 		arg.CreatedAt,
 	)
@@ -152,6 +156,7 @@ SELECT
     f.description,
     f.references_json,
     f.scanner,
+    f.scanners,
     f.first_seen_scan_id,
     CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) AS status,
     fs.state AS state,
@@ -202,6 +207,7 @@ type ListFindingsByScanRow struct {
 	Description     sql.NullString
 	ReferencesJSON  string
 	Scanner         string
+	Scanners        string
 	FirstSeenScanID sql.NullInt64
 	Status          string
 	State           sql.NullString
@@ -247,6 +253,7 @@ func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScan
 			&i.Description,
 			&i.ReferencesJSON,
 			&i.Scanner,
+			&i.Scanners,
 			&i.FirstSeenScanID,
 			&i.Status,
 			&i.State,
@@ -287,6 +294,7 @@ SELECT
     f.description,
     f.references_json,
     f.scanner,
+    f.scanners,
     f.first_seen_scan_id,
     CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) AS status,
     fs.state AS state,
@@ -347,6 +355,7 @@ type ListLatestFindingsRow struct {
 	Description     sql.NullString
 	ReferencesJSON  string
 	Scanner         string
+	Scanners        string
 	FirstSeenScanID sql.NullInt64
 	Status          string
 	State           sql.NullString
@@ -393,6 +402,7 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 			&i.Description,
 			&i.ReferencesJSON,
 			&i.Scanner,
+			&i.Scanners,
 			&i.FirstSeenScanID,
 			&i.Status,
 			&i.State,

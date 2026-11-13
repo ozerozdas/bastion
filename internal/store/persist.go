@@ -265,6 +265,10 @@ func newFindingParams(scanID, assetID, firstSeen int64, f findings.Finding, crea
 	if err != nil {
 		return sqlcdb.InsertFindingParams{}, err
 	}
+	scanners, err := scannersJSON(f.Scanners, f.Scanner)
+	if err != nil {
+		return sqlcdb.InsertFindingParams{}, err
+	}
 	occurrences := int64(f.Occurrences)
 	if occurrences < 1 {
 		// One finding per fingerprint per scan; a caller that does not merge
@@ -288,6 +292,7 @@ func newFindingParams(scanID, assetID, firstSeen int64, f findings.Finding, crea
 		Description:     nullString(f.Description),
 		ReferencesJSON:  references,
 		Scanner:         f.Scanner,
+		Scanners:        scanners,
 		FirstSeenScanID: sql.NullInt64{Int64: firstSeen, Valid: true},
 		CreatedAt:       createdAt,
 	}
@@ -306,6 +311,24 @@ func referencesJSON(refs []string) (string, error) {
 	encoded, err := json.Marshal(refs)
 	if err != nil {
 		return "", fmt.Errorf("encode references: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// scannersJSON encodes every scanner that reported the finding. A finding that
+// Merge never saw defaults to its primary scanner, and the empty list matches
+// the column default.
+func scannersJSON(scanners []string, primary string) (string, error) {
+	list := scanners
+	if len(list) == 0 && primary != "" {
+		list = []string{primary}
+	}
+	if len(list) == 0 {
+		return "[]", nil
+	}
+	encoded, err := json.Marshal(list)
+	if err != nil {
+		return "", fmt.Errorf("encode scanners: %w", err)
 	}
 	return string(encoded), nil
 }

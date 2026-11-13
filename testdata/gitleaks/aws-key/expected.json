@@ -8,6 +8,9 @@
       "title": "Secret detected: aws-access-token",
       "location": "config/credentials:1",
       "scanner": "gitleaks",
+      "scanners": [
+        "gitleaks"
+      ],
       "match": "AKIA****",
       "secret_hmac": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "fingerprint": "170e492a272eef751ed110b748358048556fc5dea6afd4765dcfacb8fead6e33",

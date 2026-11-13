@@ -128,7 +128,9 @@ export function FindingDrawer({
 
         <dl className="grid grid-cols-[7rem_1fr] items-baseline gap-x-3 gap-y-1.5 text-[13px]">
           <dt className="text-muted">Scanner</dt>
-          <dd className="font-mono text-xs">{finding.scanner}</dd>
+          <dd className="font-mono text-xs">
+            {(finding.scanners?.length ? finding.scanners : [finding.scanner]).join(', ')}
+          </dd>
 
           {finding.rule_id ? (
             <>

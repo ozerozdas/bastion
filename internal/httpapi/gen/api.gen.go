@@ -616,9 +616,17 @@ type Finding struct {
 	References []string `json:"references"`
 
 	// RuleId CVE, GHSA or scanner rule id.
-	RuleId  *string `json:"rule_id,omitempty"`
-	ScanId  int64   `json:"scan_id"`
-	Scanner string  `json:"scanner"`
+	RuleId *string `json:"rule_id,omitempty"`
+	ScanId int64   `json:"scan_id"`
+
+	// Scanner Primary scanner. Its fingerprint is the one stored, so it stays
+	// stable when another scanner reports the same advisory.
+	Scanner string `json:"scanner"`
+
+	// Scanners Every scanner that reported the finding. A CVE reported by both
+	// Trivy and OSV appears once with both entries; `scanner` is the
+	// primary one.
+	Scanners []string `json:"scanners"`
 
 	// Severity Normalized severity scale (`unknown` when a scanner gave no usable level).
 	Severity Severity `json:"severity"`

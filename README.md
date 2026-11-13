@@ -109,14 +109,14 @@ which is what a CI runner wants.
 
 Nothing else is called. No telemetry, no analytics, and no update check unless you turn
 it on: Trivy runs with `--disable-telemetry --skip-version-check`, scans query
-`api.osv.dev` for malware advisories, and the release check is opt-in as listed below.
+`api.osv.dev` for package advisories, and the release check is opt-in as listed below.
 
 | Destination | When | Why |
 |---|---|---|
 | `mirror.gcr.io/aquasec/trivy-db`, `ghcr.io/aquasecurity/trivy-db` | **Download** in the sidebar, or the first scan that needs it; then on DB refresh | Vulnerabilities, package advisories. ~1.7 GB on first download |
 | `mirror.gcr.io/aquasec/trivy-java-db`, `ghcr.io/aquasecurity/trivy-java-db` | Scan containing Java artifacts | Java index DB, needed to map `.jar` files to artifacts |
 | `mirror.gcr.io/aquasec/trivy-checks:2` | When misconfiguration scanning runs | IaC checks bundle, ~2.6 MB |
-| `api.osv.dev` | Every scan whose package inventory is non-empty | `POST /v1/querybatch` and `GET /v1/vulns/{id}` for malware advisories. Sends package name, version and ecosystem only, with `User-Agent: bastion/<version>` |
+| `api.osv.dev` | Every scan whose package inventory is non-empty | `POST /v1/querybatch` and `GET /v1/vulns/{id}` for the advisories it reports. Sends package name, version and ecosystem only, with `User-Agent: bastion/<version>` |
 | `api.github.com` | Only on user action: test connection, discover repos, add asset, scan | `GET /user`, `GET /user/repos`, `GET /repos/{owner}/{repo}`, `GET /repos/{owner}/{repo}/commits/{branch}`, `GET /repos/{owner}/{repo}/tarball/{sha}` |
 | `codeload.github.com` | Redirect target of the tarball call | The repository archive itself |
 | `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed and nothing else is parsed |

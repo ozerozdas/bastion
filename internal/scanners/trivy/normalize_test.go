@@ -3,6 +3,7 @@ package trivy
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/ozerozdas/bastion/internal/findings"
@@ -139,5 +140,85 @@ func TestNormalizeLicenseVersionIgnoresTargetPath(t *testing.T) {
 	}
 	if fs[0].Location != "LICENSES/npm.txt" {
 		t.Fatalf("location = %q, want LICENSES/npm.txt", fs[0].Location)
+	}
+}
+
+func TestVulnerabilityAliases(t *testing.T) {
+	v := vuln{
+		VulnerabilityID: "cve-2021-23337",
+		VendorIDs:       []string{"ghsa-35jh-r3h4-6jhm", "CVE-2021-23337"},
+		PrimaryURL:      "https://avd.aquasec.com/nvd/cve-2021-23337",
+		References: []string{
+			"https://nvd.nist.gov/vuln/detail/CVE-2021-23337",
+			// A reference may point at a related advisory; it is not an alias.
+			"https://github.com/advisories/GHSA-dddd-eeee-ffff",
+		},
+	}
+	want := []string{"CVE-2021-23337", "GHSA-35JH-R3H4-6JHM"}
+	if got := vulnerabilityAliases(v); !slices.Equal(got, want) {
+		t.Fatalf("aliases = %v, want %v", got, want)
+	}
+
+	// Without a vendor id only the primary id remains: references do not add
+	// ids, however many advisory URLs they contain.
+	v.VendorIDs = nil
+	if got := vulnerabilityAliases(v); !slices.Equal(got, []string{"CVE-2021-23337"}) {
+		t.Fatalf("aliases without vendor ids = %v, want only the primary id", got)
+	}
+}
+
+func TestVulnerabilityAliasesMergeWithOSV(t *testing.T) {
+	// Trivy reports the CVE and names the GHSA as a vendor id; OSV reports the
+	// GHSA and lists the CVE in its own aliases. The pair must become one
+	// finding, with Trivy's fingerprint.
+	input := `{
+		"SchemaVersion": 2,
+		"Results": [{
+			"Target": "package-lock.json",
+			"Class": "lang-pkgs",
+			"Type": "npm",
+			"Vulnerabilities": [{
+				"VulnerabilityID": "CVE-2021-23337",
+				"VendorIDs": ["GHSA-35jh-r3h4-6jhm"],
+				"PkgName": "lodash",
+				"InstalledVersion": "4.17.20",
+				"Title": "Command injection in lodash",
+				"Severity": "HIGH"
+			}]
+		}]
+	}`
+	fs, _, err := New().Normalize(&scanners.RawResult{Raw: []byte(input)}, findings.Asset{ID: 1})
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	if len(fs) != 1 {
+		t.Fatalf("got %d findings, want 1", len(fs))
+	}
+	trivyFinding := fs[0]
+
+	osvFinding := findings.Finding{
+		AssetID:        1,
+		Type:           findings.TypeVulnerability,
+		RuleID:         "GHSA-35JH-R3H4-6JHM",
+		Severity:       findings.SeverityHigh,
+		Title:          "Command injection in lodash",
+		PackageName:    "lodash",
+		PackageVersion: "4.17.20",
+		Ecosystem:      "npm",
+		Location:       "package-lock.json",
+		Scanner:        "osv",
+		Aliases:        []string{"CVE-2021-23337"},
+	}
+	osvFinding.Fingerprint = findings.Fingerprint(osvFinding.AssetID, osvFinding)
+
+	got := findings.Merge([]findings.Finding{trivyFinding, osvFinding})
+	if len(got) != 1 {
+		t.Fatalf("got %d findings, want 1: %+v", len(got), got)
+	}
+	if got[0].Fingerprint != trivyFinding.Fingerprint || got[0].Scanner != "trivy" {
+		t.Errorf("kept %q/%q, want Trivy's finding", got[0].Scanner, got[0].Fingerprint)
+	}
+	if want := []string{"osv", "trivy"}; !slices.Equal(got[0].Scanners, want) {
+		t.Errorf("scanners = %v, want %v", got[0].Scanners, want)
 	}
 }

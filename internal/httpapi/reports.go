@@ -98,6 +98,7 @@ func findingResponse(finding reports.Finding) gen.Finding {
 		Location:        stringPointer(finding.Location),
 		Occurrences:     finding.Occurrences,
 		Scanner:         finding.Scanner,
+		Scanners:        finding.Scanners,
 		Status:          gen.FindingStatus(finding.Status),
 		State:           findingStatePointer(finding.State),
 		Reason:          stringPointer(finding.Reason),
@@ -107,6 +108,9 @@ func findingResponse(finding reports.Finding) gen.Finding {
 	}
 	if out.References == nil {
 		out.References = []string{}
+	}
+	if out.Scanners == nil {
+		out.Scanners = []string{}
 	}
 	return out
 }

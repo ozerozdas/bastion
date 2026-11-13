@@ -63,6 +63,7 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 				Description:    v.Description,
 				References:     references(v.PrimaryURL, v.References),
 				Scanner:        s.Name(),
+				Aliases:        vulnerabilityAliases(v),
 			}
 			f.Fingerprint = findings.Fingerprint(asset.ID, f)
 			fs = append(fs, f)
@@ -146,6 +147,34 @@ func references(primary string, refs []string) []string {
 	if len(out) == 0 {
 		return nil
 	}
+	return out
+}
+
+// vulnerabilityAliases returns the ids that identify a vulnerability: its
+// primary id plus Trivy's vendor ids. Reference URLs are deliberately not
+// parsed: they list related advisories as often as aliases, and OSV's own
+// advisory aliases already bridge a GHSA to its CVE. The scan pipeline uses
+// these ids to merge one advisory reported by another scanner; they are
+// in-memory only.
+func vulnerabilityAliases(v vuln) []string {
+	set := make(map[string]struct{}, 1+len(v.VendorIDs))
+	add := func(id string) {
+		if id = strings.ToUpper(strings.TrimSpace(id)); id != "" {
+			set[id] = struct{}{}
+		}
+	}
+	add(v.VulnerabilityID)
+	for _, id := range v.VendorIDs {
+		add(id)
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for id := range set {
+		out = append(out, id)
+	}
+	slices.Sort(out)
 	return out
 }
 
@@ -295,6 +324,7 @@ type identifier struct {
 
 type vuln struct {
 	VulnerabilityID  string               `json:"VulnerabilityID"`
+	VendorIDs        []string             `json:"VendorIDs"`
 	PkgName          string               `json:"PkgName"`
 	InstalledVersion string               `json:"InstalledVersion"`
 	FixedVersion     string               `json:"FixedVersion"`

@@ -62,6 +62,7 @@ type Finding struct {
 	FirstSeenScanID sql.NullInt64
 	Status          string
 	CreatedAt       string
+	Scanners        string
 }
 
 type FindingState struct {
