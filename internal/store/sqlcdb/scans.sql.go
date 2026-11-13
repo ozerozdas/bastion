@@ -136,6 +136,39 @@ func (q *Queries) FinishScan(ctx context.Context, arg FinishScanParams) error {
 	return err
 }
 
+const getPreviousSucceededScan = `-- name: GetPreviousSucceededScan :one
+SELECT id, asset_id, target_ref, status, "trigger", started_at, finished_at, error FROM scans
+WHERE asset_id = ?1
+  AND status = 'succeeded'
+  AND id < ?2
+ORDER BY id DESC
+LIMIT 1
+`
+
+type GetPreviousSucceededScanParams struct {
+	AssetID int64
+	ID      int64
+}
+
+// The newest succeeded scan of one asset older than the given scan: the default
+// baseline of a diff. sql.ErrNoRows means the given scan is the asset's first
+// succeeded one, so there is nothing to compare against.
+func (q *Queries) GetPreviousSucceededScan(ctx context.Context, arg GetPreviousSucceededScanParams) (Scan, error) {
+	row := q.db.QueryRowContext(ctx, getPreviousSucceededScan, arg.AssetID, arg.ID)
+	var i Scan
+	err := row.Scan(
+		&i.ID,
+		&i.AssetID,
+		&i.TargetRef,
+		&i.Status,
+		&i.Trigger,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.Error,
+	)
+	return i, err
+}
+
 const getScan = `-- name: GetScan :one
 SELECT id, asset_id, target_ref, status, "trigger", started_at, finished_at, error FROM scans WHERE id = ?1
 `

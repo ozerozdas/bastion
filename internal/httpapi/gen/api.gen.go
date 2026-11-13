@@ -744,6 +744,41 @@ type Scan struct {
 // ScanTrigger Who started the scan.
 type ScanTrigger string
 
+// ScanDiff Change in findings between two scans of the same asset, matched by
+// fingerprint. `new` and `persisting` come from `scan_id`; `fixed` comes
+// from `against_scan_id`. Without a scan to compare against,
+// `against_scan_id` is absent, every finding is `new`, and the other
+// groups and counts are empty.
+type ScanDiff struct {
+	// AgainstScanId The scan compared against; absent when there is none.
+	AgainstScanId *int64 `json:"against_scan_id,omitempty"`
+
+	// Counts Findings per severity in each diff group; an empty group is all zeros.
+	Counts ScanDiffCounts `json:"counts"`
+
+	// Fixed Findings only in `against_scan_id`, most severe first.
+	Fixed []Finding `json:"fixed"`
+
+	// New Findings only in `scan_id`, most severe first.
+	New []Finding `json:"new"`
+
+	// Persisting Fingerprints in both scans, taken from `scan_id`, most severe first.
+	Persisting []Finding `json:"persisting"`
+	ScanId     int64     `json:"scan_id"`
+}
+
+// ScanDiffCounts Findings per severity in each diff group; an empty group is all zeros.
+type ScanDiffCounts struct {
+	// Fixed Findings per severity; severities without findings are zero.
+	Fixed SeverityTotals `json:"fixed"`
+
+	// New Findings per severity; severities without findings are zero.
+	New SeverityTotals `json:"new"`
+
+	// Persisting Findings per severity; severities without findings are zero.
+	Persisting SeverityTotals `json:"persisting"`
+}
+
 // ScanEvent One scan lifecycle event, carried in the `data:` line of an
 // `/api/events` frame. Optional fields are absent when they do not apply
 // to the event type.
@@ -974,6 +1009,13 @@ type ListScansParams struct {
 	Limit *ScanLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetScanDiffParams defines parameters for GetScanDiff.
+type GetScanDiffParams struct {
+	// Against Scan to compare against. Must be a succeeded scan of the same asset.
+	// Defaults to the previous succeeded scan of the asset.
+	Against *int64 `form:"against,omitempty" json:"against,omitempty"`
+}
+
 // ListScanFindingsParams defines parameters for ListScanFindings.
 type ListScanFindingsParams struct {
 	// Severity Only findings with this severity.
@@ -1176,6 +1218,9 @@ type ServerInterface interface {
 	// CancelScan Cancel a queued or running scan.
 	// (POST /api/scans/{id}/cancel)
 	CancelScan(w http.ResponseWriter, r *http.Request, id ScanID)
+	// GetScanDiff Findings new, fixed and persisting between two scans.
+	// (GET /api/scans/{id}/diff)
+	GetScanDiff(w http.ResponseWriter, r *http.Request, id ScanID, params GetScanDiffParams)
 	// ListScanFindings Findings of one scan.
 	// (GET /api/scans/{id}/findings)
 	ListScanFindings(w http.ResponseWriter, r *http.Request, id ScanID, params ListScanFindingsParams)
@@ -1642,6 +1687,48 @@ func (siw *ServerInterfaceWrapper) CancelScan(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// GetScanDiff operation middleware
+func (siw *ServerInterfaceWrapper) GetScanDiff(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ScanID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetScanDiffParams
+
+	// ------------- Optional query parameter "against" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "against", r.URL.Query(), &params.Against, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "against"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "against", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetScanDiff(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListScanFindings operation middleware
 func (siw *ServerInterfaceWrapper) ListScanFindings(w http.ResponseWriter, r *http.Request) {
 
@@ -1904,6 +1991,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/{id}", wrapper.GetScan)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans/{id}/cancel", wrapper.CancelScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/{id}/findings", wrapper.ListScanFindings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/{id}/diff", wrapper.GetScanDiff)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/findings/{fingerprint}/state", wrapper.ClearFindingState)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/findings/{fingerprint}/state", wrapper.SetFindingState)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/findings", wrapper.ListFindings)
@@ -4290,6 +4378,162 @@ func (response CancelScan500ApplicationProblemPlusJSONResponse) VisitCancelScanR
 	return err
 }
 
+type GetScanDiffRequestObject struct {
+	Id     ScanID `json:"id"`
+	Params GetScanDiffParams
+}
+
+type GetScanDiffResponseObject interface {
+	VisitGetScanDiffResponse(w http.ResponseWriter) error
+}
+
+type GetScanDiff200JSONResponse ScanDiff
+
+func (response GetScanDiff200JSONResponse) VisitGetScanDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScanDiff400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetScanDiff400ApplicationProblemPlusJSONResponse) VisitGetScanDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScanDiff401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetScanDiff401ApplicationProblemPlusJSONResponse) VisitGetScanDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScanDiff403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetScanDiff403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetScanDiff403ResponseHeaders
+}
+
+func (response GetScanDiff403ApplicationProblemPlusJSONResponse) VisitGetScanDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScanDiff404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetScanDiff404ApplicationProblemPlusJSONResponse) VisitGetScanDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScanDiff409ApplicationProblemPlusJSONResponse Problem
+
+func (response GetScanDiff409ApplicationProblemPlusJSONResponse) VisitGetScanDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScanDiff421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetScanDiff421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetScanDiff421ResponseHeaders
+}
+
+func (response GetScanDiff421ApplicationProblemPlusJSONResponse) VisitGetScanDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetScanDiff500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetScanDiff500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetScanDiff500ResponseHeaders
+}
+
+func (response GetScanDiff500ApplicationProblemPlusJSONResponse) VisitGetScanDiffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListScanFindingsRequestObject struct {
 	Id     ScanID `json:"id"`
 	Params ListScanFindingsParams
@@ -4968,6 +5212,9 @@ type StrictServerInterface interface {
 	// CancelScan Cancel a queued or running scan.
 	// (POST /api/scans/{id}/cancel)
 	CancelScan(ctx context.Context, request CancelScanRequestObject) (CancelScanResponseObject, error)
+	// GetScanDiff Findings new, fixed and persisting between two scans.
+	// (GET /api/scans/{id}/diff)
+	GetScanDiff(ctx context.Context, request GetScanDiffRequestObject) (GetScanDiffResponseObject, error)
 	// ListScanFindings Findings of one scan.
 	// (GET /api/scans/{id}/findings)
 	ListScanFindings(ctx context.Context, request ListScanFindingsRequestObject) (ListScanFindingsResponseObject, error)
@@ -5474,6 +5721,33 @@ func (sh *strictHandler) CancelScan(w http.ResponseWriter, r *http.Request, id S
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CancelScanResponseObject); ok {
 		if err := validResponse.VisitCancelScanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetScanDiff operation middleware
+func (sh *strictHandler) GetScanDiff(w http.ResponseWriter, r *http.Request, id ScanID, params GetScanDiffParams) {
+	var request GetScanDiffRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetScanDiff(ctx, request.(GetScanDiffRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetScanDiff")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetScanDiffResponseObject); ok {
+		if err := validResponse.VisitGetScanDiffResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
