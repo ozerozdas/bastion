@@ -700,6 +700,62 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/scans/{id}/sbom:
+    get:
+      operationId: getScanSBOM
+      summary: CycloneDX SBOM of one succeeded scan.
+      description: |
+        The package inventory the scan persisted, as a CycloneDX 1.6 JSON BOM
+        served as a download (`application/vnd.cyclonedx+json`,
+        `Content-Disposition: attachment`). Components are the packages the
+        scan reported, sorted and de-duplicated; each carries its purl when the
+        scanner reported one or bastion can derive it. The document does not
+        include vulnerabilities.
+
+        This operation is hand-written in `internal/httpapi/sbom.go` and
+        excluded from codegen (api/oapi-codegen.yaml): the generated strict
+        server cannot set the `Content-Disposition` header. Like
+        `/api/events`, the spec stays the contract.
+      tags: [scans]
+      parameters:
+        - $ref: "#/components/parameters/ScanID"
+      responses:
+        "200":
+          description: The BOM of the scan.
+          headers:
+            Content-Disposition:
+              description: |
+                Attachment with the filename
+                `<display-name>-scan-<id>.cdx.json` (unsafe characters replaced).
+              schema:
+                type: string
+          content:
+            application/vnd.cyclonedx+json:
+              schema:
+                type: object
+                description: A CycloneDX 1.6 JSON BOM.
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: The scan does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: |
+            The scan did not succeed, so it has no complete package inventory.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/findings/{fingerprint}/state:
     post:
       operationId: setFindingState

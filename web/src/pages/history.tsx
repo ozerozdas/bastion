@@ -236,6 +236,30 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
           </span>
         ),
     },
+    {
+      id: 'sbom',
+      header: 'SBOM',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3 whitespace-nowrap',
+      cell: (scan) =>
+        scan.status === 'succeeded' ? (
+          // A plain link: the browser saves the CycloneDX JSON the server
+          // already sends with Content-Disposition, so no fetch is needed.
+          <a
+            href={`/api/scans/${String(scan.id)}/sbom`}
+            download
+            className="hover:underline"
+            title={`Download the CycloneDX SBOM of scan #${String(scan.id)}`}
+          >
+            CycloneDX
+          </a>
+        ) : (
+          // Only a succeeded scan has a complete package inventory.
+          <span aria-hidden="true" className="text-faint">
+            —
+          </span>
+        ),
+    },
   ]
 
   return (
