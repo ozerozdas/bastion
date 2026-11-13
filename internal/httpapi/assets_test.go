@@ -246,6 +246,9 @@ func TestQueueScanAppears(t *testing.T) {
 	if list.Scans[0].ScannerRuns != nil {
 		t.Error("the scan list must omit scanner_runs")
 	}
+	if list.Scans[0].Counts != (gen.SeverityTotals{}) {
+		t.Errorf("counts of a queued scan = %+v, want all zero", list.Scans[0].Counts)
+	}
 
 	scan := decodeScan(t, ts.do(t, http.MethodGet, "/api/scans/"+itoa(queued.Scans[0].ScanId), withCookie(cookie)))
 	if scan.ScannerRuns == nil {
@@ -284,6 +287,53 @@ func TestQueueScanAppears(t *testing.T) {
 	resp = ts.do(t, http.MethodGet, "/api/scans?limit=0", withCookie(cookie))
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("limit=0: status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+// TestScanListSeverityCounts covers #25: each scan carries the counts of every
+// finding it recorded, and a scan with no findings is all zeros.
+func TestScanListSeverityCounts(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+	asset := pathAsset(t, ts, cookie)
+
+	severity := func(fingerprint string, value findings.Severity) findings.Finding {
+		return findings.Finding{
+			Fingerprint: fingerprint,
+			Type:        findings.TypeVulnerability,
+			Severity:    value,
+			Title:       "finding " + fingerprint,
+			Scanner:     "trivy",
+			Occurrences: 1,
+		}
+	}
+	counted := seedSucceededScan(t, ts, asset.Id,
+		severity("fp-critical", findings.SeverityCritical),
+		severity("fp-high-a", findings.SeverityHigh),
+		severity("fp-high-b", findings.SeverityHigh),
+		severity("fp-low", findings.SeverityLow),
+		severity("fp-unknown", findings.SeverityUnknown),
+	)
+	empty := seedSucceededScan(t, ts, asset.Id)
+
+	want := map[int64]gen.SeverityTotals{
+		counted: {Critical: 1, High: 2, Medium: 0, Low: 1, Unknown: 1},
+		empty:   {},
+	}
+	list := scanList(t, ts, cookie, "?asset_id="+itoa(asset.Id))
+	if len(list.Scans) != 2 {
+		t.Fatalf("scans = %+v, want 2", list.Scans)
+	}
+	for _, scan := range list.Scans {
+		if scan.Counts != want[scan.Id] {
+			t.Errorf("scan %d counts = %+v, want %+v", scan.Id, scan.Counts, want[scan.Id])
+		}
+	}
+
+	// The single-scan read carries the same counts.
+	read := decodeScan(t, ts.do(t, http.MethodGet, "/api/scans/"+itoa(counted), withCookie(cookie)))
+	if read.Counts != want[counted] {
+		t.Errorf("single scan counts = %+v, want %+v", read.Counts, want[counted])
 	}
 }
 
