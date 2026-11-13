@@ -46,9 +46,12 @@ export function FilterBar({
   children,
 }: FilterBarProps) {
   const stacked = layout === 'stacked'
+  // Reports has always wrapped its filters in a section; Scan History's inline
+  // row is a plain div on the page.
+  const Wrapper = stacked ? 'section' : 'div'
 
   return (
-    <section
+    <Wrapper
       aria-label={label}
       className={cn(
         'flex flex-wrap',
@@ -98,6 +101,6 @@ export function FilterBar({
         )
       })}
       {children}
-    </section>
+    </Wrapper>
   )
 }

@@ -3,7 +3,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type Key,
   type ReactNode,
   type Ref,
   type RefObject,
@@ -56,7 +55,7 @@ export type DataTableSelection<T> = {
 export type DataTableProps<T> = {
   rows: readonly T[]
   columns: readonly DataTableColumn<T>[]
-  rowKey: (row: T) => Key
+  rowKey: (row: T) => string
   selection?: DataTableSelection<T>
   /** Makes a row open on click, Enter or Space; omitted rows are not interactive. */
   onRowActivate?: (row: T, index: number) => void
@@ -170,8 +169,12 @@ export function DataTableRow({
         // The checkbox cell must not open the row's detail view.
         <td
           className={selection.cellClassName}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
+          onClick={
+            onActivate ? (event) => event.stopPropagation() : undefined
+          }
+          onKeyDown={
+            onActivate ? (event) => event.stopPropagation() : undefined
+          }
         >
           <Checkbox
             aria-label={selection.label}
@@ -215,14 +218,25 @@ export function useRowRemovalFocus<T>({
     null,
   )
   const bodyRef = useRef<HTMLTableSectionElement>(null)
+  // ReportsPage recreates these props every render; keep the effect keyed on
+  // the data alone, with the latest callbacks in refs.
+  const rowKeyRef = useRef(rowKey)
+  const fallbackTarget = useRef(fallback)
+  const onRemovedRef = useRef(onRemoved)
+
+  useEffect(() => {
+    rowKeyRef.current = rowKey
+    fallbackTarget.current = fallback
+    onRemovedRef.current = onRemoved
+  })
 
   useEffect(() => {
     if (removal === null || rows === undefined) return
     // The refresh that drops the row is the moment to move: until it lands,
     // the row (and the focus the drawer gave back) is still valid.
-    if (rows.some((row) => rowKey(row) === removal.key)) return
+    if (rows.some((row) => rowKeyRef.current(row) === removal.key)) return
     setRemoval(null)
-    onRemoved?.()
+    onRemovedRef.current?.()
     // A click or Tab after the close wins over restoring focus.
     if (document.activeElement !== document.body && document.activeElement !== null) {
       return
@@ -235,8 +249,8 @@ export function useRowRemovalFocus<T>({
       tableRows[Math.min(removal.index, tableRows.length - 1)]?.focus()
       return
     }
-    fallback.current?.focus()
-  }, [rows, removal, rowKey, fallback, onRemoved])
+    fallbackTarget.current.current?.focus()
+  }, [rows, removal])
 
   return {
     bodyRef,

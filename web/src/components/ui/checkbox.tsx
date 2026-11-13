@@ -9,6 +9,7 @@ type CheckboxProps = Omit<React.ComponentProps<'input'>, 'type'> & {
 
 /** Checkbox is a native checkbox that can also show the mixed (indeterminate) state. */
 export function Checkbox({ indeterminate = false, className, ...props }: CheckboxProps) {
+  // Callers supply cursor and alignment via className (Projects deliberately has none).
   return (
     <input
       type="checkbox"

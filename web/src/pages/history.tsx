@@ -194,7 +194,13 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
     },
   ]
 
-  return <DataTable rows={scans} columns={columns} rowKey={(scan) => scan.id} />
+  return (
+    <DataTable
+      rows={scans}
+      columns={columns}
+      rowKey={(scan) => String(scan.id)}
+    />
+  )
 }
 
 /** ScansEmpty explains how to get the first scan. */

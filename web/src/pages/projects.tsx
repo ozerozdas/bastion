@@ -218,7 +218,7 @@ function ProjectsTable({
       <DataTable
         rows={assets}
         columns={projectColumns}
-        rowKey={(asset) => asset.id}
+        rowKey={(asset) => String(asset.id)}
         selection={selection}
         renderRow={(asset) => (
           <ProjectRow asset={asset} live={live.get(asset.id)} selection={selection} />
