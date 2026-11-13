@@ -18,6 +18,7 @@ import {
   type DataTableColumn,
   type DataTableSelection,
 } from '../components/data-table'
+import { PageActions } from '../components/app-shell'
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
@@ -107,23 +108,15 @@ function ProjectsPanel() {
 
   return (
     <>
+      <PageActions>
+        <Button type="button" size="sm" onClick={() => setAdding(true)}>
+          Add project
+        </Button>
+      </PageActions>
       <section
-        aria-labelledby="projects-heading"
+        aria-label="Projects"
         className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
       >
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex flex-wrap items-baseline gap-2.5">
-            <h2 id="projects-heading" className="text-[13px] font-semibold">
-              Projects
-            </h2>
-            <span className="text-faint">
-              Repositories and local paths bastion scans
-            </span>
-          </div>
-          <Button type="button" size="sm" onClick={() => setAdding(true)}>
-            Add project
-          </Button>
-        </div>
 
         {assets.isPending ? (
           <p className="text-muted">Loading projects…</p>

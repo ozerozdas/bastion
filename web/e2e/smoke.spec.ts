@@ -25,7 +25,7 @@ const navPages = [
     label: 'Projects',
     path: '/projects',
     subtitle: 'Repositories and images you scan',
-    marker: 'Repositories and local paths bastion scans',
+    marker: 'Add a local path',
   },
   {
     label: 'Connections',
