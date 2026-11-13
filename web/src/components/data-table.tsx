@@ -159,11 +159,12 @@ export function DataTableRow({
             }
           : undefined
       }
-      className={
+      className={cn(
+        'hover:bg-hover',
         onActivate
-          ? 'cursor-pointer align-top hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted'
-          : undefined
-      }
+          ? 'cursor-pointer align-top focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted'
+          : undefined,
+      )}
     >
       {selection ? (
         // The checkbox cell must not open the row's detail view.
