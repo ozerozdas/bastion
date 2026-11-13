@@ -25,7 +25,7 @@ const navPages = [
     label: 'Projects',
     path: '/projects',
     subtitle: 'Repositories and images you scan',
-    marker: 'Add projects',
+    marker: 'Repositories and local paths bastion scans',
   },
   {
     label: 'Connections',
@@ -205,6 +205,7 @@ test('drops a stale project id from the findings URL', async ({
 
   // One project: the page has something to fall back to when the id is gone.
   await page.getByRole('link', { name: 'Projects', exact: true }).click()
+  await page.getByRole('button', { name: 'Add project' }).click()
   await page.getByLabel('Or add a local path').fill(server.projectDir)
   await page.getByRole('button', { name: 'Add path' }).click()
 
@@ -240,14 +241,12 @@ test('adds a local path project through the UI', async ({ page, server }) => {
   await page.getByRole('link', { name: 'Projects', exact: true }).click()
 
   const name = basename(server.projectDir)
+  await page.getByRole('button', { name: 'Add project' }).click()
   await page.getByLabel('Or add a local path').fill(server.projectDir)
   await page.getByRole('button', { name: 'Add path' }).click()
 
-  await expect(
-    page.getByText(
-      'Local path added. Press Scan on its row to run the first scan.',
-    ),
-  ).toBeVisible()
+  // Success closes the modal; the new row is what proves the add worked.
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 
   const row = page.getByRole('row', { name: new RegExp(name) })
   await expect(row).toBeVisible()

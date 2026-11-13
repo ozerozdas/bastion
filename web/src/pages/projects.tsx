@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { Fragment, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { assetsQuery, useArchiveAsset, useCreateAsset, type Asset } from '../api/assets'
 import { ApiError } from '../api/client'
@@ -98,10 +98,11 @@ export function ProjectsPage() {
   )
 }
 
-/** ProjectsPanel is §7.3: the assets table plus the inline add panel. */
+/** ProjectsPanel is §7.3: the assets table plus the add-project dialog. */
 function ProjectsPanel() {
   const assets = useQuery(assetsQuery)
   const live = useScanEvents()
+  const [adding, setAdding] = useState(false)
   const list = assets.data ?? []
 
   return (
@@ -110,13 +111,18 @@ function ProjectsPanel() {
         aria-labelledby="projects-heading"
         className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
       >
-        <div className="flex flex-wrap items-baseline gap-2.5">
-          <h2 id="projects-heading" className="text-[13px] font-semibold">
-            Projects
-          </h2>
-          <span className="text-faint">
-            Repositories and local paths bastion scans
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-baseline gap-2.5">
+            <h2 id="projects-heading" className="text-[13px] font-semibold">
+              Projects
+            </h2>
+            <span className="text-faint">
+              Repositories and local paths bastion scans
+            </span>
+          </div>
+          <Button type="button" size="sm" onClick={() => setAdding(true)}>
+            Add project
+          </Button>
         </div>
 
         {assets.isPending ? (
@@ -133,20 +139,22 @@ function ProjectsPanel() {
           </div>
         ) : null}
 
-        {assets.isSuccess && list.length === 0 ? <ProjectsEmpty /> : null}
+        {assets.isSuccess && list.length === 0 ? (
+          <ProjectsEmpty onAdd={() => setAdding(true)} />
+        ) : null}
 
         {assets.isSuccess && list.length > 0 ? (
           <ProjectsTable assets={list} live={live} />
         ) : null}
       </section>
 
-      <AddProjects />
+      <AddProjectDialog open={adding} onClose={() => setAdding(false)} />
     </>
   )
 }
 
 /** ProjectsEmpty points at both ways to create the first project (§7). */
-function ProjectsEmpty() {
+function ProjectsEmpty({ onAdd }: { onAdd: () => void }) {
   return (
     <EmptyState
       title="No projects yet"
@@ -155,9 +163,9 @@ function ProjectsEmpty() {
       <Link to="/connections" className={buttonVariants()}>
         Connect GitHub
       </Link>
-      <a href="#add-projects" className={buttonVariants({ variant: 'outline' })}>
+      <Button type="button" variant="outline" onClick={onAdd}>
         Add a local path
-      </a>
+      </Button>
     </EmptyState>
   )
 }
@@ -466,26 +474,64 @@ function ScanFailure({ error }: { error: string | undefined }) {
   )
 }
 
-/** AddProjects is the inline panel: GitHub discovery plus a local path. */
-function AddProjects() {
+/**
+ * AddProjectDialog holds the add-project panel in a modal (#105). A native
+ * <dialog> keeps focus trapped and closes on Escape without extra code, and a
+ * successful add closes it by flipping `open` in the parent.
+ */
+function AddProjectDialog({
+  open,
+  onClose,
+}: {
+  open: boolean
+  onClose: () => void
+}) {
+  const dialog = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    const element = dialog.current
+    if (element === null) return
+    if (open && !element.open) {
+      element.showModal()
+    } else if (!open && element.open) {
+      element.close()
+    }
+  }, [open])
+
+  return (
+    <dialog
+      ref={dialog}
+      aria-labelledby="add-projects"
+      onClose={onClose}
+      className="m-auto w-[min(760px,92vw)] max-h-[90vh] overflow-y-auto rounded-card border border-border-subtle bg-surface p-0 text-fg backdrop:bg-black/40"
+    >
+      {open ? <AddProjects onDone={onClose} /> : null}
+    </dialog>
+  )
+}
+
+/** AddProjects is the dialog body: GitHub discovery plus a local path. */
+function AddProjects({ onDone }: { onDone: () => void }) {
   const connections = useQuery(connectionsQuery)
   const github = (connections.data ?? []).filter(
     (connection) => connection.kind === 'github',
   )
 
   return (
-    <section
-      aria-labelledby="add-projects"
-      className="flex flex-col gap-4 rounded-card border border-border-subtle bg-surface p-4"
-    >
-      <div className="flex flex-col gap-0.5">
-        <h2 id="add-projects" className="text-[13px] font-semibold">
-          Add projects
-        </h2>
-        <p className="text-xs text-muted">
-          Repositories are read with a connection token. A local path is scanned
-          in place; nothing is uploaded.
-        </p>
+    <div className="flex flex-col gap-4 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <h2 id="add-projects" className="text-[13px] font-semibold">
+            Add projects
+          </h2>
+          <p className="text-xs text-muted">
+            Repositories are read with a connection token. A local path is
+            scanned in place; nothing is uploaded.
+          </p>
+        </div>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+          Close
+        </Button>
       </div>
 
       {connections.isPending ? (
@@ -509,10 +555,12 @@ function AddProjects() {
         </p>
       ) : null}
 
-      {github.length > 0 ? <DiscoverRepos connections={github} /> : null}
+      {github.length > 0 ? (
+        <DiscoverRepos connections={github} onAdded={onDone} />
+      ) : null}
 
-      <AddLocalPath />
-    </section>
+      <AddLocalPath onAdded={onDone} />
+    </div>
   )
 }
 
@@ -523,7 +571,13 @@ type AddError = {
 }
 
 /** DiscoverRepos searches one connection's repositories and adds the picks. */
-function DiscoverRepos({ connections }: { connections: Connection[] }) {
+function DiscoverRepos({
+  connections,
+  onAdded,
+}: {
+  connections: Connection[]
+  onAdded: () => void
+}) {
   const queryClient = useQueryClient()
   const create = useCreateAsset()
   const [connectionId, setConnectionId] = useState<number | undefined>(undefined)
@@ -602,6 +656,10 @@ function DiscoverRepos({ connections }: { connections: Connection[] }) {
     void queryClient.invalidateQueries({
       queryKey: discoverQuery(connection.id).queryKey,
     })
+    // Nothing left to decide when every pick was added, so the modal closes.
+    if (added.length > 0 && errors.length === 0) {
+      onAdded()
+    }
   }
 
   return (
@@ -769,7 +827,7 @@ function RepoOption({
 }
 
 /** AddLocalPath adds one directory on this machine as an asset. */
-function AddLocalPath() {
+function AddLocalPath({ onAdded }: { onAdded: () => void }) {
   const create = useCreateAsset()
   const [path, setPath] = useState('')
   const [notice, setNotice] = useState<{
@@ -787,10 +845,8 @@ function AddLocalPath() {
       {
         onSuccess: () => {
           setPath('')
-          setNotice({
-            tone: 'ok',
-            cause: 'Local path added. Press Scan on its row to run the first scan.',
-          })
+          // The row is in the table behind the modal, so success closes it.
+          onAdded()
         },
         onError: (error) => setNotice({ tone: 'error', ...addErrorNote(error) }),
       },
