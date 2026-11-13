@@ -128,10 +128,10 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
           names.get(scan.asset_id) ?? `Asset ${String(scan.asset_id)}`
         return (
           <Link
-            to="/security-reports"
+            to="/findings"
             search={{ asset: scan.asset_id }}
             className="hover:underline"
-            title={`${project}: open the security report`}
+            title={`${project}: open its findings`}
           >
             {project}
           </Link>

@@ -36,7 +36,7 @@ lockfile), it becomes **one** finding with an occurrence count; the highest seve
 
 ## Ignoring findings
 
-In **Security Reports** you can hide a finding as:
+In **Findings** you can hide a finding as:
 
 | State | Use it when |
 |---|---|

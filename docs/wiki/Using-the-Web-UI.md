@@ -32,16 +32,22 @@ Each row shows the last scan status and severity counts. **Scan** queues a scan;
 streams live. A GitHub scan resolves the default branch to a commit SHA, downloads that
 tarball, scans it and deletes the workspace afterwards.
 
-## Security Reports
+## Findings
 
-Findings from the **latest scan** of one project.
+Findings from the **latest scan of every project** — one list for "what is critical
+anywhere?". No project selected means all of them.
 
-- **Filter** by type (vulnerability, secret, misconfiguration, licence), severity and status.
+- **Project** — each row names the project it belongs to. The **Project** filter narrows
+  the list to one project; a **View findings** link on a Projects row opens this page with
+  that filter already set. Older `/reports` and `/security-reports` links redirect here.
+- **Filter** by project, type (vulnerability, secret, misconfiguration, licence), severity
+  and status. Findings are severity-ordered, critical first.
 - **Detail** — description, location, package and installed version, the **fixed version**,
   the scanner and rule that produced it, and references.
-- **Hide a finding** as *ignored*, *accepted risk* or *false positive*. A reason is
-  required. The decision sticks to the finding's fingerprint, so it applies to later scans
-  of the same project too — see [Findings](Findings.md#ignoring-findings).
+- **Hide a finding** as *ignored*, *accepted risk* or *false positive*, one at a time or in
+  bulk across projects. A reason is required. The decision sticks to the finding's
+  fingerprint (its project plus the issue found), so it applies to later scans of the same
+  project too — see [Findings](Findings.md#ignoring-findings).
 
 ## Scan History
 

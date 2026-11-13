@@ -28,9 +28,9 @@ const navPages = [
     marker: 'Add projects',
   },
   {
-    label: 'Security Reports',
-    path: '/security-reports',
-    subtitle: 'Findings per project, with fixes',
+    label: 'Findings',
+    path: '/findings',
+    subtitle: 'Across every project, with fixes',
     marker: 'No projects yet',
   },
   {
@@ -92,7 +92,7 @@ test('renders all five nav pages without browser errors', async ({
   expect(problems).toEqual([])
 })
 
-test('normalizes a stale project id in the reports URL', async ({
+test('drops a stale project id from the findings URL', async ({
   page,
   server,
 }) => {
@@ -105,23 +105,27 @@ test('normalizes a stale project id in the reports URL', async ({
   await page.getByRole('button', { name: 'Add path' }).click()
 
   const name = basename(server.projectDir)
-  const reportLink = page
+  const findingsLink = page
     .getByRole('row', { name: new RegExp(name) })
-    .getByRole('link', { name: 'View report' })
-  await expect(reportLink).toBeVisible()
+    .getByRole('link', { name: 'View findings' })
+  await expect(findingsLink).toBeVisible()
 
   const origin = new URL(page.url()).origin
-  const href = await reportLink.getAttribute('href')
+  const href = await findingsLink.getAttribute('href')
   const assetId = new URL(href ?? '', origin).searchParams.get('asset')
   if (assetId === null) {
-    throw new Error(`View report link has no ?asset= id: ${href ?? ''}`)
+    throw new Error(`View findings link has no ?asset= id: ${href ?? ''}`)
   }
 
-  // A removed project id used to stay in the address bar while another project
-  // was shown; the page rewrites it to the one on screen.
-  await page.goto(`${origin}/security-reports?asset=999`)
-  await expect(page).toHaveURL(`${origin}/security-reports?asset=${assetId}`)
-  await expect(page.locator('#reports-asset')).toHaveValue(assetId)
+  // The row's link opens the fleet-wide list filtered to that project.
+  await page.goto(`${origin}/findings?asset=${assetId}`)
+  await expect(page.locator('#findings-project')).toHaveValue(assetId)
+
+  // A removed project id must not stay in the address bar. With no id meaning
+  // every project, an unknown id is dropped and the list shows them all.
+  await page.goto(`${origin}/findings?asset=999`)
+  await expect(page).toHaveURL(`${origin}/findings`)
+  await expect(page.locator('#findings-project')).toHaveValue('')
 
   expect(problems).toEqual([])
 })

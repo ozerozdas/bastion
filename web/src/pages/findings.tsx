@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { assetsQuery } from '../api/assets'
 import {
@@ -42,106 +42,130 @@ const typeOptions: FindingType[] = [
 
 const severityOptions: Severity[] = ['critical', 'high', 'medium', 'low', 'unknown']
 
-const findingColumns: DataTableColumn<Finding>[] = [
-  {
-    id: 'severity',
-    header: 'Severity',
-    headerClassName: 'pl-3',
-    cellClassName: 'py-2 pr-3 pl-3',
-    cell: (finding) => (
-      <Badge tone={severityTone[finding.severity]}>
-        {finding.severity === 'unknown' ? 'unknown' : capitalize(finding.severity)}
-      </Badge>
-    ),
-  },
-  {
-    id: 'type',
-    header: 'Type',
-    headerClassName: 'pl-3',
-    cellClassName: 'py-2 pl-3 whitespace-nowrap',
-    cell: (finding) => (
-      <>
-        {typeLabels[finding.type]}
-        {finding.type === 'license' ? (
-          <span className="ml-1.5 text-xs text-faint">informational</span>
-        ) : null}
-        {finding.status === 'ignored' ? (
-          <span className="ml-1.5 text-xs text-faint">
-            {finding.state ? stateLabels[finding.state].toLowerCase() : 'ignored'}
-          </span>
-        ) : null}
-      </>
-    ),
-  },
-  {
-    id: 'rule',
-    header: 'Rule',
-    headerClassName: 'pl-3',
-    cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap text-muted',
-    cell: (finding) => finding.rule_id ?? '—',
-  },
-  {
-    id: 'package',
-    header: 'Package',
-    headerClassName: 'pl-3',
-    cellClassName: 'py-2 pl-3',
-    cell: (finding) => {
-      const packageLabel =
-        finding.package_name === undefined
-          ? undefined
-          : finding.package_version === undefined
-            ? finding.package_name
-            : `${finding.package_name}@${finding.package_version}`
+/**
+ * findingColumns builds the table for the projects on screen. The Project
+ * column needs the asset names, which the findings themselves do not carry.
+ */
+function findingColumns(
+  assetNames: ReadonlyMap<number, string>,
+): DataTableColumn<Finding>[] {
+  const projectName = (finding: Finding) =>
+    assetNames.get(finding.asset_id) ?? `Asset ${String(finding.asset_id)}`
 
-      return (
+  return [
+    {
+      id: 'severity',
+      header: 'Severity',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pr-3 pl-3',
+      cell: (finding) => (
+        <Badge tone={severityTone[finding.severity]}>
+          {finding.severity === 'unknown' ? 'unknown' : capitalize(finding.severity)}
+        </Badge>
+      ),
+    },
+    {
+      id: 'project',
+      header: 'Project',
+      headerClassName: 'pl-3',
+      cellClassName: 'max-w-[22ch] py-2 pl-3',
+      cellTitle: projectName,
+      cell: (finding) => (
+        <span className="block truncate">{projectName(finding)}</span>
+      ),
+    },
+    {
+      id: 'type',
+      header: 'Type',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3 whitespace-nowrap',
+      cell: (finding) => (
         <>
-          {packageLabel ? (
-            <span className="font-mono text-xs break-all">{packageLabel}</span>
+          {typeLabels[finding.type]}
+          {finding.type === 'license' ? (
+            <span className="ml-1.5 text-xs text-faint">informational</span>
           ) : null}
-          {finding.fixed_version ? (
-            <span className="block text-xs text-muted">
-              fixed in <span className="font-mono">{finding.fixed_version}</span>
-            </span>
-          ) : finding.location ? (
-            <span
-              className="block truncate font-mono text-xs text-faint"
-              title={finding.location}
-            >
-              {finding.location}
+          {finding.status === 'ignored' ? (
+            <span className="ml-1.5 text-xs text-faint">
+              {finding.state ? stateLabels[finding.state].toLowerCase() : 'ignored'}
             </span>
           ) : null}
         </>
-      )
+      ),
     },
-  },
-  {
-    id: 'finding',
-    header: 'Finding',
-    headerClassName: 'pl-3',
-    cellClassName: 'max-w-[38ch] py-2 pl-3',
-    cell: (finding) => (
-      <>
-        <span className="block">{finding.title}</span>
-        {finding.occurrences > 1 ? (
-          <span className="text-xs text-faint tabular-nums">
-            ×{finding.occurrences} occurrences
-          </span>
-        ) : null}
-      </>
-    ),
-  },
-  {
-    id: 'scanner',
-    header: 'Scanner',
-    headerClassName: 'pl-3',
-    cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap text-muted',
-    cell: (finding) => finding.scanner,
-  },
-]
+    {
+      id: 'rule',
+      header: 'Rule',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap text-muted',
+      cell: (finding) => finding.rule_id ?? '—',
+    },
+    {
+      id: 'package',
+      header: 'Package',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3',
+      cell: (finding) => {
+        const packageLabel =
+          finding.package_name === undefined
+            ? undefined
+            : finding.package_version === undefined
+              ? finding.package_name
+              : `${finding.package_name}@${finding.package_version}`
 
-/** ReportsPage is §7.4: one project's findings, filtered, with a detail drawer. */
-export function ReportsPage() {
-  const search = useSearch({ from: '/security-reports' })
+        return (
+          <>
+            {packageLabel ? (
+              <span className="font-mono text-xs break-all">{packageLabel}</span>
+            ) : null}
+            {finding.fixed_version ? (
+              <span className="block text-xs text-muted">
+                fixed in <span className="font-mono">{finding.fixed_version}</span>
+              </span>
+            ) : finding.location ? (
+              <span
+                className="block truncate font-mono text-xs text-faint"
+                title={finding.location}
+              >
+                {finding.location}
+              </span>
+            ) : null}
+          </>
+        )
+      },
+    },
+    {
+      id: 'finding',
+      header: 'Finding',
+      headerClassName: 'pl-3',
+      cellClassName: 'max-w-[38ch] py-2 pl-3',
+      cell: (finding) => (
+        <>
+          <span className="block">{finding.title}</span>
+          {finding.occurrences > 1 ? (
+            <span className="text-xs text-faint tabular-nums">
+              ×{finding.occurrences} occurrences
+            </span>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      id: 'scanner',
+      header: 'Scanner',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap text-muted',
+      cell: (finding) => finding.scanner,
+    },
+  ]
+}
+
+/**
+ * FindingsPage is §7.4: findings of every project, or of one when the Project
+ * filter is set, with a detail drawer shared across projects.
+ */
+export function FindingsPage() {
+  const search = useSearch({ from: '/findings' })
   const navigate = useNavigate()
   const assets = useQuery(assetsQuery)
 
@@ -153,22 +177,21 @@ export function ReportsPage() {
   const openedAt = useRef(0)
   const findingsHeading = useRef<HTMLHeadingElement>(null)
 
-  const assetList = assets.data ?? []
-  // The URL wins; otherwise the first project keeps the page useful on arrival.
-  const selected = assetList.find((asset) => asset.id === search.asset) ?? assetList[0]
+  const assetList = useMemo(() => assets.data ?? [], [assets.data])
+  // No project in the URL means every project: the list is fleet-wide unless
+  // the Project filter narrows it.
+  const selected =
+    search.asset === undefined
+      ? undefined
+      : assetList.find((asset) => asset.id === search.asset)
 
-  // A removed project id must not stay in the URL: once the list has loaded,
-  // point the URL at the project actually shown, as the select does.
-  const selectedId = selected?.id
+  // A stale project id must not stay in the URL. With no id meaning "all
+  // projects", an unknown id falls back to that instead of an arbitrary project.
   useEffect(() => {
-    if (search.asset === undefined || selectedId === undefined) return
-    if (search.asset === selectedId) return
-    void navigate({
-      to: '/security-reports',
-      search: { asset: selectedId },
-      replace: true,
-    })
-  }, [navigate, search.asset, selectedId])
+    if (search.asset === undefined || assets.data === undefined) return
+    if (assets.data.some((asset) => asset.id === search.asset)) return
+    void navigate({ to: '/findings', search: {}, replace: true })
+  }, [assets.data, navigate, search.asset])
 
   const findings = useQuery({
     ...latestFindingsQuery({
@@ -177,8 +200,16 @@ export function ReportsPage() {
       severity: severity === '' ? undefined : severity,
       status,
     }),
-    enabled: selected !== undefined,
+    // While the project list loads, a URL with an id may still name a project
+    // that exists; asking for all findings first would be the wrong question.
+    enabled: search.asset === undefined || assets.isSuccess,
   })
+
+  const assetNames = useMemo(
+    () => new Map(assetList.map((asset) => [asset.id, asset.display_name])),
+    [assetList],
+  )
+  const columns = useMemo(() => findingColumns(assetNames), [assetNames])
 
   // A decision removes the row that opened the drawer, so the drawer's own
   // focus restore lands on nothing: keep focus in the table once the refreshed
@@ -193,7 +224,7 @@ export function ReportsPage() {
   if (assets.isPending) {
     return (
       <section className="rounded-card border border-border-subtle bg-surface p-4">
-        <p className="text-muted">Loading reports…</p>
+        <p className="text-muted">Loading findings…</p>
       </section>
     )
   }
@@ -211,7 +242,7 @@ export function ReportsPage() {
     return (
       <EmptyState
         title="No projects yet"
-        body="A security report covers one project at a time. Add a repository or a local path in Projects, run a scan, then come back to see vulnerabilities, secrets and the fixed version that closes each finding."
+        body="Findings come from each project's latest succeeded scan. Add a repository or a local path in Projects, run a scan, then come back to see vulnerabilities, secrets and the fixed version that closes each finding."
       >
         <Link to="/projects" className={buttonVariants()}>
           Go to projects
@@ -243,25 +274,28 @@ export function ReportsPage() {
 
   const filters: FilterField[] = [
     {
-      id: 'reports-asset',
+      id: 'findings-project',
       label: 'Project',
-      value: selected?.id === undefined ? '' : String(selected.id),
+      value: selected === undefined ? '' : String(selected.id),
       className: 'w-64',
-      options: assetList.map((asset) => ({
-        value: String(asset.id),
-        label: asset.display_name,
-      })),
+      options: [
+        { value: '', label: 'All projects' },
+        ...assetList.map((asset) => ({
+          value: String(asset.id),
+          label: asset.display_name,
+        })),
+      ],
       onChange: (value) => {
         void navigate({
-          to: '/security-reports',
-          search: { asset: Number(value) },
+          to: '/findings',
+          search: value === '' ? {} : { asset: Number(value) },
           replace: true,
         })
         setOpenFingerprint(null)
       },
     },
     {
-      id: 'reports-type',
+      id: 'findings-type',
       label: 'Type',
       value: type,
       className: 'w-44',
@@ -275,7 +309,7 @@ export function ReportsPage() {
       },
     },
     {
-      id: 'reports-severity',
+      id: 'findings-severity',
       label: 'Severity',
       value: severity,
       className: 'w-40',
@@ -292,7 +326,7 @@ export function ReportsPage() {
       },
     },
     {
-      id: 'reports-status',
+      id: 'findings-status',
       label: 'Status',
       value: status,
       className: 'w-36',
@@ -332,10 +366,11 @@ export function ReportsPage() {
 
   return (
     <>
-      <FilterBar label="Report filters" fields={filters}>
+      <FilterBar label="Finding filters" fields={filters}>
         <p className="ml-auto text-xs text-faint">
-          Findings of {selected?.display_name ?? 'this project'}&rsquo;s latest
-          succeeded scan
+          {selected === undefined
+            ? 'Findings of every project’s latest succeeded scan'
+            : `Findings of ${selected.display_name}’s latest succeeded scan`}
         </p>
       </FilterBar>
 
@@ -368,7 +403,9 @@ export function ReportsPage() {
           <p className="mt-2 max-w-[52ch] text-muted">
             {filtered || status === 'ignored'
               ? 'Clear a filter, or switch Status to Open to see the findings still waiting for a decision.'
-              : 'Either the project has no succeeded scan yet, or its latest scan found nothing open. Run a scan from Projects, then reload this page.'}
+              : selected === undefined
+                ? 'Either no project has a succeeded scan yet, or their latest scans found nothing open. Run a scan from Projects, then reload this page.'
+                : 'Either the project has no succeeded scan yet, or its latest scan found nothing open. Run a scan from Projects, then reload this page.'}
           </p>
         </section>
       ) : null}
@@ -388,7 +425,10 @@ export function ReportsPage() {
               Findings
             </h2>
             <span className="text-faint">
-              {findings.data.length} in the latest succeeded scan
+              {findings.data.length}{' '}
+              {selected === undefined
+                ? 'across all projects'
+                : 'in the latest succeeded scan'}
             </span>
           </div>
           {checkedFindings.length > 0 ? (
@@ -401,7 +441,7 @@ export function ReportsPage() {
           ) : null}
           <DataTable
             rows={findings.data}
-            columns={findingColumns}
+            columns={columns}
             rowKey={(finding) => finding.fingerprint}
             selection={selection}
             onRowActivate={(finding, index) => {
@@ -445,15 +485,17 @@ function BulkBar({
   const [decision, setDecision] = useState<FindingState>('ignored')
   const [reason, setReason] = useState('')
   const count = findings.length
-  const target = {
-    assetId: findings[0].asset_id,
-    fingerprints: findings.map((finding) => finding.fingerprint),
-  }
+  // A selection can span projects, and a decision is keyed on
+  // (asset_id, fingerprint), so each finding keeps its own asset id.
+  const target = findings.map((finding) => ({
+    assetId: finding.asset_id,
+    fingerprint: finding.fingerprint,
+  }))
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     bulk.mutate(
-      { ...target, decision: { state: decision, reason: reason.trim() } },
+      { findings: target, decision: { state: decision, reason: reason.trim() } },
       { onSuccess: onDone },
     )
   }
@@ -504,7 +546,7 @@ function BulkBar({
             size="sm"
             variant="outline"
             disabled={bulk.isPending}
-            onClick={() => bulk.mutate(target, { onSuccess: onDone })}
+            onClick={() => bulk.mutate({ findings: target }, { onSuccess: onDone })}
           >
             {bulk.isPending ? 'Reopening…' : `Reopen ${count}`}
           </Button>

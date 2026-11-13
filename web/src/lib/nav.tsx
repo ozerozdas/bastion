@@ -49,9 +49,9 @@ export const navItems: NavItem[] = [
     count: 'projects',
   },
   {
-    to: '/security-reports',
-    label: 'Security Reports',
-    subtitle: 'Findings per project, with fixes',
+    to: '/findings',
+    label: 'Findings',
+    subtitle: 'Across every project, with fixes',
     icon: ReportsIcon,
     count: 'openFindings',
   },

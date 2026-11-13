@@ -326,11 +326,11 @@ function ProjectRow({
               </Button>
             ) : null}
             <Link
-              to="/security-reports"
+              to="/findings"
               search={{ asset: asset.id }}
               className={buttonVariants({ variant: 'ghost', size: 'sm' })}
             >
-              View report
+              View findings
             </Link>
             <Button
               type="button"

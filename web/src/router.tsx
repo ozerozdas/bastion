@@ -3,14 +3,16 @@ import {
   createRoute,
   createRouter,
   Outlet,
+  redirect,
 } from '@tanstack/react-router'
 
 import { AppShell } from './components/app-shell'
+import { parseAssetSearch } from './lib/urls'
 import { ConnectionsPage } from './pages/connections'
 import { DashboardPage } from './pages/dashboard'
+import { FindingsPage } from './pages/findings'
 import { HistoryPage } from './pages/history'
 import { ProjectsPage } from './pages/projects'
-import { ReportsPage } from './pages/reports'
 
 function RootLayout() {
   return (
@@ -42,21 +44,34 @@ const projectsRoute = createRoute({
   component: ProjectsPage,
 })
 
-const reportsRoute = createRoute({
+const findingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/findings',
+  // ?asset=<id> narrows the list to one project, so it survives reloads and
+  // links; without it every project's findings are shown.
+  validateSearch: parseAssetSearch,
+  component: FindingsPage,
+})
+
+// The old URLs keep working: /security-reports is the page's previous path and
+// /reports is the short form named in #87. A bookmarked ?asset= id carries over
+// to the same filtered list.
+function redirectToFindings(search: { asset?: number }): never {
+  throw redirect({ to: '/findings', search, replace: true })
+}
+
+const legacyReportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reports',
+  validateSearch: parseAssetSearch,
+  beforeLoad: ({ search }) => redirectToFindings(search),
+})
+
+const legacySecurityReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/security-reports',
-  // ?asset=<id> keeps the selected project in the URL, so it survives reloads.
-  validateSearch: (search: Record<string, unknown>): { asset?: number } => {
-    const raw = search.asset
-    if (typeof raw === 'number' && Number.isInteger(raw) && raw > 0) {
-      return { asset: raw }
-    }
-    if (typeof raw === 'string' && /^\d+$/.test(raw)) {
-      return { asset: Number(raw) }
-    }
-    return {}
-  },
-  component: ReportsPage,
+  validateSearch: parseAssetSearch,
+  beforeLoad: ({ search }) => redirectToFindings(search),
 })
 
 const historyRoute = createRoute({
@@ -69,7 +84,9 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute,
   connectionsRoute,
   projectsRoute,
-  reportsRoute,
+  findingsRoute,
+  legacyReportsRoute,
+  legacySecurityReportsRoute,
   historyRoute,
 ])
 

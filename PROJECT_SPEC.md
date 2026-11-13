@@ -39,7 +39,7 @@ Positioning: a free, private, simple alternative to paid platforms like Aikido.d
 2. Connections page → add GitHub token (stored in OS keychain).
 3. Projects page → list repos → select some → "Scan".
 4. Scan progress streams live (SSE).
-5. Dashboard shows totals and severity distribution; Security Reports shows findings grouped by project and by fix.
+5. Dashboard shows totals and severity distribution; Findings lists them across all projects, grouped by project and by fix.
 
 **Success criterion for v0.1:** a new user gets their first report within 5 minutes of downloading the binary.
 
@@ -254,7 +254,7 @@ Five sections, left nav. Calm, minimal, dark + light themes. Severity colors use
 1. **Dashboard** — totals by severity (critical/high/medium/low), findings by type, top 5 riskiest projects, trend of open critical+high over recent scans, last scan time per asset.
 2. **Connections** — cards for GitHub / AWS / Docker; add, test, remove. Shows status and which identity it is (GitHub login, AWS account id via STS).
 3. **Projects** — table of assets with last scan status, severity counts, "Scan" action; "Add projects" opens discover dialog with search + multi-select.
-4. **Security Reports** — per asset: findings table (filter by type/severity/status), finding detail drawer (description, fixed version, references, ignore with reason). Phase 3: "Fix plan" tab grouping by package upgrade.
+4. **Findings** — across all projects: findings table (filter by project/type/severity/status), finding detail drawer (description, fixed version, references, ignore with reason). A Projects row opens this list filtered to that project. Phase 3: "Fix plan" tab grouping by package upgrade.
 5. **Scan History** — list of scans; select two to see diff (new / fixed / persisting).
 
 Empty states must explain the next step. Every scan error must show a human-readable cause and a suggested fix (e.g. "AWS SSO session expired → run `aws sso login --profile X`").
@@ -283,7 +283,7 @@ Goal: **retire the biggest technical risk** (Trivy + Gitleaks as libraries insid
 - Scan jobs: worker pool (default concurrency 2), SSE progress, cancel
 - Trivy (vulnerabilities + package inventory + misconfig/IaC + licenses) and Gitleaks (working-tree secrets) adapters + normalizers. License findings in v0.1 are informational; allow/deny policy comes in Phase 3
 - Fingerprinting, findings persistence, finding_states (ignore with reason)
-- UI: Dashboard, Connections (GitHub), Projects, Security Reports, Scan History (list only)
+- UI: Dashboard, Connections (GitHub), Projects, Findings, Scan History (list only)
 - `bastion scan --repo owner/name --format json|table|sarif` for CLI use
 - README with quickstart, demo GIF, threat model section
 
