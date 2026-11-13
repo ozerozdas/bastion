@@ -47,29 +47,29 @@ describe('parseAssetSearch', () => {
 })
 
 describe('parseFindingsSearch', () => {
-  it('keeps the grouped view in the URL so a reload stays grouped', () => {
-    expect(parseFindingsSearch({ view: 'grouped' })).toEqual({ view: 'grouped' })
-  })
-
-  it('treats single as the bare path', () => {
+  it('treats grouped as the default, so it is the bare path (#106)', () => {
     expect(parseFindingsSearch({})).toEqual({})
     expect(parseFindingsSearch({ view: undefined })).toEqual({})
-    expect(parseFindingsSearch({ view: 'single' })).toEqual({})
+    expect(parseFindingsSearch({ view: 'grouped' })).toEqual({})
+  })
+
+  it('keeps view=single so opting out survives a reload', () => {
+    expect(parseFindingsSearch({ view: 'single' })).toEqual({ view: 'single' })
   })
 
   it('drops an unknown view instead of failing the route', () => {
     expect(parseFindingsSearch({ view: 'grid' })).toEqual({})
-    expect(parseFindingsSearch({ view: ['grouped'] })).toEqual({})
+    expect(parseFindingsSearch({ view: ['single'] })).toEqual({})
   })
 
-  it('keeps the project filter and the view together (#90)', () => {
-    expect(parseFindingsSearch({ view: 'grouped', asset: '7' })).toEqual({
-      view: 'grouped',
+  it('keeps the project filter and ignores the view with it (#106)', () => {
+    expect(parseFindingsSearch({ view: 'single', asset: '7' })).toEqual({
       asset: 7,
     })
-    expect(parseFindingsSearch({ view: 'grouped', asset: 'x' })).toEqual({
-      view: 'grouped',
+    expect(parseFindingsSearch({ view: 'single', asset: 'x' })).toEqual({
+      view: 'single',
     })
+    expect(parseFindingsSearch({ asset: '7' })).toEqual({ asset: 7 })
   })
 })
 

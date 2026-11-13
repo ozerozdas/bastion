@@ -27,6 +27,7 @@ import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { capitalize, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
 import { groupFindings, type FindingGroup } from '../lib/group-findings'
+import type { FindingsView } from '../lib/urls'
 import { cn } from '../lib/utils'
 
 const inputClass =
@@ -233,15 +234,18 @@ function groupedColumns(
 
 /**
  * FindingsPage is §7.4: findings of every project, or of one when the Project
- * filter is set, with a detail drawer shared across projects. The view toggle
- * groups them by rule across projects (#90).
+ * filter is set, with a detail drawer shared across projects. Grouped, one row
+ * per rule across projects, is the default (#90, #106); a project filter
+ * forces single, and the toggle only appears for the fleet-wide list.
  */
 export function FindingsPage() {
   const search = useSearch({ from: '/findings' })
   const navigate = useNavigate()
   const assets = useQuery(assetsQuery)
 
-  const grouped = search.view === 'grouped'
+  // Grouped is the default (#106); a project filter forces single, because
+  // grouping exists to fold the same rule across projects.
+  const grouped = search.asset === undefined && search.view !== 'single'
   const [type, setType] = useState<FindingType | ''>('')
   const [severity, setSeverity] = useState<Severity | ''>('')
   const [status, setStatus] = useState<FindingStatus>('open')
@@ -256,8 +260,7 @@ export function FindingsPage() {
   const findingsHeading = useRef<HTMLHeadingElement>(null)
 
   // The view lives in the URL, so switching keeps the project filter and the
-  // other way round.
-  const viewSearch = grouped ? { view: 'grouped' as const } : {}
+  // other way round. Grouped is the default, so only single is written.
 
   const assetList = useMemo(() => assets.data ?? [], [assets.data])
   // No project in the URL means every project: the list is fleet-wide unless
@@ -274,10 +277,10 @@ export function FindingsPage() {
     if (assets.data.some((asset) => asset.id === search.asset)) return
     void navigate({
       to: '/findings',
-      search: search.view === 'grouped' ? { view: 'grouped' } : {},
+      search: {},
       replace: true,
     })
-  }, [assets.data, navigate, search.asset, search.view])
+  }, [assets.data, navigate, search.asset])
 
   const findings = useQuery({
     ...latestFindingsQuery({
@@ -388,18 +391,10 @@ export function FindingsPage() {
     })
   }
 
-  function setView(next: 'single' | 'grouped') {
+  function setView(next: FindingsView) {
     void navigate({
       to: '/findings',
-      search:
-        next === 'grouped'
-          ? {
-              view: 'grouped',
-              ...(search.asset === undefined ? {} : { asset: search.asset }),
-            }
-          : search.asset === undefined
-            ? {}
-            : { asset: search.asset },
+      search: next === 'single' ? { view: 'single' } : {},
       replace: true,
     })
     setOpenFingerprint(null)
@@ -422,12 +417,10 @@ export function FindingsPage() {
         })),
       ],
       onChange: (value) => {
+        // A project filter forces single, so the view leaves the URL with it.
         void navigate({
           to: '/findings',
-          search:
-            value === ''
-              ? viewSearch
-              : { ...viewSearch, asset: Number(value) },
+          search: value === '' ? {} : { asset: Number(value) },
           replace: true,
         })
         setOpenFingerprint(null)
@@ -535,31 +528,35 @@ export function FindingsPage() {
   return (
     <>
       <FilterBar label="Finding filters" fields={filters}>
-        <div
-          role="group"
-          aria-label="Findings view"
-          className="flex items-center gap-1 rounded-md border border-border-subtle bg-bg p-0.5"
-        >
-          {(['single', 'grouped'] as const).map((option) => {
-            const active = grouped === (option === 'grouped')
-            return (
-              <button
-                key={option}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setView(option)}
-                className={cn(
-                  'rounded px-2.5 py-1 text-[13px] transition-colors',
-                  active
-                    ? 'bg-surface text-fg shadow-sm'
-                    : 'text-muted hover:text-fg',
-                )}
-              >
-                {option === 'single' ? 'Single' : 'Grouped'}
-              </button>
-            )
-          })}
-        </div>
+        {/* Grouping folds a rule across projects, so it is only offered while
+            every project is in the list (#106). */}
+        {search.asset === undefined ? (
+          <div
+            role="group"
+            aria-label="Findings view"
+            className="flex items-center gap-1 rounded-md border border-border-subtle bg-bg p-0.5"
+          >
+            {(['single', 'grouped'] as const).map((option) => {
+              const active = grouped === (option === 'grouped')
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setView(option)}
+                  className={cn(
+                    'rounded px-2.5 py-1 text-[13px] transition-colors',
+                    active
+                      ? 'bg-surface text-fg shadow-sm'
+                      : 'text-muted hover:text-fg',
+                  )}
+                >
+                  {option === 'single' ? 'Single' : 'Grouped'}
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
         <p className="ml-auto text-xs text-faint">
           {selected === undefined
             ? 'Findings of every project’s latest succeeded scan'

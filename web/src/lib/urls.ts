@@ -27,27 +27,34 @@ export function parseAssetSearch(search: Record<string, unknown>): AssetSearch {
 /** FindingsView names the two ways the Findings page lists rows (#90). */
 export type FindingsView = 'single' | 'grouped'
 
-/** FindingsSearch is the Findings route's search params; the default view is absent. */
+/**
+ * FindingsSearch is the Findings route's search params. Grouped is the default
+ * (#106), so it is the bare path; only opting out into single is in the URL.
+ */
 export type FindingsSearch = {
-  /** ?view=grouped shows one row per rule + type across projects. */
-  view?: 'grouped'
-  /** Narrows the list to one project; absent means every project. */
+  /** ?view=single shows one row per finding; absent means grouped. */
+  view?: 'single'
+  /**
+   * Narrows the list to one project; absent means every project. Grouping
+   * spans projects, so a project filter forces single and the view is ignored.
+   */
   asset?: number
 }
 
 /**
- * parseFindingsSearch reads ?view=grouped and ?asset=<id> from the Findings
- * route. Single is the default, so its URL stays the bare path, and an unknown
- * view falls back to it rather than hiding rows. ?asset= keeps the validation
- * the old reports route had.
+ * parseFindingsSearch reads ?view=single and ?asset=<id> from the Findings
+ * route. Without an asset the view defaults to grouped (#106), so its URL is
+ * the bare path; an unknown view falls back to that default. ?asset= forces
+ * single, keeps the validation the old reports route had, and drops any view.
  */
 export function parseFindingsSearch(
   search: Record<string, unknown>,
 ): FindingsSearch {
-  return {
-    ...(search.view === 'grouped' ? { view: 'grouped' as const } : {}),
-    ...parseAssetSearch(search),
+  const asset = parseAssetSearch(search)
+  if (asset.asset !== undefined) {
+    return asset
   }
+  return search.view === 'single' ? { view: 'single' } : {}
 }
 
 /** ScanDiffSearch is the scan diff route's optional baseline scan (#17). */

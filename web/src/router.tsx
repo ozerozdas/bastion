@@ -54,9 +54,9 @@ const projectsRoute = createRoute({
 const findingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/findings',
-  // ?asset=<id> narrows the list to one project and ?view=grouped groups it by
-  // rule, so both survive reloads and links; without them every project's
-  // findings are shown one per row.
+  // Grouped is the default view; ?view=single opts out, and ?asset=<id>
+  // narrows the list to one project, which is always single. Both survive
+  // reloads and links.
   validateSearch: parseFindingsSearch,
   component: FindingsPage,
 })

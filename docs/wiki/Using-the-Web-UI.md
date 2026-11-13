@@ -40,11 +40,12 @@ anywhere?". No project selected means all of them.
   bulk across projects. A reason is required. The decision sticks to the finding's
   fingerprint (its project plus the issue found), so it applies to later scans of the same
   project too — see [Findings](Findings.md#ignoring-findings).
-- **Grouped view** — the **Single / Grouped** toggle folds one rule into one row across
-  projects, showing its worst severity, how many projects it reaches and the fixed version;
-  the view is part of the URL (`/findings?view=grouped`). Opening a grouped row lists every
-  affected project, and hiding it there applies one decision to all of them after a confirm
-  step that states the count.
+- **Grouped view** — grouped is the default; the **Single / Grouped** toggle flips it. The
+  toggle only appears while every project is listed, since grouped folds one rule into one
+  row across projects showing its worst severity, how many projects it reaches and the
+  fixed version. Opting out is part of the URL (`/findings?view=single`). Opening a grouped
+  row lists every affected project, and hiding it there applies one decision to all of them
+  after a confirm step that states the count.
 
 ## Projects
 
