@@ -2,6 +2,14 @@
 
 The UI has five pages in the left navigation.
 
+## Sidebar
+
+The footer of the sidebar reports the vulnerability DB. When it is missing, **Download
+(~1.7 GB)** fetches it in the background — or the first scan that needs it starts the same
+download — and the line shows progress (a scan-started download says so). A failed
+download shows the error and a **Retry** button. Opening the UI only reads the status;
+nothing is downloaded until you ask or a scan runs.
+
 ## Dashboard
 
 The overview across all projects:

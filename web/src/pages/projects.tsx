@@ -878,8 +878,13 @@ function ErrorNote({ error, fix }: { error: unknown; fix: string }) {
 
 /** liveDetail names the scanner or stage the live event is on. */
 function liveDetail(live: LiveScan): string | null {
-  const step = live.scanner ?? live.stage
+  const step = live.scanner ?? (live.stage ? stageLabel(live.stage) : null)
   return step ? `· ${step}` : null
+}
+
+/** stageLabel spells out the one stage whose wire name does not read as a step. */
+function stageLabel(stage: NonNullable<LiveScan['stage']>): string {
+  return stage === 'wait_db' ? 'Waiting for vulnerability DB' : stage
 }
 
 /** scanWhen says when the last scan finished, or that it is still running. */
