@@ -17,6 +17,7 @@ INSERT INTO findings (
     description,
     references_json,
     scanner,
+    scanners,
     first_seen_scan_id,
     created_at
 )
@@ -38,6 +39,7 @@ VALUES (
     sqlc.narg(description),
     sqlc.arg(references_json),
     sqlc.arg(scanner),
+    sqlc.arg(scanners),
     sqlc.arg(first_seen_scan_id),
     sqlc.arg(created_at)
 );
@@ -83,6 +85,7 @@ SELECT
     f.description,
     f.references_json,
     f.scanner,
+    f.scanners,
     f.first_seen_scan_id,
     CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) AS status,
     fs.state AS state,
@@ -131,6 +134,7 @@ SELECT
     f.description,
     f.references_json,
     f.scanner,
+    f.scanners,
     f.first_seen_scan_id,
     CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) AS status,
     fs.state AS state,

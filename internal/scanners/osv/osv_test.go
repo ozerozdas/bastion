@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -63,6 +64,14 @@ func TestMatchMalware(t *testing.T) {
 				Summary: "Malicious code in -harseurl (npm)",
 				Details: "Any computer that has this package installed should be considered compromised.",
 			})
+		case "/v1/vulns/GHSA-3hch-9p9x-342x":
+			writeJSON(t, w, vulnerability{
+				ID:               "GHSA-3hch-9p9x-342x",
+				Summary:          "Prototype pollution in -harseurl",
+				Details:          "A crafted property path pollutes Object.prototype.",
+				Aliases:          []string{"CVE-2021-99999"},
+				DatabaseSpecific: databaseSpecific{Severity: "MODERATE"},
+			})
 		default:
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
@@ -84,10 +93,22 @@ func TestMatchMalware(t *testing.T) {
 	if gotUAValue != "bastion/test" {
 		t.Errorf("User-Agent = %q, want bastion/test", gotUAValue)
 	}
-	if len(fs) != 1 {
-		t.Fatalf("got %d findings, want 1 (non-MAL advisories are #23): %+v", len(fs), fs)
+	if len(fs) != 2 {
+		t.Fatalf("got %d findings, want the MAL and the GHSA advisory: %+v", len(fs), fs)
 	}
-	f := fs[0]
+	var malware, vulnFinding *findings.Finding
+	for i := range fs {
+		switch fs[i].RuleID {
+		case "MAL-2022-7":
+			malware = &fs[i]
+		case "GHSA-3hch-9p9x-342x":
+			vulnFinding = &fs[i]
+		}
+	}
+	if malware == nil || vulnFinding == nil {
+		t.Fatalf("findings = %+v, want one MAL- and one GHSA- finding", fs)
+	}
+	f := *malware
 	if f.Type != findings.TypeMalware || f.Severity != findings.SeverityCritical {
 		t.Errorf("type/severity = %s/%s, want malware/critical", f.Type, f.Severity)
 	}
@@ -111,6 +132,20 @@ func TestMatchMalware(t *testing.T) {
 	}
 	if want := findings.Fingerprint(asset.ID, f); f.Fingerprint != want {
 		t.Errorf("fingerprint = %q, want %q", f.Fingerprint, want)
+	}
+
+	v := *vulnFinding
+	if v.Type != findings.TypeVulnerability {
+		t.Errorf("non-MAL type = %q, want vulnerability", v.Type)
+	}
+	if v.Severity != findings.SeverityMedium {
+		t.Errorf("non-MAL severity = %q, want medium for OSV MODERATE", v.Severity)
+	}
+	if v.Title != "Prototype pollution in -harseurl" || v.Description == "" {
+		t.Errorf("non-MAL title/description = %q/%q", v.Title, v.Description)
+	}
+	if want := []string{"CVE-2021-99999"}; !slices.Equal(v.Aliases, want) {
+		t.Errorf("non-MAL aliases = %v, want %v", v.Aliases, want)
 	}
 }
 
@@ -213,9 +248,9 @@ func TestMatchDetailFailureFallsBack(t *testing.T) {
 		switch r.URL.Path {
 		case "/v1/querybatch":
 			writeJSON(t, w, batchResponse{Results: []batchResult{{
-				Vulns: []vulnID{{ID: "MAL-2022-7"}},
+				Vulns: []vulnID{{ID: "MAL-2022-7"}, {ID: "GHSA-3hch-9p9x-342x"}},
 			}}})
-		case "/v1/vulns/MAL-2022-7":
+		case "/v1/vulns/MAL-2022-7", "/v1/vulns/GHSA-3hch-9p9x-342x":
 			http.Error(w, "boom", http.StatusInternalServerError)
 		default:
 			t.Fatalf("unexpected request %s", r.URL.Path)
@@ -230,11 +265,27 @@ func TestMatchDetailFailureFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
-	if len(fs) != 1 {
-		t.Fatalf("got %d findings, want 1", len(fs))
+	if len(fs) != 2 {
+		t.Fatalf("got %d findings, want both ids without details", len(fs))
 	}
-	if fs[0].Title != "Malicious package -harseurl" {
-		t.Errorf("title = %q, want the fallback title", fs[0].Title)
+	for _, f := range fs {
+		switch f.RuleID {
+		case "MAL-2022-7":
+			if f.Title != "Malicious package -harseurl" {
+				t.Errorf("malware title = %q, want the fallback title", f.Title)
+			}
+		case "GHSA-3hch-9p9x-342x":
+			// Without details there are no aliases, but the id still names
+			// the finding.
+			if f.Title != "GHSA-3hch-9p9x-342x" {
+				t.Errorf("vulnerability title = %q, want the advisory id", f.Title)
+			}
+			if f.Severity != findings.SeverityUnknown || f.Aliases != nil {
+				t.Errorf("vulnerability severity/aliases = %q/%v, want unknown/nil", f.Severity, f.Aliases)
+			}
+		default:
+			t.Errorf("unexpected rule id %q", f.RuleID)
+		}
 	}
 }
 

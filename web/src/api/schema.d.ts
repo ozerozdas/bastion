@@ -751,7 +751,17 @@ export interface components {
             location?: string;
             /** @description Raw occurrences merged into this finding within one scan. */
             occurrences: number;
+            /**
+             * @description Primary scanner. Its fingerprint is the one stored, so it stays
+             *     stable when another scanner reports the same advisory.
+             */
             scanner: string;
+            /**
+             * @description Every scanner that reported the finding. A CVE reported by both
+             *     Trivy and OSV appears once with both entries; `scanner` is the
+             *     primary one.
+             */
+            scanners: string[];
             status: components["schemas"]["FindingStatus"];
             state?: components["schemas"]["FindingState"];
             /** @description The user's reason for the decision in `state`. */

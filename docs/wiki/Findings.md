@@ -6,11 +6,20 @@ Every scanner result is normalized into one **finding** model, whatever produced
 
 | Type | Produced by | Example |
 |---|---|---|
-| `vulnerability` | Trivy | `CVE-2024-1234` in `lodash@4.17.20`, fixed in `4.17.21` |
+| `vulnerability` | Trivy and OSV | `CVE-2024-1234` in `lodash@4.17.20`, fixed in `4.17.21` |
 | `license` | Trivy | A package under a licence you may need to review (informational in v0.1) |
 | `misconfig` | Trivy | Dockerfile runs as root; S3 bucket without encryption |
 | `secret` | Gitleaks | An AWS key committed in `config/prod.env` |
 | `malware` | OSV | A `MAL-` advisory: a known-malicious package in the inventory (always critical) |
+
+## One advisory, one finding
+
+Trivy and OSV can report the same package advisory under different ids: Trivy
+shows the CVE, OSV the GHSA. After normalization bastion merges findings of the
+same package in the same location whose advisory alias sets intersect, keeping
+Trivy's finding as the primary one. The merged finding lists every scanner that
+reported it (`scanners` in the API), so one CVE appears once rather than twice.
+
 
 ## Severity
 
@@ -34,6 +43,8 @@ What it deliberately **leaves out**:
 
 If the same issue appears several times in one scan (e.g. two copies of a package in one
 lockfile), it becomes **one** finding with an occurrence count; the highest severity wins.
+When Trivy and OSV report one advisory under different ids, the merged finding keeps
+Trivy's fingerprint, so scan diffs and ignore decisions stay stable.
 
 ## Ignoring findings
 

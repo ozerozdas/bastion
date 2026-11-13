@@ -1,6 +1,9 @@
 package findings
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // vuln returns a vulnerability finding with a fingerprint derived from its
 // identity, which is what the normalizers produce.
@@ -98,6 +101,114 @@ func TestMerge(t *testing.T) {
 			t.Fatalf("got %d findings, want 2", len(got))
 		}
 	})
+}
+
+// aliasFinding returns a vulnerability finding from one scanner with an
+// advisory alias set, in the place (package, location) the scan reported.
+func aliasFinding(scanner, ruleID, pkg, location string, aliases ...string) Finding {
+	f := Finding{
+		AssetID:        1,
+		Type:           TypeVulnerability,
+		RuleID:         ruleID,
+		Severity:       SeverityHigh,
+		Title:          ruleID + " from " + scanner,
+		PackageName:    pkg,
+		PackageVersion: "4.17.20",
+		Ecosystem:      "npm",
+		Location:       location,
+		Scanner:        scanner,
+		Aliases:        aliases,
+	}
+	f.Fingerprint = Fingerprint(f.AssetID, f)
+	return f
+}
+
+func TestMergeByAliases(t *testing.T) {
+	overlap := func() (trivy, osv Finding) {
+		// Trivy reports the CVE and lists the GHSA as a vendor id; OSV reports
+		// the GHSA and lists the CVE as an alias.
+		return aliasFinding("trivy", "CVE-2021-23337", "lodash", "package-lock.json", "GHSA-35JH-R3H4-6JHM"),
+			aliasFinding("osv", "GHSA-35JH-R3H4-6JHM", "lodash", "package-lock.json", "CVE-2021-23337")
+	}
+
+	t.Run("GHSA CVE overlap merges with Trivy primary", func(t *testing.T) {
+		trivy, osv := overlap()
+		trivy.Severity = SeverityMedium
+		trivy.Occurrences = 2
+		osv.Severity = SeverityHigh
+
+		for _, in := range [][]Finding{{trivy, osv}, {osv, trivy}} {
+			got := Merge(in)
+			if len(got) != 1 {
+				t.Fatalf("got %d findings, want 1: %+v", len(got), got)
+			}
+			f := got[0]
+			if f.Fingerprint != trivy.Fingerprint || f.Scanner != "trivy" {
+				t.Errorf("kept %q/%q, want Trivy's %q", f.Scanner, f.Fingerprint, trivy.Fingerprint)
+			}
+			if f.Title != trivy.Title {
+				t.Errorf("title = %q, want Trivy's %q", f.Title, trivy.Title)
+			}
+			if want := []string{"osv", "trivy"}; !slices.Equal(f.Scanners, want) {
+				t.Errorf("scanners = %v, want %v", f.Scanners, want)
+			}
+			if f.Severity != SeverityHigh {
+				t.Errorf("severity = %q, want high", f.Severity)
+			}
+			// A scanner seeing the same issue does not double its occurrence
+			// count; the higher count from within one scanner wins.
+			if f.Occurrences != 2 {
+				t.Errorf("occurrences = %d, want 2", f.Occurrences)
+			}
+		}
+	})
+
+	tests := []struct {
+		name string
+		in   []Finding
+	}{
+		{
+			name: "disjoint aliases stay separate",
+			in: []Finding{
+				aliasFinding("trivy", "CVE-2021-1", "lodash", "package-lock.json", "GHSA-aaaa-bbbb-cccc"),
+				aliasFinding("osv", "GHSA-dddd-eeee-ffff", "lodash", "package-lock.json", "CVE-2021-2"),
+			},
+		},
+		{
+			name: "same CVE in different packages stays separate",
+			in: []Finding{
+				aliasFinding("trivy", "CVE-2021-23337", "lodash", "package-lock.json", "GHSA-35JH-R3H4-6JHM"),
+				aliasFinding("osv", "GHSA-35JH-R3H4-6JHM", "lodash-es", "package-lock.json", "CVE-2021-23337"),
+			},
+		},
+		{
+			name: "same CVE in different locations stays separate",
+			in: []Finding{
+				aliasFinding("trivy", "CVE-2021-23337", "lodash", "a/package-lock.json", "GHSA-35JH-R3H4-6JHM"),
+				aliasFinding("osv", "GHSA-35JH-R3H4-6JHM", "lodash", "b/package-lock.json", "CVE-2021-23337"),
+			},
+		},
+		{
+			name: "overlap within one scanner stays separate",
+			in: []Finding{
+				aliasFinding("trivy", "CVE-2021-23337", "lodash", "package-lock.json", "GHSA-35JH-R3H4-6JHM"),
+				aliasFinding("trivy", "GHSA-35JH-R3H4-6JHM", "lodash", "package-lock.json", "CVE-2021-23337"),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Merge(tt.in)
+			if len(got) != 2 {
+				t.Fatalf("got %d findings, want 2: %+v", len(got), got)
+			}
+			for _, f := range got {
+				if len(f.Scanners) != 1 || f.Scanners[0] != f.Scanner {
+					t.Errorf("%s scanners = %v, want its own scanner", f.RuleID, f.Scanners)
+				}
+			}
+		})
+	}
 }
 
 func TestSeverityRank(t *testing.T) {

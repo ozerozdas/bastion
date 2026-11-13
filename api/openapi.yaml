@@ -1240,7 +1240,7 @@ components:
         fields are absent when the scanner did not provide them.
       additionalProperties: false
       required:
-        [id, asset_id, scan_id, fingerprint, type, severity, title, occurrences, scanner, status, references]
+        [id, asset_id, scan_id, fingerprint, type, severity, title, occurrences, scanner, scanners, status, references]
       properties:
         id:
           type: integer
@@ -1288,6 +1288,17 @@ components:
           description: Raw occurrences merged into this finding within one scan.
         scanner:
           type: string
+          description: |
+            Primary scanner. Its fingerprint is the one stored, so it stays
+            stable when another scanner reports the same advisory.
+        scanners:
+          type: array
+          description: |
+            Every scanner that reported the finding. A CVE reported by both
+            Trivy and OSV appears once with both entries; `scanner` is the
+            primary one.
+          items:
+            type: string
         status:
           $ref: "#/components/schemas/FindingStatus"
         state:

@@ -15,6 +15,7 @@ function finding(
     title: 'A finding',
     occurrences: 1,
     scanner: 'trivy',
+    scanners: ['trivy'],
     status: 'open',
     references: [],
     ...overrides,

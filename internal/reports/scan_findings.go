@@ -69,6 +69,10 @@ func findingFromScanRow(row sqlcdb.ListFindingsByScanRow) (Finding, error) {
 	if err != nil {
 		return Finding{}, err
 	}
+	scanners, err := decodeScanners(row.Scanners)
+	if err != nil {
+		return Finding{}, err
+	}
 	finding := Finding{
 		ID:             row.ID,
 		AssetID:        row.AssetID,
@@ -85,6 +89,7 @@ func findingFromScanRow(row sqlcdb.ListFindingsByScanRow) (Finding, error) {
 		Location:       row.Location.String,
 		Occurrences:    int(row.Occurrences),
 		Scanner:        row.Scanner,
+		Scanners:       scanners,
 		Status:         row.Status,
 		State:          row.State.String,
 		Reason:         row.Reason.String,

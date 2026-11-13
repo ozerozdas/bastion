@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -425,3 +426,47 @@ const timeLayout = time.RFC3339
 func durationMS(ms int64) *int64 { return &ms }
 
 func boolPtr(v bool) *bool { return &v }
+
+func TestSaveScanResultPersistsScanners(t *testing.T) {
+	ctx := context.Background()
+	db, _ := openTestDB(t)
+	queries := sqlcdb.New(db)
+
+	asset := createTestAsset(ctx, t, queries)
+	scan := createTestScan(ctx, t, queries, asset.ID)
+
+	merged := testFinding(asset.ID, findings.TypeVulnerability, "CVE-2026-0001", findings.SeverityHigh)
+	merged.Scanner = "trivy"
+	merged.Scanners = []string{"osv", "trivy"}
+	single := testFinding(asset.ID, findings.TypeVulnerability, "CVE-2026-0002", findings.SeverityLow)
+	single.Scanner = "gitleaks"
+
+	if err := store.SaveScanResult(ctx, db, scan.ID, store.ScanResult{
+		Status:   store.ScanStatusSucceeded,
+		Findings: []findings.Finding{merged, single},
+	}); err != nil {
+		t.Fatalf("SaveScanResult: %v", err)
+	}
+
+	report, err := store.LoadScanReport(ctx, db, scan.ID)
+	if err != nil {
+		t.Fatalf("LoadScanReport: %v", err)
+	}
+	if len(report.Findings) != 2 {
+		t.Fatalf("got %d findings, want 2", len(report.Findings))
+	}
+	for _, f := range report.Findings {
+		switch f.RuleID {
+		case merged.RuleID:
+			if !slices.Equal(f.Scanners, merged.Scanners) {
+				t.Errorf("scanners = %v, want %v", f.Scanners, merged.Scanners)
+			}
+		case single.RuleID:
+			// A finding that never went through Merge defaults to its primary
+			// scanner rather than an empty list.
+			if want := []string{"gitleaks"}; !slices.Equal(f.Scanners, want) {
+				t.Errorf("scanners = %v, want %v", f.Scanners, want)
+			}
+		}
+	}
+}

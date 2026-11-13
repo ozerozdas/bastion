@@ -162,6 +162,10 @@ func findingFromRow(row sqlcdb.ListFindingsByScanRow) (findings.Finding, error) 
 	if err != nil {
 		return findings.Finding{}, fmt.Errorf("finding %q references: %w", row.Title, err)
 	}
+	scanners, err := decodeStringList(row.Scanners)
+	if err != nil {
+		return findings.Finding{}, fmt.Errorf("finding %q scanners: %w", row.Title, err)
+	}
 	f := findings.Finding{
 		AssetID:        row.AssetID,
 		Type:           findings.Type(row.Type),
@@ -176,6 +180,7 @@ func findingFromRow(row sqlcdb.ListFindingsByScanRow) (findings.Finding, error) 
 		Description:    row.Description.String,
 		References:     refs,
 		Scanner:        row.Scanner,
+		Scanners:       scanners,
 		Fingerprint:    row.Fingerprint,
 		Occurrences:    int(row.Occurrences),
 	}
@@ -189,14 +194,20 @@ func findingFromRow(row sqlcdb.ListFindingsByScanRow) (findings.Finding, error) 
 // decodeReferences decodes the stored reference list. The column default is
 // "[]", so an empty list becomes nil and stays out of the printed document.
 func decodeReferences(raw string) ([]string, error) {
+	return decodeStringList(raw)
+}
+
+// decodeStringList decodes a JSON string array column. The column default is
+// "[]", so an empty list becomes nil.
+func decodeStringList(raw string) ([]string, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil
 	}
-	var refs []string
-	if err := json.Unmarshal([]byte(raw), &refs); err != nil {
+	var list []string
+	if err := json.Unmarshal([]byte(raw), &list); err != nil {
 		return nil, err
 	}
-	return refs, nil
+	return list, nil
 }
 
 // nullInt64Ptr converts a nullable column back into an optional int.

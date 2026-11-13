@@ -47,6 +47,7 @@ type Finding struct {
 	Location        string
 	Occurrences     int
 	Scanner         string
+	Scanners        []string
 	Status          string
 	State           string
 	Reason          string
@@ -76,6 +77,10 @@ func (s *Service) Findings(ctx context.Context, filter Filter) ([]Finding, error
 		if err != nil {
 			return nil, fmt.Errorf("reports: finding %d: %w", row.ID, err)
 		}
+		scanners, err := decodeScanners(row.Scanners)
+		if err != nil {
+			return nil, fmt.Errorf("reports: finding %d: %w", row.ID, err)
+		}
 		finding := Finding{
 			ID:             row.ID,
 			AssetID:        row.AssetID,
@@ -92,6 +97,7 @@ func (s *Service) Findings(ctx context.Context, filter Filter) ([]Finding, error
 			Location:       row.Location.String,
 			Occurrences:    int(row.Occurrences),
 			Scanner:        row.Scanner,
+			Scanners:       scanners,
 			Status:         row.Status,
 			State:          row.State.String,
 			Reason:         row.Reason.String,
@@ -178,6 +184,8 @@ func validType(kind string) bool {
 
 // decodeReferences reads the stored references_json list. An absent or empty
 // column is an empty list, never nil, so the API always serializes [].
+// decodeReferences decodes the stored reference list into an always-present
+// slice, so the API can return [] rather than null.
 func decodeReferences(raw string) ([]string, error) {
 	references := make([]string, 0)
 	if raw == "" {
@@ -190,4 +198,20 @@ func decodeReferences(raw string) ([]string, error) {
 		references = make([]string, 0)
 	}
 	return references, nil
+}
+
+// decodeScanners decodes the JSON array of scanners that reported a finding.
+// The column default is "[]", so an old row yields an empty slice.
+func decodeScanners(raw string) ([]string, error) {
+	scanners := make([]string, 0)
+	if raw == "" {
+		return scanners, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &scanners); err != nil {
+		return nil, fmt.Errorf("decode scanners %q: %w", raw, err)
+	}
+	if scanners == nil {
+		scanners = make([]string, 0)
+	}
+	return scanners, nil
 }
