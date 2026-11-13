@@ -48,7 +48,8 @@ the URL (`/projects?tab=scans`), so a reload or a shared link keeps it; the old
 ### Scans
 
 Every past scan with its status, trigger, duration and error (if any). A failed scan shows
-a human-readable cause and a suggested next step. Comparing two scans (new / fixed /
+a human-readable cause and a suggested next step. The **Project** filter is part of the URL
+(`/projects?tab=scans&asset=<id>`), so a filtered list can be bookmarked. Comparing two scans (new / fixed /
 persisting) arrives in v0.2.
 
 ## Connections

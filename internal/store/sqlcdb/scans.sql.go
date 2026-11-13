@@ -10,6 +10,40 @@ import (
 	"database/sql"
 )
 
+const countFindingsByScan = `-- name: CountFindingsByScan :one
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN f.severity = 'critical' THEN 1 ELSE 0 END), 0) AS INTEGER) AS critical_count,
+    CAST(COALESCE(SUM(CASE WHEN f.severity = 'high' THEN 1 ELSE 0 END), 0) AS INTEGER) AS high_count,
+    CAST(COALESCE(SUM(CASE WHEN f.severity = 'medium' THEN 1 ELSE 0 END), 0) AS INTEGER) AS medium_count,
+    CAST(COALESCE(SUM(CASE WHEN f.severity = 'low' THEN 1 ELSE 0 END), 0) AS INTEGER) AS low_count,
+    CAST(COALESCE(SUM(CASE WHEN f.severity = 'unknown' THEN 1 ELSE 0 END), 0) AS INTEGER) AS unknown_count
+FROM findings f
+WHERE f.scan_id = ?1
+`
+
+type CountFindingsByScanRow struct {
+	CriticalCount int64
+	HighCount     int64
+	MediumCount   int64
+	LowCount      int64
+	UnknownCount  int64
+}
+
+// Every finding one scan recorded, per severity: the single-scan read shows
+// the same counts as the scan list. A scan that recorded nothing is all zeros.
+func (q *Queries) CountFindingsByScan(ctx context.Context, scanID int64) (CountFindingsByScanRow, error) {
+	row := q.db.QueryRowContext(ctx, countFindingsByScan, scanID)
+	var i CountFindingsByScanRow
+	err := row.Scan(
+		&i.CriticalCount,
+		&i.HighCount,
+		&i.MediumCount,
+		&i.LowCount,
+		&i.UnknownCount,
+	)
+	return i, err
+}
+
 const createScan = `-- name: CreateScan :one
 INSERT INTO scans (asset_id, target_ref, status, "trigger", started_at)
 VALUES (
@@ -203,9 +237,21 @@ func (q *Queries) ListScannerRunsByScan(ctx context.Context, scanID int64) ([]Sc
 }
 
 const listScans = `-- name: ListScans :many
-SELECT id, asset_id, target_ref, status, "trigger", started_at, finished_at, error FROM scans
-WHERE (?1 IS NULL OR asset_id = ?1)
-ORDER BY id DESC
+SELECT
+    s.id, s.asset_id, s.target_ref, s.status, s."trigger", s.started_at, s.finished_at, s.error,
+    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'critical' THEN 1 ELSE 0 END)
+                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS critical_count,
+    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'high' THEN 1 ELSE 0 END)
+                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS high_count,
+    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'medium' THEN 1 ELSE 0 END)
+                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS medium_count,
+    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'low' THEN 1 ELSE 0 END)
+                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS low_count,
+    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'unknown' THEN 1 ELSE 0 END)
+                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS unknown_count
+FROM scans s
+WHERE (?1 IS NULL OR s.asset_id = ?1)
+ORDER BY s.id DESC
 LIMIT ?2
 `
 
@@ -214,26 +260,43 @@ type ListScansParams struct {
 	Limit   int64
 }
 
+type ListScansRow struct {
+	Scan          Scan
+	CriticalCount int64
+	HighCount     int64
+	MediumCount   int64
+	LowCount      int64
+	UnknownCount  int64
+}
+
 // Newest first, optionally narrowed to one asset. Ids increase with time, so
-// ordering by id is stable even when two scans share a started_at.
-func (q *Queries) ListScans(ctx context.Context, arg ListScansParams) ([]Scan, error) {
+// ordering by id is stable even when two scans share a started_at. The counts
+// are every finding the scan recorded, per severity, in one statement; the
+// correlated subqueries read only the findings of the listed scans (see
+// idx_findings_scan).
+func (q *Queries) ListScans(ctx context.Context, arg ListScansParams) ([]ListScansRow, error) {
 	rows, err := q.db.QueryContext(ctx, listScans, arg.AssetID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Scan
+	var items []ListScansRow
 	for rows.Next() {
-		var i Scan
+		var i ListScansRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.AssetID,
-			&i.TargetRef,
-			&i.Status,
-			&i.Trigger,
-			&i.StartedAt,
-			&i.FinishedAt,
-			&i.Error,
+			&i.Scan.ID,
+			&i.Scan.AssetID,
+			&i.Scan.TargetRef,
+			&i.Scan.Status,
+			&i.Scan.Trigger,
+			&i.Scan.StartedAt,
+			&i.Scan.FinishedAt,
+			&i.Scan.Error,
+			&i.CriticalCount,
+			&i.HighCount,
+			&i.MediumCount,
+			&i.LowCount,
+			&i.UnknownCount,
 		); err != nil {
 			return nil, err
 		}

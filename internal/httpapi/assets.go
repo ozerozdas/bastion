@@ -390,6 +390,13 @@ func scanResponse(scan assets.Scan, withRuns bool) gen.Scan {
 		StartedAt:  scan.StartedAt,
 		FinishedAt: scan.FinishedAt,
 		Error:      stringPointer(scan.Error),
+		Counts: gen.SeverityTotals{
+			Critical: scan.Counts.Critical,
+			High:     scan.Counts.High,
+			Medium:   scan.Counts.Medium,
+			Low:      scan.Counts.Low,
+			Unknown:  scan.Counts.Unknown,
+		},
 	}
 	if withRuns {
 		runs := make([]gen.ScannerRun, 0, len(scan.ScannerRuns))
