@@ -292,6 +292,7 @@ export function FindingsPage() {
           replace: true,
         })
         setOpenFingerprint(null)
+        setChecked(new Set())
       },
     },
     {
@@ -395,9 +396,9 @@ export function FindingsPage() {
             className="text-[15px] font-semibold tracking-[-0.01em]"
           >
             {status === 'open' && !filtered
-              ? 'No open findings in the latest scan'
+              ? `No open findings in the latest ${selected ? 'scan' : 'scans'}`
               : status === 'ignored' && !filtered
-                ? 'No ignored findings in the latest scan'
+                ? `No ignored findings in the latest ${selected ? 'scan' : 'scans'}`
                 : 'No findings match these filters'}
           </h2>
           <p className="mt-2 max-w-[52ch] text-muted">
