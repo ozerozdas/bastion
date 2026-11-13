@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { useState } from 'react'
 
+import { assetsQuery } from '../api/assets'
 import { ApiError } from '../api/client'
+import { connectionsQuery } from '../api/connections'
 import {
   dashboardQuery,
   openFindingTotal,
@@ -11,9 +14,18 @@ import {
   type SeverityTotals,
   type TypeTotals,
 } from '../api/reports'
+import { scansQuery } from '../api/scans'
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
-import { buttonVariants } from '../components/ui/button'
+import { Button, buttonVariants } from '../components/ui/button'
+import {
+  dismissGetStarted,
+  getStartedState,
+  isCliStepDone,
+  isGetStartedDismissed,
+  markCliStepDone,
+  type GetStartedState,
+} from '../lib/get-started'
 import { formatDateTime, relativeTime } from '../lib/time'
 
 /** severityTiles is the fixed order of the four severity totals (§7.1). */
@@ -53,6 +65,40 @@ const statusView: Record<
 
 export function DashboardPage() {
   const dashboard = useQuery(dashboardQuery)
+  const connections = useQuery(connectionsQuery)
+  const assets = useQuery(assetsQuery)
+  const scans = useQuery(scansQuery())
+  const [cliDone, setCliDone] = useState(() =>
+    isCliStepDone(window.localStorage),
+  )
+  const [dismissed, setDismissed] = useState(() =>
+    isGetStartedDismissed(window.localStorage),
+  )
+
+  // The checklist reads only data these three queries already return; while one
+  // is still loading the card waits rather than flashing open steps.
+  const checklist =
+    connections.isSuccess && assets.isSuccess && scans.isSuccess
+      ? getStartedState({
+          connectionCount: connections.data.length,
+          assetCount: assets.data.length,
+          hasSucceededScan: scans.data.some(
+            (scan) => scan.status === 'succeeded',
+          ),
+          cliDone,
+          dismissed,
+        })
+      : undefined
+
+  const dismissChecklist = () => {
+    dismissGetStarted(window.localStorage)
+    setDismissed(true)
+  }
+
+  const markCliStep = () => {
+    markCliStepDone(window.localStorage)
+    setCliDone(true)
+  }
 
   if (dashboard.status === 'pending') {
     return (
@@ -77,17 +123,33 @@ export function DashboardPage() {
   // empty list means there is nothing to aggregate yet: explain the next step.
   if (data.last_scans.length === 0) {
     return (
-      <EmptyState
-        title="No scans yet"
-        body="Connect GitHub or add a local path in Projects, then run a scan. Totals by severity, findings by type and the trend of open critical and high findings appear here after the first run."
-      >
-        <Link to="/connections" className={buttonVariants()}>
-          Connect GitHub
-        </Link>
-        <Link to="/projects" className={buttonVariants({ variant: 'outline' })}>
-          Add a local path
-        </Link>
-      </EmptyState>
+      <>
+        {checklist?.visible === true ? (
+          <GetStartedCard
+            state={checklist}
+            onDismiss={dismissChecklist}
+            onCliDone={markCliStep}
+          />
+        ) : null}
+        <EmptyState
+          title="No scans yet"
+          body="Totals by severity, findings by type and the trend of open critical and high findings appear here after the first successful scan."
+        >
+          {checklist === undefined || checklist.visible ? null : (
+            <>
+              <Link to="/connections" className={buttonVariants()}>
+                Connect GitHub
+              </Link>
+              <Link
+                to="/projects"
+                className={buttonVariants({ variant: 'outline' })}
+              >
+                Add a local path
+              </Link>
+            </>
+          )}
+        </EmptyState>
+      </>
     )
   }
 
@@ -96,6 +158,13 @@ export function DashboardPage() {
 
   return (
     <>
+      {checklist?.visible === true ? (
+        <GetStartedCard
+          state={checklist}
+          onDismiss={dismissChecklist}
+          onCliDone={markCliStep}
+        />
+      ) : null}
       <section
         aria-labelledby="severity-heading"
         className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
@@ -215,6 +284,82 @@ export function DashboardPage() {
   )
 }
 
+/** GetStartedCard is the four-step checklist; each step links to where it is done. */
+function GetStartedCard({
+  state,
+  onDismiss,
+  onCliDone,
+}: {
+  state: GetStartedState
+  onDismiss: () => void
+  onCliDone: () => void
+}) {
+  return (
+    <section
+      aria-labelledby="get-started-heading"
+      className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <h2 id="get-started-heading" className="text-[13px] font-semibold">
+            Get started
+          </h2>
+          <p className="text-xs text-muted">
+            Four steps from an empty install to findings. {state.doneCount} of{' '}
+            {state.total} done.
+          </p>
+        </div>
+        <Button type="button" size="sm" variant="ghost" onClick={onDismiss}>
+          Dismiss
+        </Button>
+      </div>
+      <ol className="flex flex-col gap-2.5">
+        {state.steps.map((step, index) => {
+          const titleClass =
+            'text-[13px] underline underline-offset-2 hover:text-accent'
+          return (
+            <li key={step.id} className="flex items-start gap-2.5">
+              <span
+                aria-hidden="true"
+                className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border text-[11px] tabular-nums ${
+                  step.done
+                    ? 'border-ok/30 bg-ok/10 text-ok'
+                    : 'border-border-strong text-muted'
+                }`}
+              >
+                {step.done ? '✓' : String(index + 1)}
+              </span>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  {step.href ? (
+                    <a
+                      href={step.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={onCliDone}
+                      className={titleClass}
+                    >
+                      {step.title}
+                    </a>
+                  ) : step.to ? (
+                    <Link to={step.to} className={titleClass}>
+                      {step.title}
+                    </Link>
+                  ) : (
+                    <span className="text-[13px]">{step.title}</span>
+                  )}
+                  {step.done ? <Badge tone="ok">done</Badge> : null}
+                </div>
+                <p className="text-xs text-muted">{step.hint}</p>
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+    </section>
+  )
+}
+
 /** SeverityTile is one calm number with a small severity mark (§7). */
 function SeverityTile({
   count,
@@ -303,7 +448,8 @@ function RiskiestAssets({ assets }: { assets: AssetRisk[] }) {
                 <tr key={asset.asset_id}>
                   <td className="py-2 pr-3">
                     <Link
-                      to="/security-reports"
+                      to="/findings"
+                      search={{ asset: asset.asset_id }}
                       className="hover:underline"
                       title={`${asset.kind}: ${asset.display_name}`}
                     >

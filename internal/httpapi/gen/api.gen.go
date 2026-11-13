@@ -404,7 +404,7 @@ type Asset struct {
 	// what the asset list must show.
 	LastScan *AssetLastScan `json:"last_scan,omitempty"`
 
-	// OpenCounts Open findings per severity; severities without findings are zero.
+	// OpenCounts Findings per severity; severities without findings are zero.
 	OpenCounts SeverityTotals `json:"open_counts"`
 
 	// Ref Canonical reference: `owner/repo` for repositories, the absolute
@@ -548,7 +548,7 @@ type Dashboard struct {
 	// TopAssets Up to five assets, riskiest first.
 	TopAssets []AssetRisk `json:"top_assets"`
 
-	// TotalsBySeverity Open findings per severity; severities without findings are zero.
+	// TotalsBySeverity Findings per severity; severities without findings are zero.
 	TotalsBySeverity SeverityTotals `json:"totals_by_severity"`
 
 	// TotalsByType Open findings per type; types without findings are zero.
@@ -708,10 +708,15 @@ type QueuedScan struct {
 	ScanId  int64 `json:"scan_id"`
 }
 
-// Scan One scan of one asset. `scanner_runs` is filled by the single-scan read
-// only; the list omits it.
+// Scan One scan of one asset. `counts` are every finding this scan recorded,
+// per severity; decisions on the asset do not rewrite history, and a scan
+// that recorded nothing is all zeros. `scanner_runs` is filled by the
+// single-scan read only; the list omits it.
 type Scan struct {
 	AssetId int64 `json:"asset_id"`
+
+	// Counts Findings per severity; severities without findings are zero.
+	Counts SeverityTotals `json:"counts"`
 
 	// Error Why a failed scan failed; absent otherwise.
 	Error *string `json:"error,omitempty"`
@@ -817,7 +822,7 @@ type SetUpdateConsentRequest struct {
 // Severity Normalized severity scale (`unknown` when a scanner gave no usable level).
 type Severity string
 
-// SeverityTotals Open findings per severity; severities without findings are zero.
+// SeverityTotals Findings per severity; severities without findings are zero.
 type SeverityTotals struct {
 	Critical int `json:"critical"`
 	High     int `json:"high"`

@@ -1,6 +1,7 @@
 # Using the Web UI
 
-The UI has five pages in the left navigation.
+The left navigation has four sections: Dashboard, Findings, Projects (with **Projects |
+Scans** tabs) and Connections.
 
 ## Sidebar
 
@@ -18,14 +19,32 @@ The overview across all projects:
 - the riskiest projects,
 - when each project was last scanned.
 
-## Connections
+A **Get started** card at the top ticks off four steps — connect GitHub, add a
+project, run the first scan and scan in CI or from the CLI — from the data the
+page already has. It hides once all four are done, or when you dismiss it; the
+CLI step and the dismissal are remembered in this browser only.
 
-Where credentials live. In v0.1 this is **GitHub** only.
+## Findings
 
-- **Add** — paste a read-only token (see [Getting Started](Getting-Started.md#3-connect-github-optional)).
-  It is stored in the OS keychain.
-- **Test** — calls `GET /user` and shows which GitHub login the token belongs to.
-- **Remove** — deletes the connection and its keychain entry.
+Findings from the **latest scan of every project** — one list for "what is critical
+anywhere?". No project selected means all of them.
+
+- **Project** — each row names the project it belongs to. The **Project** filter narrows
+  the list to one project; a **View findings** link on a Projects row opens this page with
+  that filter already set. Older `/reports` and `/security-reports` links redirect here.
+- **Filter** by project, type (vulnerability, secret, misconfiguration, licence), severity
+  and status. Findings are severity-ordered, critical first.
+- **Detail** — description, location, package and installed version, the **fixed version**,
+  the scanner and rule that produced it, and references.
+- **Hide a finding** as *ignored*, *accepted risk* or *false positive*, one at a time or in
+  bulk across projects. A reason is required. The decision sticks to the finding's
+  fingerprint (its project plus the issue found), so it applies to later scans of the same
+  project too — see [Findings](Findings.md#ignoring-findings).
+- **Grouped view** — the **Single / Grouped** toggle folds one rule into one row across
+  projects, showing its worst severity, how many projects it reaches and the fixed version;
+  the view is part of the URL (`/findings?view=grouped`). Opening a grouped row lists every
+  affected project, and hiding it there applies one decision to all of them after a confirm
+  step that states the count.
 
 ## Projects
 
@@ -40,19 +59,22 @@ Each row shows the last scan status and severity counts. **Scan** queues a scan;
 streams live. A GitHub scan resolves the default branch to a commit SHA, downloads that
 tarball, scans it and deletes the workspace afterwards.
 
-## Security Reports
+The page has two tabs: **Projects** (the table above) and **Scans**. The tab is part of
+the URL (`/projects?tab=scans`), so a reload or a shared link keeps it; the old
+`/scan-history` URL opens the Scans tab.
 
-Findings from the **latest scan** of one project.
-
-- **Filter** by type (vulnerability, secret, misconfiguration, licence), severity and status.
-- **Detail** — description, location, package and installed version, the **fixed version**,
-  the scanner and rule that produced it, and references.
-- **Hide a finding** as *ignored*, *accepted risk* or *false positive*. A reason is
-  required. The decision sticks to the finding's fingerprint, so it applies to later scans
-  of the same project too — see [Findings](Findings.md#ignoring-findings).
-
-## Scan History
+### Scans
 
 Every past scan with its status, trigger, duration and error (if any). A failed scan shows
-a human-readable cause and a suggested next step. Comparing two scans (new / fixed /
+a human-readable cause and a suggested next step. The **Project** filter is part of the URL
+(`/projects?tab=scans&asset=<id>`), so a filtered list can be bookmarked. Comparing two scans (new / fixed /
 persisting) arrives in v0.2.
+
+## Connections
+
+Where credentials live. In v0.1 this is **GitHub** only.
+
+- **Add** — paste a read-only token (see [Getting Started](Getting-Started.md#3-connect-github-optional)).
+  It is stored in the OS keychain.
+- **Test** — calls `GET /user` and shows which GitHub login the token belongs to.
+- **Remove** — deletes the connection and its keychain entry.

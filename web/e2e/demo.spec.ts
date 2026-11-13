@@ -67,7 +67,7 @@ test('first report: connect GitHub, add a repo, scan, read the report', async ({
     mark('scan succeeded')
     await pause()
 
-    await row.getByRole('link', { name: 'View report' }).click()
+    await row.getByRole('link', { name: 'View findings' }).click()
     const firstFinding = page.locator('tbody tr').first()
     await expect(firstFinding).toBeVisible()
     mark('first report')

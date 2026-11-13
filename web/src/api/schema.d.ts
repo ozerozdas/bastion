@@ -760,7 +760,7 @@ export interface components {
         };
         /**
          * SeverityTotals
-         * @description Open findings per severity; severities without findings are zero.
+         * @description Findings per severity; severities without findings are zero.
          */
         SeverityTotals: {
             critical: number;
@@ -912,8 +912,10 @@ export interface components {
         };
         /**
          * Scan
-         * @description One scan of one asset. `scanner_runs` is filled by the single-scan read
-         *     only; the list omits it.
+         * @description One scan of one asset. `counts` are every finding this scan recorded,
+         *     per severity; decisions on the asset do not rewrite history, and a scan
+         *     that recorded nothing is all zeros. `scanner_runs` is filled by the
+         *     single-scan read only; the list omits it.
          */
         Scan: {
             /** Format: int64 */
@@ -940,6 +942,7 @@ export interface components {
             finished_at?: string;
             /** @description Why a failed scan failed; absent otherwise. */
             error?: string;
+            counts: components["schemas"]["SeverityTotals"];
             /** @description One entry per scanner, in execution order (single-scan read only). */
             scanner_runs?: components["schemas"]["ScannerRun"][];
         };

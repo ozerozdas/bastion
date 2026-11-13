@@ -6,7 +6,7 @@ import type { components } from './schema'
 /** Dashboard is the aggregates payload of GET /api/reports/dashboard (§7.1). */
 export type Dashboard = components['schemas']['Dashboard']
 
-/** SeverityTotals is open findings per severity. */
+/** SeverityTotals is findings per severity (open ones on assets, recorded ones on scans). */
 export type SeverityTotals = components['schemas']['SeverityTotals']
 
 /** TypeTotals is open findings per finding type. */

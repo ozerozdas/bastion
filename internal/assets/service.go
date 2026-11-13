@@ -156,6 +156,9 @@ type Scan struct {
 	FinishedAt  *time.Time
 	Error       string
 	ScannerRuns []ScannerRun
+	// Counts are every finding the scan recorded, per severity. A queued,
+	// running or failed scan that recorded nothing is all zeros.
+	Counts SeverityCounts
 }
 
 // ScannerRun is one scanner's result inside a scan.
@@ -417,9 +420,16 @@ func (s *Service) Scans(ctx context.Context, assetID int64, limit int) ([]Scan, 
 	}
 	out := make([]Scan, 0, len(rows))
 	for _, row := range rows {
-		scan, err := scanFromRow(row)
+		scan, err := scanFromRow(row.Scan)
 		if err != nil {
 			return nil, err
+		}
+		scan.Counts = SeverityCounts{
+			Critical: int(row.CriticalCount),
+			High:     int(row.HighCount),
+			Medium:   int(row.MediumCount),
+			Low:      int(row.LowCount),
+			Unknown:  int(row.UnknownCount),
 		}
 		out = append(out, scan)
 	}
@@ -442,6 +452,18 @@ func (s *Service) Scan(ctx context.Context, id int64) (Scan, error) {
 	scan, err := scanFromRow(row)
 	if err != nil {
 		return Scan{}, err
+	}
+
+	counts, err := queries.CountFindingsByScan(ctx, id)
+	if err != nil {
+		return Scan{}, fmt.Errorf("assets: scan %d finding counts: %w", id, err)
+	}
+	scan.Counts = SeverityCounts{
+		Critical: int(counts.CriticalCount),
+		High:     int(counts.HighCount),
+		Medium:   int(counts.MediumCount),
+		Low:      int(counts.LowCount),
+		Unknown:  int(counts.UnknownCount),
 	}
 
 	runs, err := queries.ListScannerRunsByScan(ctx, id)
