@@ -9,6 +9,7 @@ import {
 import { AppShell } from './components/app-shell'
 import {
   parseAssetSearch,
+  parseConnectionsTab,
   parseFindingsSearch,
   parseProjectsTabSearch,
   parseScanDiffSearch,
@@ -40,6 +41,9 @@ const dashboardRoute = createRoute({
 const connectionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/connections',
+  // ?tab=registry shows the registry placeholders; the bare path is the
+  // repository sources (#107).
+  validateSearch: parseConnectionsTab,
   component: ConnectionsPage,
 })
 

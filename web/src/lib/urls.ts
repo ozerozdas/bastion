@@ -103,3 +103,23 @@ export function parseProjectsTabSearch(
   if (search.tab !== 'scans') return {}
   return { tab: 'scans', ...parseAssetSearch(search) }
 }
+
+/** ConnectionsTab names the two kinds of source (#107). */
+export type ConnectionsTab = 'repository' | 'registry'
+
+/** ConnectionsSearch is the Connections route's search params. */
+export type ConnectionsSearch = {
+  /** ?tab=registry shows the registry placeholders; absent is Repository. */
+  tab?: 'registry'
+}
+
+/**
+ * parseConnectionsTab reads ?tab=registry from the Connections route. The
+ * Repository tab is the default, so its URL stays the bare path and an unknown
+ * tab falls back to it rather than hiding the GitHub setup.
+ */
+export function parseConnectionsTab(
+  search: Record<string, unknown>,
+): ConnectionsSearch {
+  return search.tab === 'registry' ? { tab: 'registry' } : {}
+}

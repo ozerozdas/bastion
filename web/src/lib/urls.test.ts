@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isHttpsUrl,
   parseAssetSearch,
+  parseConnectionsTab,
   parseFindingsSearch,
   parseProjectsTabSearch,
   parseScanDiffSearch,
@@ -122,5 +123,25 @@ describe('parseProjectsTabSearch', () => {
       tab: 'scans',
     })
     expect(parseProjectsTabSearch({ asset: 7 })).toEqual({})
+  })
+})
+
+describe('parseConnectionsTab', () => {
+  it('keeps the Registry tab so the URL stays copyable and reload-safe', () => {
+    expect(parseConnectionsTab({ tab: 'registry' })).toEqual({
+      tab: 'registry',
+    })
+  })
+
+  it('treats the default Repository tab as the bare path', () => {
+    expect(parseConnectionsTab({})).toEqual({})
+    expect(parseConnectionsTab({ tab: undefined })).toEqual({})
+    expect(parseConnectionsTab({ tab: 'repository' })).toEqual({})
+  })
+
+  it('drops an unknown tab instead of hiding the GitHub setup', () => {
+    expect(parseConnectionsTab({ tab: 'docker' })).toEqual({})
+    expect(parseConnectionsTab({ tab: 1 })).toEqual({})
+    expect(parseConnectionsTab({ tab: ['registry'] })).toEqual({})
   })
 })

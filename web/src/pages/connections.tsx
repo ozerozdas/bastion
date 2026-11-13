@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 
 import { ApiError } from '../api/client'
@@ -13,6 +14,8 @@ import {
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { Tabs, type TabItem } from '../components/ui/tabs'
+import type { ConnectionsTab } from '../lib/urls'
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
@@ -21,6 +24,12 @@ const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
 })
+
+/** connectionTabs are the two kinds of source (#107). */
+const connectionTabs: TabItem<ConnectionsTab>[] = [
+  { value: 'repository', label: 'Repository' },
+  { value: 'registry', label: 'Registry' },
+]
 
 /** statusView maps the API status to its badge text and tone. */
 const statusView: Record<
@@ -33,6 +42,32 @@ const statusView: Record<
 }
 
 export function ConnectionsPage() {
+  const search = useSearch({ from: '/connections' })
+  const navigate = useNavigate()
+  const tab: ConnectionsTab = search.tab ?? 'repository'
+
+  return (
+    <Tabs
+      label="Connection types"
+      items={connectionTabs}
+      value={tab}
+      onChange={(next) => {
+        // The URL owns the tab, so a reload or a copied link lands on it.
+        // replace: switching tabs is not a step the Back button should undo.
+        void navigate({
+          to: '/connections',
+          search: next === 'registry' ? { tab: 'registry' } : {},
+          replace: true,
+        })
+      }}
+    >
+      {tab === 'registry' ? <RegistryPanel /> : <RepositoryPanel />}
+    </Tabs>
+  )
+}
+
+/** RepositoryPanel is the GitHub source: the connections and their form. */
+function RepositoryPanel() {
   const connections = useQuery(connectionsQuery)
   const github = (connections.data ?? []).filter(
     (connection) => connection.kind === 'github',
@@ -90,7 +125,14 @@ export function ConnectionsPage() {
       ) : null}
 
       <AddGitHubForm />
+    </>
+  )
+}
 
+/** RegistryPanel is §8's registry sources, both P2 placeholders for now. */
+function RegistryPanel() {
+  return (
+    <>
       <ComingSoonCard
         title="AWS"
         action="Connect AWS account"
