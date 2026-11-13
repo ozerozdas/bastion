@@ -7,7 +7,11 @@ import {
 } from '@tanstack/react-router'
 
 import { AppShell } from './components/app-shell'
-import { parseAssetSearch, parseProjectsTabSearch } from './lib/urls'
+import {
+  parseAssetSearch,
+  parseFindingsSearch,
+  parseProjectsTabSearch,
+} from './lib/urls'
 import { ConnectionsPage } from './pages/connections'
 import { DashboardPage } from './pages/dashboard'
 import { FindingsPage } from './pages/findings'
@@ -48,9 +52,10 @@ const projectsRoute = createRoute({
 const findingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/findings',
-  // ?asset=<id> narrows the list to one project, so it survives reloads and
-  // links; without it every project's findings are shown.
-  validateSearch: parseAssetSearch,
+  // ?asset=<id> narrows the list to one project and ?view=grouped groups it by
+  // rule, so both survive reloads and links; without them every project's
+  // findings are shown one per row.
+  validateSearch: parseFindingsSearch,
   component: FindingsPage,
 })
 
