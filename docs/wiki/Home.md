@@ -20,7 +20,7 @@ external CLI. No telemetry; the only network calls are listed in
 | I want to… | Read |
 |---|---|
 | Install bastion and get my first report | [Getting Started](Getting-Started.md) |
-| Understand the five pages of the UI | [Using the Web UI](Using-the-Web-UI.md) |
+| Understand the sections of the UI | [Using the Web UI](Using-the-Web-UI.md) |
 | Scan from the terminal or in CI | [CLI Reference](CLI-Reference.md) · [CI Integration](CI-Integration.md) |
 | Understand what a finding is and how ignoring works | [Findings](Findings.md) |
 | Know what bastion stores, where, and what it sends | [Configuration and Paths](Configuration-and-Paths.md) · [Security and Privacy](Security-and-Privacy.md) |

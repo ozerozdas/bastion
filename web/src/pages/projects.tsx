@@ -94,10 +94,12 @@ export function ProjectsPage() {
       items={projectTabs}
       value={tab}
       onChange={(next) => {
-        // The URL owns the tab, so reload and back/forward both land on it.
+        // The URL owns the tab, so a reload or a copied link lands on it.
+        // replace: switching tabs is not a step the Back button should undo.
         void navigate({
           to: '/projects',
           search: next === 'scans' ? { tab: 'scans' } : {},
+          replace: true,
         })
       }}
     >
@@ -388,8 +390,8 @@ function ProjectRow({
           <td colSpan={7} className="pb-2">
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
               <span>
-                Remove “{asset.display_name}”? Its existing scans stay in Scan
-                History.
+                Remove “{asset.display_name}”? Its existing scans stay in the
+                Scans tab.
               </span>
               <Button
                 type="button"

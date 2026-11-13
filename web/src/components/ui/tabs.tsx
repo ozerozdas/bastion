@@ -90,7 +90,8 @@ export function Tabs<T extends string>({
               role="tab"
               id={tabId(item.value)}
               aria-selected={active}
-              aria-controls={panelId(item.value)}
+              // Only the selected panel is rendered; an IDREF must resolve.
+              aria-controls={active ? panelId(item.value) : undefined}
               tabIndex={active ? 0 : -1}
               onClick={() => onChange(item.value)}
               onKeyDown={(event) => moveFocus(event, index)}

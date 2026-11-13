@@ -42,7 +42,7 @@ streams live. A GitHub scan resolves the default branch to a commit SHA, downloa
 tarball, scans it and deletes the workspace afterwards.
 
 The page has two tabs: **Projects** (the table above) and **Scans**. The tab is part of
-the URL (`/projects?tab=scans`), so reload and back/forward keep it; the old
+the URL (`/projects?tab=scans`), so a reload or a shared link keeps it; the old
 `/scan-history` URL opens the Scans tab.
 
 ### Scans
