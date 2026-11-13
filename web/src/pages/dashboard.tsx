@@ -215,7 +215,7 @@ export function DashboardPage() {
             {data.trend.map((trend) => (
               <li
                 key={trend.asset_id}
-                className="flex items-center justify-between gap-4 py-2 first:pt-0 last:pb-0"
+                className="-mx-2 flex items-center justify-between gap-4 rounded px-2 py-2 hover:bg-hover"
               >
                 <Link
                   to="/findings"
