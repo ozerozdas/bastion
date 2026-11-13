@@ -24,9 +24,11 @@ export type FindingDrawerProps = {
    * success: the refetch can drop the row and unmount this drawer first, and
    * then mutate's own callbacks never run.
    */
-  onRemoving: () => void
+  onRemoving?: () => void
   /** onRemoveFailed undoes onRemoving when the request fails. */
-  onRemoveFailed: () => void
+  onRemoveFailed?: () => void
+  /** readOnly hides the decision controls, e.g. for a finding a later scan fixed. */
+  readOnly?: boolean
 }
 
 /**
@@ -38,6 +40,7 @@ export function FindingDrawer({
   onClose,
   onRemoving,
   onRemoveFailed,
+  readOnly = false,
 }: FindingDrawerProps) {
   const { panel, onKeyDown } = useDrawerFocus(onClose)
   const setState = useSetFindingState()
@@ -47,7 +50,7 @@ export function FindingDrawer({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    onRemoving()
+    onRemoving?.()
     setState.mutate(
       {
         asset_id: finding.asset_id,
@@ -176,99 +179,105 @@ export function FindingDrawer({
           </dd>
         </dl>
 
-        <section className="flex flex-col gap-2 rounded-md border border-border-subtle bg-bg p-3">
-          <h3 className="text-[13px] font-semibold">Decision</h3>
+        {readOnly ? (
+          <p className="rounded-md border border-border-subtle bg-bg p-3 text-xs text-muted">
+            This finding is fixed, so there is nothing to decide.
+          </p>
+        ) : (
+          <section className="flex flex-col gap-2 rounded-md border border-border-subtle bg-bg p-3">
+            <h3 className="text-[13px] font-semibold">Decision</h3>
 
-          {finding.state ? (
-            <>
-              <p className="text-xs text-muted">
-                Marked{' '}
-                <span className="text-fg">{stateLabels[finding.state]}</span>
-                {finding.reason ? `: ${finding.reason}` : '.'}
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    onRemoving()
-                    clearState.mutate(
-                      {
-                        fingerprint: finding.fingerprint,
-                        assetId: finding.asset_id,
-                      },
-                      { onSuccess: onClose, onError: onRemoveFailed },
-                    )
-                  }}
-                  disabled={clearState.isPending}
-                >
-                  {clearState.isPending ? 'Reopening…' : 'Reopen'}
-                </Button>
-                <span className="text-xs text-faint">
-                  The finding returns to future scans.
-                </span>
-              </div>
-              {clearState.isError ? <ErrorNote error={clearState.error} /> : null}
-            </>
-          ) : (
-            <form onSubmit={submit} className="flex flex-col gap-2">
-              <div className="flex flex-col gap-1">
-                <label
-                  htmlFor="finding-decision"
-                  className="text-xs font-medium text-muted"
-                >
-                  Hide this finding as
-                </label>
-                <select
-                  id="finding-decision"
-                  value={decision}
-                  onChange={(event) => setDecision(event.target.value as FindingState)}
-                  className={`${inputClass} w-56`}
-                >
-                  <option value="ignored">Ignored</option>
-                  <option value="accepted_risk">Accepted risk</option>
-                  <option value="false_positive">False positive</option>
-                </select>
-              </div>
+            {finding.state ? (
+              <>
+                <p className="text-xs text-muted">
+                  Marked{' '}
+                  <span className="text-fg">{stateLabels[finding.state]}</span>
+                  {finding.reason ? `: ${finding.reason}` : '.'}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      onRemoving?.()
+                      clearState.mutate(
+                        {
+                          fingerprint: finding.fingerprint,
+                          assetId: finding.asset_id,
+                        },
+                        { onSuccess: onClose, onError: onRemoveFailed },
+                      )
+                    }}
+                    disabled={clearState.isPending}
+                  >
+                    {clearState.isPending ? 'Reopening…' : 'Reopen'}
+                  </Button>
+                  <span className="text-xs text-faint">
+                    The finding returns to future scans.
+                  </span>
+                </div>
+                {clearState.isError ? <ErrorNote error={clearState.error} /> : null}
+              </>
+            ) : (
+              <form onSubmit={submit} className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1">
+                  <label
+                    htmlFor="finding-decision"
+                    className="text-xs font-medium text-muted"
+                  >
+                    Hide this finding as
+                  </label>
+                  <select
+                    id="finding-decision"
+                    value={decision}
+                    onChange={(event) => setDecision(event.target.value as FindingState)}
+                    className={`${inputClass} w-56`}
+                  >
+                    <option value="ignored">Ignored</option>
+                    <option value="accepted_risk">Accepted risk</option>
+                    <option value="false_positive">False positive</option>
+                  </select>
+                </div>
 
-              <div className="flex flex-col gap-1">
-                <label
-                  htmlFor="finding-reason"
-                  className="text-xs font-medium text-muted"
-                >
-                  Reason
-                </label>
-                <textarea
-                  id="finding-reason"
-                  required
-                  rows={3}
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  placeholder="Why this finding can be hidden, for the next person who reads it."
-                  className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[13px] text-fg placeholder:text-faint"
-                />
-              </div>
+                <div className="flex flex-col gap-1">
+                  <label
+                    htmlFor="finding-reason"
+                    className="text-xs font-medium text-muted"
+                  >
+                    Reason
+                  </label>
+                  <textarea
+                    id="finding-reason"
+                    required
+                    rows={3}
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                    placeholder="Why this finding can be hidden, for the next person who reads it."
+                    className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[13px] text-fg placeholder:text-faint"
+                  />
+                </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={setState.isPending || reason.trim() === ''}
-                >
-                  {setState.isPending ? 'Saving…' : 'Save decision'}
-                </Button>
-                <span className="text-xs text-faint">
-                  Applies to later scans of this project too.
-                </span>
-              </div>
-            </form>
-          )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={setState.isPending || reason.trim() === ''}
+                  >
+                    {setState.isPending ? 'Saving…' : 'Save decision'}
+                  </Button>
+                  <span className="text-xs text-faint">
+                    Applies to later scans of this project too.
+                  </span>
+                </div>
+              </form>
+            )}
 
-          {setState.isError ? (
-            <ErrorNote error={setState.error} fix="Add a reason and try again." />
-          ) : null}
-        </section>
+            {setState.isError ? (
+              <ErrorNote error={setState.error} fix="Add a reason and try again." />
+            ) : null}
+          </section>
+        )}
 
         {finding.references.length > 0 ? (
           <section className="flex flex-col gap-1.5">

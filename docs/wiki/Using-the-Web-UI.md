@@ -67,8 +67,14 @@ the URL (`/projects?tab=scans`), so a reload or a shared link keeps it; the old
 
 Every past scan with its status, trigger, duration and error (if any). A failed scan shows
 a human-readable cause and a suggested next step. The **Project** filter is part of the URL
-(`/projects?tab=scans&asset=<id>`), so a filtered list can be bookmarked. Comparing two scans (new / fixed /
-persisting) arrives in v0.2.
+(`/projects?tab=scans&asset=<id>`), so a filtered list can be bookmarked.
+
+Every succeeded scan has a **Compare** link. It opens `/scans/<id>/diff` and compares that
+scan with the previous succeeded scan of the same project, grouping findings as **New**,
+**Fixed** and **Persisting** with the same drawer as Findings; a fixed finding opens
+read-only, because it is already gone from the newer scan. **Compare with** picks any other
+succeeded scan of the project and is part of the URL (`?against=<id>`), so a comparison can
+be bookmarked, and **← Scans** returns to the project's filtered Scans tab.
 
 ## Connections
 

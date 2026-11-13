@@ -104,11 +104,7 @@ export function ScansPanel() {
           </span>
         </div>
 
-        <FilterBar fields={filters} layout="inline" bordered={false}>
-          <span className="text-xs text-faint">
-            Comparing two scans arrives in v0.2.
-          </span>
-        </FilterBar>
+        <FilterBar fields={filters} layout="inline" bordered={false} />
 
         {scans.isPending ? <p className="text-muted">Loading scans…</p> : null}
 
@@ -218,6 +214,28 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
           </span>
         ),
     },
+    {
+      id: 'compare',
+      header: 'Compare',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3 whitespace-nowrap',
+      cell: (scan) =>
+        scan.status === 'succeeded' ? (
+          <Link
+            to="/scans/$scanId/diff"
+            params={{ scanId: String(scan.id) }}
+            className="hover:underline"
+            title={`Compare scan #${String(scan.id)} with the previous one`}
+          >
+            Compare
+          </Link>
+        ) : (
+          // Only a succeeded scan has a complete finding set to compare.
+          <span aria-hidden="true" className="text-faint">
+            —
+          </span>
+        ),
+    },
   ]
 
   return (
@@ -234,7 +252,7 @@ function ScansEmpty() {
   return (
     <EmptyState
       title="No scans yet — add a project and press Scan"
-      body="Every scan is listed here with its status and duration. Once two scans have finished you can compare them to see what is new, fixed or still open. Comparing two scans arrives in v0.2."
+      body="Every scan is listed here with its status and duration. Once two scans have finished, Compare shows what is new, fixed or still open between them."
     >
       <Link to="/projects" className={buttonVariants({ variant: 'outline' })}>
         Go to projects

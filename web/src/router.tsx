@@ -11,11 +11,13 @@ import {
   parseAssetSearch,
   parseFindingsSearch,
   parseProjectsTabSearch,
+  parseScanDiffSearch,
 } from './lib/urls'
 import { ConnectionsPage } from './pages/connections'
 import { DashboardPage } from './pages/dashboard'
 import { FindingsPage } from './pages/findings'
 import { ProjectsPage } from './pages/projects'
+import { ScanDiffPage } from './pages/scan-diff'
 
 function RootLayout() {
   return (
@@ -59,6 +61,15 @@ const findingsRoute = createRoute({
   component: FindingsPage,
 })
 
+// What changed after a rescan: one scan against another of the same project
+// (#17). ?against=<id> picks the baseline and defaults to the previous one.
+const scanDiffRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/scans/$scanId/diff',
+  validateSearch: parseScanDiffSearch,
+  component: ScanDiffPage,
+})
+
 // The old URLs keep working: /security-reports is the page's previous path and
 // /reports is the short form named in #87. A bookmarked ?asset= id carries over
 // to the same filtered list.
@@ -94,6 +105,7 @@ const routeTree = rootRoute.addChildren([
   connectionsRoute,
   projectsRoute,
   findingsRoute,
+  scanDiffRoute,
   legacyReportsRoute,
   legacySecurityReportsRoute,
   historyRoute,
