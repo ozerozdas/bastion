@@ -3,7 +3,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 
 import { HealthChip } from './health-chip'
-import { Logo, MoonIcon, SunIcon } from './icons'
+import { MoonIcon, SunIcon } from './icons'
 import { TrivyDBChip } from './trivy-db-chip'
 import { UpdateNotice } from './update-notice'
 import { assetsQuery } from '../api/assets'
@@ -33,9 +33,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen bg-bg text-fg">
       <aside className="sticky top-0 flex h-screen w-[232px] shrink-0 flex-col gap-[18px] overflow-y-auto border-r border-border-subtle bg-sidebar px-3 py-4">
         <div className="flex items-center gap-2.5 px-2 py-1">
-          <span className="flex size-6 items-center justify-center rounded-md bg-accent">
-            <Logo className="stroke-accent-fg" />
-          </span>
+          {/* The app icon is the same file the favicon uses: one asset, served
+              from the bundle, never fetched at runtime. */}
+          <img src="/icon.svg" alt="" width={24} height={24} className="size-6" />
           <span className="text-sm font-semibold">Bastion</span>
         </div>
 

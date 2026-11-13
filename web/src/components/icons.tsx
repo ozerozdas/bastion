@@ -72,20 +72,3 @@ export function MoonIcon(props: IconProps) {
     </Icon>
   )
 }
-
-export function Logo(props: IconProps) {
-  return (
-    <svg
-      aria-hidden="true"
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      strokeWidth="2.2"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M4 21V5h3v3h3V5h4v3h3V5h3v16z" />
-    </svg>
-  )
-}
