@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { useEffect, useMemo } from 'react'
 
 import { assetsQuery, type Asset } from '../api/assets'
 import { ApiError } from '../api/client'
@@ -33,8 +33,25 @@ const triggerLabels: Record<Scan['trigger'], string> = {
 
 /** ScansPanel is the Projects page's Scans tab: every scan of every project. */
 export function ScansPanel() {
-  const [assetId, setAssetId] = useState<number | undefined>(undefined)
+  // The project filter lives in the URL (#54), so a filtered view can be
+  // reloaded, bookmarked and shared.
+  const assetId = useSearch({ from: '/projects' }).asset
+  const navigate = useNavigate()
+  const setAssetId = (asset: number | undefined) => {
+    void navigate({
+      to: '/projects',
+      search: asset === undefined ? { tab: 'scans' } : { tab: 'scans', asset },
+      replace: true,
+    })
+  }
   const assets = useQuery(assetsQuery)
+
+  // A removed project's id must not stay in the URL with an empty list behind it.
+  useEffect(() => {
+    if (assetId === undefined || assets.data === undefined) return
+    if (assets.data.some((asset) => asset.id === assetId)) return
+    void navigate({ to: '/projects', search: { tab: 'scans' }, replace: true })
+  }, [assetId, assets.data, navigate])
 
   // Poll while any scan in the list is still queued or running, so the status
   // and duration fill in without a manual reload.

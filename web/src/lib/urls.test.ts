@@ -56,4 +56,15 @@ describe('parseProjectsTabSearch', () => {
     expect(parseProjectsTabSearch({ tab: 1 })).toEqual({})
     expect(parseProjectsTabSearch({ tab: ['scans'] })).toEqual({})
   })
+
+  it('keeps the Scans project filter only on the Scans tab (#54)', () => {
+    expect(parseProjectsTabSearch({ tab: 'scans', asset: '7' })).toEqual({
+      tab: 'scans',
+      asset: 7,
+    })
+    expect(parseProjectsTabSearch({ tab: 'scans', asset: 'x' })).toEqual({
+      tab: 'scans',
+    })
+    expect(parseProjectsTabSearch({ asset: 7 })).toEqual({})
+  })
 })
