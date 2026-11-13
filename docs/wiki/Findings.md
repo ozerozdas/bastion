@@ -10,6 +10,7 @@ Every scanner result is normalized into one **finding** model, whatever produced
 | `license` | Trivy | A package under a licence you may need to review (informational in v0.1) |
 | `misconfig` | Trivy | Dockerfile runs as root; S3 bucket without encryption |
 | `secret` | Gitleaks | An AWS key committed in `config/prod.env` |
+| `malware` | OSV | A `MAL-` advisory: a known-malicious package in the inventory (always critical) |
 
 ## Severity
 

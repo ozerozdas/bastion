@@ -13,6 +13,7 @@ it on.
 | `mirror.gcr.io/aquasec/trivy-db`, `ghcr.io/aquasecurity/trivy-db` | **Download** in the sidebar, or the first scan that needs it; then on DB refresh | Vulnerability advisories (~1.7 GB first time) |
 | `mirror.gcr.io/aquasec/trivy-java-db`, `ghcr.io/aquasecurity/trivy-java-db` | Scans with Java artifacts | Maps `.jar` files to artifacts |
 | `mirror.gcr.io/aquasec/trivy-checks:2` | Misconfiguration scanning | IaC checks bundle (~2.6 MB) |
+| `api.osv.dev` | Scans with a non-empty package inventory | Malware advisories. Sends package name, version and ecosystem only, with `User-Agent: bastion/<version>` |
 | `api.github.com` | **Only on your action**: test connection, list repos, add, scan | Identity, repo list, commit SHA, tarball |
 | `codeload.github.com` | Redirect of the tarball call | The repository archive |
 | `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed |

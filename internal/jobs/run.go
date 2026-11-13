@@ -144,6 +144,35 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 		res.ScannerRuns = append(res.ScannerRuns, run)
 	}
 
+	// OSV matches the inventory the scanners produced, not the workspace, so
+	// it runs once over the merged packages. A failure is recorded and logged
+	// but never added to failures: advisories are an enrichment, and a
+	// network error must not fail a scan whose findings are complete.
+	if m.advisories != nil && len(res.Packages) > 0 && ctx.Err() == nil {
+		m.progress(job, StageScan, m.advisories.Name())
+		run := store.ScannerRun{
+			Scanner:        m.advisories.Name(),
+			ScannerVersion: m.advisories.Version(),
+			Status:         "succeeded",
+		}
+		start := time.Now()
+		afs, advErr := m.advisories.Match(ctx, res.Packages, asset)
+		duration := time.Since(start).Milliseconds()
+		run.DurationMS = &duration
+		switch {
+		case advErr != nil && ctx.Err() != nil:
+			run.Status = "canceled"
+			run.Error = advErr.Error()
+		case advErr != nil:
+			slog.Warn("jobs: OSV advisory lookup failed", "scan_id", job.scanID, "error", advErr)
+			run.Status = "failed"
+			run.Error = advErr.Error()
+		default:
+			res.Findings = append(res.Findings, afs...)
+		}
+		res.ScannerRuns = append(res.ScannerRuns, run)
+	}
+
 	// One finding per fingerprint per scan (PROJECT_SPEC.md §5), in a stable
 	// order so persistence and golden output do not depend on scanner order.
 	res.Findings = findings.Merge(res.Findings)

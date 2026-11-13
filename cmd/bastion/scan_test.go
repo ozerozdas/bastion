@@ -152,7 +152,7 @@ func TestScanTargetPartialFailure(t *testing.T) {
 	bad := &fakeScanner{name: "bad", err: errors.New("vuln db download failed")}
 
 	out, err := scanTarget(context.Background(), sources.KindPath,
-		[]scanners.Scanner{good, bad}, &sources.Workspace{Dir: "/tmp/ws"},
+		[]scanners.Scanner{good, bad}, nil, &sources.Workspace{Dir: "/tmp/ws"},
 		findings.Asset{ID: 1, Kind: findings.AssetKindPath}, scanners.Options{})
 
 	if err == nil {
@@ -194,7 +194,7 @@ func TestScanTargetMergesDuplicateFingerprints(t *testing.T) {
 	good := &fakeScanner{name: "good", findings: []findings.Finding{dup, dup}}
 
 	out, err := scanTarget(context.Background(), sources.KindPath,
-		[]scanners.Scanner{good}, &sources.Workspace{Dir: "/tmp/ws"},
+		[]scanners.Scanner{good}, nil, &sources.Workspace{Dir: "/tmp/ws"},
 		findings.Asset{ID: 1, Kind: findings.AssetKindPath}, scanners.Options{})
 	if err != nil {
 		t.Fatalf("scanTarget: %v", err)
