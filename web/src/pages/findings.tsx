@@ -47,8 +47,9 @@ const severityOptions: Severity[] = ['critical', 'high', 'medium', 'low', 'unkno
 /**
  * findingColumns builds the table for the projects on screen. The Project
  * column needs the asset names, which the findings themselves do not carry.
+ * The scan diff page (#17) shows the same columns for its three groups.
  */
-function findingColumns(
+export function findingColumns(
   assetNames: ReadonlyMap<number, string>,
 ): DataTableColumn<Finding>[] {
   const projectName = (finding: Finding) =>

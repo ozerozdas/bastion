@@ -50,6 +50,30 @@ export function parseFindingsSearch(
   }
 }
 
+/** ScanDiffSearch is the scan diff route's optional baseline scan (#17). */
+export type ScanDiffSearch = {
+  /** ?against=<id> compares with that scan instead of the previous one. */
+  against?: number
+}
+
+/**
+ * parseScanDiffSearch reads ?against=<id> from the diff route. A missing or
+ * malformed id is dropped, so /scans/7/diff compares with the previous succeeded
+ * scan rather than failing the route.
+ */
+export function parseScanDiffSearch(
+  search: Record<string, unknown>,
+): ScanDiffSearch {
+  const raw = search.against
+  if (typeof raw === 'number' && Number.isInteger(raw) && raw > 0) {
+    return { against: raw }
+  }
+  if (typeof raw === 'string' && /^[1-9]\d*$/.test(raw)) {
+    return { against: Number(raw) }
+  }
+  return {}
+}
+
 /** ProjectsTab names the two views of the Projects section (#88). */
 export type ProjectsTab = 'projects' | 'scans'
 

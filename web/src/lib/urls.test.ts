@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { isHttpsUrl, parseAssetSearch, parseFindingsSearch, parseProjectsTabSearch } from './urls'
+import {
+  isHttpsUrl,
+  parseAssetSearch,
+  parseFindingsSearch,
+  parseProjectsTabSearch,
+  parseScanDiffSearch,
+} from './urls'
 
 describe('isHttpsUrl', () => {
   it('accepts https references, ignoring case and surrounding space', () => {
@@ -64,6 +70,29 @@ describe('parseFindingsSearch', () => {
     expect(parseFindingsSearch({ view: 'grouped', asset: 'x' })).toEqual({
       view: 'grouped',
     })
+  })
+})
+
+describe('parseScanDiffSearch', () => {
+  it('keeps a positive baseline scan, as a number or a query-string string', () => {
+    expect(parseScanDiffSearch({ against: 7 })).toEqual({ against: 7 })
+    expect(parseScanDiffSearch({ against: '7' })).toEqual({ against: 7 })
+  })
+
+  it('treats a missing baseline as the previous succeeded scan', () => {
+    expect(parseScanDiffSearch({})).toEqual({})
+    expect(parseScanDiffSearch({ against: undefined })).toEqual({})
+  })
+
+  it('drops a malformed id instead of failing the route', () => {
+    expect(parseScanDiffSearch({ against: 0 })).toEqual({})
+    expect(parseScanDiffSearch({ against: '0' })).toEqual({})
+    expect(parseScanDiffSearch({ against: -1 })).toEqual({})
+    expect(parseScanDiffSearch({ against: '-1' })).toEqual({})
+    expect(parseScanDiffSearch({ against: 1.5 })).toEqual({})
+    expect(parseScanDiffSearch({ against: '1.5' })).toEqual({})
+    expect(parseScanDiffSearch({ against: 'abc' })).toEqual({})
+    expect(parseScanDiffSearch({ against: ['7'] })).toEqual({})
   })
 })
 

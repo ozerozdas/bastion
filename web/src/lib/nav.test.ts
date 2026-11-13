@@ -57,6 +57,11 @@ describe('navItemFor', () => {
     expect(navItemFor('/scan-history').label).toBe('Projects')
   })
 
+  it('resolves the scan diff page to Projects (#17)', () => {
+    expect(navItemFor('/scans/7/diff').label).toBe('Projects')
+    expect(navItemFor('/scans/7/diff').to).toBe('/projects')
+  })
+
   it('falls back to the dashboard for an unknown path', () => {
     expect(navItemFor('/nope').label).toBe('Dashboard')
   })

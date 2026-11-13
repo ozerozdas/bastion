@@ -91,13 +91,21 @@ const legacyPathnames: Record<string, string> = {
   '/scan-history': '/projects',
 }
 
+/** sectionPathnames keeps a page under the nav entry that owns it (#17). */
+const sectionPathnames: { prefix: string; to: string }[] = [
+  // The scan diff page is the Scans tab's detail view.
+  { prefix: '/scans/', to: '/projects' },
+]
+
 /** navItemFor returns the nav entry for a pathname. */
 export function navItemFor(pathname: string): NavItem {
   const path = legacyPathnames[pathname] ?? pathname
   const match = navItems.find((item) =>
     item.to === '/' ? path === '/' : path.startsWith(item.to),
   )
-  return match ?? navItems[0]
+  if (match !== undefined) return match
+  const section = sectionPathnames.find((entry) => path.startsWith(entry.prefix))
+  return navItems.find((item) => item.to === section?.to) ?? navItems[0]
 }
 
 /** NavBadge is one entry's count as the sidebar shows it. */
