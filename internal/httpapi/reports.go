@@ -111,6 +111,45 @@ func findingResponse(finding reports.Finding) gen.Finding {
 	return out
 }
 
+// scanDiffResponse maps a domain diff onto the API shape. Each group is always
+// a JSON array; against_scan_id is absent when there was nothing to compare
+// with.
+func scanDiffResponse(diff reports.ScanDiff) gen.ScanDiff {
+	return gen.ScanDiff{
+		ScanId:        diff.ScanID,
+		AgainstScanId: diff.AgainstScanID,
+		New:           findingResponses(diff.New),
+		Fixed:         findingResponses(diff.Fixed),
+		Persisting:    findingResponses(diff.Persisting),
+		Counts: gen.ScanDiffCounts{
+			New:        severityTotalsResponse(diff.Counts.New),
+			Fixed:      severityTotalsResponse(diff.Counts.Fixed),
+			Persisting: severityTotalsResponse(diff.Counts.Persisting),
+		},
+	}
+}
+
+// findingResponses maps a group of findings, keeping [] rather than null for an
+// empty group.
+func findingResponses(list []reports.Finding) []gen.Finding {
+	out := make([]gen.Finding, 0, len(list))
+	for _, finding := range list {
+		out = append(out, findingResponse(finding))
+	}
+	return out
+}
+
+// severityTotalsResponse maps one severity count set onto the API shape.
+func severityTotalsResponse(totals reports.SeverityTotals) gen.SeverityTotals {
+	return gen.SeverityTotals{
+		Critical: totals.Critical,
+		High:     totals.High,
+		Medium:   totals.Medium,
+		Low:      totals.Low,
+		Unknown:  totals.Unknown,
+	}
+}
+
 // dashboardResponse maps the aggregates onto the API shape.
 func dashboardResponse(dashboard reports.Dashboard) gen.Dashboard {
 	out := gen.Dashboard{

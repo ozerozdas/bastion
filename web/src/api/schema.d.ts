@@ -347,6 +347,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/scans/{id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Findings new, fixed and persisting between two scans.
+         * @description Compares `{id}` with `against`, or with the asset's previous succeeded
+         *     scan (the newest succeeded scan older than `{id}`) when `against` is
+         *     omitted. Both scans must be succeeded scans of the same asset: a
+         *     `queued`, `running`, `failed` or `canceled` scan has no complete finding
+         *     set to compare.
+         *
+         *     With nothing to compare against — the asset's first succeeded scan —
+         *     the response is still `200`: `against_scan_id` is absent, every finding
+         *     of `{id}` is reported as `new`, and `fixed`, `persisting` and their
+         *     counts are empty.
+         *
+         *     Findings are matched by fingerprint. Each group is most severe first,
+         *     then in the order `GET /api/scans/{id}/findings` returns them.
+         */
+        get: operations["getScanDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/findings/{fingerprint}/state": {
         parameters: {
             query?: never;
@@ -768,6 +800,39 @@ export interface components {
             medium: number;
             low: number;
             unknown: number;
+        };
+        /**
+         * ScanDiff
+         * @description Change in findings between two scans of the same asset, matched by
+         *     fingerprint. `new` and `persisting` come from `scan_id`; `fixed` comes
+         *     from `against_scan_id`. Without a scan to compare against,
+         *     `against_scan_id` is absent, every finding is `new`, and the other
+         *     groups and counts are empty.
+         */
+        ScanDiff: {
+            /** Format: int64 */
+            scan_id: number;
+            /**
+             * Format: int64
+             * @description The scan compared against; absent when there is none.
+             */
+            against_scan_id?: number;
+            /** @description Findings only in `scan_id`, most severe first. */
+            new: components["schemas"]["Finding"][];
+            /** @description Findings only in `against_scan_id`, most severe first. */
+            fixed: components["schemas"]["Finding"][];
+            /** @description Fingerprints in both scans, taken from `scan_id`, most severe first. */
+            persisting: components["schemas"]["Finding"][];
+            counts: components["schemas"]["ScanDiffCounts"];
+        };
+        /**
+         * ScanDiffCounts
+         * @description Findings per severity in each diff group; an empty group is all zeros.
+         */
+        ScanDiffCounts: {
+            new: components["schemas"]["SeverityTotals"];
+            fixed: components["schemas"]["SeverityTotals"];
+            persisting: components["schemas"]["SeverityTotals"];
         };
         /**
          * TypeTotals
@@ -1692,6 +1757,75 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getScanDiff: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Scan to compare against. Must be a succeeded scan of the same asset.
+                 *     Defaults to the previous succeeded scan of the asset.
+                 */
+                against?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Scan id. */
+                id: components["parameters"]["ScanID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The diff, or every finding as new when there is no previous
+             *     succeeded scan.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanDiff"];
+                };
+            };
+            /**
+             * @description `against` is not a positive scan id, is `{id}`, or belongs to a
+             *     different asset.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description `{id}` or `against` does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description `{id}` or `against` did not succeed, so it has no complete finding
+             *     set.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };

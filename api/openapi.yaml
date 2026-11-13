@@ -629,6 +629,77 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/scans/{id}/diff:
+    get:
+      operationId: getScanDiff
+      summary: Findings new, fixed and persisting between two scans.
+      description: |
+        Compares `{id}` with `against`, or with the asset's previous succeeded
+        scan (the newest succeeded scan older than `{id}`) when `against` is
+        omitted. Both scans must be succeeded scans of the same asset: a
+        `queued`, `running`, `failed` or `canceled` scan has no complete finding
+        set to compare.
+
+        With nothing to compare against — the asset's first succeeded scan —
+        the response is still `200`: `against_scan_id` is absent, every finding
+        of `{id}` is reported as `new`, and `fixed`, `persisting` and their
+        counts are empty.
+
+        Findings are matched by fingerprint. Each group is most severe first,
+        then in the order `GET /api/scans/{id}/findings` returns them.
+      tags: [scans]
+      parameters:
+        - $ref: "#/components/parameters/ScanID"
+        - name: against
+          in: query
+          required: false
+          description: |
+            Scan to compare against. Must be a succeeded scan of the same asset.
+            Defaults to the previous succeeded scan of the asset.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: |
+            The diff, or every finding as new when there is no previous
+            succeeded scan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanDiff"
+        "400":
+          description: |
+            `against` is not a positive scan id, is `{id}`, or belongs to a
+            different asset.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: |
+            `{id}` or `against` does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: |
+            `{id}` or `against` did not succeed, so it has no complete finding
+            set.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/findings/{fingerprint}/state:
     post:
       operationId: setFindingState
@@ -1299,6 +1370,59 @@ components:
         unknown:
           type: integer
           minimum: 0
+    ScanDiff:
+      type: object
+      title: ScanDiff
+      description: |
+        Change in findings between two scans of the same asset, matched by
+        fingerprint. `new` and `persisting` come from `scan_id`; `fixed` comes
+        from `against_scan_id`. Without a scan to compare against,
+        `against_scan_id` is absent, every finding is `new`, and the other
+        groups and counts are empty.
+      additionalProperties: false
+      required: [scan_id, new, fixed, persisting, counts]
+      properties:
+        scan_id:
+          type: integer
+          format: int64
+          minimum: 1
+        against_scan_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The scan compared against; absent when there is none.
+        new:
+          type: array
+          description: Findings only in `scan_id`, most severe first.
+          items:
+            $ref: "#/components/schemas/Finding"
+        fixed:
+          type: array
+          description: Findings only in `against_scan_id`, most severe first.
+          items:
+            $ref: "#/components/schemas/Finding"
+        persisting:
+          type: array
+          description: |
+            Fingerprints in both scans, taken from `scan_id`, most severe first.
+          items:
+            $ref: "#/components/schemas/Finding"
+        counts:
+          $ref: "#/components/schemas/ScanDiffCounts"
+    ScanDiffCounts:
+      type: object
+      title: ScanDiffCounts
+      description: |
+        Findings per severity in each diff group; an empty group is all zeros.
+      additionalProperties: false
+      required: [new, fixed, persisting]
+      properties:
+        new:
+          $ref: "#/components/schemas/SeverityTotals"
+        fixed:
+          $ref: "#/components/schemas/SeverityTotals"
+        persisting:
+          $ref: "#/components/schemas/SeverityTotals"
     TypeTotals:
       type: object
       title: TypeTotals

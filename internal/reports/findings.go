@@ -17,7 +17,7 @@ const (
 	FindingStatusIgnored = "ignored"
 )
 
-// ErrInvalid marks a filter the service refuses; handlers map it to HTTP 400.
+// ErrInvalid marks input the service refuses; handlers map it to HTTP 400.
 var ErrInvalid = errors.New("reports: invalid filter")
 
 // Filter narrows the latest-findings list. The zero value means every asset and

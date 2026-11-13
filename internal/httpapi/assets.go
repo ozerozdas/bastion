@@ -253,6 +253,46 @@ func (s *Server) ListScanFindings(ctx context.Context, request gen.ListScanFindi
 	return gen.ListScanFindings200JSONResponse{Findings: out}, nil
 }
 
+// GetScanDiff implements gen.StrictServerInterface. The diff itself belongs to
+// the reports service (it reads findings through ScanFindings); the handler
+// only maps the result onto the generated types.
+func (s *Server) GetScanDiff(ctx context.Context, request gen.GetScanDiffRequestObject) (gen.GetScanDiffResponseObject, error) {
+	if s.reports == nil {
+		return gen.GetScanDiff500ApplicationProblemPlusJSONResponse{Body: unconfigured(reportsUnavailable)}, nil
+	}
+
+	// 0 means "the default baseline" to the service, so an explicit
+	// ?against=0 must not silently fall through to it.
+	var against int64
+	if request.Params.Against != nil {
+		against = *request.Params.Against
+		if against < 1 {
+			return gen.GetScanDiff400ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusBadRequest, "Bad Request", "against must be a scan id (1 or greater)")), nil
+		}
+	}
+
+	diff, err := s.reports.ScanDiff(ctx, int64(request.Id), against)
+	if err != nil {
+		switch {
+		case errors.Is(err, reports.ErrNotFound):
+			return gen.GetScanDiff404ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusNotFound, "Not Found", err.Error())), nil
+		case errors.Is(err, reports.ErrInvalid):
+			return gen.GetScanDiff400ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusBadRequest, "Bad Request", err.Error())), nil
+		case errors.Is(err, reports.ErrConflict):
+			return gen.GetScanDiff409ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusConflict, "Conflict", err.Error())), nil
+		default:
+			s.log.Error("scan diff", "id", request.Id, "against", against, "error", err)
+			return gen.GetScanDiff500ApplicationProblemPlusJSONResponse{Body: unconfigured(
+				"could not diff the scans; see the server log")}, nil
+		}
+	}
+	return gen.GetScanDiff200JSONResponse(scanDiffResponse(diff)), nil
+}
+
 // SetFindingState implements gen.StrictServerInterface.
 func (s *Server) SetFindingState(ctx context.Context, request gen.SetFindingStateRequestObject) (gen.SetFindingStateResponseObject, error) {
 	if s.assets == nil {

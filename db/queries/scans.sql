@@ -35,6 +35,17 @@ WHERE id = sqlc.arg(id);
 -- two scans share a started_at.
 SELECT * FROM scans WHERE asset_id = sqlc.arg(asset_id) ORDER BY id DESC LIMIT sqlc.arg(limit);
 
+-- name: GetPreviousSucceededScan :one
+-- The newest succeeded scan of one asset older than the given scan: the default
+-- baseline of a diff. sql.ErrNoRows means the given scan is the asset's first
+-- succeeded one, so there is nothing to compare against.
+SELECT * FROM scans
+WHERE asset_id = sqlc.arg(asset_id)
+  AND status = 'succeeded'
+  AND id < sqlc.arg(id)
+ORDER BY id DESC
+LIMIT 1;
+
 -- name: FailUnfinishedScans :exec
 -- Startup recovery: a scan still queued or running when this process starts
 -- was cut short by the previous process exiting, so it can never finish.
