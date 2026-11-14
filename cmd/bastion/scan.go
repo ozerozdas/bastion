@@ -68,6 +68,7 @@ type scanOptions struct {
 	format   string
 	failOn   string
 	noStore  bool
+	quiet    bool
 	skipDirs []string
 }
 
@@ -121,6 +122,9 @@ type scanDeps struct {
 	newGitHub   func(token string) (gitHubClient, error)
 	// version is the bastion build version reported in SARIF.
 	version string
+	// progress receives the scan's progress lines (stderr in production).
+	// Nil silences them.
+	progress io.Writer
 }
 
 func newScanCmd(root *rootOptions) *cobra.Command {
@@ -130,7 +134,11 @@ func newScanCmd(root *rootOptions) *cobra.Command {
 		Short: "Scan a local path or GitHub repository and print normalized findings",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runScan(cmd.Context(), cmd.OutOrStdout(), opts, newScanDeps(root))
+			deps := newScanDeps(root)
+			if !opts.quiet {
+				deps.progress = cmd.ErrOrStderr()
+			}
+			return runScan(cmd.Context(), cmd.OutOrStdout(), opts, deps)
 		},
 	}
 	cmd.Flags().StringVar(&opts.path, "path", "", "directory to scan")
@@ -139,6 +147,7 @@ func newScanCmd(root *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&opts.format, "format", scanFormatJSON,
 		"output format: "+scanFormatJSON+", "+scanFormatTable+", "+scanFormatSARIF+" or "+scanFormatCycloneDX)
 	cmd.Flags().BoolVar(&opts.noStore, "no-store", false, "print findings without writing to the database")
+	cmd.Flags().BoolVar(&opts.quiet, "quiet", false, "do not print scan progress on stderr")
 	cmd.Flags().StringArrayVar(&opts.skipDirs, "skip-dirs", nil,
 		"directory to leave out of the scan, relative to the scan root (e.g. testdata); repeat for more")
 	cmd.Flags().StringVar(&opts.failOn, "fail-on", "",
@@ -279,11 +288,16 @@ func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDep
 		result  scanOutput
 		scanErr error
 	)
+	progress := newScanProgress(deps.progress)
 	if db != nil {
-		result, scanErr = runStoredScan(ctx, db, kind, asset, repo, scanOpts, deps)
+		result, scanErr = runStoredScan(ctx, db, kind, asset, repo, scanOpts, progress, deps)
 	} else {
-		result, scanErr = runDirectScan(ctx, kind, asset, repo, scanOpts, deps)
+		result, scanErr = runDirectScan(ctx, kind, asset, repo, scanOpts, progress, deps)
 	}
+
+	// One line per scanner, from the runs both pipelines recorded, so a
+	// failed or canceled scanner is visible without reading the document.
+	progress.runs(result.ScannerRuns)
 
 	// Partial results are still printed: one broken scanner must not hide the
 	// findings of the others. The returned error keeps the exit code non-zero.
@@ -404,7 +418,7 @@ func validRepoSegment(s string) bool {
 // runStoredScan persists one scan through jobs.Manager and reads the result
 // back from the database, so the printed document and the stored state can
 // never disagree. Concurrency is 1: the CLI runs exactly one scan.
-func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, scanOpts scanners.Options, deps scanDeps) (scanOutput, error) {
+func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, scanOpts scanners.Options, progress *scanProgress, deps scanDeps) (scanOutput, error) {
 	stored, err := storedAsset(ctx, db, kind, asset, repo)
 	if err != nil {
 		return scanOutput{}, err
@@ -432,7 +446,7 @@ func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, ass
 		return sources.Target{Kind: sources.KindRepo, AssetID: a.ID, Ref: a.Ref + "@" + repo.sha}, repo.sha, nil
 	}
 
-	waiter := newFinishWaiter()
+	waiter := newFinishWaiter(progress)
 	manager, err := newScanManager(pipelineConfig{
 		DB:          db,
 		ScannerList: scannerList,
@@ -536,7 +550,7 @@ func storedAsset(ctx context.Context, db *sql.DB, kind sources.TargetKind, asset
 // runDirectScan fetches the target and scans it without touching the
 // database. It backs --no-store only: a stored scan goes through
 // jobs.Manager, so there is exactly one persisting pipeline.
-func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, scanOpts scanners.Options, deps scanDeps) (scanOutput, error) {
+func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, scanOpts scanners.Options, progress *scanProgress, deps scanDeps) (scanOutput, error) {
 	src := sources.Source(localpath.New())
 	target := sources.Target{Kind: sources.KindPath, Ref: asset.Ref}
 	if kind == sources.KindRepo {
@@ -551,13 +565,14 @@ func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.
 		target = sources.Target{Kind: sources.KindRepo, AssetID: asset.ID, Ref: asset.Ref + "@" + repo.sha}
 	}
 
+	progress.stage(jobs.StageFetch, "")
 	ws, err := src.Fetch(ctx, target)
 	if err != nil {
 		return scanOutput{}, err
 	}
 	defer func() { _ = ws.Close() }()
 
-	result, scanErr := scanTarget(ctx, kind, deps.newScanners(), deps.advisoryMatcher(), ws, asset, scanOpts)
+	result, scanErr := scanTarget(ctx, kind, deps.newScanners(), deps.advisoryMatcher(), ws, asset, scanOpts, progress)
 	// Without a database there are no ignore decisions: every finding is open.
 	result.open = result.Findings
 	return result, scanErr
@@ -575,21 +590,24 @@ func newGitHubSource(repo *repoTarget, deps scanDeps) (sources.Source, error) {
 	return src, nil
 }
 
-// finishWaiter is a jobs.Publisher that waits for one scan's final event. It
-// ignores progress events and never blocks: Publish is called synchronously
-// from the worker.
+// finishWaiter is a jobs.Publisher that waits for one scan's final event and
+// reports the progress events in between. It never blocks: Publish is called
+// synchronously from the worker.
 type finishWaiter struct {
-	mu    sync.Mutex
-	fired bool
-	done  chan struct{}
+	progress *scanProgress
+	mu       sync.Mutex
+	fired    bool
+	done     chan struct{}
 }
 
-func newFinishWaiter() *finishWaiter {
-	return &finishWaiter{done: make(chan struct{})}
+func newFinishWaiter(progress *scanProgress) *finishWaiter {
+	return &finishWaiter{progress: progress, done: make(chan struct{})}
 }
 
-// Publish closes done once the first scan.finished event arrives.
+// Publish reports progress and closes done once the first scan.finished event
+// arrives.
 func (w *finishWaiter) Publish(ev jobs.Event) {
+	w.progress.Publish(ev)
 	if ev.Type != jobs.EventFinished {
 		return
 	}
@@ -758,7 +776,7 @@ func pathAsset(dir string) (findings.Asset, error) {
 // findings; the returned error names every failed scanner.
 //
 // It backs --no-store; a stored scan runs the same steps inside jobs.Manager.
-func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Scanner, advisories jobs.AdvisoryMatcher, ws *sources.Workspace, asset findings.Asset, opts scanners.Options) (scanOutput, error) {
+func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Scanner, advisories jobs.AdvisoryMatcher, ws *sources.Workspace, asset findings.Asset, opts scanners.Options, progress *scanProgress) (scanOutput, error) {
 	out := scanOutput{
 		Asset:       asset,
 		Findings:    []findings.Finding{},
@@ -770,8 +788,15 @@ func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Sca
 		if !s.Supports(kind) {
 			continue
 		}
+		progress.stage(jobs.StageScan, s.Name())
+		// A per-scanner copy: the adapter reports the stage it is waiting on,
+		// the way jobs.Manager does for a stored scan.
+		scanOpts := opts
+		scanOpts.Progress = func(stage string) {
+			progress.stage(stage, s.Name())
+		}
 		start := time.Now()
-		fs, pkgs, err := runScanner(ctx, s, ws, asset, opts)
+		fs, pkgs, err := runScanner(ctx, s, ws, asset, scanOpts)
 		duration := time.Since(start).Milliseconds()
 		run := scannerRun{
 			Scanner:        s.Name(),
@@ -800,6 +825,7 @@ func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Sca
 			Status:         "succeeded",
 		}
 		start := time.Now()
+		progress.stage(jobs.StageScan, advisories.Name())
 		afs, err := advisories.Match(ctx, out.Packages, asset)
 		run.DurationMS = time.Since(start).Milliseconds()
 		switch {

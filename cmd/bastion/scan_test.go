@@ -22,6 +22,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/app"
 	githubclient "github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/findings"
+	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/scanners"
 	"github.com/ozerozdas/bastion/internal/sources"
 	"github.com/ozerozdas/bastion/internal/store"
@@ -153,7 +154,7 @@ func TestScanTargetPartialFailure(t *testing.T) {
 
 	out, err := scanTarget(context.Background(), sources.KindPath,
 		[]scanners.Scanner{good, bad}, nil, &sources.Workspace{Dir: "/tmp/ws"},
-		findings.Asset{ID: 1, Kind: findings.AssetKindPath}, scanners.Options{})
+		findings.Asset{ID: 1, Kind: findings.AssetKindPath}, scanners.Options{}, nil)
 
 	if err == nil {
 		t.Fatal("scanTarget returned no error although a scanner failed")
@@ -195,7 +196,7 @@ func TestScanTargetMergesDuplicateFingerprints(t *testing.T) {
 
 	out, err := scanTarget(context.Background(), sources.KindPath,
 		[]scanners.Scanner{good}, nil, &sources.Workspace{Dir: "/tmp/ws"},
-		findings.Asset{ID: 1, Kind: findings.AssetKindPath}, scanners.Options{})
+		findings.Asset{ID: 1, Kind: findings.AssetKindPath}, scanners.Options{}, nil)
 	if err != nil {
 		t.Fatalf("scanTarget: %v", err)
 	}
@@ -802,5 +803,94 @@ func TestRunScanRepoStoresAsset(t *testing.T) {
 	}
 	if !scan.TargetRef.Valid || scan.TargetRef.String != sha {
 		t.Fatalf("target_ref = %+v, want %s", scan.TargetRef, sha)
+	}
+}
+
+func TestScanProgressPrintsPlainLines(t *testing.T) {
+	var buf bytes.Buffer
+	progress := newScanProgress(&buf)
+
+	progress.Publish(jobs.Event{Type: jobs.EventQueued, Status: "queued"})
+	progress.Publish(jobs.Event{Type: jobs.EventProgress, Stage: jobs.StageResolve})
+	progress.Publish(jobs.Event{Type: jobs.EventProgress, Stage: jobs.StageFetch})
+	progress.Publish(jobs.Event{Type: jobs.EventProgress, Stage: jobs.StageScan, Scanner: "trivy"})
+	// A repeated identical event must not be printed twice.
+	progress.Publish(jobs.Event{Type: jobs.EventProgress, Stage: jobs.StageScan, Scanner: "trivy"})
+	progress.Publish(jobs.Event{Type: jobs.EventProgress, Stage: scanners.PhaseWaitingDB, Scanner: "trivy"})
+	// Normalizing is not worth a line.
+	progress.Publish(jobs.Event{Type: jobs.EventProgress, Stage: jobs.StageNormalize, Scanner: "trivy"})
+	// The finish event is carried by the scan's runs, not by the stream.
+	progress.Publish(jobs.Event{Type: jobs.EventFinished, Status: "succeeded"})
+
+	progress.runs([]scannerRun{
+		{Scanner: "trivy", Status: "succeeded", DurationMS: 4000},
+		{Scanner: "gitleaks", Status: "failed", Error: "library\nboom"},
+		{Scanner: "osv", Status: "canceled"},
+	})
+
+	want := strings.Join([]string{
+		"resolving target…",
+		"fetching target…",
+		"trivy: running…",
+		"trivy: waiting for vulnerability database…",
+		"trivy: succeeded (4s)",
+		"gitleaks: failed: library boom",
+		"osv: canceled",
+		"",
+	}, "\n")
+	if got := buf.String(); got != want {
+		t.Fatalf("progress output =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestRunScanProgressKeepsStdoutIdentical(t *testing.T) {
+	scanDir := t.TempDir()
+	deps := testScanDeps(t, t.TempDir())
+	opts := &scanOptions{path: scanDir, format: scanFormatTable, noStore: true}
+
+	var plain bytes.Buffer
+	if err := runScan(context.Background(), &plain, opts, deps); err != nil {
+		t.Fatalf("scan without progress: %v", err)
+	}
+
+	var (
+		out      bytes.Buffer
+		progress bytes.Buffer
+	)
+	deps.progress = &progress
+	if err := runScan(context.Background(), &out, opts, deps); err != nil {
+		t.Fatalf("scan with progress: %v\n%s", err, progress.String())
+	}
+
+	if !bytes.Equal(plain.Bytes(), out.Bytes()) {
+		t.Fatalf("stdout changed by progress\nwithout:\n%s\nwith:\n%s", plain.String(), out.String())
+	}
+	lines := progress.String()
+	for _, want := range []string{"fetching target…\n", "fake: running…\n", "fake: succeeded ("} {
+		if !strings.Contains(lines, want) {
+			t.Errorf("progress %q does not contain %q", lines, want)
+		}
+	}
+}
+
+func TestRunScanStoredProgressOnStderr(t *testing.T) {
+	deps := testScanDeps(t, t.TempDir())
+	var (
+		out      bytes.Buffer
+		progress bytes.Buffer
+	)
+	deps.progress = &progress
+
+	if err := runScan(context.Background(), &out, &scanOptions{path: t.TempDir(), format: scanFormatJSON}, deps); err != nil {
+		t.Fatalf("stored scan: %v\n%s", err, progress.String())
+	}
+	if err := json.Unmarshal(out.Bytes(), &scanOutput{}); err != nil {
+		t.Fatalf("stdout is not the scan document: %v\n%s", err, out.String())
+	}
+	lines := progress.String()
+	for _, want := range []string{"fetching target…\n", "fake: running…\n", "fake: succeeded ("} {
+		if !strings.Contains(lines, want) {
+			t.Errorf("progress %q does not contain %q", lines, want)
+		}
 	}
 }
