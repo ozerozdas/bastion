@@ -228,6 +228,10 @@ func (s *Server) buildHandler() http.Handler {
 	// in the spec.
 	mux.HandleFunc("GET /api/events", s.handleEvents)
 
+	// The SBOM download is hand-written for the same reason: the strict server
+	// cannot set Content-Disposition.
+	mux.HandleFunc("GET /api/scans/{id}/sbom", s.handleScanSBOM)
+
 	// Unknown /api/* paths must not fall through to the UI handler.
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusNotFound, "Not Found",

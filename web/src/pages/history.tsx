@@ -215,22 +215,33 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
         ),
     },
     {
-      id: 'compare',
-      header: 'Compare',
-      headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3 whitespace-nowrap',
+      id: 'actions',
+      header: 'Actions',
+      headerClassName: 'pl-3 text-right',
+      cellClassName: 'py-2 pl-3 whitespace-nowrap text-right',
       cell: (scan) =>
+        // Only a succeeded scan has a complete finding set and inventory.
         scan.status === 'succeeded' ? (
-          <Link
-            to="/scans/$scanId/diff"
-            params={{ scanId: String(scan.id) }}
-            className="hover:underline"
-            title={`Compare scan #${String(scan.id)} with the previous one`}
-          >
-            Compare
-          </Link>
+          <div className="inline-flex items-center gap-1.5">
+            <Link
+              to="/scans/$scanId/diff"
+              params={{ scanId: String(scan.id) }}
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+              title={`Compare scan #${String(scan.id)} with the previous one`}
+            >
+              Compare
+            </Link>
+            {/* ponytail: one export format, so a plain download; a menu when a second one lands. */}
+            <a
+              href={`/api/scans/${String(scan.id)}/sbom`}
+              download
+              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+              title={`Download the CycloneDX SBOM of scan #${String(scan.id)}`}
+            >
+              Download SBOM
+            </a>
+          </div>
         ) : (
-          // Only a succeeded scan has a complete finding set to compare.
           <span aria-hidden="true" className="text-faint">
             —
           </span>

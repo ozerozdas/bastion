@@ -4,7 +4,7 @@
 bastion [flags]                  # same as `bastion serve`
 bastion serve   [--port N] [--no-browser] [--concurrency N]
 bastion scan    --path DIR | --repo owner/name[@ref]
-                [--format json|table|sarif] [--fail-on critical|high|medium|low]
+                [--format json|table|sarif|cyclonedx] [--fail-on critical|high|medium|low]
                 [--skip-dirs DIR]...  [--no-store]
 bastion doctor  [--json]
 bastion version
@@ -41,7 +41,7 @@ Scans one target without the UI and prints the findings.
 |---|---|
 | `--path DIR` | Scan a local directory |
 | `--repo owner/name[@ref]` | Scan a GitHub repo (default branch unless `@ref` is given). Token comes from a saved connection or `BASTION_GITHUB_TOKEN` |
-| `--format` | `json` (default), `table` or `sarif` |
+| `--format` | `json` (default), `table`, `sarif` or `cyclonedx` (CycloneDX 1.6 SBOM, also downloadable from **Projects → Scans**) |
 | `--fail-on SEVERITY` | Exit `2` if an open finding is at or above this severity |
 | `--skip-dirs DIR` | Skip a directory; repeat for more |
 | `--no-store` | Do not touch the database (ideal for CI) |

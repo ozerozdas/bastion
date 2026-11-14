@@ -79,7 +79,7 @@ first scan additionally downloads a ~1.7 GB vulnerability DB into the cache dire
 bastion [flags]                  # same as `bastion serve`
 bastion serve   [--port N] [--no-browser] [--concurrency N]
 bastion scan    --path DIR | --repo owner/name[@ref]
-                [--format json|table|sarif] [--fail-on critical|high|medium|low]
+                [--format json|table|sarif|cyclonedx] [--fail-on critical|high|medium|low]
                 [--skip-dirs DIR]...  [--no-store]
 bastion doctor  [--json]
 bastion version
@@ -104,6 +104,9 @@ bastion scan --path . --no-store --skip-dirs testdata \
 `--fail-on` exits **2** when an open finding is at or above the threshold, so CI can tell
 "findings found" from "the scan broke" (exit 1). `--no-store` does not touch the database,
 which is what a CI runner wants.
+
+`--format cyclonedx` prints the scan's package inventory as a CycloneDX 1.6 JSON BOM; the
+same document is a download on **Projects → Scans** (`GET /api/scans/{id}/sbom`).
 
 ## Network calls
 

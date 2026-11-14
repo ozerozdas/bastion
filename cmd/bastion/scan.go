@@ -26,6 +26,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/findings"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/report/sarif"
+	"github.com/ozerozdas/bastion/internal/sbom"
 	"github.com/ozerozdas/bastion/internal/scanners"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
 	"github.com/ozerozdas/bastion/internal/scanners/osv"
@@ -39,9 +40,10 @@ import (
 
 // Output formats of `bastion scan`.
 const (
-	scanFormatJSON  = "json"
-	scanFormatTable = "table"
-	scanFormatSARIF = "sarif"
+	scanFormatJSON      = "json"
+	scanFormatTable     = "table"
+	scanFormatSARIF     = "sarif"
+	scanFormatCycloneDX = "cyclonedx"
 )
 
 // scanLoadTimeout bounds reading a finished scan back for output. It has its
@@ -135,7 +137,7 @@ func newScanCmd(root *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&opts.repo, "repo", "",
 		"GitHub repository to scan as owner/name[@ref]; requires a token from a saved connection or BASTION_GITHUB_TOKEN")
 	cmd.Flags().StringVar(&opts.format, "format", scanFormatJSON,
-		"output format: "+scanFormatJSON+", "+scanFormatTable+" or "+scanFormatSARIF)
+		"output format: "+scanFormatJSON+", "+scanFormatTable+", "+scanFormatSARIF+" or "+scanFormatCycloneDX)
 	cmd.Flags().BoolVar(&opts.noStore, "no-store", false, "print findings without writing to the database")
 	cmd.Flags().StringArrayVar(&opts.skipDirs, "skip-dirs", nil,
 		"directory to leave out of the scan, relative to the scan root (e.g. testdata); repeat for more")
@@ -187,10 +189,10 @@ func (o *scanOptions) validate() error {
 		return errors.New("scan: --path and --repo are mutually exclusive")
 	}
 	switch o.format {
-	case scanFormatJSON, scanFormatTable, scanFormatSARIF:
+	case scanFormatJSON, scanFormatTable, scanFormatSARIF, scanFormatCycloneDX:
 	default:
-		return fmt.Errorf("scan: unsupported format %q (supported: %s, %s, %s)",
-			o.format, scanFormatJSON, scanFormatTable, scanFormatSARIF)
+		return fmt.Errorf("scan: unsupported format %q (supported: %s, %s, %s, %s)",
+			o.format, scanFormatJSON, scanFormatTable, scanFormatSARIF, scanFormatCycloneDX)
 	}
 	if o.failOn != "" && severityOrder(findings.Severity(o.failOn)) == severityUnknownOrder {
 		return fmt.Errorf("scan: unsupported --fail-on severity %q (supported: critical, high, medium, low)", o.failOn)
@@ -607,6 +609,8 @@ func writeScanOutput(out io.Writer, format string, result scanOutput, toolVersio
 		return writeJSON(out, result)
 	case scanFormatSARIF:
 		return writeJSON(out, sarif.Build(toolVersion, result.Findings))
+	case scanFormatCycloneDX:
+		return writeJSON(out, sbom.Build(result.Asset, result.Packages, sbom.Options{ToolVersion: toolVersion}))
 	case scanFormatTable:
 		return writeTable(out, result)
 	default:

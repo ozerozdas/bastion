@@ -77,6 +77,9 @@ read-only, because it is already gone from the newer scan. **Compare with** pick
 succeeded scan of the project and is part of the URL (`?against=<id>`), so a comparison can
 be bookmarked, and **← Scans** returns to the project's filtered Scans tab.
 
+Every succeeded scan also has a **CycloneDX** link in the SBOM column: it downloads the
+scan's package inventory as a CycloneDX 1.6 JSON BOM (`GET /api/scans/<id>/sbom`).
+
 ## Connections
 
 Where credentials live. In v0.1 this is **GitHub** only.

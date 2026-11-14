@@ -379,6 +379,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/scans/{id}/sbom": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * CycloneDX SBOM of one succeeded scan.
+         * @description The package inventory the scan persisted, as a CycloneDX 1.6 JSON BOM
+         *     served as a download (`application/vnd.cyclonedx+json`,
+         *     `Content-Disposition: attachment`). Components are the packages the
+         *     scan reported, sorted and de-duplicated; each carries its purl when the
+         *     scanner reported one or bastion can derive it. The document does not
+         *     include vulnerabilities.
+         *
+         *     This operation is hand-written in `internal/httpapi/sbom.go` and
+         *     excluded from codegen (api/oapi-codegen.yaml): the generated strict
+         *     server cannot set the `Content-Disposition` header. Like
+         *     `/api/events`, the spec stays the contract.
+         */
+        get: operations["getScanSBOM"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/findings/{fingerprint}/state": {
         parameters: {
             query?: never;
@@ -1828,6 +1858,58 @@ export interface operations {
              * @description `{id}` or `against` did not succeed, so it has no complete finding
              *     set.
              */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getScanSBOM: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Scan id. */
+                id: components["parameters"]["ScanID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The BOM of the scan. */
+            200: {
+                headers: {
+                    /**
+                     * @description Attachment with the filename
+                     *     `<display-name>-scan-<id>.cdx.json` (unsafe characters replaced).
+                     */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.cyclonedx+json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description The scan does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The scan did not succeed, so it has no complete package inventory. */
             409: {
                 headers: {
                     [name: string]: unknown;
