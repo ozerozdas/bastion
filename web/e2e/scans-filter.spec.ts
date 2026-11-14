@@ -52,7 +52,7 @@ test('keeps the Scans project filter in the URL (#54)', async ({
   await expect(rows).toHaveCount(2)
 
   // A succeeded scan downloads its CycloneDX SBOM as a plain link (#24).
-  const sbomLink = page.getByRole('link', { name: 'CycloneDX' }).first()
+  const sbomLink = page.getByRole('link', { name: 'Download SBOM' }).first()
   await expect(sbomLink).toHaveAttribute('href', '/api/scans/1/sbom')
   await expect(sbomLink).toHaveAttribute('download', '')
 
