@@ -45,8 +45,11 @@ Scans one target without the UI and prints the findings.
 | `--fail-on SEVERITY` | Exit `2` if an open finding is at or above this severity |
 | `--skip-dirs DIR` | Skip a directory; repeat for more |
 | `--no-store` | Do not touch the database (ideal for CI) |
+| `--quiet` | Do not print scan progress on stderr |
 
 Give exactly one of `--path` or `--repo`.
+
+Progress is printed to stderr as plain lines (`trivy: running…`, `trivy: waiting for vulnerability database…`, `trivy: succeeded (4s)`, `osv: failed: <reason>`); stdout carries only the selected format. `--quiet` silences them.
 
 ```sh
 # Human-readable scan of the current directory
