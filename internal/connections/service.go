@@ -113,6 +113,9 @@ type Connection struct {
 	ARN           string
 	LastCheckedAt *time.Time
 	CreatedAt     time.Time
+	// ECRAssetCount is how many non-archived ECR image assets the connection
+	// owns. Removing the connection archives them, so the UI warns with it.
+	ECRAssetCount int
 }
 
 // CreateInput is one POST /api/connections request. Token is GitHub-only;
@@ -244,6 +247,9 @@ func (s *Service) List(ctx context.Context) ([]Connection, error) {
 		}
 		out = append(out, conn)
 	}
+	if err := s.attachECRAssetCounts(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -253,7 +259,48 @@ func (s *Service) Get(ctx context.Context, id int64) (Connection, error) {
 	if err != nil {
 		return Connection{}, err
 	}
-	return connectionFromRow(row)
+	conn, err := connectionFromRow(row)
+	if err != nil {
+		return Connection{}, err
+	}
+	if err := s.fillECRAssetCount(ctx, &conn); err != nil {
+		return Connection{}, err
+	}
+	return conn, nil
+}
+
+// attachECRAssetCounts fills ECRAssetCount for a list of connections with one
+// grouped read instead of a query per connection.
+func (s *Service) attachECRAssetCounts(ctx context.Context, list []Connection) error {
+	counts, err := sqlcdb.New(s.db).CountImageAssetsByConnection(ctx)
+	if err != nil {
+		return fmt.Errorf("connections: count ECR images: %w", err)
+	}
+	byConnection := make(map[int64]int, len(counts))
+	for _, row := range counts {
+		if row.ConnectionID.Valid {
+			byConnection[row.ConnectionID.Int64] = int(row.ImageCount)
+		}
+	}
+	for i := range list {
+		list[i].ECRAssetCount = byConnection[list[i].ID]
+	}
+	return nil
+}
+
+// fillECRAssetCount records how many images a removal would archive. Only an
+// AWS connection owns ECR images.
+func (s *Service) fillECRAssetCount(ctx context.Context, conn *Connection) error {
+	if conn.Kind != KindAWS {
+		return nil
+	}
+	count, err := sqlcdb.New(s.db).CountImageAssetsForConnection(ctx,
+		sql.NullInt64{Int64: conn.ID, Valid: true})
+	if err != nil {
+		return fmt.Errorf("connections: count ECR images of %d: %w", conn.ID, err)
+	}
+	conn.ECRAssetCount = int(count)
+	return nil
 }
 
 // Create inserts the connection, stores what its kind needs and tests it once.
@@ -446,12 +493,21 @@ func (s *Service) record(ctx context.Context, row sqlcdb.Connection, status, hin
 	if err != nil {
 		return Connection{}, fmt.Errorf("connections: record test result for %d: %w", row.ID, err)
 	}
-	return connectionFromRow(updated)
+	conn, err := connectionFromRow(updated)
+	if err != nil {
+		return Connection{}, err
+	}
+	if err := s.fillECRAssetCount(ctx, &conn); err != nil {
+		return Connection{}, err
+	}
+	return conn, nil
 }
 
-// Delete removes the keyring entry first, then the row. If the keyring refuses
-// the delete, the row is kept so the user can retry instead of orphaning a
-// credential.
+// Delete removes the keyring entry first, then the row. An AWS connection's
+// ECR image assets are archived in the same transaction as the delete, so a
+// removal never leaves findings counted for images the Containers page can no
+// longer show. If the keyring refuses the delete, the row is kept so the user
+// can retry instead of orphaning a credential.
 func (s *Service) Delete(ctx context.Context, id int64) error {
 	row, err := s.row(ctx, id)
 	if err != nil {
@@ -462,12 +518,33 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 			return fmt.Errorf("connections: delete stored token for %d: %w", id, err)
 		}
 	}
-	deleted, err := sqlcdb.New(s.db).DeleteConnection(ctx, id)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("connections: delete %d: begin transaction: %w", id, err)
+	}
+	// A rollback after a successful commit is a no-op; the error is not
+	// actionable either way.
+	defer func() { _ = tx.Rollback() }()
+
+	queries := sqlcdb.New(tx)
+	if row.Kind == KindAWS {
+		if _, err := queries.ArchiveImageAssetsForConnection(ctx, sqlcdb.ArchiveImageAssetsForConnectionParams{
+			ArchivedAt:   sql.NullString{String: s.now().UTC().Format(time.RFC3339), Valid: true},
+			ConnectionID: sql.NullInt64{Int64: id, Valid: true},
+		}); err != nil {
+			return fmt.Errorf("connections: archive ECR images of %d: %w", id, err)
+		}
+	}
+	deleted, err := queries.DeleteConnection(ctx, id)
 	if err != nil {
 		return fmt.Errorf("connections: delete %d: %w", id, err)
 	}
 	if deleted == 0 {
 		return ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("connections: delete %d: commit: %w", id, err)
 	}
 	return nil
 }

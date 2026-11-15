@@ -202,6 +202,11 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
   const remove = useDeleteConnection()
   const [confirming, setConfirming] = useState(false)
   const status = statusView[connection.status]
+  const archived = connection.ecr_asset_count
+  const archiveWarning =
+    archived > 0
+      ? `This also archives ${archived} ECR ${archived === 1 ? 'image' : 'images'} and hides ${archived === 1 ? 'its' : 'their'} findings.`
+      : ''
 
   return (
     <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
@@ -260,8 +265,8 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
       {confirming ? (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
           <span>
-            Remove “{connection.name}”? Only the profile and region are
-            forgotten; no credentials are stored.
+            {`Remove “${connection.name}”? Only the profile and region are forgotten; no credentials are stored.`}
+            {archiveWarning ? ` ${archiveWarning}` : ''}
           </span>
           <Button
             type="button"

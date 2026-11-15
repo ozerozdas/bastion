@@ -59,8 +59,9 @@ func RepoAssetTarget(ctx context.Context, db *sql.DB, fullName string) (target A
 }
 
 // ImageAssetTarget reads the image asset with this digest-pinned ref, so a
-// repeated CLI scan of the same digest reuses its row. found is false when no
-// such asset exists.
+// repeated CLI scan of the same digest reuses its row. An archived row is
+// revived: scanning a removed image again brings it back, with the same id and
+// history. found is false when no such asset exists.
 func ImageAssetTarget(ctx context.Context, db *sql.DB, ref string) (target AssetTarget, found bool, err error) {
 	if db == nil {
 		return AssetTarget{}, false, errors.New("store: load image asset: database is required")
@@ -74,6 +75,12 @@ func ImageAssetTarget(ctx context.Context, db *sql.DB, ref string) (target Asset
 	}
 	if err != nil {
 		return AssetTarget{}, false, fmt.Errorf("store: load image asset %q: %w", ref, err)
+	}
+	if row.ArchivedAt.Valid {
+		row, err = sqlcdb.New(db).UnarchiveAsset(ctx, row.ID)
+		if err != nil {
+			return AssetTarget{}, false, fmt.Errorf("store: revive image asset %q: %w", ref, err)
+		}
 	}
 	return assetTarget(row), true, nil
 }

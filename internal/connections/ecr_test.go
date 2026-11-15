@@ -2,6 +2,7 @@ package connections
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/aws"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
+	"github.com/ozerozdas/bastion/internal/store/sqlcdb"
 )
 
 // fakeECR is an AWS client whose ECR calls answer from memory. No test reaches
@@ -245,5 +247,100 @@ func TestAWSConnectionForRegistrySkipsUntested(t *testing.T) {
 
 	if _, err := service.AWSConnectionForRegistry(t.Context(), testRegistry); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("AWSConnectionForRegistry error = %v, want ErrNotFound", err)
+	}
+}
+
+// TestDeleteArchivesECRImages: removing an AWS connection archives its ECR
+// images in the same transaction as the delete, and leaves local images and
+// another connection's images untouched.
+func TestDeleteArchivesECRImages(t *testing.T) {
+	service, _ := newECRTestService(t)
+	ctx := t.Context()
+
+	target, err := service.Create(ctx, CreateInput{
+		Kind: KindAWS, Name: "target", Region: "eu-central-1",
+	})
+	if err != nil {
+		t.Fatalf("Create target: %v", err)
+	}
+	other, err := service.Create(ctx, CreateInput{
+		Kind: KindAWS, Name: "other", Region: "eu-central-1",
+	})
+	if err != nil {
+		t.Fatalf("Create other: %v", err)
+	}
+
+	metadata := `{"registry":"` + testRegistry + `"}`
+	insertAsset := func(kind string, connectionID any, ref, metadata string) int64 {
+		t.Helper()
+		result, err := service.db.ExecContext(ctx,
+			`INSERT INTO assets (kind, connection_id, display_name, ref, metadata_json)
+			 VALUES (?, ?, ?, ?, ?)`,
+			kind, connectionID, ref, ref, metadata)
+		if err != nil {
+			t.Fatalf("insert %s %s: %v", kind, ref, err)
+		}
+		id, err := result.LastInsertId()
+		if err != nil {
+			t.Fatalf("insert %s %s: id: %v", kind, ref, err)
+		}
+		return id
+	}
+
+	targetAsset := insertAsset("image", target.ID, testRegistry+"/t2n-api@"+testDigest1, metadata)
+	localAsset := insertAsset("image", nil, "nginx:latest", "{}")
+	otherAsset := insertAsset("image", other.ID, testRegistry+"/t2n-api@"+testDigest2, metadata)
+
+	// The count the UI warns with counts only non-archived images of the
+	// connection.
+	loaded, err := service.Get(ctx, target.ID)
+	if err != nil {
+		t.Fatalf("Get target: %v", err)
+	}
+	if loaded.ECRAssetCount != 1 {
+		t.Errorf("target ecr_asset_count = %d, want 1", loaded.ECRAssetCount)
+	}
+
+	if err := service.Delete(ctx, target.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := service.Get(ctx, target.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("target after delete = %v, want ErrNotFound", err)
+	}
+
+	archivedAt := func(id int64) sql.NullString {
+		t.Helper()
+		var archived sql.NullString
+		if err := service.db.QueryRowContext(ctx,
+			`SELECT archived_at FROM assets WHERE id = ?`, id).Scan(&archived); err != nil {
+			t.Fatalf("read archived_at of %d: %v", id, err)
+		}
+		return archived
+	}
+	if archived := archivedAt(targetAsset); !archived.Valid || archived.String == "" {
+		t.Error("target ECR image is not archived after its connection was removed")
+	}
+	if archived := archivedAt(localAsset); archived.Valid {
+		t.Errorf("local image archived_at = %q, want NULL", archived.String)
+	}
+	if archived := archivedAt(otherAsset); archived.Valid {
+		t.Errorf("other connection's image archived_at = %q, want NULL", archived.String)
+	}
+
+	// An archived asset leaves the summary list, exactly as one archived by
+	// hand does, so its findings no longer count.
+	summaries, err := sqlcdb.New(service.db).ListAssetSummaries(ctx)
+	if err != nil {
+		t.Fatalf("ListAssetSummaries: %v", err)
+	}
+	listed := make(map[int64]bool, len(summaries))
+	for _, row := range summaries {
+		listed[row.ID] = true
+	}
+	if listed[targetAsset] {
+		t.Error("archived ECR image is still in the asset summary list")
+	}
+	if !listed[localAsset] || !listed[otherAsset] {
+		t.Error("archiving one connection's images removed an unrelated asset")
 	}
 }

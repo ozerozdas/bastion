@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 
 import {
   assetsQuery,
+  useArchiveAsset,
   useClearAssetLink,
   useSetAssetLink,
   type Asset,
@@ -20,6 +21,7 @@ import {
 import { useStartScans, type Scan } from '../api/scans'
 import {
   DataTable,
+  DataTableRow,
   type DataTableColumn,
 } from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
@@ -54,6 +56,8 @@ export function ContainersPage() {
   const connections = useQuery(connectionsQuery)
   const scanImage = useScanDockerImage()
   const start = useStartScans()
+  const archive = useArchiveAsset()
+  const [confirmingID, setConfirmingID] = useState<number | null>(null)
 
   const rows: ContainerRow[] =
     images.data?.images.map((image) => ({
@@ -148,9 +152,10 @@ export function ContainersPage() {
       headerClassName: 'pl-3 text-right',
       cellClassName: 'pl-3 align-top',
       cell: (row) => {
+        const asset = row.asset
         const running =
-          row.asset?.last_scan?.status === 'queued' ||
-          row.asset?.last_scan?.status === 'running'
+          asset?.last_scan?.status === 'queued' ||
+          asset?.last_scan?.status === 'running'
         return (
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             <Button
@@ -162,14 +167,28 @@ export function ContainersPage() {
             >
               {scanning(row) ? 'Queueing…' : 'Scan'}
             </Button>
-            {row.asset ? (
-              <Link
-                to="/findings"
-                search={{ asset: row.asset.id }}
-                className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-              >
-                View findings
-              </Link>
+            {asset ? (
+              <>
+                <Link
+                  to="/findings"
+                  search={{ asset: asset.id }}
+                  className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+                >
+                  View findings
+                </Link>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    scanImage.reset()
+                    start.reset()
+                    setConfirmingID(asset.id)
+                  }}
+                >
+                  Remove
+                </Button>
+              </>
             ) : null}
           </div>
         )
@@ -230,6 +249,50 @@ export function ContainersPage() {
             rows={rows}
             columns={columns}
             rowKey={(row) => `${row.image.reference}-${row.image.id}`}
+            renderRow={(row) => {
+              const asset = row.asset
+              return (
+                <Fragment>
+                  <DataTableRow>
+                    {columns.map((column) => (
+                      <td
+                        key={column.id}
+                        className={column.cellClassName}
+                        title={column.cellTitle?.(row)}
+                      >
+                        {column.cell?.(row)}
+                      </td>
+                    ))}
+                  </DataTableRow>
+                  {asset && confirmingID === asset.id ? (
+                    <tr>
+                      <td colSpan={columns.length} className="pb-2">
+                        <ConfirmRemove
+                          name={asset.display_name}
+                          pending={archive.isPending}
+                          onRemove={() =>
+                            archive.mutate(asset.id, {
+                              onSuccess: () => setConfirmingID(null),
+                            })
+                          }
+                          onCancel={() => {
+                            archive.reset()
+                            setConfirmingID(null)
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ) : null}
+                  {asset && archive.isError && archive.variables === asset.id ? (
+                    <tr>
+                      <td colSpan={columns.length} className="pb-2">
+                        <ErrorNote error={archive.error} />
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              )
+            }}
           />
         </section>
       ) : null}
@@ -257,6 +320,15 @@ function EcrSection({
   pending: boolean
 }) {
   const aws = connections.filter((connection) => connection.kind === 'aws')
+  // Images whose connection was removed before removal archived them: they
+  // have no connection to be listed under, so the Orphaned group is their only
+  // place (issue #120).
+  const orphaned = assets.filter(
+    (asset) =>
+      asset.kind === 'image' &&
+      asset.connection_id === undefined &&
+      asset.ecr_registry?.includes('.dkr.ecr.') === true,
+  )
 
   return (
     <section aria-label="ECR" className="space-y-3">
@@ -289,6 +361,86 @@ function EcrSection({
           repos={assets.filter((asset) => asset.kind === 'repo')}
         />
       ))}
+      {orphaned.length > 0 ? <OrphanedImages assets={orphaned} /> : null}
+    </section>
+  )
+}
+
+/**
+ * OrphanedImages lists ECR images whose AWS connection was removed. They no
+ * longer appear under any connection, so this is where they can be archived.
+ */
+function OrphanedImages({ assets }: { assets: Asset[] }) {
+  const archive = useArchiveAsset()
+
+  const columns: DataTableColumn<Asset>[] = [
+    {
+      id: 'image',
+      header: 'Image',
+      cell: (asset) => (
+        <div className="max-w-[40ch]">
+          <span
+            className="block truncate font-mono text-xs text-fg"
+            title={asset.ref}
+          >
+            {asset.display_name}
+          </span>
+          <span className="block truncate font-mono text-[11px] text-faint">
+            {asset.ref}
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: 'open-findings',
+      header: 'Open findings',
+      headerClassName: 'pl-3',
+      cellClassName: 'pl-3 align-top',
+      cell: (asset) => <SeverityCountBadges counts={asset.open_counts} />,
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      headerClassName: 'pl-3 text-right',
+      cellClassName: 'pl-3 align-top',
+      cell: (asset) => {
+        const archiving = archive.isPending && archive.variables === asset.id
+        return (
+          <div className="flex items-center justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => archive.mutate(asset.id)}
+              disabled={archiving}
+            >
+              {archiving ? 'Archiving…' : 'Archive'}
+            </Button>
+          </div>
+        )
+      },
+    },
+  ]
+
+  return (
+    <section aria-label="Orphaned ECR images" className="space-y-2">
+      <h2 className="text-[13px] font-semibold">Orphaned</h2>
+      <p className="text-xs text-muted">
+        Images whose AWS connection was removed. Archiving one hides its
+        findings; its scan history stays.
+      </p>
+      {archive.isError ? (
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <ErrorNote error={archive.error} />
+        </section>
+      ) : null}
+      <section className="rounded-card border border-border-subtle bg-surface p-4">
+        <DataTable
+          rows={assets}
+          columns={columns}
+          rowKey={(asset) => String(asset.id)}
+        />
+      </section>
     </section>
   )
 }
@@ -312,6 +464,8 @@ function EcrConnection({
 }) {
   const discover = useQuery(ecrDiscoverQuery(connection.id))
   const scan = useScanEcrImage(connection.id)
+  const archive = useArchiveAsset()
+  const [confirmingID, setConfirmingID] = useState<number | null>(null)
 
   const rows: EcrRow[] = (discover.data ?? []).flatMap((repository) =>
     repository.tags.map((tag) => ({
@@ -392,9 +546,10 @@ function EcrConnection({
       headerClassName: 'pl-3 text-right',
       cellClassName: 'pl-3 align-top',
       cell: (row) => {
+        const asset = row.asset
         const running =
-          row.asset?.last_scan?.status === 'queued' ||
-          row.asset?.last_scan?.status === 'running'
+          asset?.last_scan?.status === 'queued' ||
+          asset?.last_scan?.status === 'running'
         return (
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             <Button
@@ -404,20 +559,29 @@ function EcrConnection({
               onClick={() => scan.mutate(row.tag)}
               disabled={scanning(row) || running}
             >
-              {scanning(row)
-                ? 'Queueing…'
-                : row.asset
-                  ? 'Scan'
-                  : 'Add & scan'}
+              {scanning(row) ? 'Queueing…' : asset ? 'Scan' : 'Add & scan'}
             </Button>
-            {row.asset ? (
-              <Link
-                to="/findings"
-                search={{ asset: row.asset.id }}
-                className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-              >
-                View findings
-              </Link>
+            {asset ? (
+              <>
+                <Link
+                  to="/findings"
+                  search={{ asset: asset.id }}
+                  className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+                >
+                  View findings
+                </Link>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    scan.reset()
+                    setConfirmingID(asset.id)
+                  }}
+                >
+                  Remove
+                </Button>
+              </>
             ) : null}
           </div>
         )
@@ -462,6 +626,50 @@ function EcrConnection({
             rows={rows}
             columns={columns}
             rowKey={(row) => row.tag.ref}
+            renderRow={(row) => {
+              const asset = row.asset
+              return (
+                <Fragment>
+                  <DataTableRow>
+                    {columns.map((column) => (
+                      <td
+                        key={column.id}
+                        className={column.cellClassName}
+                        title={column.cellTitle?.(row)}
+                      >
+                        {column.cell?.(row)}
+                      </td>
+                    ))}
+                  </DataTableRow>
+                  {asset && confirmingID === asset.id ? (
+                    <tr>
+                      <td colSpan={columns.length} className="pb-2">
+                        <ConfirmRemove
+                          name={asset.display_name}
+                          pending={archive.isPending}
+                          onRemove={() =>
+                            archive.mutate(asset.id, {
+                              onSuccess: () => setConfirmingID(null),
+                            })
+                          }
+                          onCancel={() => {
+                            archive.reset()
+                            setConfirmingID(null)
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ) : null}
+                  {asset && archive.isError && archive.variables === asset.id ? (
+                    <tr>
+                      <td colSpan={columns.length} className="pb-2">
+                        <ErrorNote error={archive.error} />
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              )
+            }}
           />
         </section>
       ) : null}
@@ -553,6 +761,44 @@ function LinkCell({ asset, repos }: { asset: Asset | undefined; repos: Asset[] }
           {error instanceof ApiError ? error.message : 'the link request failed'}
         </span>
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * ConfirmRemove is the inline confirmation a tracked image row shows before it
+ * is archived. It matches the Repositories table's remove confirmation.
+ */
+function ConfirmRemove({
+  name,
+  pending,
+  onRemove,
+  onCancel,
+}: {
+  name: string
+  pending: boolean
+  onRemove: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
+      <span>
+        Remove “{name}”? Its findings are hidden and it leaves this list;
+        scanning it again brings it back.
+      </span>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="text-critical"
+        onClick={onRemove}
+        disabled={pending}
+      >
+        {pending ? 'Removing…' : 'Remove'}
+      </Button>
+      <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+        Cancel
+      </Button>
     </div>
   )
 }

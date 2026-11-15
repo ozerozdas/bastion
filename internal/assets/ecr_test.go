@@ -2,6 +2,7 @@ package assets
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -70,6 +71,9 @@ func TestCreateECRImageStoresPinnedMetadata(t *testing.T) {
 	}
 	if asset.ConnectionID == nil || *asset.ConnectionID != connectionID {
 		t.Errorf("connection_id = %v, want %d", asset.ConnectionID, connectionID)
+	}
+	if asset.ECRRegistry != ecrRegistry {
+		t.Errorf("ecr_registry = %q, want %q", asset.ECRRegistry, ecrRegistry)
 	}
 
 	var metadata string
@@ -147,4 +151,37 @@ func insertAWSConnection(t *testing.T, service *Service) int64 {
 		t.Fatalf("connection id: %v", err)
 	}
 	return id
+}
+
+// TestCreateECRImageRevivesArchived: re-adding a removed ECR image revives the
+// same row, so its id and finding history survive.
+func TestCreateECRImageRevivesArchived(t *testing.T) {
+	service := newECRAssetService(t, "aws")
+	connectionID := insertAWSConnection(t, service)
+	in := CreateInput{Kind: "image", Ref: ecrRef, Tag: "v1.2.3", ConnectionID: connectionID}
+
+	first, err := service.Create(t.Context(), in)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := service.Archive(t.Context(), first.ID); err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+
+	revived, err := service.Create(t.Context(), in)
+	if err != nil {
+		t.Fatalf("Create after archive: %v", err)
+	}
+	if revived.ID != first.ID {
+		t.Errorf("revived id = %d, want the archived row %d", revived.ID, first.ID)
+	}
+
+	var archived sql.NullString
+	if err := service.db.QueryRowContext(t.Context(),
+		`SELECT archived_at FROM assets WHERE id = ?`, first.ID).Scan(&archived); err != nil {
+		t.Fatalf("read archived_at: %v", err)
+	}
+	if archived.Valid {
+		t.Errorf("archived_at = %q after re-adding, want NULL", archived.String)
+	}
 }

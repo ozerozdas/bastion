@@ -155,3 +155,53 @@ test('Containers hints at Connections when no AWS connection exists', async ({
   ).toHaveAttribute('href', '/connections?tab=registry')
   expect(problems).toEqual([])
 })
+
+test('Containers groups orphaned ECR images and archives one', async ({
+  page,
+  server,
+}) => {
+  const problems = watch(page)
+  await fakeNoDocker(page)
+  await fakeConnectionsApi(page, [])
+
+  const orphaned = {
+    id: 21,
+    kind: 'image',
+    display_name: 't2n-api:v1.2.3',
+    ref,
+    ecr_registry: registry,
+    created_at: '2026-11-14T10:00:00Z',
+    open_counts: { critical: 0, high: 1, medium: 0, low: 0, unknown: 0 },
+    linked_images: [],
+  }
+  let assets = [orphaned]
+  await page.route('**/api/assets/21', (route) => {
+    assets = []
+    return route.fulfill({ status: 204, body: '' })
+  })
+  await page.route('**/api/assets', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ assets }),
+    }),
+  )
+
+  await page.goto(server.url)
+  // The sidebar badge adds the asset count to the link's accessible name.
+  await page.getByRole('link', { name: /^Containers/ }).click()
+
+  await expect(page.getByRole('heading', { name: 'Orphaned' })).toBeVisible()
+  const row = page.getByRole('row').filter({ hasText: 't2n-api:v1.2.3' })
+  await expect(row).toBeVisible()
+
+  const archiveRequest = page.waitForRequest(
+    (request) =>
+      request.url().endsWith('/api/assets/21') && request.method() === 'DELETE',
+  )
+  await row.getByRole('button', { name: 'Archive' }).click()
+  await archiveRequest
+
+  await expect(page.getByRole('heading', { name: 'Orphaned' })).toHaveCount(0)
+  expect(problems).toEqual([])
+})

@@ -470,3 +470,83 @@ func TestSaveScanResultPersistsScanners(t *testing.T) {
 		}
 	}
 }
+
+// TestGetOrCreateAssetRevivesArchived: scanning a removed local image again
+// brings it back, keeping the same row so its history stays diffable.
+func TestGetOrCreateAssetRevivesArchived(t *testing.T) {
+	ctx := context.Background()
+	db, _ := openTestDB(t)
+	queries := sqlcdb.New(db)
+	asset := findings.Asset{Kind: findings.AssetKindImage, DisplayName: "nginx:latest", Ref: "nginx:latest"}
+
+	first, err := store.GetOrCreateAsset(ctx, db, asset)
+	if err != nil {
+		t.Fatalf("GetOrCreateAsset: %v", err)
+	}
+	if _, err := queries.ArchiveAsset(ctx, sqlcdb.ArchiveAssetParams{
+		ArchivedAt: sql.NullString{String: "2026-11-11T13:00:00Z", Valid: true},
+		ID:         first.ID,
+	}); err != nil {
+		t.Fatalf("ArchiveAsset: %v", err)
+	}
+
+	revived, err := store.GetOrCreateAsset(ctx, db, asset)
+	if err != nil {
+		t.Fatalf("GetOrCreateAsset after archive: %v", err)
+	}
+	if revived.ID != first.ID {
+		t.Errorf("revived id = %d, want the archived row %d", revived.ID, first.ID)
+	}
+	row, err := queries.GetAsset(ctx, first.ID)
+	if err != nil {
+		t.Fatalf("GetAsset: %v", err)
+	}
+	if row.ArchivedAt.Valid {
+		t.Errorf("archived_at = %q after a rescan, want NULL", row.ArchivedAt.String)
+	}
+}
+
+// TestImageAssetTargetRevivesArchived: the CLI's ECR reuse path revives an
+// archived digest instead of scanning a row that stays hidden.
+func TestImageAssetTargetRevivesArchived(t *testing.T) {
+	ctx := context.Background()
+	db, _ := openTestDB(t)
+	queries := sqlcdb.New(db)
+	const ref = "143709573002.dkr.ecr.eu-central-1.amazonaws.com/t2n-api@sha256:" +
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+	created, err := queries.GetOrCreateAsset(ctx, sqlcdb.GetOrCreateAssetParams{
+		Kind:         "image",
+		DisplayName:  "t2n-api:v1.2.3",
+		Ref:          ref,
+		MetadataJSON: "{}",
+		CreatedAt:    "2026-11-11T10:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("GetOrCreateAsset: %v", err)
+	}
+	if _, err := queries.ArchiveAsset(ctx, sqlcdb.ArchiveAssetParams{
+		ArchivedAt: sql.NullString{String: "2026-11-11T13:00:00Z", Valid: true},
+		ID:         created.ID,
+	}); err != nil {
+		t.Fatalf("ArchiveAsset: %v", err)
+	}
+
+	target, found, err := store.ImageAssetTarget(ctx, db, ref)
+	if err != nil {
+		t.Fatalf("ImageAssetTarget: %v", err)
+	}
+	if !found {
+		t.Fatal("ImageAssetTarget found = false, want the archived row")
+	}
+	if target.ID != created.ID {
+		t.Errorf("target id = %d, want %d", target.ID, created.ID)
+	}
+	row, err := queries.GetAsset(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetAsset: %v", err)
+	}
+	if row.ArchivedAt.Valid {
+		t.Errorf("archived_at = %q after ImageAssetTarget, want NULL", row.ArchivedAt.String)
+	}
+}

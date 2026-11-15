@@ -1273,7 +1273,7 @@ components:
         connection keeps no credential at all. Neither the token nor the keyring
         key is returned by the API.
       additionalProperties: false
-      required: [id, kind, name, status, created_at]
+      required: [id, kind, name, status, created_at, ecr_asset_count]
       properties:
         id:
           type: integer
@@ -1309,6 +1309,14 @@ components:
           description: |
             ARN of the calling identity recorded by the last successful test.
             AWS connections only; absent until a test succeeds.
+        ecr_asset_count:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Non-archived ECR image assets this connection owns. Removing the
+            connection archives them, so their findings leave the open lists.
+            Always 0 for a GitHub connection.
         hint:
           type: string
           description: |
@@ -1849,6 +1857,11 @@ components:
         default_branch:
           type: string
           description: Branch the repository tracks; absent for paths and images.
+        ecr_registry:
+          type: string
+          description: |
+            The ECR registry an image was added from, read from its stored
+            metadata. Absent for other kinds and for an image added without one.
         created_at:
           type: string
           format: date-time
