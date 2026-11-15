@@ -140,6 +140,36 @@ func (q *Queries) ListRepoAssetRefs(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const setConnectionConfig = `-- name: SetConnectionConfig :one
+UPDATE connections
+SET config_json = ?1
+WHERE id = ?2
+RETURNING id, kind, name, config_json, secret_ref, status, last_checked_at, created_at
+`
+
+type SetConnectionConfigParams struct {
+	ConfigJSON string
+	ID         int64
+}
+
+// Store the non-secret configuration a kind needs at create time (an AWS
+// profile and region). GitHub writes its identity through SetConnectionStatus.
+func (q *Queries) SetConnectionConfig(ctx context.Context, arg SetConnectionConfigParams) (Connection, error) {
+	row := q.db.QueryRowContext(ctx, setConnectionConfig, arg.ConfigJSON, arg.ID)
+	var i Connection
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Name,
+		&i.ConfigJSON,
+		&i.SecretRef,
+		&i.Status,
+		&i.LastCheckedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const setConnectionSecretRef = `-- name: SetConnectionSecretRef :execrows
 UPDATE connections
 SET secret_ref = ?1

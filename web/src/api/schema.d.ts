@@ -133,11 +133,16 @@ export interface paths {
         put?: never;
         /**
          * Add a connection and test it.
-         * @description Stores the token in the OS keyring under `bastion.connection.<id>`, then
-         *     tests it with `GET /user`. A failed test still creates the connection: it
-         *     is returned with `status: error` and a human-readable `hint`, so the user
-         *     can correct the token or keyring without losing the entry. If the token
-         *     cannot be stored, the row is removed again and no connection is created.
+         * @description A GitHub connection stores its token in the OS keyring under
+         *     `bastion.connection.<id>` and is tested with `GET /user`. An AWS
+         *     connection stores only a profile name and a region and is tested with
+         *     STS `GetCallerIdentity`; its credentials come from the AWS SDK's default
+         *     chain and are never stored.
+         *
+         *     A failed test still creates the connection: it is returned with
+         *     `status: error` and a human-readable `hint`, so the user can correct the
+         *     profile or token without losing the entry. If the token cannot be
+         *     stored, the row is removed again and no connection is created.
          */
         post: operations["createConnection"];
         delete?: never;
@@ -174,10 +179,12 @@ export interface paths {
         put?: never;
         /**
          * Test a connection and record the result.
-         * @description Calls `GET /user` with the stored token and records `status`,
-         *     `last_checked_at` and the GitHub login in the connection's non-secret
-         *     config. A failed test returns the connection with `status: error` and a
-         *     `hint`; it is not an API error.
+         * @description GitHub connections call `GET /user` with the stored token; AWS
+         *     connections call STS `GetCallerIdentity` with credentials from the SDK's
+         *     default chain. Either way `status`, `last_checked_at` and the identity
+         *     (`login`, or `account` and `arn`) are recorded in the connection's
+         *     non-secret config. A failed test returns the connection with
+         *     `status: error` and a `hint`; it is not an API error.
          */
         post: operations["testConnection"];
         delete?: never;
@@ -648,9 +655,10 @@ export interface components {
         };
         /**
          * Connection
-         * @description A configured integration. The credential itself is never part of this
-         *     shape: the token lives in the OS keyring under `secret_ref`, and
-         *     neither the token nor the keyring key is returned by the API.
+         * @description A configured integration. A credential is never part of this shape: a
+         *     GitHub token lives in the OS keyring under `secret_ref`, and an AWS
+         *     connection keeps no credential at all. Neither the token nor the keyring
+         *     key is returned by the API.
          */
         Connection: {
             /** Format: int64 */
@@ -660,10 +668,27 @@ export interface components {
             name: string;
             status: components["schemas"]["ConnectionStatus"];
             /**
-             * @description GitHub login recorded by the last successful test. Absent when the
-             *     connection has never succeeded.
+             * @description GitHub login recorded by the last successful test. GitHub
+             *     connections only; absent until a test succeeds.
              */
             login?: string;
+            /**
+             * @description AWS shared-config profile the connection resolves credentials from.
+             *     AWS connections only.
+             */
+            profile?: string;
+            /** @description AWS region recorded on the connection. AWS connections only. */
+            region?: string;
+            /**
+             * @description AWS account id recorded by the last successful test. AWS
+             *     connections only; absent until a test succeeds.
+             */
+            account?: string;
+            /**
+             * @description ARN of the calling identity recorded by the last successful test.
+             *     AWS connections only; absent until a test succeeds.
+             */
+            arn?: string;
             /**
              * @description Human-readable explanation of the last failed test (never a token
              *     or a GitHub response body). Absent after a successful test.
@@ -679,8 +704,8 @@ export interface components {
         };
         /**
          * ConnectionKind
-         * @description Integration kind. v0.1 only creates `github` connections; the other
-         *     values exist because the database and later phases use them.
+         * @description Integration kind. Only `github` and `aws` can be created; `docker`
+         *     exists because the database and later phases use it.
          * @enum {string}
          */
         ConnectionKind: "github" | "aws" | "docker";
@@ -693,18 +718,29 @@ export interface components {
         /** CreateConnectionRequest */
         CreateConnectionRequest: {
             /**
-             * @description Only `github` can be created in v0.1.
+             * @description Kind to create. `github` needs `token`; `aws` needs `region`.
              * @enum {string}
              */
-            kind: "github";
+            kind: "github" | "aws";
             /** @description User-chosen name, unique per kind. */
             name: string;
             /**
              * @description GitHub personal access token (classic or fine-grained, read-only).
              *     Stored in the OS keyring, never persisted in SQLite, logged or
-             *     returned by the API.
+             *     returned by the API. GitHub connections only.
              */
-            token: string;
+            token?: string;
+            /**
+             * @description AWS shared-config profile name, for example `work`. Empty means the
+             *     SDK's own resolution (`AWS_PROFILE`, then `default`). AWS
+             *     connections only; no credential is stored.
+             */
+            profile?: string;
+            /**
+             * @description AWS region, for example `eu-central-1`. Required for AWS
+             *     connections.
+             */
+            region?: string;
         };
         /** DiscoverReposResponse */
         DiscoverReposResponse: {

@@ -20,6 +20,14 @@ UPDATE connections
 SET secret_ref = sqlc.arg(secret_ref)
 WHERE id = sqlc.arg(id);
 
+-- name: SetConnectionConfig :one
+-- Store the non-secret configuration a kind needs at create time (an AWS
+-- profile and region). GitHub writes its identity through SetConnectionStatus.
+UPDATE connections
+SET config_json = sqlc.arg(config_json)
+WHERE id = sqlc.arg(id)
+RETURNING *;
+
 -- name: SetConnectionStatus :one
 -- Record one test result. config_json holds non-secret values only (the GitHub
 -- login and the last failure hint).

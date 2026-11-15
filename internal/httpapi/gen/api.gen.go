@@ -103,12 +103,15 @@ func (e CreateAssetRequestKind) Valid() bool {
 
 // Defines values for CreateConnectionRequestKind.
 const (
+	CreateConnectionRequestKindAws    CreateConnectionRequestKind = "aws"
 	CreateConnectionRequestKindGithub CreateConnectionRequestKind = "github"
 )
 
 // Valid indicates whether the value is a known member of the CreateConnectionRequestKind enum.
 func (e CreateConnectionRequestKind) Valid() bool {
 	switch e {
+	case CreateConnectionRequestKindAws:
+		return true
 	case CreateConnectionRequestKindGithub:
 		return true
 	default:
@@ -458,10 +461,18 @@ type AssetTrend struct {
 	Scans []TrendScan `json:"scans"`
 }
 
-// Connection A configured integration. The credential itself is never part of this
-// shape: the token lives in the OS keyring under `secret_ref`, and
-// neither the token nor the keyring key is returned by the API.
+// Connection A configured integration. A credential is never part of this shape: a
+// GitHub token lives in the OS keyring under `secret_ref`, and an AWS
+// connection keeps no credential at all. Neither the token nor the keyring
+// key is returned by the API.
 type Connection struct {
+	// Account AWS account id recorded by the last successful test. AWS
+	// connections only; absent until a test succeeds.
+	Account *string `json:"account,omitempty"`
+
+	// Arn ARN of the calling identity recorded by the last successful test.
+	// AWS connections only; absent until a test succeeds.
+	Arn       *string   `json:"arn,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 
 	// Hint Human-readable explanation of the last failed test (never a token
@@ -469,26 +480,33 @@ type Connection struct {
 	Hint *string `json:"hint,omitempty"`
 	Id   int64   `json:"id"`
 
-	// Kind Integration kind. v0.1 only creates `github` connections; the other
-	// values exist because the database and later phases use them.
+	// Kind Integration kind. Only `github` and `aws` can be created; `docker`
+	// exists because the database and later phases use it.
 	Kind ConnectionKind `json:"kind"`
 
 	// LastCheckedAt When the connection was last tested.
 	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
 
-	// Login GitHub login recorded by the last successful test. Absent when the
-	// connection has never succeeded.
+	// Login GitHub login recorded by the last successful test. GitHub
+	// connections only; absent until a test succeeds.
 	Login *string `json:"login,omitempty"`
 
 	// Name User-chosen name, unique per kind.
 	Name string `json:"name"`
 
+	// Profile AWS shared-config profile the connection resolves credentials from.
+	// AWS connections only.
+	Profile *string `json:"profile,omitempty"`
+
+	// Region AWS region recorded on the connection. AWS connections only.
+	Region *string `json:"region,omitempty"`
+
 	// Status Result of the last test.
 	Status ConnectionStatus `json:"status"`
 }
 
-// ConnectionKind Integration kind. v0.1 only creates `github` connections; the other
-// values exist because the database and later phases use them.
+// ConnectionKind Integration kind. Only `github` and `aws` can be created; `docker`
+// exists because the database and later phases use it.
 type ConnectionKind string
 
 // ConnectionList Every configured connection.
@@ -523,19 +541,28 @@ type CreateAssetRequestKind string
 
 // CreateConnectionRequest defines model for CreateConnectionRequest.
 type CreateConnectionRequest struct {
-	// Kind Only `github` can be created in v0.1.
+	// Kind Kind to create. `github` needs `token`; `aws` needs `region`.
 	Kind CreateConnectionRequestKind `json:"kind"`
 
 	// Name User-chosen name, unique per kind.
 	Name string `json:"name"`
 
+	// Profile AWS shared-config profile name, for example `work`. Empty means the
+	// SDK's own resolution (`AWS_PROFILE`, then `default`). AWS
+	// connections only; no credential is stored.
+	Profile *string `json:"profile,omitempty"`
+
+	// Region AWS region, for example `eu-central-1`. Required for AWS
+	// connections.
+	Region *string `json:"region,omitempty"`
+
 	// Token GitHub personal access token (classic or fine-grained, read-only).
 	// Stored in the OS keyring, never persisted in SQLite, logged or
-	// returned by the API.
+	// returned by the API. GitHub connections only.
 	Token *string `json:"token,omitempty"`
 }
 
-// CreateConnectionRequestKind Only `github` can be created in v0.1.
+// CreateConnectionRequestKind Kind to create. `github` needs `token`; `aws` needs `region`.
 type CreateConnectionRequestKind string
 
 // CreateScansRequest defines model for CreateScansRequest.

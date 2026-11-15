@@ -130,17 +130,295 @@ function RepositoryPanel() {
   )
 }
 
-/** RegistryPanel is §8's registry sources: AWS is still a placeholder. */
+/** RegistryPanel is §8's registry sources: AWS accounts and the local daemon. */
 function RegistryPanel() {
   return (
     <>
-      <ComingSoonCard
-        title="AWS"
-        action="Connect AWS account"
-        body="Reads ECR repositories and image tags through your existing AWS profile or SSO session. Bastion never stores AWS credentials; it uses the profile you already signed in with."
-      />
+      <AWSPanel />
       <DockerPanel />
     </>
+  )
+}
+
+/**
+ * AWSPanel is the AWS source: the connections, their form, and the reminder
+ * that bastion keeps no AWS credential of its own.
+ */
+function AWSPanel() {
+  const connections = useQuery(connectionsQuery)
+  const aws = (connections.data ?? []).filter(
+    (connection) => connection.kind === 'aws',
+  )
+
+  return (
+    <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
+      <div className="flex flex-wrap items-baseline gap-2.5">
+        <h2 className="text-[13px] font-semibold">AWS</h2>
+        <span className="text-faint">
+          ECR through your default credential chain
+        </span>
+      </div>
+
+      {connections.isPending ? (
+        <p className="text-muted">Loading connections…</p>
+      ) : null}
+
+      {connections.isError ? (
+        <div className="flex flex-col gap-1">
+          <h3 className="text-[13px] font-semibold">Connections failed to load</h3>
+          <ErrorNote
+            error={connections.error}
+            fix="Restart bastion from the terminal and reload this page."
+          />
+        </div>
+      ) : null}
+
+      {connections.isSuccess && aws.length === 0 ? (
+        <p className="max-w-[70ch] text-xs text-muted">
+          No AWS connection yet. Bastion signs in with the AWS SDK's default
+          credential chain: an environment variable, a profile in{' '}
+          <span className="font-mono">~/.aws/config</span>, an SSO session or an
+          instance role. Only the profile name and region are stored; no AWS key
+          ever reaches bastion's database or keychain.
+        </p>
+      ) : null}
+
+      {aws.length > 0 ? (
+        <ul className="flex flex-col divide-y divide-border-subtle">
+          {aws.map((connection) => (
+            <AWSConnectionRow key={connection.id} connection={connection} />
+          ))}
+        </ul>
+      ) : null}
+
+      <AddAWSForm />
+    </section>
+  )
+}
+
+/** AWSConnectionRow is one AWS connection with its test and remove actions. */
+function AWSConnectionRow({ connection }: { connection: Connection }) {
+  const test = useTestConnection()
+  const remove = useDeleteConnection()
+  const [confirming, setConfirming] = useState(false)
+  const status = statusView[connection.status]
+
+  return (
+    <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">{connection.name}</span>
+        <Badge tone={status.tone}>{status.label}</Badge>
+        {connection.region ? (
+          <span className="font-mono text-xs text-muted">{connection.region}</span>
+        ) : null}
+        {connection.profile ? (
+          <span className="text-xs text-muted">profile {connection.profile}</span>
+        ) : null}
+        {connection.account ? (
+          <span className="font-mono text-xs text-muted">
+            account {connection.account}
+          </span>
+        ) : null}
+        <span className="text-xs text-faint">
+          {lastCheckedLabel(connection.last_checked_at)}
+        </span>
+
+        {confirming ? null : (
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => test.mutate(connection.id)}
+              disabled={test.isPending}
+            >
+              {test.isPending ? 'Testing…' : 'Test'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                test.reset()
+                setConfirming(true)
+              }}
+            >
+              Remove
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {connection.arn ? (
+        <p className="break-all font-mono text-xs text-muted">{connection.arn}</p>
+      ) : null}
+
+      {connection.status === 'error' && connection.hint ? (
+        <p className="max-w-[70ch] text-xs text-muted">{connection.hint}</p>
+      ) : null}
+
+      {confirming ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
+          <span>
+            Remove “{connection.name}”? Only the profile and region are
+            forgotten; no credentials are stored.
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="text-critical"
+            onClick={() => remove.mutate(connection.id)}
+            disabled={remove.isPending}
+          >
+            {remove.isPending ? 'Removing…' : 'Remove'}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              remove.reset()
+              setConfirming(false)
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      ) : null}
+
+      {test.isError ? (
+        <ErrorNote
+          error={test.error}
+          fix="Test again; if it keeps failing, check the profile and region."
+        />
+      ) : null}
+      {remove.isError ? (
+        <ErrorNote
+          error={remove.error}
+          fix="The connection stays until removal succeeds; try again."
+        />
+      ) : null}
+    </li>
+  )
+}
+
+/** AddAWSForm creates an AWS connection; the server tests it before replying. */
+function AddAWSForm() {
+  const create = useCreateConnection()
+  const [name, setName] = useState('')
+  const [profile, setProfile] = useState('')
+  const [region, setRegion] = useState('')
+  const [notice, setNotice] = useState<Notice | null>(null)
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setNotice(null)
+    create.mutate(
+      { kind: 'aws', name, profile: profile.trim(), region },
+      {
+        onSuccess: (connection) => {
+          setName('')
+          setNotice(
+            connection.status === 'ok'
+              ? {
+                  tone: 'ok',
+                  cause: `Connection added; authenticated to AWS account ${connection.account ?? 'unknown'}.`,
+                }
+              : {
+                  tone: 'warn',
+                  cause: 'Connection saved, but the test failed.',
+                  fix:
+                    connection.hint ??
+                    'Check the profile and region, then use Test to try again.',
+                },
+          )
+        },
+        onError: (error) =>
+          setNotice({ tone: 'error', ...createErrorNote(error, 'AWS') }),
+      },
+    )
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="flex flex-col gap-3 rounded-md border border-border-subtle bg-bg p-3"
+    >
+      <div className="flex flex-col gap-0.5">
+        <h3 className="text-[13px] font-semibold">Add a connection</h3>
+        <p className="text-xs text-muted">
+          The profile is the one you signed in with, for example{' '}
+          <span className="font-mono">aws sso login --profile work</span>. No AWS
+          keys are stored.
+        </p>
+      </div>
+
+      <div className="flex w-full max-w-3xl flex-wrap items-end gap-3">
+        <div className="flex w-52 flex-col gap-1">
+          <label htmlFor="aws-name" className="text-xs font-medium text-muted">
+            Name
+          </label>
+          <input
+            id="aws-name"
+            name="name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            autoComplete="off"
+            placeholder="prod"
+            className={inputClass}
+          />
+        </div>
+
+        <div className="flex w-56 flex-col gap-1">
+          <label htmlFor="aws-profile" className="text-xs font-medium text-muted">
+            Profile (optional)
+          </label>
+          <input
+            id="aws-profile"
+            name="profile"
+            value={profile}
+            onChange={(event) => setProfile(event.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="default chain (AWS_PROFILE or default)"
+            className={inputClass}
+          />
+        </div>
+
+        <div className="flex w-44 flex-col gap-1">
+          <label htmlFor="aws-region" className="text-xs font-medium text-muted">
+            Region
+          </label>
+          <input
+            id="aws-region"
+            name="region"
+            value={region}
+            onChange={(event) => setRegion(event.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="eu-central-1"
+            className={inputClass}
+          />
+        </div>
+
+        <Button
+          type="submit"
+          disabled={
+            create.isPending || name.trim() === '' || region.trim() === ''
+          }
+        >
+          {create.isPending ? 'Adding…' : 'Add connection'}
+        </Button>
+      </div>
+
+      <p className="text-xs text-faint">
+        Credentials come from the AWS SDK's default chain when bastion tests the
+        connection. Nothing is written to the database or the OS keychain.
+      </p>
+
+      {notice ? <NoticeLine notice={notice} /> : null}
+    </form>
   )
 }
 
@@ -302,7 +580,7 @@ function AddGitHubForm() {
                 },
           )
         },
-        onError: (error) => setNotice({ tone: 'error', ...createErrorNote(error) }),
+        onError: (error) => setNotice({ tone: 'error', ...createErrorNote(error, 'GitHub') }),
         // The token is never kept in the form after a submit, whatever happened.
         onSettled: () => setToken(''),
       },
@@ -373,35 +651,7 @@ function AddGitHubForm() {
   )
 }
 
-/** ComingSoonCard is a disabled integration card (§8: AWS and Docker are P2). */
-function ComingSoonCard({
-  title,
-  body,
-  action,
-}: {
-  title: string
-  body: string
-  action: string
-}) {
-  return (
-    <section
-      aria-disabled="true"
-      className="flex flex-col gap-2 rounded-card border border-border-subtle bg-surface p-4 opacity-60"
-    >
-      <div className="flex flex-wrap items-center gap-2.5">
-        <h2 className="text-[13px] font-semibold">{title}</h2>
-        <Badge>coming in v0.2</Badge>
-      </div>
-      <p className="max-w-[70ch] text-xs text-muted">{body}</p>
-      <div>
-        <Button type="button" size="sm" variant="outline" disabled>
-          {action}
-        </Button>
-      </div>
-    </section>
-  )
-}
-
+/** Notice is the result of the last add attempt. */
 type Notice = {
   tone: 'ok' | 'warn' | 'error'
   /** What happened, in the user's terms. */
@@ -447,18 +697,25 @@ function ErrorNote({ error, fix }: { error: unknown; fix: string }) {
 }
 
 /** createErrorNote turns a failed POST into cause plus fix (§7). */
-function createErrorNote(error: unknown): { cause: string; fix: string } {
+function createErrorNote(
+  error: unknown,
+  provider: 'GitHub' | 'AWS',
+): { cause: string; fix: string } {
+  const article = provider === 'AWS' ? 'An' : 'A'
   if (error instanceof ApiError) {
     if (error.status === 409) {
       return {
-        cause: 'A GitHub connection with that name already exists.',
+        cause: `${article} ${provider} connection with that name already exists.`,
         fix: 'Pick a different name.',
       }
     }
     if (error.status === 400) {
       return {
         cause: error.message,
-        fix: 'Check the name and token, then try again.',
+        fix:
+          provider === 'AWS'
+            ? 'Check the name, profile and region, then try again.'
+            : 'Check the name and token, then try again.',
       }
     }
     return {
