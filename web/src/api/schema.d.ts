@@ -347,7 +347,11 @@ export interface paths {
          *     comparison decided the target, so its order is a best effort rather
          *     than authoritative. Findings no upgrade closes are listed in `no_fix`.
          *
-         *     Steps are ordered by critical findings, then high, then total count.
+         *     Steps are ordered by their prioritization score (#29), highest first:
+         *     the severity weight sum times the EPSS and latest-image multipliers.
+         *     Each step carries that score and the factors behind it, so the ordering
+         *     is explainable; ties keep the critical, then high, then total-count
+         *     order.
          */
         get: operations["getAssetFixPlan"];
         put?: never;
@@ -1079,7 +1083,7 @@ export interface components {
          *     (PROJECT_SPEC.md §7.2, §8 Phase 3).
          */
         FixPlan: {
-            /** @description One package upgrade each, most impactful first. */
+            /** @description One package upgrade each, highest prioritization score first. */
             steps: components["schemas"]["FixPlanStep"][];
             /** @description Packages whose open findings no upgrade closes. */
             no_fix: components["schemas"]["FixPlanNoFix"][];
@@ -1114,6 +1118,47 @@ export interface components {
             /** @description The step's findings, by id, in ascending order. */
             finding_ids: number[];
             max_epss?: components["schemas"]["EPSSScore"];
+            /**
+             * Format: double
+             * @description Prioritization score (#29): the step's severity weight sum
+             *     (critical 10, high 7, medium 4, low and unknown 1) times its EPSS
+             *     and latest-image multipliers. Steps are ordered by it, highest
+             *     first.
+             */
+            score: number;
+            /**
+             * @description The terms that produced `score`, in computation order: the severity
+             *     weight sum followed by the multipliers. Shown next to the score so
+             *     the ordering is explainable.
+             */
+            factors: components["schemas"]["FixPlanFactor"][];
+        };
+        /**
+         * FixPlanFactor
+         * @description One term of a fix plan step's prioritization score.
+         */
+        FixPlanFactor: {
+            /**
+             * @description `severity` is the weight sum; `epss` and `latest_image` are
+             *     multipliers, 1 when the factor does not apply.
+             * @enum {string}
+             */
+            name: "severity" | "epss" | "latest_image";
+            /**
+             * Format: double
+             * @description The term's value: a weight sum for severity, a multiplier otherwise.
+             * @example 17
+             * @example 4.2
+             * @example 1.5
+             */
+            value: number;
+            /**
+             * @description Why the term has this value, in words the UI can show.
+             * @example 1 critical + 2 high
+             * @example EPSS 0.42
+             * @example in latest image
+             */
+            detail: string;
         };
         /**
          * FixPlanNoFix

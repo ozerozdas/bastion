@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/ozerozdas/bastion/internal/findings"
@@ -93,6 +94,18 @@ func TestGetAssetFixPlan(t *testing.T) {
 	}
 	if len(step.InstalledVersions) != 1 || step.InstalledVersions[0] != "4.17.0" {
 		t.Errorf("installed_versions = %+v, want [4.17.0]", step.InstalledVersions)
+	}
+	// The score is the severity weight sum (10 + 7) with both multipliers off.
+	if step.Score != 17 {
+		t.Errorf("score = %v, want 17", step.Score)
+	}
+	wantFactors := []gen.FixPlanFactor{
+		{Name: gen.FixPlanFactorSeverity, Value: 17, Detail: "1 critical + 1 high"},
+		{Name: gen.FixPlanFactorEPSS, Value: 1, Detail: "EPSS off"},
+		{Name: gen.FixPlanFactorLatestImage, Value: 1, Detail: "no image link"},
+	}
+	if !reflect.DeepEqual(step.Factors, wantFactors) {
+		t.Errorf("factors = %+v, want %+v", step.Factors, wantFactors)
 	}
 
 	if len(plan.NoFix) != 1 {

@@ -175,6 +175,8 @@ func fixPlanResponse(plan fixplan.Plan) gen.FixPlan {
 			SeverityCounts:    fixPlanSeverityTotals(step.SeverityCounts),
 			FindingIds:        ids,
 			MaxEpss:           epssScorePointer(step.MaxEPSS),
+			Score:             step.Score,
+			Factors:           fixPlanFactors(step.Factors),
 		})
 	}
 
@@ -215,6 +217,20 @@ func fixPlanSeverityTotals(counts fixplan.SeverityCounts) gen.SeverityTotals {
 		Low:      counts.Low,
 		Unknown:  counts.Unknown,
 	}
+}
+
+// fixPlanFactors maps a step's score factors onto the API shape. The list is
+// always an array, never null.
+func fixPlanFactors(factors []fixplan.Factor) []gen.FixPlanFactor {
+	out := make([]gen.FixPlanFactor, 0, len(factors))
+	for _, factor := range factors {
+		out = append(out, gen.FixPlanFactor{
+			Name:   gen.FixPlanFactorName(factor.Name),
+			Value:  factor.Value,
+			Detail: factor.Detail,
+		})
+	}
+	return out
 }
 
 // scanDiffResponse maps a domain diff onto the API shape. Each group is always
