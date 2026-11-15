@@ -21,6 +21,7 @@ import (
 	rpm "github.com/knqyf263/go-rpm-version"
 	"golang.org/x/mod/semver"
 
+	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/findings"
 )
 
@@ -62,6 +63,10 @@ type Step struct {
 	FindingCount   int
 	SeverityCounts SeverityCounts
 	FindingIDs     []int64
+	// MaxEPSS is the highest EPSS prediction among the step's findings. Nil
+	// when the feed is off or scores none of them. It is filled by the caller
+	// that has the feed, not by Build.
+	MaxEPSS *epss.Score
 }
 
 // NoFix is a package whose open findings no upgrade closes.

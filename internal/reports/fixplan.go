@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/findings"
 	"github.com/ozerozdas/bastion/internal/fixplan"
 	"github.com/ozerozdas/bastion/internal/store/sqlcdb"
@@ -38,6 +39,7 @@ func (s *Service) FixPlan(ctx context.Context, assetID int64) (fixplan.Plan, err
 	}
 
 	inputs := make([]fixplan.Input, 0, len(rows))
+	scores := make(map[int64]epss.Score, len(rows))
 	for _, row := range rows {
 		inputs = append(inputs, fixplan.Input{
 			ID:             row.ID,
@@ -47,6 +49,33 @@ func (s *Service) FixPlan(ctx context.Context, assetID int64) (fixplan.Plan, err
 			FixedVersion:   row.FixedVersion.String,
 			Severity:       findings.Severity(row.Severity),
 		})
+		if s.epss != nil && row.RuleID.String != "" {
+			if score, ok := s.epss.Lookup(row.RuleID.String); ok {
+				scores[row.ID] = score
+			}
+		}
 	}
-	return fixplan.Build(inputs), nil
+
+	plan := fixplan.Build(inputs)
+	for i := range plan.Steps {
+		plan.Steps[i].MaxEPSS = maxScore(plan.Steps[i].FindingIDs, scores)
+	}
+	return plan, nil
+}
+
+// maxScore returns the highest EPSS score among the given findings, keeping its
+// percentile. It returns nil when none of them has a score.
+func maxScore(ids []int64, scores map[int64]epss.Score) *epss.Score {
+	var highest *epss.Score
+	for _, id := range ids {
+		score, ok := scores[id]
+		if !ok {
+			continue
+		}
+		if highest == nil || score.Score > highest.Score {
+			value := score
+			highest = &value
+		}
+	}
+	return highest
 }

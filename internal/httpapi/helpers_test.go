@@ -22,6 +22,7 @@ import (
 	awsclient "github.com/ozerozdas/bastion/internal/aws"
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
+	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/jobs"
@@ -198,7 +199,14 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 // so no test accidentally reads or writes the user's data.
 func newTestServerWithUpdate(t *testing.T, fake *fakeGitHub, checker *update.Checker) *testServer {
 	t.Helper()
-	return newTestServerWithConfig(t, fake, checker, nil)
+	return newTestServerWithConfig(t, fake, checker, nil, nil)
+}
+
+// newTestServerWithEPSS is newTestServer with a caller-controlled EPSS feed,
+// so handler tests observe real enrichment without reaching FIRST.org.
+func newTestServerWithEPSS(t *testing.T, feed *epss.Service) *testServer {
+	t.Helper()
+	return newTestServerWithConfig(t, nil, nil, nil, feed)
 }
 
 // newTestServerWithTrivyDB is newTestServer with a caller-controlled
@@ -206,12 +214,12 @@ func newTestServerWithUpdate(t *testing.T, fake *fakeGitHub, checker *update.Che
 // without ever reaching the network.
 func newTestServerWithTrivyDB(t *testing.T, manager *trivy.Manager) *testServer {
 	t.Helper()
-	return newTestServerWithConfig(t, nil, nil, manager)
+	return newTestServerWithConfig(t, nil, nil, manager, nil)
 }
 
 // newTestServerWithConfig builds the test server with every optional service a
 // caller wants to control. Nil values get the defaults described above.
-func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Checker, manager *trivy.Manager) *testServer {
+func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Checker, manager *trivy.Manager, feed *epss.Service) *testServer {
 	t.Helper()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -249,7 +257,7 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 		t.Fatalf("NewService: %v", err)
 	}
 
-	reportService, err := reports.NewService(db)
+	reportService, err := reports.NewService(db, testEPSSOption(feed)...)
 	if err != nil {
 		t.Fatalf("reports.NewService: %v", err)
 	}
@@ -293,6 +301,7 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 		Events:      bus,
 		Update:      checker,
 		TrivyDB:     manager,
+		EPSS:        feed,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -322,6 +331,15 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 			Timeout: 5 * time.Second,
 		},
 	}
+}
+
+// testEPSSOption avoids boxing a typed nil *epss.Service into a non-nil
+// reports.EPSSLookup, which would make the service call Lookup on nil.
+func testEPSSOption(feed *epss.Service) []reports.Option {
+	if feed == nil {
+		return nil
+	}
+	return []reports.Option{reports.WithEPSS(feed)}
 }
 
 // listenerPort returns the port a test listener bound to.

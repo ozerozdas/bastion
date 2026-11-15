@@ -23,6 +23,7 @@ import (
 
 	"github.com/ozerozdas/bastion/internal/assets"
 	"github.com/ozerozdas/bastion/internal/connections"
+	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/reports"
@@ -84,6 +85,9 @@ type Config struct {
 	// same manager the scan pipeline uses, so a UI download is the one a scan
 	// joins; nil answers those endpoints with 500.
 	TrivyDB *trivy.Manager
+	// EPSS serves GET and PUT /api/epss. serve wires the opt-in FIRST.org
+	// feed; nil answers those endpoints with 500.
+	EPSS *epss.Service
 }
 
 // Server serves the bastion API and UI. Create it with New, take its handler
@@ -117,6 +121,10 @@ type Server struct {
 	// trivyDB backs /api/trivy-db and /api/trivy-db/download, with the same
 	// nil-means-unavailable contract.
 	trivyDB *trivy.Manager
+
+	// epss backs GET and PUT /api/epss, with the same nil-means-unavailable
+	// contract.
+	epss *epss.Service
 
 	// token arrives once, in the browser URL. session is the cookie value that
 	// replaces it. They are distinct values: a token that leaked into shell
@@ -157,6 +165,7 @@ func New(cfg Config) (*Server, error) {
 		events:      broker,
 		update:      cfg.Update,
 		trivyDB:     cfg.TrivyDB,
+		epss:        cfg.EPSS,
 		token:       token,
 		session:     session,
 	}

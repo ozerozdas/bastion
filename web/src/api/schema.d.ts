@@ -117,6 +117,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/epss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the EPSS feed state.
+         * @description Returns the stored opt-in setting and the cached feed: when it was last
+         *     downloaded, the feed's own score date and how many CVEs it scores. With
+         *     the setting off no request is made. With it on, a cache older than 24
+         *     hours is refreshed in the background; this response carries the cached
+         *     values immediately.
+         */
+        get: operations["getEPSSStatus"];
+        /**
+         * Store the EPSS opt-in choice.
+         * @description Only the UI calls this. `enabled: false` stops every future request and
+         *     leaves findings without a score. Turning it on starts a download when
+         *     no fresh cache exists; the response is the updated status.
+         */
+        put: operations["setEPSSEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/connections": {
         parameters: {
             query?: never;
@@ -682,6 +712,62 @@ export interface components {
             enabled: boolean;
         };
         /**
+         * EPSSScore
+         * @description FIRST.org's EPSS prediction for one CVE: the probability that it is
+         *     exploited in the next 30 days, and the score's percentile among all
+         *     scored CVEs. Both are fractions between 0 and 1.
+         */
+        EPSSScore: {
+            /**
+             * Format: double
+             * @example 0.99999
+             */
+            score: number;
+            /**
+             * Format: double
+             * @example 1
+             */
+            percentile: number;
+        };
+        /**
+         * EPSSStatus
+         * @description The EPSS feed as the UI and the CLI see it. Optional fields are absent
+         *     when the feed has not been downloaded or the last download failed.
+         */
+        EPSSStatus: {
+            /**
+             * @description The stored opt-in setting. False means no request is ever made and
+             *     findings carry no EPSS score.
+             */
+            enabled: boolean;
+            /**
+             * Format: date-time
+             * @description When the cached feed was last downloaded.
+             */
+            last_refresh?: string;
+            /**
+             * @description The feed's own score date, from its header. Later than
+             *     `last_refresh` when the published scores did not change.
+             * @example 2026-11-15T12:03:04Z
+             */
+            score_date?: string;
+            /** @description Number of CVEs the cached feed scores. */
+            count?: number;
+            /**
+             * @description Why the last download failed. The previous cache, if any, stays in
+             *     use, so findings keep their scores.
+             */
+            error?: string;
+        };
+        /** SetEPSSEnabledRequest */
+        SetEPSSEnabledRequest: {
+            /**
+             * @description True opts in to the daily FIRST.org download; false turns it off and
+             *     stops every future request.
+             */
+            enabled: boolean;
+        };
+        /**
          * TrivyDBState
          * @description State of the Trivy vulnerability DB. `missing` and `failed` both mean a
          *     scan downloads it first; only `ready` means scans run straight away.
@@ -981,6 +1067,7 @@ export interface components {
             description?: string;
             /** @description Advisory or rule references; `[]` when there are none. */
             references: string[];
+            epss?: components["schemas"]["EPSSScore"];
         };
         /** FindingList */
         FindingList: {
@@ -1026,6 +1113,7 @@ export interface components {
             severity_counts: components["schemas"]["SeverityTotals"];
             /** @description The step's findings, by id, in ascending order. */
             finding_ids: number[];
+            max_epss?: components["schemas"]["EPSSScore"];
         };
         /**
          * FixPlanNoFix
@@ -1635,6 +1723,59 @@ export interface operations {
                     "application/json": components["schemas"]["TrivyDBStatus"];
                 };
             };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getEPSSStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current EPSS feed state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EPSSStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setEPSSEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetEPSSEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The choice was stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EPSSStatus"];
+                };
+            };
+            400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             421: components["responses"]["Problem"];
