@@ -171,6 +171,30 @@ func TestAssetsCRUD(t *testing.T) {
 	}
 }
 
+// TestCreateImageAsset: an image reference is tracked without consulting the
+// Docker daemon, so the API works on a machine where Docker is stopped.
+func TestCreateImageAsset(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+
+	asset := createAsset(t, ts, cookie, gen.CreateAssetRequest{
+		Kind: gen.CreateAssetRequestKindImage,
+		Ref:  "alpine:3.20",
+	})
+	if asset.Kind != gen.AssetKindImage || asset.Ref != "alpine:3.20" {
+		t.Fatalf("asset = %+v, want the image asset alpine:3.20", asset)
+	}
+
+	// The same reference is one asset.
+	resp := doJSON(t, ts, http.MethodPost, "/api/assets", gen.CreateAssetRequest{
+		Kind: gen.CreateAssetRequestKindImage,
+		Ref:  "alpine:3.20",
+	}, withBastion(cookie))
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate image: status = %d, want %d", resp.StatusCode, http.StatusConflict)
+	}
+}
+
 // TestAssetsRejectInvalidInput covers the validation problems (§7 hints).
 func TestAssetsRejectInvalidInput(t *testing.T) {
 	ts := newTestServer(t)
@@ -187,7 +211,9 @@ func TestAssetsRejectInvalidInput(t *testing.T) {
 		{name: "bad repo ref", body: gen.CreateAssetRequest{
 			Kind: gen.CreateAssetRequestKindRepo, Ref: "not-a-repo"}},
 		{name: "unknown kind", body: gen.CreateAssetRequest{
-			Kind: "image", Ref: "registry/repo"}},
+			Kind: "container", Ref: "registry/repo"}},
+		{name: "empty image ref", body: gen.CreateAssetRequest{
+			Kind: "image", Ref: "  "}},
 		{name: "empty ref", body: gen.CreateAssetRequest{
 			Kind: gen.CreateAssetRequestKindPath, Ref: ""}},
 	}

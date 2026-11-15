@@ -44,8 +44,8 @@ describe('getStartedState', () => {
     ])
     expect(state.steps.every((step) => !step.done)).toBe(true)
     expect(state.steps[0]?.to).toBe('/connections')
-    expect(state.steps[1]?.to).toBe('/projects')
-    expect(state.steps[2]?.to).toBe('/projects')
+    expect(state.steps[1]?.to).toBe('/repositories')
+    expect(state.steps[2]?.to).toBe('/repositories')
     expect(state.steps[3]?.href).toContain('CLI-Reference.md')
   })
 

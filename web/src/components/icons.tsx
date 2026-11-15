@@ -48,6 +48,15 @@ export function ProjectsIcon(props: IconProps) {
   )
 }
 
+export function ContainersIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="6" width="18" height="12" rx="1" />
+      <path d="M7 6v12M11 6v12M15 6v12M19 6v12" />
+    </Icon>
+  )
+}
+
 export function ReportsIcon(props: IconProps) {
   return (
     <Icon {...props}>

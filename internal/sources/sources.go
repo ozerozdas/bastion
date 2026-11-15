@@ -15,7 +15,7 @@ type TargetKind string
 const (
 	// KindRepo is a source repository checked out into a directory.
 	KindRepo TargetKind = "repo"
-	// KindImage is a container image. Image sources arrive in Phase 2.
+	// KindImage is a container image on the local Docker daemon.
 	KindImage TargetKind = "image"
 	// KindPath is a directory on the local machine.
 	KindPath TargetKind = "path"
@@ -32,15 +32,19 @@ type Target struct {
 	Ref string
 }
 
-// Workspace is a fetched target. Scanners read from Dir.
-//
-// Image is intentionally absent until image sources land in Phase 2; adding
-// it now would pull go-containerregistry into the build before it is needed.
+// Workspace is a fetched target. Scanners read from Dir or Image.
 type Workspace struct {
-	// Dir is the local directory scanners read. It is absolute.
+	// Dir is the local directory scanners read. It is absolute and empty for
+	// an image target, which has no filesystem workspace.
 	Dir string
+	// Image is the container image reference scanners read from the local
+	// Docker daemon. It is empty for filesystem targets.
+	Image string
+	// DockerHost is the daemon host that answered when the image was fetched.
+	// It is resolved per scan, so a stale socket is never reused.
+	DockerHost string
 	// Cleanup removes anything Fetch created. It is nil for sources that did
-	// not create the directory (such as a local path).
+	// not create the directory (such as a local path or an image).
 	Cleanup func() error
 }
 

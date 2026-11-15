@@ -8,7 +8,8 @@ import {
   type NavItem,
 } from './nav'
 
-const projects = navItems.find((item) => item.label === 'Projects') as NavItem
+const projects = navItems.find((item) => item.label === 'Repositories') as NavItem
+const containers = navItems.find((item) => item.label === 'Containers') as NavItem
 const findings = navItems.find((item) => item.label === 'Findings') as NavItem
 
 describe('navItems', () => {
@@ -16,7 +17,8 @@ describe('navItems', () => {
     expect(navItems.map((item) => item.label)).toEqual([
       'Dashboard',
       'Findings',
-      'Projects',
+      'Repositories',
+      'Containers',
       'Connections',
     ])
   })
@@ -36,7 +38,7 @@ describe('navGroups', () => {
       })),
     ).toEqual([
       { section: 'main', label: null, items: ['Dashboard', 'Findings'] },
-      { section: 'assets', label: 'ASSETS', items: ['Projects'] },
+      { section: 'assets', label: 'ASSETS', items: ['Repositories', 'Containers'] },
       { section: 'settings', label: 'SETTINGS', items: ['Connections'] },
     ])
   })
@@ -48,18 +50,24 @@ describe('navGroups', () => {
 })
 
 describe('navItemFor', () => {
-  it('resolves the Projects route, including the Scans tab', () => {
-    expect(navItemFor('/projects').label).toBe('Projects')
-    expect(navItemFor('/projects/anything').label).toBe('Projects')
+  it('resolves the Repositories route, including the Scans tab', () => {
+    expect(navItemFor('/repositories').label).toBe('Repositories')
+    expect(navItemFor('/repositories/anything').label).toBe('Repositories')
+    // The old /projects URL keeps the right header before its redirect.
+    expect(navItemFor('/projects').label).toBe('Repositories')
   })
 
-  it('resolves the redirecting Scan History URL to Projects', () => {
-    expect(navItemFor('/scan-history').label).toBe('Projects')
+  it('resolves the Containers route', () => {
+    expect(navItemFor('/containers').label).toBe('Containers')
   })
 
-  it('resolves the scan diff page to Projects (#17)', () => {
-    expect(navItemFor('/scans/7/diff').label).toBe('Projects')
-    expect(navItemFor('/scans/7/diff').to).toBe('/projects')
+  it('resolves the redirecting Scan History URL to Repositories', () => {
+    expect(navItemFor('/scan-history').label).toBe('Repositories')
+  })
+
+  it('resolves the scan diff page to Repositories (#17)', () => {
+    expect(navItemFor('/scans/7/diff').label).toBe('Repositories')
+    expect(navItemFor('/scans/7/diff').to).toBe('/repositories')
   })
 
   it('falls back to the dashboard for an unknown path', () => {
@@ -70,17 +78,21 @@ describe('navItemFor', () => {
 describe('navBadge', () => {
   it('shows the count in the pill and in the accessible name', () => {
     expect(navBadge(projects, { projects: 7 })).toEqual({
-      name: 'Projects, 7',
+      name: 'Repositories, 7',
       count: '7',
     })
     expect(navBadge(findings, { openFindings: 3 })).toEqual({
       name: 'Findings, 3',
       count: '3',
     })
+    expect(navBadge(containers, { containers: 2 })).toEqual({
+      name: 'Containers, 2',
+      count: '2',
+    })
   })
 
   it('hides the count while the query has no number', () => {
-    expect(navBadge(projects, {})).toEqual({ name: 'Projects', count: null })
+    expect(navBadge(projects, {})).toEqual({ name: 'Repositories', count: null })
     expect(navBadge(findings, { openFindings: undefined })).toEqual({
       name: 'Findings',
       count: null,
@@ -89,7 +101,7 @@ describe('navBadge', () => {
 
   it('hides a zero count', () => {
     expect(navBadge(projects, { projects: 0 })).toEqual({
-      name: 'Projects',
+      name: 'Repositories',
       count: null,
     })
     expect(navBadge(findings, { openFindings: 0 })).toEqual({

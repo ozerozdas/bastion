@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ozerozdas/bastion/internal/app"
+	"github.com/ozerozdas/bastion/internal/docker"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
@@ -47,6 +48,8 @@ type doctorDeps struct {
 	// updateStatus is a read-only snapshot of the release check; doctor never
 	// waits for the network.
 	updateStatus func() update.Status
+	// dockerStatus probes the local Docker daemon with a short timeout.
+	dockerStatus func(ctx context.Context) docker.DaemonStatus
 }
 
 // doctorReport is the printed result. No field holds a credential: the HMAC key
@@ -62,6 +65,7 @@ type doctorReport struct {
 	TrivyVersion    string           `json:"trivy_version"`
 	TrivyCache      doctorTrivyCache `json:"trivy_cache"`
 	GitleaksVersion string           `json:"gitleaks_version"`
+	Docker          doctorDocker     `json:"docker"`
 	Keyring         doctorStatus     `json:"keyring"`
 	HMACKey         doctorStatus     `json:"hmac_key"`
 	Update          doctorUpdate     `json:"update"`
@@ -83,6 +87,14 @@ type doctorTrivyCache struct {
 	Present bool   `json:"present"`
 	Size    int64  `json:"size_bytes"`
 	Error   string `json:"error,omitempty"`
+}
+
+// doctorDocker reports whether a local Docker daemon was found. Docker is
+// optional: image scans are unavailable without it, every other scan works.
+type doctorDocker struct {
+	Found   bool   `json:"found"`
+	Host    string `json:"host,omitempty"`
+	Version string `json:"version,omitempty"`
 }
 
 // doctorStatus is a one-line state plus a short non-secret explanation.
@@ -140,6 +152,7 @@ func newDoctorDeps(opts *rootOptions) doctorDeps {
 		secretStore:      secrets.NewStore(),
 		getenv:           os.Getenv,
 		updateStatus:     newUpdateChecker(opts.paths).Snapshot,
+		dockerStatus:     docker.Status,
 	}
 }
 
@@ -186,6 +199,11 @@ func runDoctor(ctx context.Context, deps doctorDeps) (doctorReport, error) {
 	report.Update = doctorUpdate{State: string(update.ConsentUnset)}
 	if deps.updateStatus != nil {
 		report.Update = doctorUpdateFromStatus(deps.updateStatus())
+	}
+
+	if deps.dockerStatus != nil {
+		status := deps.dockerStatus(ctx)
+		report.Docker = doctorDocker{Found: status.Found, Host: status.Host, Version: status.Version}
 	}
 
 	database, err := deps.openDB(ctx, deps.paths.DBPath())
@@ -293,6 +311,7 @@ func writeDoctorText(w io.Writer, report doctorReport) error {
 		{"trivy", report.TrivyVersion},
 		{"trivy cache", report.TrivyCache.summary()},
 		{"gitleaks", report.GitleaksVersion},
+		{"docker", report.Docker.summary()},
 		{"keyring", report.Keyring.summary()},
 		{"hmac key", report.HMACKey.summary()},
 		{"update", report.Update.summary()},
@@ -365,6 +384,18 @@ func cacheSize(n int64) string {
 		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
 	default:
 		return fmt.Sprintf("%d bytes", n)
+	}
+}
+
+// summary renders the Docker daemon state as one line.
+func (d doctorDocker) summary() string {
+	switch {
+	case !d.Found:
+		return "not found"
+	case d.Version != "":
+		return "ok (" + d.Host + ", " + d.Version + ")"
+	default:
+		return "ok (" + d.Host + ")"
 	}
 }
 

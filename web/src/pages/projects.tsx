@@ -44,29 +44,21 @@ const statusView: Record<
   canceled: { tone: 'neutral', label: 'canceled' },
 }
 
-/** kindLabels names what each asset row is; images arrive in v0.2 (§8). */
-const kindLabels: Record<Asset['kind'], string> = {
-  repo: 'repo',
-  path: 'path',
-  image: 'image',
-}
-
 /**
  * projectColumns are the table headers; ProjectRow renders its own cells
  * because it owns the per-row mutations and inline detail rows.
  */
 const projectColumns: DataTableColumn<Asset>[] = [
-  { id: 'project', header: 'Project' },
-  { id: 'kind', header: 'Kind', headerClassName: 'pl-3' },
+  { id: 'project', header: 'Repository' },
   { id: 'ref', header: 'Ref', headerClassName: 'pl-3' },
   { id: 'last-scan', header: 'Last scan', headerClassName: 'pl-3' },
   { id: 'open-findings', header: 'Open findings', headerClassName: 'pl-3' },
   { id: 'actions', header: 'Actions', headerClassName: 'pl-3 text-right' },
 ]
 
-/** projectTabs are the two views of §7's Projects section (#88). */
+/** projectTabs are the two views of §7's Repositories section (#88). */
 const projectTabs: TabItem<ProjectsTab>[] = [
-  { value: 'projects', label: 'Projects' },
+  { value: 'projects', label: 'Repositories' },
   { value: 'scans', label: 'Scans' },
 ]
 
@@ -75,20 +67,20 @@ const projectTabs: TabItem<ProjectsTab>[] = [
  * scan history stays with the projects it belongs to (#88).
  */
 export function ProjectsPage() {
-  const search = useSearch({ from: '/projects' })
+  const search = useSearch({ from: '/repositories' })
   const navigate = useNavigate()
   const tab: ProjectsTab = search.tab ?? 'projects'
 
   return (
     <Tabs
-      label="Projects views"
+      label="Repositories views"
       items={projectTabs}
       value={tab}
       onChange={(next) => {
         // The URL owns the tab, so a reload or a copied link lands on it.
         // replace: switching tabs is not a step the Back button should undo.
         void navigate({
-          to: '/projects',
+          to: '/repositories',
           search: next === 'scans' ? { tab: 'scans' } : {},
           replace: true,
         })
@@ -99,32 +91,33 @@ export function ProjectsPage() {
   )
 }
 
-/** ProjectsPanel is §7.3: the assets table plus the add-project dialog. */
+/** ProjectsPanel is §7.3: the repositories table plus the add dialog. */
 function ProjectsPanel() {
   const assets = useQuery(assetsQuery)
   const live = useScanEvents()
   const [adding, setAdding] = useState(false)
-  const list = assets.data ?? []
+  // Images have their own page; this list is repositories and local paths.
+  const list = (assets.data ?? []).filter((asset) => asset.kind !== 'image')
 
   return (
     <>
       <PageActions>
         <Button type="button" size="sm" onClick={() => setAdding(true)}>
-          Add project
+          Add repository
         </Button>
       </PageActions>
       <section
-        aria-label="Projects"
+        aria-label="Repositories"
         className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
       >
 
         {assets.isPending ? (
-          <p className="text-muted">Loading projects…</p>
+          <p className="text-muted">Loading repositories…</p>
         ) : null}
 
         {assets.isError ? (
           <div className="flex flex-col gap-1">
-            <h3 className="text-[13px] font-semibold">Projects failed to load</h3>
+            <h3 className="text-[13px] font-semibold">Repositories failed to load</h3>
             <ErrorNote
               error={assets.error}
               fix="Reload the page; if it persists, check the terminal running bastion."
@@ -146,12 +139,12 @@ function ProjectsPanel() {
   )
 }
 
-/** ProjectsEmpty points at both ways to create the first project (§7). */
+/** ProjectsEmpty points at both ways to create the first repository (§7). */
 function ProjectsEmpty({ onAdd }: { onAdd: () => void }) {
   return (
     <EmptyState
-      title="No projects yet"
-      body="Projects are the repositories and local paths you scan. Connect GitHub to search your repositories and add them in bulk, or add an absolute path to a directory on this machine. Scans run locally; source is never uploaded."
+      title="No repositories yet"
+      body="Repositories are the GitHub repositories and local paths you scan. Connect GitHub to search your repositories and add them in bulk, or add an absolute path to a directory on this machine. Scans run locally; source is never uploaded."
     >
       <Link to="/connections" className={buttonVariants()}>
         Connect GitHub
@@ -198,7 +191,7 @@ function ProjectsTable({
     all: {
       checked: allSelected,
       onChange: toggleAll,
-      label: 'Select all projects',
+      label: 'Select all repositories',
     },
     row: (asset) => ({
       checked: selected.has(asset.id),
@@ -296,9 +289,6 @@ function ProjectRow({
             {asset.display_name}
           </span>
         </td>
-        <td className="py-2 pl-3 align-top">
-          <Badge>{kindLabels[asset.kind]}</Badge>
-        </td>
         <td className="max-w-[28ch] py-2 pl-3 align-top">
           <span className="block truncate font-mono text-xs text-muted" title={asset.ref}>
             {asset.ref}
@@ -378,7 +368,7 @@ function ProjectRow({
 
       {confirming ? (
         <tr>
-          <td colSpan={7} className="pb-2">
+          <td colSpan={6} className="pb-2">
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
               <span>
                 Remove “{asset.display_name}”? Its existing scans stay in the
@@ -412,7 +402,7 @@ function ProjectRow({
 
       {failed ? (
         <tr>
-          <td colSpan={7} className="pb-2">
+          <td colSpan={6} className="pb-2">
             <ScanFailure error={scanError} />
           </td>
         </tr>
@@ -420,7 +410,7 @@ function ProjectRow({
 
       {start.isError ? (
         <tr>
-          <td colSpan={7} className="pb-2">
+          <td colSpan={6} className="pb-2">
             <ErrorNote
               error={start.error}
               fix="Scan again; if it keeps failing, check the terminal running bastion."
@@ -430,7 +420,7 @@ function ProjectRow({
       ) : null}
       {cancel.isError ? (
         <tr>
-          <td colSpan={7} className="pb-2">
+          <td colSpan={6} className="pb-2">
             <ErrorNote
               error={cancel.error}
               fix="Reload the page to see the scan's final status."
@@ -440,10 +430,10 @@ function ProjectRow({
       ) : null}
       {archive.isError ? (
         <tr>
-          <td colSpan={7} className="pb-2">
+          <td colSpan={6} className="pb-2">
             <ErrorNote
               error={archive.error}
-              fix="The project stays until removal succeeds; try again."
+              fix="The repository stays until removal succeeds; try again."
             />
           </td>
         </tr>
@@ -468,7 +458,7 @@ function ScanFailure({ error }: { error: string | undefined }) {
 }
 
 /**
- * AddProjectDialog holds the add-project panel in a modal (#105). A native
+ * AddProjectDialog holds the add-source panel in a modal (#105). A native
  * <dialog> keeps focus trapped and closes on Escape without extra code, and a
  * successful add closes it by flipping `open` in the parent.
  */
@@ -494,7 +484,7 @@ function AddProjectDialog({
   return (
     <dialog
       ref={dialog}
-      aria-labelledby="add-projects"
+      aria-labelledby="add-repositories"
       onClose={onClose}
       className="m-auto w-[min(760px,92vw)] max-h-[90vh] overflow-y-auto rounded-card border border-border-subtle bg-surface p-0 text-fg backdrop:bg-black/40"
     >
@@ -514,8 +504,8 @@ function AddProjects({ onDone }: { onDone: () => void }) {
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <h2 id="add-projects" className="text-[13px] font-semibold">
-            Add projects
+          <h2 id="add-repositories" className="text-[13px] font-semibold">
+            Add repositories
           </h2>
           <p className="text-xs text-muted">
             Repositories are read with a connection token. A local path is

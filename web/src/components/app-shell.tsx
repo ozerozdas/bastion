@@ -35,8 +35,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const assets = useQuery(assetsQuery)
   const dashboard = useQuery(dashboardQuery)
   const counts: NavCounts = {
-    // The API lists non-archived assets only, so the length is the count.
-    projects: assets.data?.length,
+    // Repositories are the non-image assets; images have their own entry.
+    projects: assets.data?.filter((asset) => asset.kind !== 'image').length,
+    containers: assets.data?.filter((asset) => asset.kind === 'image').length,
     openFindings: dashboard.data
       ? openFindingTotal(dashboard.data.totals_by_severity)
       : undefined,

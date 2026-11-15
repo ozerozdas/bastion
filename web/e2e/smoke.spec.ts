@@ -19,13 +19,19 @@ const navPages = [
     label: 'Findings',
     path: '/findings',
     subtitle: 'Across every project, with fixes',
-    marker: 'No projects yet',
+    marker: 'No repositories yet',
   },
   {
-    label: 'Projects',
-    path: '/projects',
-    subtitle: 'Repositories and images you scan',
+    label: 'Repositories',
+    path: '/repositories',
+    subtitle: 'GitHub repositories and local paths you scan',
     marker: 'Add a local path',
+  },
+  {
+    label: 'Containers',
+    path: '/containers',
+    subtitle: 'Images on the local Docker daemon',
+    marker: 'Local Docker images',
   },
   {
     label: 'Connections',
@@ -60,7 +66,7 @@ test('exchanges the startup token for a session cookie', async ({
   expect(problems).toEqual([])
 })
 
-test('renders all four nav pages without browser errors', async ({
+test('renders every nav page without browser errors', async ({
   page,
   server,
 }) => {
@@ -104,7 +110,13 @@ test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => 
     .evaluateAll((links) =>
       links.map((link) => link.getAttribute('aria-label')),
     )
-  expect(labels).toEqual(['Dashboard', 'Findings', 'Projects', 'Connections'])
+  expect(labels).toEqual([
+    'Dashboard',
+    'Findings',
+    'Repositories',
+    'Containers',
+    'Connections',
+  ])
 
   // Scan History is a tab now, not a sidebar entry.
   await expect(aside.getByRole('link', { name: /Scan History/ })).toHaveCount(0)
@@ -112,32 +124,32 @@ test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => 
   expect(problems).toEqual([])
 })
 
-test('Projects tabs live in the URL and move with arrow keys', async ({
+test('Repositories tabs live in the URL and move with arrow keys', async ({
   page,
   server,
 }) => {
   const problems = watch(page)
   await openSession(page, server)
-  await page.getByRole('link', { name: 'Projects', exact: true }).click()
+  await page.getByRole('link', { name: 'Repositories', exact: true }).click()
 
-  const projectsTab = page.getByRole('tab', { name: 'Projects', exact: true })
+  const projectsTab = page.getByRole('tab', { name: 'Repositories', exact: true })
   const scansTab = page.getByRole('tab', { name: 'Scans', exact: true })
   await expect(projectsTab).toHaveAttribute('aria-selected', 'true')
   await expect(projectsTab).toHaveAttribute('tabindex', '0')
   await expect(scansTab).toHaveAttribute('aria-selected', 'false')
   await expect(scansTab).toHaveAttribute('tabindex', '-1')
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Projects' }),
+    page.getByRole('heading', { level: 1, name: 'Repositories' }),
   ).toBeVisible()
 
   const origin = new URL(page.url()).origin
 
   // Clicking the tab changes only the URL; the tablist is not local state.
   await scansTab.click()
-  await expect(page).toHaveURL(`${origin}/projects?tab=scans`)
+  await expect(page).toHaveURL(`${origin}/repositories?tab=scans`)
   await expect(scansTab).toHaveAttribute('aria-selected', 'true')
   await expect(
-    page.getByText('No scans yet — add a project and press Scan', {
+    page.getByText('No scans yet — add a repository and press Scan', {
       exact: true,
     }),
   ).toBeVisible()
@@ -154,19 +166,19 @@ test('Projects tabs live in the URL and move with arrow keys', async ({
   await expect(
     page.getByRole('tab', { name: 'Scans', exact: true }),
   ).toHaveAttribute('aria-selected', 'true')
-  await expect(page).toHaveURL(`${origin}/projects?tab=scans`)
+  await expect(page).toHaveURL(`${origin}/repositories?tab=scans`)
 
   // Automatic activation: ArrowLeft/ArrowRight wrap, Home/End jump.
   await scansTab.focus()
   await page.keyboard.press('ArrowLeft')
   await expect(projectsTab).toBeFocused()
   await expect(projectsTab).toHaveAttribute('aria-selected', 'true')
-  await expect(page).toHaveURL(`${origin}/projects`)
+  await expect(page).toHaveURL(`${origin}/repositories`)
 
   await page.keyboard.press('ArrowRight')
   await expect(scansTab).toBeFocused()
   await expect(scansTab).toHaveAttribute('aria-selected', 'true')
-  await expect(page).toHaveURL(`${origin}/projects?tab=scans`)
+  await expect(page).toHaveURL(`${origin}/repositories?tab=scans`)
 
   await page.keyboard.press('Home')
   await expect(projectsTab).toBeFocused()
@@ -217,15 +229,36 @@ test('Connections tabs live in the URL', async ({ page, server }) => {
   expect(problems).toEqual([])
 })
 
+test('redirects /projects to /repositories', async ({ page, server }) => {
+  const problems = watch(page)
+  await openSession(page, server)
+  const origin = new URL(page.url()).origin
+
+  await page.goto(`${origin}/projects`)
+  await expect(page).toHaveURL(`${origin}/repositories`)
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Repositories' }),
+  ).toBeVisible()
+
+  // The query string survives, so an old Scans-tab link still opens it.
+  await page.goto(`${origin}/projects?tab=scans`)
+  await expect(page).toHaveURL(`${origin}/repositories?tab=scans`)
+  await expect(
+    page.getByRole('tab', { name: 'Scans', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true')
+
+  expect(problems).toEqual([])
+})
+
 test('redirects /scan-history to the Scans tab', async ({ page, server }) => {
   const problems = watch(page)
   await openSession(page, server)
   const origin = new URL(page.url()).origin
 
   await page.goto(`${origin}/scan-history`)
-  await expect(page).toHaveURL(`${origin}/projects?tab=scans`)
+  await expect(page).toHaveURL(`${origin}/repositories?tab=scans`)
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Projects' }),
+    page.getByRole('heading', { level: 1, name: 'Repositories' }),
   ).toBeVisible()
   await expect(
     page.getByRole('tab', { name: 'Scans', exact: true }),
@@ -242,8 +275,8 @@ test('drops a stale project id from the findings URL', async ({
   await openSession(page, server)
 
   // One project: the page has something to fall back to when the id is gone.
-  await page.getByRole('link', { name: 'Projects', exact: true }).click()
-  await page.getByRole('button', { name: 'Add project' }).click()
+  await page.getByRole('link', { name: 'Repositories', exact: true }).click()
+  await page.getByRole('button', { name: 'Add repository' }).click()
   await page.getByLabel('Or add a local path').fill(server.projectDir)
   await page.getByRole('button', { name: 'Add path' }).click()
 
@@ -273,13 +306,13 @@ test('drops a stale project id from the findings URL', async ({
   expect(problems).toEqual([])
 })
 
-test('adds a local path project through the UI', async ({ page, server }) => {
+test('adds a local path repository through the UI', async ({ page, server }) => {
   const problems = watch(page)
   await openSession(page, server)
-  await page.getByRole('link', { name: 'Projects', exact: true }).click()
+  await page.getByRole('link', { name: 'Repositories', exact: true }).click()
 
   const name = basename(server.projectDir)
-  await page.getByRole('button', { name: 'Add project' }).click()
+  await page.getByRole('button', { name: 'Add repository' }).click()
   await page.getByLabel('Or add a local path').fill(server.projectDir)
   await page.getByRole('button', { name: 'Add path' }).click()
 
@@ -290,7 +323,8 @@ test('adds a local path project through the UI', async ({ page, server }) => {
   await expect(row).toBeVisible()
   // The row shows the directory's base name and keeps the absolute path in Ref.
   await expect(row.getByText(server.projectDir, { exact: true })).toBeVisible()
-  await expect(row.getByText('path', { exact: true })).toBeVisible()
+  // The old Kind column is gone; the table starts with Repository.
+  await expect(page.getByRole('columnheader', { name: 'Kind' })).toHaveCount(0)
 
   expect(problems).toEqual([])
 })

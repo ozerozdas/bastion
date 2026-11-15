@@ -1,0 +1,73 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "dev"
+  },
+  "ArtifactName": "alpine:3.20",
+  "ArtifactType": "container_image",
+  "Metadata": {
+    "OS": {
+      "Family": "alpine",
+      "Name": "3.20.3"
+    },
+    "ImageID": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "RepoTags": [
+      "alpine:3.20"
+    ]
+  },
+  "Results": [
+    {
+      "Target": "alpine:3.20 (alpine 3.20.3)",
+      "Class": "os-pkgs",
+      "Type": "alpine",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2024-1234",
+          "PkgName": "musl",
+          "InstalledVersion": "1.2.5-r0",
+          "FixedVersion": "1.2.5-r1",
+          "Title": "musl: buffer overflow",
+          "Description": "A crafted input overflows a buffer in musl.",
+          "Severity": "HIGH",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-1234",
+          "References": [
+            "https://nvd.nist.gov/vuln/detail/CVE-2024-1234"
+          ],
+          "CVSS": {
+            "nvd": {
+              "V3Score": 7.5
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Target": "usr/local/lib/python3.12/site-packages",
+      "Class": "lang-pkgs",
+      "Type": "python-pkg",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2024-5678",
+          "PkgName": "requests",
+          "PkgPath": "usr/local/lib/python3.12/site-packages/requests",
+          "InstalledVersion": "2.31.0",
+          "Title": "requests: certificate verification bypass",
+          "Severity": "MEDIUM"
+        }
+      ]
+    },
+    {
+      "Target": "Alpine",
+      "Class": "license",
+      "Licenses": [
+        {
+          "Severity": "HIGH",
+          "Category": "restricted",
+          "PkgName": "musl",
+          "FilePath": "",
+          "Name": "GPL-3.0-only"
+        }
+      ]
+    }
+  ]
+}

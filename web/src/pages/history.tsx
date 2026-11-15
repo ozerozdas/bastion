@@ -32,15 +32,15 @@ const triggerLabels: Record<Scan['trigger'], string> = {
   api: 'API',
 }
 
-/** ScansPanel is the Projects page's Scans tab: every scan of every project. */
+/** ScansPanel is the Repositories page's Scans tab: every scan of every asset. */
 export function ScansPanel() {
   // The project filter lives in the URL (#54), so a filtered view can be
   // reloaded, bookmarked and shared.
-  const assetId = useSearch({ from: '/projects' }).asset
+  const assetId = useSearch({ from: '/repositories' }).asset
   const navigate = useNavigate()
   const setAssetId = (asset: number | undefined) => {
     void navigate({
-      to: '/projects',
+      to: '/repositories',
       search: asset === undefined ? { tab: 'scans' } : { tab: 'scans', asset },
       replace: true,
     })
@@ -51,7 +51,7 @@ export function ScansPanel() {
   useEffect(() => {
     if (assetId === undefined || assets.data === undefined) return
     if (assets.data.some((asset) => asset.id === assetId)) return
-    void navigate({ to: '/projects', search: { tab: 'scans' }, replace: true })
+    void navigate({ to: '/repositories', search: { tab: 'scans' }, replace: true })
   }, [assetId, assets.data, navigate])
 
   // Poll while any scan in the list is still queued or running, so the status
@@ -119,7 +119,7 @@ export function ScansPanel() {
           scans.data.length === 0 ? (
             <p className="text-xs text-muted">
               No scans for this project yet. Pick another project, or scan this
-              one from Projects.
+              one from Repositories.
             </p>
           ) : (
             <ScanTable scans={scans.data} assets={assets.data ?? []} />
@@ -262,11 +262,11 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
 function ScansEmpty() {
   return (
     <EmptyState
-      title="No scans yet — add a project and press Scan"
+      title="No scans yet — add a repository and press Scan"
       body="Every scan is listed here with its status and duration. Once two scans have finished, Compare shows what is new, fixed or still open between them."
     >
-      <Link to="/projects" className={buttonVariants({ variant: 'outline' })}>
-        Go to projects
+      <Link to="/repositories" className={buttonVariants({ variant: 'outline' })}>
+        Go to repositories
       </Link>
     </EmptyState>
   )

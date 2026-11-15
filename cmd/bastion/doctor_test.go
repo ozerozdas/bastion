@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/ozerozdas/bastion/internal/app"
+	"github.com/ozerozdas/bastion/internal/docker"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
 )
@@ -44,6 +45,9 @@ func testDoctorDeps(t *testing.T) doctorDeps {
 		},
 		secretStore: secrets.NewMemoryStore(),
 		getenv:      func(string) string { return "" },
+		dockerStatus: func(context.Context) docker.DaemonStatus {
+			return docker.DaemonStatus{}
+		},
 	}
 }
 
@@ -66,6 +70,9 @@ func TestRunDoctorHealthy(t *testing.T) {
 	}
 	if report.HMACKey.Status != "missing" {
 		t.Fatalf("hmac key = %+v, want missing on a fresh install", report.HMACKey)
+	}
+	if report.Docker.Found {
+		t.Fatalf("docker = %+v, want not found", report.Docker)
 	}
 	if len(report.Warnings) != 0 {
 		t.Fatalf("warnings = %v, want none", report.Warnings)
@@ -132,6 +139,30 @@ func assertOutputOmits(t *testing.T, report doctorReport, value string) {
 	}
 	if strings.Contains(asJSON.String(), value) {
 		t.Fatalf("JSON report leaks the HMAC key value:\n%s", asJSON.String())
+	}
+}
+
+func TestRunDoctorReportsDocker(t *testing.T) {
+	deps := testDoctorDeps(t)
+	deps.dockerStatus = func(context.Context) docker.DaemonStatus {
+		return docker.DaemonStatus{Found: true, Host: "unix:///var/run/docker.sock", Version: "27.0.3"}
+	}
+
+	report, err := runDoctor(context.Background(), deps)
+	if err != nil {
+		t.Fatalf("runDoctor: %v", err)
+	}
+	if !report.Docker.Found || report.Docker.Version != "27.0.3" {
+		t.Fatalf("docker = %+v, want the daemon version", report.Docker)
+	}
+
+	var out bytes.Buffer
+	if err := writeDoctorText(&out, report); err != nil {
+		t.Fatalf("writeDoctorText: %v", err)
+	}
+	if !strings.Contains(out.String(), "docker") ||
+		!strings.Contains(out.String(), "unix:///var/run/docker.sock, 27.0.3") {
+		t.Errorf("text report has no docker row:\n%s", out.String())
 	}
 }
 
@@ -292,6 +323,7 @@ func TestWriteDoctorText(t *testing.T) {
 		Database:        doctorDatabase{Path: "/data/bastion.db", Status: "ok", SchemaVersion: 1},
 		TrivyVersion:    "0.76.2",
 		GitleaksVersion: "8.30.1",
+		Docker:          doctorDocker{Found: true, Host: "unix:///var/run/docker.sock", Version: "27.0.3"},
 		Keyring:         doctorStatus{Status: "ok"},
 		HMACKey:         doctorStatus{Status: "missing", Detail: "not created yet"},
 	}
@@ -311,6 +343,7 @@ func TestWriteDoctorText(t *testing.T) {
 		"ok (schema version 1)",
 		"trivy", "0.76.2",
 		"gitleaks", "8.30.1",
+		"docker", "ok (unix:///var/run/docker.sock, 27.0.3)",
 		"hmac key", "missing (not created yet)",
 	} {
 		if !strings.Contains(got, want) {

@@ -43,10 +43,14 @@ tags:
     description: |
       Credentialed integrations used to discover and fetch sources. Tokens live
       in the OS keyring (never in SQLite) and are never returned by the API.
+  - name: docker
+    description: |
+      The local Docker daemon. Bastion reads the images it already holds and
+      never pulls, builds or runs anything.
   - name: assets
     description: |
-      The repositories and local paths bastion tracks. Archiving is a soft
-      delete: history and findings stay readable.
+      The repositories, local paths and local images bastion tracks. Archiving
+      is a soft delete: history and findings stay readable.
   - name: scans
     description: |
       Scan queue and history. Scans run in the server's worker pool; every scan
@@ -351,6 +355,31 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /api/docker/images:
+    get:
+      operationId: getDockerImages
+      summary: List images on the local Docker daemon.
+      description: |
+        `available` is false when no daemon was found; the response is still
+        200 with an empty list, because a machine without Docker is a normal
+        state, not an error. Only tagged images are listed: an untagged image
+        cannot be addressed by a scan.
+      tags: [docker]
+      responses:
+        "200":
+          description: The daemon state and its tagged images.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DockerImageList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/assets:
     get:
       operationId: listAssets
@@ -1620,7 +1649,7 @@ components:
     Asset:
       type: object
       title: Asset
-      description: One tracked repository or path.
+      description: One tracked repository, path or image.
       additionalProperties: false
       required: [id, kind, display_name, ref, created_at, open_counts]
       properties:
@@ -1641,10 +1670,10 @@ components:
           type: string
           description: |
             Canonical reference: `owner/repo` for repositories, the absolute
-            directory for paths.
+            directory for paths, the image reference for images.
         default_branch:
           type: string
-          description: Branch the repository tracks; absent for paths.
+          description: Branch the repository tracks; absent for paths and images.
         created_at:
           type: string
           format: date-time
@@ -1671,6 +1700,46 @@ components:
           type: string
           format: date-time
           description: Absent while the scan has not finished.
+    DockerImageList:
+      type: object
+      title: DockerImageList
+      description: |
+        The local daemon's state and its tagged images. `available` is false
+        when no daemon was found.
+      additionalProperties: false
+      required: [available, host, images]
+      properties:
+        available:
+          type: boolean
+        host:
+          type: string
+          description: |
+            The daemon host that answered the probe, for example
+            `unix:///var/run/docker.sock`. Empty when no daemon was reached.
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/DockerImage"
+    DockerImage:
+      type: object
+      title: DockerImage
+      description: One tagged image on the local daemon.
+      additionalProperties: false
+      required: [reference, id, size_bytes, created_at]
+      properties:
+        reference:
+          type: string
+          description: "The image tag, for example `nginx:latest`."
+        id:
+          type: string
+          description: The image's content-addressable id.
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
     CreateAssetRequest:
       type: object
       title: CreateAssetRequest
@@ -1681,13 +1750,14 @@ components:
           type: string
           description: |
             `repo` takes an `owner/repo` ref; `path` takes an existing absolute
-            directory. Images arrive in a later phase.
-          enum: [repo, path]
+            directory; `image` takes an image reference the local Docker daemon
+            holds.
+          enum: [repo, path, image]
         ref:
           type: string
           minLength: 1
-          description: "`owner/repo` for repositories, an absolute directory for paths."
-          examples: ["octo/hello", "/Users/me/src/hello"]
+          description: "`owner/repo` for repositories, an absolute directory for paths, an image reference for images."
+          examples: ["octo/hello", "/Users/me/src/hello", "nginx:latest"]
         connection_id:
           type: integer
           format: int64

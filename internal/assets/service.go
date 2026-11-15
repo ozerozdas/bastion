@@ -206,19 +206,22 @@ func (s *Service) List(ctx context.Context) ([]Asset, error) {
 	return out, nil
 }
 
-// Create tracks a repository or a local path. A repository's default branch is
-// resolved through GitHub with the connection's token; a path must be an
-// existing absolute directory. Re-adding an archived asset revives that row so
-// its id, history and finding decisions survive.
+// Create tracks a repository, a local path or a local Docker image. A
+// repository's default branch is resolved through GitHub with the connection's
+// token; a path must be an existing absolute directory; an image must be a
+// non-empty reference the local daemon holds. Re-adding an archived asset
+// revives that row so its id, history and finding decisions survive.
 func (s *Service) Create(ctx context.Context, in CreateInput) (Asset, error) {
 	switch in.Kind {
 	case string(findings.AssetKindRepo):
 		return s.createRepo(ctx, in)
 	case string(findings.AssetKindPath):
 		return s.createPath(ctx, in)
+	case string(findings.AssetKindImage):
+		return s.createImage(ctx, in)
 	default:
-		return Asset{}, fmt.Errorf("%w: kind %q is not one of %s, %s", ErrInvalid,
-			in.Kind, findings.AssetKindRepo, findings.AssetKindPath)
+		return Asset{}, fmt.Errorf("%w: kind %q is not one of %s, %s, %s", ErrInvalid,
+			in.Kind, findings.AssetKindRepo, findings.AssetKindPath, findings.AssetKindImage)
 	}
 }
 
@@ -282,6 +285,48 @@ func (s *Service) createPath(ctx context.Context, in CreateInput) (Asset, error)
 		ref:         ref,
 		displayName: filepath.Base(ref),
 	})
+}
+
+// createImage validates that ref is a non-empty image reference. The daemon is
+// not consulted here: the UI only offers images it listed, and a scan reports a
+// missing image or daemon itself. The reference is the asset's ref, so the same
+// image tag is never tracked twice.
+func (s *Service) createImage(ctx context.Context, in CreateInput) (Asset, error) {
+	ref := strings.TrimSpace(in.Ref)
+	if err := validateImageRef(ref); err != nil {
+		return Asset{}, err
+	}
+
+	if existing, err := s.existing(ctx, string(findings.AssetKindImage), ref); err != nil {
+		return Asset{}, err
+	} else if existing != nil && !existing.ArchivedAt.Valid {
+		return Asset{}, fmt.Errorf("%w: image %s is already tracked", ErrConflict, ref)
+	}
+	return s.save(ctx, saveInput{
+		kind:        string(findings.AssetKindImage),
+		ref:         ref,
+		displayName: ref,
+	})
+}
+
+// validateImageRef accepts the character set a Docker reference may contain.
+// A leading "-" is rejected too, so a ref can never be mistaken for a flag.
+func validateImageRef(ref string) error {
+	if ref == "" {
+		return fmt.Errorf("%w: an image reference is required", ErrInvalid)
+	}
+	if strings.HasPrefix(ref, "-") {
+		return fmt.Errorf("%w: image reference %q must not start with '-'", ErrInvalid, ref)
+	}
+	for _, r := range ref {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.', r == '_', r == ':', r == '@', r == '/', r == '-':
+		default:
+			return fmt.Errorf("%w: image reference %q contains an unsupported character", ErrInvalid, ref)
+		}
+	}
+	return nil
 }
 
 // existing returns the asset row for kind+ref, or nil when there is none.

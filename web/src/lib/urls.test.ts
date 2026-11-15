@@ -102,7 +102,7 @@ describe('parseProjectsTabSearch', () => {
     expect(parseProjectsTabSearch({ tab: 'scans' })).toEqual({ tab: 'scans' })
   })
 
-  it('treats the default Projects tab as the bare path', () => {
+  it('treats the default Repositories tab as the bare path', () => {
     expect(parseProjectsTabSearch({})).toEqual({})
     expect(parseProjectsTabSearch({ tab: undefined })).toEqual({})
     expect(parseProjectsTabSearch({ tab: 'projects' })).toEqual({})

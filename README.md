@@ -2,10 +2,11 @@
 
 Local-first security center. One Go binary, run on your own machine, that opens a web UI
 in your browser and reports dependency vulnerabilities, licence issues, IaC
-misconfigurations and leaked secrets for GitHub repositories and local directories, all
-through one normalized view. It does not build its own security engine: Trivy and Gitleaks
-are imported as Go libraries, and OSV advisories are queried over HTTPS, so there is no
-Docker daemon, no Python and no external CLI.
+misconfigurations and leaked secrets for GitHub repositories, local directories and
+images on a local Docker daemon, all through one normalized view. It does not build its
+own security engine: Trivy and Gitleaks are imported as Go libraries, and OSV advisories
+are queried over HTTPS, so no Docker daemon is required (it is only used, when present,
+to read images), and there is no Python and no external CLI.
 Nothing leaves the machine except the calls listed under [Network calls](#network-calls).
 
 ![bastion: connect GitHub, add a repo, scan, read the report](docs/demo.gif)
@@ -78,7 +79,7 @@ first scan additionally downloads a ~1.7 GB vulnerability DB into the cache dire
 ```
 bastion [flags]                  # same as `bastion serve`
 bastion serve   [--port N] [--no-browser] [--concurrency N]
-bastion scan    --path DIR | --repo owner/name[@ref]
+bastion scan    --path DIR | --repo owner/name[@ref] | --image IMAGE
                 [--format json|table|sarif|cyclonedx] [--fail-on critical|high|medium|low]
                 [--skip-dirs DIR]...  [--no-store]
 bastion doctor  [--json]
@@ -94,6 +95,9 @@ bastion scan --path . --format table
 
 # Scan a GitHub repo's default branch (token from a saved connection or BASTION_GITHUB_TOKEN)
 bastion scan --repo ozerozdas/bastion --format json
+
+# Scan an image the local Docker daemon already holds (never pulls)
+bastion scan --image nginx:latest --format table
 
 # CI: write SARIF, fail the build on critical findings
 export BASTION_HMAC_KEY="$(openssl rand -base64 32)"
@@ -123,6 +127,12 @@ it on: Trivy runs with `--disable-telemetry --skip-version-check`, scans query
 | `api.github.com` | Only on user action: test connection, discover repos, add asset, scan | `GET /user`, `GET /user/repos`, `GET /repos/{owner}/{repo}`, `GET /repos/{owner}/{repo}/commits/{branch}`, `GET /repos/{owner}/{repo}/tarball/{sha}` |
 | `codeload.github.com` | Redirect target of the tarball call | The repository archive itself |
 | `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed and nothing else is parsed |
+
+Bastion also talks to the local Docker daemon over its Unix socket
+(`DOCKER_HOST`, or the usual Docker Desktop, OrbStack, Colima and Rancher Desktop
+sockets) when one is present: it pings the daemon, lists its tagged images and reads the
+image a scan targets. It never pulls, pushes, builds or runs anything, and with no daemon
+the Docker source is simply hidden.
 
 The three Trivy registries are OCI pulls performed by Trivy's updater; they are cached
 under `<cache>/trivy` and re-used by later scans. Nothing is downloaded at startup: the

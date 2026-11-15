@@ -84,7 +84,7 @@ export function ScanDiffPage() {
 
   const backToScans = (
     <Link
-      to="/projects"
+      to="/repositories"
       search={{ tab: 'scans', asset: scan.data?.asset_id }}
       className="text-xs text-muted hover:text-fg hover:underline"
     >

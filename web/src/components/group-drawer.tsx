@@ -262,7 +262,7 @@ export function GroupDrawer({
           {bulk.isError ? (
             <ErrorNote
               error={bulk.error}
-              fix="Projects before the failure were saved; the list shows what is left."
+              fix="Repositories before the failure were saved; the list shows what is left."
             />
           ) : null}
         </section>
