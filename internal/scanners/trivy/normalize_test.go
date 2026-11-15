@@ -282,3 +282,48 @@ func TestVulnerabilityAliasesMergeWithOSV(t *testing.T) {
 		t.Errorf("scanners = %v, want %v", got[0].Scanners, want)
 	}
 }
+
+func TestImageSourceReadsOCILabels(t *testing.T) {
+	raw := &scanners.RawResult{
+		Scanner: "trivy",
+		Version: Version,
+		Raw: []byte(`{
+			"SchemaVersion": 2,
+			"ArtifactType": "container_image",
+			"Metadata": {
+				"ImageConfig": {
+					"config": {
+						"Labels": {
+							"org.opencontainers.image.source": "https://github.com/acme/api.git",
+							"org.opencontainers.image.revision": " 9f2c1ab "
+						}
+					}
+				}
+			},
+			"Results": []
+		}`),
+	}
+
+	got := New().ImageSource(raw)
+	if got.URL != "https://github.com/acme/api.git" {
+		t.Fatalf("source = %q, want the OCI source label", got.URL)
+	}
+	if got.Revision != "9f2c1ab" {
+		t.Fatalf("revision = %q, want the trimmed OCI revision label", got.Revision)
+	}
+}
+
+func TestImageSourceWithoutLabels(t *testing.T) {
+	for name, raw := range map[string]*scanners.RawResult{
+		"nil":           nil,
+		"no json":       {Scanner: "trivy"},
+		"labels absent": {Scanner: "trivy", Raw: []byte(`{"ArtifactType": "container_image", "Results": []}`)},
+		"not json":      {Scanner: "trivy", Raw: []byte(`not a report`)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := New().ImageSource(raw); got.URL != "" || got.Revision != "" {
+				t.Fatalf("ImageSource = %+v, want the zero value", got)
+			}
+		})
+	}
+}

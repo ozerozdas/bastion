@@ -501,6 +501,80 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/assets/{id}/link:
+    put:
+      operationId: setAssetLink
+      summary: Link an image to the repository it was built from.
+      description: |
+        `{id}` is the image asset. The link replaces any previous one for that
+        image, including a link the image's OCI labels created, and is marked
+        `manual`: a later scan never overwrites it. Both assets must exist and
+        the pair must be an image and a repository.
+      tags: [assets]
+      parameters:
+        - $ref: "#/components/parameters/AssetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAssetLinkRequest"
+      responses:
+        "200":
+          description: The image asset with its new link.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        "400":
+          description: |
+            An id is not usable, or the pair is not an image and a repository.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: The image or repository asset does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: clearAssetLink
+      summary: Remove an image's repository link.
+      description: |
+        `{id}` is the image asset. The link is removed whichever source created
+        it; clearing an unlinked image is not an error.
+      tags: [assets]
+      parameters:
+        - $ref: "#/components/parameters/AssetID"
+      responses:
+        "204":
+          description: The image has no link.
+        "400":
+          description: The id is not usable.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/scans:
     get:
       operationId: listScans
@@ -1752,7 +1826,7 @@ components:
       title: Asset
       description: One tracked repository, path or image.
       additionalProperties: false
-      required: [id, kind, display_name, ref, created_at, open_counts]
+      required: [id, kind, display_name, ref, created_at, open_counts, linked_images]
       properties:
         id:
           type: integer
@@ -1782,6 +1856,59 @@ components:
           $ref: "#/components/schemas/AssetLastScan"
         open_counts:
           $ref: "#/components/schemas/SeverityTotals"
+        linked_repo:
+          $ref: "#/components/schemas/AssetLink"
+        linked_images:
+          type: array
+          description: |
+            The images linked to this repository. Empty for paths and images,
+            and for a repository nothing was linked to yet.
+          items:
+            $ref: "#/components/schemas/AssetLink"
+    AssetLink:
+      type: object
+      title: AssetLink
+      description: |
+        The other end of a repository <-> image link. `source` says who made it:
+        `manual` is a user's choice and is never overwritten by a scan, `oci` is
+        the image's own org.opencontainers.image.source label.
+      additionalProperties: false
+      required: [asset_id, ref, display_name, source]
+      properties:
+        asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The id of the linked asset.
+        ref:
+          type: string
+          description: The linked asset's canonical ref.
+        display_name:
+          type: string
+        source:
+          $ref: "#/components/schemas/AssetLinkSource"
+        revision:
+          type: string
+          description: |
+            The image's org.opencontainers.image.revision label. Absent for a
+            manual link and when the image carried no revision.
+    AssetLinkSource:
+      type: string
+      title: AssetLinkSource
+      description: How a repository <-> image link was made.
+      enum: [manual, oci]
+    SetAssetLinkRequest:
+      type: object
+      title: SetAssetLinkRequest
+      description: The repository an image was built from.
+      additionalProperties: false
+      required: [repo_asset_id]
+      properties:
+        repo_asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+
     AssetLastScan:
       type: object
       title: AssetLastScan

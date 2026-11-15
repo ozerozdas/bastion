@@ -51,6 +51,7 @@ const statusView: Record<
 const projectColumns: DataTableColumn<Asset>[] = [
   { id: 'project', header: 'Repository' },
   { id: 'ref', header: 'Ref', headerClassName: 'pl-3' },
+  { id: 'images', header: 'Images', headerClassName: 'pl-3' },
   { id: 'last-scan', header: 'Last scan', headerClassName: 'pl-3' },
   { id: 'open-findings', header: 'Open findings', headerClassName: 'pl-3' },
   { id: 'actions', header: 'Actions', headerClassName: 'pl-3 text-right' },
@@ -297,6 +298,31 @@ function ProjectRow({
             <span className="text-xs text-faint">{asset.default_branch}</span>
           ) : null}
         </td>
+        <td className="max-w-[28ch] py-2 pl-3 align-top">
+          {(asset.linked_images ?? []).length === 0 ? (
+            <span className="text-faint">—</span>
+          ) : (
+            <span className="flex flex-wrap gap-1">
+              {(asset.linked_images ?? []).map((image) => (
+                <Badge
+                  key={image.asset_id}
+                  tone={image.source === 'manual' ? 'neutral' : 'ok'}
+                >
+                  <span
+                    className="font-mono"
+                    title={
+                      image.revision
+                        ? `${image.ref} · ${image.source} · ${image.revision}`
+                        : `${image.ref} · ${image.source}`
+                    }
+                  >
+                    {image.display_name}
+                  </span>
+                </Badge>
+              ))}
+            </span>
+          )}
+        </td>
         <td className="py-2 pl-3 align-top whitespace-nowrap">
           {status ? (
             <Badge tone={statusView[status].tone}>{statusView[status].label}</Badge>
@@ -368,7 +394,7 @@ function ProjectRow({
 
       {confirming ? (
         <tr>
-          <td colSpan={6} className="pb-2">
+          <td colSpan={7} className="pb-2">
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
               <span>
                 Remove “{asset.display_name}”? Its existing scans stay in the
@@ -402,7 +428,7 @@ function ProjectRow({
 
       {failed ? (
         <tr>
-          <td colSpan={6} className="pb-2">
+          <td colSpan={7} className="pb-2">
             <ScanFailure error={scanError} />
           </td>
         </tr>
@@ -410,7 +436,7 @@ function ProjectRow({
 
       {start.isError ? (
         <tr>
-          <td colSpan={6} className="pb-2">
+          <td colSpan={7} className="pb-2">
             <ErrorNote
               error={start.error}
               fix="Scan again; if it keeps failing, check the terminal running bastion."
@@ -420,7 +446,7 @@ function ProjectRow({
       ) : null}
       {cancel.isError ? (
         <tr>
-          <td colSpan={6} className="pb-2">
+          <td colSpan={7} className="pb-2">
             <ErrorNote
               error={cancel.error}
               fix="Reload the page to see the scan's final status."
@@ -430,7 +456,7 @@ function ProjectRow({
       ) : null}
       {archive.isError ? (
         <tr>
-          <td colSpan={6} className="pb-2">
+          <td colSpan={7} className="pb-2">
             <ErrorNote
               error={archive.error}
               fix="The repository stays until removal succeeds; try again."

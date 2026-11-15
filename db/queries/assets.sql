@@ -46,6 +46,12 @@ SELECT * FROM assets WHERE archived_at IS NULL ORDER BY display_name, id;
 -- name: GetAssetByKindRef :one
 SELECT * FROM assets WHERE kind = sqlc.arg(kind) AND ref = sqlc.arg(ref);
 
+-- name: GetRepoAssetByRefFold :one
+-- The repo asset a source URL names, matched without regard to case: GitHub
+-- owner and repository names are case-insensitive, so a label that says
+-- github.com/Owner/Repo still finds the asset tracked as owner/repo.
+SELECT * FROM assets WHERE kind = 'repo' AND ref = sqlc.arg(ref) COLLATE NOCASE;
+
 -- name: ListAssetRefsByKind :many
 -- The refs of every asset of one kind, so discovery can mark the ones already
 -- tracked without loading whole rows.

@@ -1,7 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { useState } from 'react'
 
-import { assetsQuery, type Asset } from '../api/assets'
+import {
+  assetsQuery,
+  useClearAssetLink,
+  useSetAssetLink,
+  type Asset,
+} from '../api/assets'
 import { ApiError } from '../api/client'
 import { connectionsQuery, type Connection } from '../api/connections'
 import { dockerImagesQuery, useScanDockerImage, type DockerImage } from '../api/docker'
@@ -56,6 +62,8 @@ export function ContainersPage() {
         (asset) => asset.kind === 'image' && asset.ref === image.reference,
       ),
     })) ?? []
+  // The link control offers the tracked repositories.
+  const repos = (assets.data ?? []).filter((asset) => asset.kind === 'repo')
 
   function scanning(row: ContainerRow): boolean {
     if (row.asset) {
@@ -114,6 +122,13 @@ export function ContainersPage() {
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
       cell: (row) => <ScanCell asset={row.asset} />,
+    },
+    {
+      id: 'repository',
+      header: 'Repository',
+      headerClassName: 'pl-3',
+      cellClassName: 'pl-3 align-top',
+      cell: (row) => <LinkCell asset={row.asset} repos={repos} />,
     },
     {
       id: 'open-findings',
@@ -223,8 +238,7 @@ export function ContainersPage() {
         assets={assets.data ?? []}
         connections={connections.data ?? []}
         pending={connections.isPending}
-      />
-    </>
+      />    </>
   )
 }
 
@@ -272,6 +286,7 @@ function EcrSection({
           key={connection.id}
           connection={connection}
           assets={assets}
+          repos={assets.filter((asset) => asset.kind === 'repo')}
         />
       ))}
     </section>
@@ -289,9 +304,11 @@ type EcrRow = {
 function EcrConnection({
   connection,
   assets,
+  repos,
 }: {
   connection: Connection
   assets: Asset[]
+  repos: Asset[]
 }) {
   const discover = useQuery(ecrDiscoverQuery(connection.id))
   const scan = useScanEcrImage(connection.id)
@@ -349,6 +366,13 @@ function EcrConnection({
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
       cell: (row) => <ScanCell asset={row.asset} />,
+    },
+    {
+      id: 'repository',
+      header: 'Repository',
+      headerClassName: 'pl-3',
+      cellClassName: 'pl-3 align-top',
+      cell: (row) => <LinkCell asset={row.asset} repos={repos} />,
     },
     {
       id: 'open-findings',
@@ -442,6 +466,94 @@ function EcrConnection({
         </section>
       ) : null}
     </section>
+  )
+}
+
+/**
+ * LinkCell shows the repository an image was built from and the control that
+ * sets or clears the link. The badge names the source: `manual` is a user's
+ * choice and is never overwritten by a later scan, `oci` came from the image's
+ * own labels.
+ */
+function LinkCell({ asset, repos }: { asset: Asset | undefined; repos: Asset[] }) {
+  const setLink = useSetAssetLink()
+  const clearLink = useClearAssetLink()
+  const [choice, setChoice] = useState('')
+
+  if (!asset) {
+    return <span className="text-faint">—</span>
+  }
+
+  const error = setLink.error ?? clearLink.error
+
+  return (
+    <div className="flex max-w-[30ch] flex-col gap-1">
+      {asset.linked_repo ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span
+            className="max-w-[18ch] truncate font-mono text-xs text-fg"
+            title={asset.linked_repo.ref}
+          >
+            {asset.linked_repo.ref}
+          </span>
+          <Badge tone={asset.linked_repo.source === 'manual' ? 'neutral' : 'ok'}>
+            {asset.linked_repo.source}
+          </Badge>
+          {asset.linked_repo.revision ? (
+            <span
+              className="font-mono text-[11px] text-faint"
+              title={`revision ${asset.linked_repo.revision}`}
+            >
+              {asset.linked_repo.revision.slice(0, 7)}
+            </span>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => clearLink.mutate(asset.id)}
+            disabled={clearLink.isPending}
+          >
+            {clearLink.isPending ? 'Unlinking…' : 'Unlink'}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <select
+            aria-label={`Link ${asset.display_name} to a repository`}
+            value={choice}
+            onChange={(event) => setChoice(event.target.value)}
+            className="h-7 max-w-[18ch] rounded-md border border-border-strong bg-surface px-1.5 text-[12px] text-fg"
+          >
+            <option value="">Link to…</option>
+            {repos.map((repo) => (
+              <option key={repo.id} value={repo.id}>
+                {repo.ref}
+              </option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              setLink.mutate(
+                { imageId: asset.id, repoId: Number(choice) },
+                { onSuccess: () => setChoice('') },
+              )
+            }
+            disabled={choice === '' || setLink.isPending}
+          >
+            {setLink.isPending ? 'Linking…' : 'Link'}
+          </Button>
+        </div>
+      )}
+      {error ? (
+        <span role="alert" className="text-[11px] text-critical">
+          {error instanceof ApiError ? error.message : 'the link request failed'}
+        </span>
+      ) : null}
+    </div>
   )
 }
 

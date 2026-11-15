@@ -98,6 +98,54 @@ func (s *Server) DeleteAsset(ctx context.Context, request gen.DeleteAssetRequest
 	return gen.DeleteAsset204Response{}, nil
 }
 
+// SetAssetLink implements gen.StrictServerInterface. {id} is the image; the
+// body names the repository. A manual link replaces any previous one.
+func (s *Server) SetAssetLink(ctx context.Context, request gen.SetAssetLinkRequestObject) (gen.SetAssetLinkResponseObject, error) {
+	if s.assets == nil {
+		return gen.SetAssetLink500ApplicationProblemPlusJSONResponse{Body: unconfigured(assetsUnavailable)}, nil
+	}
+	if request.Body == nil {
+		return gen.SetAssetLink400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "the request body is required"),
+		), nil
+	}
+	asset, err := s.assets.SetLink(ctx, int64(request.Id), request.Body.RepoAssetId)
+	if err != nil {
+		s.log.Error("set asset link", "image", request.Id, "repo", request.Body.RepoAssetId, "error", err)
+		status, problem := assetProblem(err)
+		switch status {
+		case http.StatusBadRequest:
+			return gen.SetAssetLink400ApplicationProblemPlusJSONResponse(problem), nil
+		case http.StatusNotFound:
+			return gen.SetAssetLink404ApplicationProblemPlusJSONResponse(problem), nil
+		default:
+			return gen.SetAssetLink500ApplicationProblemPlusJSONResponse{Body: problem}, nil
+		}
+	}
+	return gen.SetAssetLink200JSONResponse(assetResponse(asset)), nil
+}
+
+// ClearAssetLink implements gen.StrictServerInterface. {id} is the image; the
+// link is removed whichever source created it.
+func (s *Server) ClearAssetLink(ctx context.Context, request gen.ClearAssetLinkRequestObject) (gen.ClearAssetLinkResponseObject, error) {
+	if s.assets == nil {
+		return gen.ClearAssetLink500ApplicationProblemPlusJSONResponse{Body: unconfigured(assetsUnavailable)}, nil
+	}
+	if err := s.assets.ClearLink(ctx, int64(request.Id)); err != nil {
+		s.log.Error("clear asset link", "image", request.Id, "error", err)
+		status, problem := assetProblem(err)
+		switch status {
+		case http.StatusBadRequest:
+			return gen.ClearAssetLink400ApplicationProblemPlusJSONResponse(problem), nil
+		case http.StatusNotFound:
+			return gen.ClearAssetLink404ApplicationProblemPlusJSONResponse{Body: problem}, nil
+		default:
+			return gen.ClearAssetLink500ApplicationProblemPlusJSONResponse{Body: problem}, nil
+		}
+	}
+	return gen.ClearAssetLink204Response{}, nil
+}
+
 // ListScans implements gen.StrictServerInterface.
 func (s *Server) ListScans(ctx context.Context, request gen.ListScansRequestObject) (gen.ListScansResponseObject, error) {
 	if s.assets == nil {
@@ -417,6 +465,30 @@ func assetResponse(asset assets.Asset) gen.Asset {
 			FinishedAt: asset.LastScan.FinishedAt,
 		}
 		out.LastScan = &last
+	}
+	if asset.LinkedRepo != nil {
+		link := assetLinkResponse(*asset.LinkedRepo)
+		out.LinkedRepo = &link
+	}
+	out.LinkedImages = make([]gen.AssetLink, 0, len(asset.LinkedImages))
+	for _, image := range asset.LinkedImages {
+		out.LinkedImages = append(out.LinkedImages, assetLinkResponse(image))
+	}
+	return out
+}
+
+// assetLinkResponse maps one link onto the API shape. Revision is only present
+// when the image's labels carried one.
+func assetLinkResponse(link assets.AssetLink) gen.AssetLink {
+	out := gen.AssetLink{
+		AssetId:     link.AssetID,
+		Ref:         link.Ref,
+		DisplayName: link.DisplayName,
+		Source:      gen.AssetLinkSource(link.Source),
+	}
+	if link.Revision != "" {
+		revision := link.Revision
+		out.Revision = &revision
 	}
 	return out
 }
