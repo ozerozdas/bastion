@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -21,6 +23,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ozerozdas/bastion/internal/app"
+	"github.com/ozerozdas/bastion/internal/assets"
+	"github.com/ozerozdas/bastion/internal/aws"
 	"github.com/ozerozdas/bastion/internal/connections"
 	githubclient "github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/docker"
@@ -104,6 +108,12 @@ type gitHubClient interface {
 	Tarball(ctx context.Context, owner, name, sha string) (io.ReadCloser, error)
 }
 
+// ecrClient is the part of internal/aws the CLI needs to pin an ECR tag to the
+// digest it scans. Tests inject a fake so no call reaches AWS.
+type ecrClient interface {
+	Image(ctx context.Context, repository, tag, digest string) (aws.Image, error)
+}
+
 // scanDeps isolates the side effects of `bastion scan` so tests can run the
 // pipeline with fake scanners, a fake GitHub and a temporary database, without
 // touching the real keyring or the network.
@@ -125,6 +135,12 @@ type scanDeps struct {
 	// newImageSource builds the --image source. Tests inject a fake so no
 	// daemon is needed.
 	newImageSource func() sources.Source
+	// newTokens builds the connections service an ECR image reads its saved
+	// AWS connection and registry login from.
+	newTokens func(db *sql.DB) (*connections.Service, error)
+	// newECR builds the ECR client that pins a tag to its digest. Tests inject
+	// a fake so no call reaches AWS.
+	newECR func(profile, region string) (ecrClient, error)
 	// version is the bastion build version reported in SARIF.
 	version string
 	// progress receives the scan's progress lines (stderr in production).
@@ -150,7 +166,8 @@ func newScanCmd(root *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&opts.repo, "repo", "",
 		"GitHub repository to scan as owner/name[@ref]; requires a token from a saved connection or BASTION_GITHUB_TOKEN")
 	cmd.Flags().StringVar(&opts.image, "image", "",
-		"container image on the local Docker daemon to scan, for example nginx:latest")
+		"container image to scan: a local Docker image (nginx:latest) or an ECR image whose registry belongs to a saved, tested AWS connection ("+
+			"<account>.dkr.ecr.<region>.amazonaws.com/repo:tag)")
 	cmd.Flags().StringVar(&opts.format, "format", scanFormatJSON,
 		"output format: "+scanFormatJSON+", "+scanFormatTable+", "+scanFormatSARIF+" or "+scanFormatCycloneDX)
 	cmd.Flags().BoolVar(&opts.noStore, "no-store", false, "print findings without writing to the database")
@@ -192,7 +209,13 @@ func newScanDeps(root *rootOptions) scanDeps {
 			return githubclient.New(githubclient.Config{Token: token, Version: version})
 		},
 		newImageSource: func() sources.Source { return docker.NewSource() },
-		version:        version,
+		newTokens: func(db *sql.DB) (*connections.Service, error) {
+			return connections.NewService(db, secrets.NewStore())
+		},
+		newECR: func(profile, region string) (ecrClient, error) {
+			return aws.New(aws.Config{Profile: profile, Region: region, Version: version})
+		},
+		version: version,
 	}
 }
 
@@ -239,7 +262,9 @@ func (o *scanOptions) validate() error {
 // A stored scan runs through jobs.Manager, the same pipeline the server uses:
 // the CLI must not carry a second persisting implementation. --no-store keeps
 // the P0 stdout-only behaviour, does not open the database and therefore runs
-// the scanners directly.
+// the scanners directly. An ECR image is the exception: its saved AWS
+// connection lives in the database, so even --no-store reads it for the
+// credentials and the tag's digest. Nothing is written for --no-store.
 func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDeps) error {
 	if err := opts.validate(); err != nil {
 		return err
@@ -250,11 +275,19 @@ func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDep
 	ctx, stop := deps.notifyContext(ctx)
 	defer stop()
 
+	imageRef := splitECRRef(opts.image)
 	var (
 		db  *sql.DB
 		err error
 	)
-	if !opts.noStore {
+	if !opts.noStore || imageRef.ok {
+		if opts.noStore {
+			// Never create a database for --no-store: without one there is no
+			// saved connection, which is the error worth reporting.
+			if _, statErr := os.Stat(deps.paths.DBPath()); errors.Is(statErr, fs.ErrNotExist) {
+				return errNoAWSConnection(imageRef.registry)
+			}
+		}
 		db, err = deps.openDB(ctx, deps.paths.DBPath())
 		if err != nil {
 			return fmt.Errorf("scan: open database: %w", err)
@@ -266,6 +299,7 @@ func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDep
 	var (
 		asset findings.Asset
 		repo  *repoTarget
+		image *ecrImage
 	)
 	switch {
 	case opts.repo != "":
@@ -282,7 +316,15 @@ func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDep
 		}
 	case opts.image != "":
 		kind = sources.KindImage
-		asset = imageAsset(opts.image)
+		if imageRef.ok {
+			image, err = resolveECRImage(ctx, db, deps, imageRef, opts.noStore)
+			if err != nil {
+				return err
+			}
+			asset = image.asset
+		} else {
+			asset = imageAsset(opts.image)
+		}
 	default:
 		asset, err = pathAsset(opts.path)
 		if err != nil {
@@ -307,10 +349,10 @@ func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDep
 		scanErr error
 	)
 	progress := newScanProgress(deps.progress)
-	if db != nil {
-		result, scanErr = runStoredScan(ctx, db, kind, asset, repo, scanOpts, progress, deps)
+	if !opts.noStore {
+		result, scanErr = runStoredScan(ctx, db, kind, asset, repo, image, scanOpts, progress, deps)
 	} else {
-		result, scanErr = runDirectScan(ctx, kind, asset, repo, scanOpts, progress, deps)
+		result, scanErr = runDirectScan(ctx, kind, asset, repo, image, scanOpts, progress, deps)
 	}
 
 	// One line per scanner, from the runs both pipelines recorded, so a
@@ -433,15 +475,181 @@ func validRepoSegment(s string) bool {
 	return true
 }
 
+// ecrRegistryPattern is an ECR registry host:
+// <account>.dkr.ecr.<region>.amazonaws.com. Only such a reference is resolved
+// through a saved AWS connection; anything else is a local Docker image.
+var ecrRegistryPattern = regexp.MustCompile(`^[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com$`)
+
+// ecrRef is an --image reference into an ECR registry. ok is false for a local
+// Docker reference, which the daemon handles.
+type ecrRef struct {
+	registry   string
+	repository string
+	tag        string
+	digest     string
+	ok         bool
+}
+
+// ecrImage is a resolved ECR --image target: the asset the scan belongs to, the
+// connection that can pull it and the login for this scan.
+type ecrImage struct {
+	asset        findings.Asset
+	connectionID int64
+	auth         *sources.RegistryAuth
+}
+
+// splitECRRef splits registry/repository[:tag][@sha256:digest]. ok is false
+// when the reference does not name an ECR registry.
+func splitECRRef(value string) ecrRef {
+	name := strings.TrimSpace(value)
+	if name == "" {
+		return ecrRef{}
+	}
+	var digest string
+	if i := strings.Index(name, "@"); i >= 0 {
+		digest, name = name[i+1:], name[:i]
+	}
+	registry, repository, found := strings.Cut(name, "/")
+	if !found || repository == "" || !ecrRegistryPattern.MatchString(registry) {
+		return ecrRef{}
+	}
+	var tag string
+	if i := strings.LastIndex(repository, ":"); i > strings.LastIndex(repository, "/") {
+		tag, repository = repository[i+1:], repository[:i]
+	}
+	if repository == "" {
+		return ecrRef{}
+	}
+	return ecrRef{registry: registry, repository: repository, tag: tag, digest: digest, ok: true}
+}
+
+// errNoAWSConnection is the CLI's message when no saved AWS connection owns an
+// ECR registry host.
+func errNoAWSConnection(registry string) error {
+	return fmt.Errorf("scan: no AWS connection for %s; add one in Connections → Registry and test it", registry)
+}
+
+// resolveECRImage resolves an ECR --image reference: the saved AWS connection
+// that owns the registry, the tag pinned to its digest, the registry login for
+// this scan and, unless noStore, the asset row the UI would have created.
+func resolveECRImage(ctx context.Context, db *sql.DB, deps scanDeps, ref ecrRef, noStore bool) (*ecrImage, error) {
+	if deps.newTokens == nil || deps.newECR == nil {
+		return nil, errors.New("scan: ECR images are not configured")
+	}
+	tokens, err := deps.newTokens(db)
+	if err != nil {
+		return nil, fmt.Errorf("scan: %w", err)
+	}
+	connection, err := tokens.AWSConnectionForRegistry(ctx, ref.registry)
+	if errors.Is(err, connections.ErrNotFound) {
+		return nil, errNoAWSConnection(ref.registry)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan: %w", err)
+	}
+
+	tag, digest := ref.tag, ref.digest
+	if digest == "" || tag == "" {
+		client, err := deps.newECR(connection.Profile, connection.Region)
+		if err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		resolved, err := client.Image(ctx, ref.repository, tag, digest)
+		if err != nil {
+			return nil, fmt.Errorf("scan: %s/%s: %w", ref.registry, ref.repository, err)
+		}
+		tag, digest = resolved.Tag, resolved.Digest
+	}
+	pinned := ref.registry + "/" + ref.repository + "@" + digest
+
+	credentials, err := tokens.ECRCredentials(ctx, connection.ID, ref.registry)
+	if err != nil {
+		return nil, fmt.Errorf("scan: %s: %w", pinned, err)
+	}
+	image := &ecrImage{
+		connectionID: connection.ID,
+		auth: &sources.RegistryAuth{
+			Username: credentials.Username,
+			Password: credentials.Password,
+		},
+	}
+	if noStore {
+		image.asset = findings.Asset{
+			Kind:        findings.AssetKindImage,
+			DisplayName: ref.repository + ":" + tag,
+			Ref:         pinned,
+		}
+		return image, nil
+	}
+
+	asset, err := createECRImageAsset(ctx, db, tokens, connection.ID, pinned, ref.repository+":"+tag, tag)
+	if err != nil {
+		return nil, err
+	}
+	image.asset = asset
+	return image, nil
+}
+
+// createECRImageAsset creates the image asset the UI creates for an ECR tag, or
+// reuses the row a previous scan of the same digest made. assets.Service owns
+// the validation (connection, registry, tag) and the metadata, so the CLI and
+// the UI cannot disagree about what an ECR asset is.
+func createECRImageAsset(ctx context.Context, db *sql.DB, tokens *connections.Service, connectionID int64, ref, displayName, tag string) (findings.Asset, error) {
+	service, err := assets.NewService(db, assets.WithGitHub(nil, tokens))
+	if err != nil {
+		return findings.Asset{}, fmt.Errorf("scan: %w", err)
+	}
+	created, err := service.Create(ctx, assets.CreateInput{
+		Kind:         string(findings.AssetKindImage),
+		Ref:          ref,
+		Tag:          tag,
+		ConnectionID: connectionID,
+	})
+	switch {
+	case err == nil:
+		return findings.Asset{
+			ID:          created.ID,
+			Kind:        findings.AssetKindImage,
+			DisplayName: created.DisplayName,
+			Ref:         created.Ref,
+		}, nil
+	case errors.Is(err, assets.ErrConflict):
+		// The digest was scanned before: keep its row so the finding history
+		// stays diffable.
+		stored, found, lookupErr := store.ImageAssetTarget(ctx, db, ref)
+		if lookupErr != nil {
+			return findings.Asset{}, fmt.Errorf("scan: %w", lookupErr)
+		}
+		if !found {
+			return findings.Asset{}, fmt.Errorf("scan: image %s is already tracked but its asset could not be read", ref)
+		}
+		return findings.Asset{
+			ID:          stored.ID,
+			Kind:        findings.AssetKindImage,
+			DisplayName: displayName,
+			Ref:         ref,
+		}, nil
+	default:
+		return findings.Asset{}, fmt.Errorf("scan: add image %s: %w", ref, err)
+	}
+}
+
 // runStoredScan persists one scan through jobs.Manager and reads the result
 // back from the database, so the printed document and the stored state can
 // never disagree. Concurrency is 1: the CLI runs exactly one scan.
-func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, scanOpts scanners.Options, progress *scanProgress, deps scanDeps) (scanOutput, error) {
-	stored, err := storedAsset(ctx, db, kind, asset, repo)
-	if err != nil {
-		return scanOutput{}, err
+func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, image *ecrImage, scanOpts scanners.Options, progress *scanProgress, deps scanDeps) (scanOutput, error) {
+	// An ECR image was already created (or reused) through assets.Service, the
+	// way the UI creates it: connection, tag and metadata must not be
+	// replaced by a bare get-or-create.
+	if image != nil {
+		asset = image.asset
+	} else {
+		stored, err := storedAsset(ctx, db, kind, asset, repo)
+		if err != nil {
+			return scanOutput{}, err
+		}
+		asset = stored
 	}
-	asset = stored
 
 	scannerList := deps.newScanners()
 
@@ -458,13 +666,20 @@ func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, ass
 	}
 
 	resolve := func(_ context.Context, a jobs.Asset) (sources.Target, string, error) {
-		if a.Kind != sources.KindRepo {
-			return sources.Target{Kind: a.Kind, AssetID: a.ID, Ref: a.Ref}, "", nil
+		target := sources.Target{Kind: a.Kind, AssetID: a.ID, Ref: a.Ref}
+		switch {
+		case a.Kind == sources.KindRepo:
+			if repo == nil {
+				return sources.Target{}, "", errors.New("scan: repo target was not resolved")
+			}
+			return sources.Target{Kind: sources.KindRepo, AssetID: a.ID, Ref: a.Ref + "@" + repo.sha}, repo.sha, nil
+		case a.Kind == sources.KindImage && image != nil:
+			target.ConnectionID = image.connectionID
+			target.RegistryAuth = image.auth
+			return target, digestFromRef(a.Ref), nil
+		default:
+			return target, "", nil
 		}
-		if repo == nil {
-			return sources.Target{}, "", errors.New("scan: repo target was not resolved")
-		}
-		return sources.Target{Kind: sources.KindRepo, AssetID: a.ID, Ref: a.Ref + "@" + repo.sha}, repo.sha, nil
 	}
 
 	waiter := newFinishWaiter(progress)
@@ -571,7 +786,7 @@ func storedAsset(ctx context.Context, db *sql.DB, kind sources.TargetKind, asset
 // runDirectScan fetches the target and scans it without touching the
 // database. It backs --no-store only: a stored scan goes through
 // jobs.Manager, so there is exactly one persisting pipeline.
-func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, scanOpts scanners.Options, progress *scanProgress, deps scanDeps) (scanOutput, error) {
+func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, image *ecrImage, scanOpts scanners.Options, progress *scanProgress, deps scanDeps) (scanOutput, error) {
 	src := sources.Source(localpath.New())
 	target := sources.Target{Kind: sources.KindPath, Ref: asset.Ref}
 	switch kind {
@@ -588,6 +803,10 @@ func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.
 	case sources.KindImage:
 		src = deps.newImageSource()
 		target = sources.Target{Kind: sources.KindImage, AssetID: asset.ID, Ref: asset.Ref}
+		if image != nil {
+			target.ConnectionID = image.connectionID
+			target.RegistryAuth = image.auth
+		}
 	}
 
 	progress.stage(jobs.StageFetch, "")

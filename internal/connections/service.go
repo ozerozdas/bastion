@@ -615,6 +615,35 @@ func (s *Service) AWSRegistry(ctx context.Context, id int64) (string, error) {
 	return account + ".dkr.ecr." + region + ".amazonaws.com", nil
 }
 
+// AWSConnectionForRegistry returns the aws connection whose registry host is
+// registry, so a CLI scan can map an ECR image reference to the profile and
+// region that pull it. A connection that was never tested has no account and
+// therefore owns no registry; it is skipped. ErrNotFound means no connection
+// owns the host.
+func (s *Service) AWSConnectionForRegistry(ctx context.Context, registry string) (Connection, error) {
+	registry = strings.TrimSpace(registry)
+	list, err := s.List(ctx)
+	if err != nil {
+		return Connection{}, err
+	}
+	for _, conn := range list {
+		if conn.Kind != KindAWS {
+			continue
+		}
+		host, err := s.AWSRegistry(ctx, conn.ID)
+		if errors.Is(err, ErrInvalid) || errors.Is(err, ErrUnsupportedKind) {
+			continue
+		}
+		if err != nil {
+			return Connection{}, err
+		}
+		if host == registry {
+			return conn, nil
+		}
+	}
+	return Connection{}, fmt.Errorf("%w: no aws connection for %s", ErrNotFound, registry)
+}
+
 // ECRCredentials resolves a short-lived ECR registry login for one aws
 // connection. registry must be the connection's own host; anything else is
 // refused before a token is fetched, so a tampered asset cannot send this
