@@ -124,6 +124,10 @@ type ScanResult struct {
 	ScannerRuns []ScannerRun
 	Packages    []findings.Package
 	Findings    []findings.Finding
+	// ImageSource is the OCI source an image scan found in the image config.
+	// An empty URL leaves the image's links untouched; a set one auto-links it
+	// to the tracked repository the label names, unless a manual link exists.
+	ImageSource ImageSource
 }
 
 // SaveScanResult persists one finished scan in a single transaction: the final
@@ -204,6 +208,21 @@ func SaveScanResult(ctx context.Context, db *sql.DB, scanID int64, res ScanResul
 		ID:         scanID,
 	}); err != nil {
 		return fmt.Errorf("store: save scan %d: finish scan: %w", scanID, err)
+	}
+
+	// An image scan can link the image to the repository its own labels name,
+	// in the same transaction as its results: a link never lands without the
+	// scan that justified it.
+	if res.ImageSource.URL != "" {
+		asset, err := queries.GetAsset(ctx, scan.AssetID)
+		if err != nil {
+			return fmt.Errorf("store: save scan %d: load asset: %w", scanID, err)
+		}
+		if asset.Kind == imageAssetKind {
+			if _, err := linkImageFromSource(ctx, queries, scan.AssetID, res.ImageSource); err != nil {
+				return fmt.Errorf("store: save scan %d: %w", scanID, err)
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

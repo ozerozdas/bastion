@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/ozerozdas/bastion/internal/findings"
@@ -537,3 +538,110 @@ func TestMutationsRequireCSRF(t *testing.T) {
 
 // errFakeGitHub stands in for a GitHub failure.
 var errFakeGitHub = errors.New("fake GitHub failure")
+
+// imageAsset tracks one image reference; creation only validates the ref.
+func imageAsset(t *testing.T, ts *testServer, cookie *http.Cookie, ref string) gen.Asset {
+	t.Helper()
+	return createAsset(t, ts, cookie, gen.CreateAssetRequest{
+		Kind: gen.CreateAssetRequestKindImage,
+		Ref:  ref,
+	})
+}
+
+// repoAsset tracks one repository; the fake GitHub resolves its branch.
+func repoAsset(t *testing.T, ts *testServer, cookie *http.Cookie, ref string) gen.Asset {
+	t.Helper()
+	return createAsset(t, ts, cookie, gen.CreateAssetRequest{
+		Kind: gen.CreateAssetRequestKindRepo,
+		Ref:  ref,
+	})
+}
+
+func TestSetAndClearAssetLink(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+
+	repo := repoAsset(t, ts, cookie, "acme/api")
+	image := imageAsset(t, ts, cookie, "acme/api:1.2.3")
+
+	resp := doJSON(t, ts, http.MethodPut, "/api/assets/"+strconv.FormatInt(image.Id, 10)+"/link",
+		gen.SetAssetLinkRequest{RepoAssetId: repo.Id}, withBastion(cookie))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT link: status = %d, want %d: %s", resp.StatusCode, http.StatusOK, readBody(t, resp))
+	}
+	var linked gen.Asset
+	if err := json.Unmarshal(readBody(t, resp), &linked); err != nil {
+		t.Fatalf("decode linked asset: %v", err)
+	}
+	if linked.LinkedRepo == nil {
+		t.Fatal("linked_repo is absent after linking")
+	}
+	if linked.LinkedRepo.AssetId != repo.Id || linked.LinkedRepo.Ref != "acme/api" {
+		t.Fatalf("linked_repo = %+v, want the repository %d", linked.LinkedRepo, repo.Id)
+	}
+	if linked.LinkedRepo.Source != gen.Manual {
+		t.Fatalf("link source = %q, want %q", linked.LinkedRepo.Source, gen.Manual)
+	}
+	if linked.LinkedRepo.Revision != nil {
+		t.Fatalf("manual link revision = %v, want none", *linked.LinkedRepo.Revision)
+	}
+
+	// The repository's own row lists the image.
+	list := assetList(t, ts, cookie)
+	for _, asset := range list.Assets {
+		if asset.Id != repo.Id {
+			continue
+		}
+		if len(asset.LinkedImages) != 1 || asset.LinkedImages[0].AssetId != image.Id {
+			t.Fatalf("repo linked_images = %+v, want the image %d", asset.LinkedImages, image.Id)
+		}
+	}
+
+	resp = ts.do(t, http.MethodDelete, "/api/assets/"+strconv.FormatInt(image.Id, 10)+"/link", withBastion(cookie))
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE link: status = %d, want %d: %s", resp.StatusCode, http.StatusNoContent, readBody(t, resp))
+	}
+	list = assetList(t, ts, cookie)
+	for _, asset := range list.Assets {
+		if asset.Id == image.Id && asset.LinkedRepo != nil {
+			t.Fatalf("linked_repo = %+v after clearing, want none", asset.LinkedRepo)
+		}
+		if asset.Id == repo.Id && len(asset.LinkedImages) != 0 {
+			t.Fatalf("repo linked_images = %+v after clearing, want none", asset.LinkedImages)
+		}
+	}
+}
+
+func TestSetAssetLinkValidatesKindsAndIDs(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+
+	repo := repoAsset(t, ts, cookie, "acme/api")
+	image := imageAsset(t, ts, cookie, "acme/api:1")
+	path := pathAsset(t, ts, cookie)
+
+	tests := []struct {
+		name   string
+		image  int64
+		repo   int64
+		status int
+	}{
+		{name: "image to path", image: image.Id, repo: path.Id, status: http.StatusBadRequest},
+		{name: "repo as image", image: repo.Id, repo: repo.Id, status: http.StatusBadRequest},
+		{name: "unknown repository", image: image.Id, repo: 9999, status: http.StatusNotFound},
+		{name: "unknown image", image: 9999, repo: repo.Id, status: http.StatusNotFound},
+		{name: "zero image", image: 0, repo: repo.Id, status: http.StatusBadRequest},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resp := doJSON(t, ts, http.MethodPut,
+				"/api/assets/"+strconv.FormatInt(test.image, 10)+"/link",
+				gen.SetAssetLinkRequest{RepoAssetId: test.repo}, withBastion(cookie))
+			if resp.StatusCode != test.status {
+				t.Fatalf("status = %d, want %d: %s", resp.StatusCode, test.status, readBody(t, resp))
+			}
+			_ = readProblem(t, resp)
+		})
+	}
+}

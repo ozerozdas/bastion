@@ -191,6 +191,30 @@ func (q *Queries) GetOrCreateAsset(ctx context.Context, arg GetOrCreateAssetPara
 	return i, err
 }
 
+const getRepoAssetByRefFold = `-- name: GetRepoAssetByRefFold :one
+SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at FROM assets WHERE kind = 'repo' AND ref = ?1 COLLATE NOCASE
+`
+
+// The repo asset a source URL names, matched without regard to case: GitHub
+// owner and repository names are case-insensitive, so a label that says
+// github.com/Owner/Repo still finds the asset tracked as owner/repo.
+func (q *Queries) GetRepoAssetByRefFold(ctx context.Context, ref string) (Asset, error) {
+	row := q.db.QueryRowContext(ctx, getRepoAssetByRefFold, ref)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.ConnectionID,
+		&i.DisplayName,
+		&i.Ref,
+		&i.DefaultBranch,
+		&i.MetadataJSON,
+		&i.CreatedAt,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
 const listAssetRefsByKind = `-- name: ListAssetRefsByKind :many
 SELECT ref FROM assets WHERE kind = ?1
 `

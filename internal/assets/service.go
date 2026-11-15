@@ -132,6 +132,21 @@ type Asset struct {
 	CreatedAt      time.Time
 	LastScan       *LastScan
 	OpenSeverities SeverityCounts
+	// LinkedRepo is the repository an image links to; nil for other kinds and
+	// for an image nothing is linked to.
+	LinkedRepo *AssetLink
+	// LinkedImages are the images linked to this repository; empty otherwise.
+	LinkedImages []AssetLink
+}
+
+// AssetLink is one repository <-> image link, seen from the other end: the id,
+// ref and name of the linked asset, plus how the link was made.
+type AssetLink struct {
+	AssetID     int64
+	Ref         string
+	DisplayName string
+	Source      string
+	Revision    string
 }
 
 // LastScan is an asset's newest scan, whatever its status.
@@ -201,10 +216,14 @@ type FindingStateInput struct {
 	Reason      string
 }
 
-// List returns every non-archived asset with its newest scan and open severity
-// counts.
+// List returns every non-archived asset with its newest scan, open severity
+// counts and repository <-> image links.
 func (s *Service) List(ctx context.Context) ([]Asset, error) {
 	rows, err := sqlcdb.New(s.db).ListAssetSummaries(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("assets: list: %w", err)
+	}
+	links, err := store.ListAssetLinks(ctx, s.db)
 	if err != nil {
 		return nil, fmt.Errorf("assets: list: %w", err)
 	}
@@ -212,7 +231,40 @@ func (s *Service) List(ctx context.Context) ([]Asset, error) {
 	for _, row := range rows {
 		out = append(out, assetSummary(row))
 	}
+	attachLinks(out, links)
 	return out, nil
+}
+
+// attachLinks puts every link on both assets it joins: an image shows the
+// repository it was built from, a repository the images linked to it.
+func attachLinks(list []Asset, links []store.AssetLink) {
+	if len(links) == 0 {
+		return
+	}
+	byID := make(map[int64]*Asset, len(list))
+	for i := range list {
+		byID[list[i].ID] = &list[i]
+	}
+	for _, link := range links {
+		if image, ok := byID[link.ImageAssetID]; ok {
+			image.LinkedRepo = &AssetLink{
+				AssetID:     link.RepoAssetID,
+				Ref:         link.RepoRef,
+				DisplayName: link.RepoDisplayName,
+				Source:      link.Source,
+				Revision:    link.Revision,
+			}
+		}
+		if repo, ok := byID[link.RepoAssetID]; ok {
+			repo.LinkedImages = append(repo.LinkedImages, AssetLink{
+				AssetID:     link.ImageAssetID,
+				Ref:         link.ImageRef,
+				DisplayName: link.ImageDisplayName,
+				Source:      link.Source,
+				Revision:    link.Revision,
+			})
+		}
+	}
 }
 
 // Create tracks a repository, a local path or a local Docker image. A
@@ -561,6 +613,56 @@ func (s *Service) Archive(ctx context.Context, id int64) error {
 	}
 	if err != nil {
 		return fmt.Errorf("assets: archive %d: %w", id, err)
+	}
+	return nil
+}
+
+// SetLink links an image to the repository it was built from, by hand. The
+// manual choice replaces a link the image's OCI labels created, and a later
+// scan never overwrites it. Returns the image asset with its new link.
+func (s *Service) SetLink(ctx context.Context, imageID, repoID int64) (Asset, error) {
+	if imageID <= 0 || repoID <= 0 {
+		return Asset{}, fmt.Errorf("%w: asset ids must be positive", ErrInvalid)
+	}
+	queries := sqlcdb.New(s.db)
+	image, err := queries.GetAsset(ctx, imageID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Asset{}, fmt.Errorf("%w: asset %d", ErrNotFound, imageID)
+	}
+	if err != nil {
+		return Asset{}, fmt.Errorf("assets: link %d: look up asset: %w", imageID, err)
+	}
+	if image.Kind != string(findings.AssetKindImage) {
+		return Asset{}, fmt.Errorf("%w: asset %d is %s; only an image links to a repository", ErrInvalid, imageID, image.Kind)
+	}
+	repo, err := queries.GetAsset(ctx, repoID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Asset{}, fmt.Errorf("%w: asset %d", ErrNotFound, repoID)
+	}
+	if err != nil {
+		return Asset{}, fmt.Errorf("assets: link %d: look up repository: %w", imageID, err)
+	}
+	if repo.Kind != string(findings.AssetKindRepo) {
+		return Asset{}, fmt.Errorf("%w: asset %d is %s; an image links to a repository", ErrInvalid, repoID, repo.Kind)
+	}
+
+	if err := store.SetManualLink(ctx, s.db, imageID, repoID); err != nil {
+		return Asset{}, fmt.Errorf("assets: link image %d: %w", imageID, err)
+	}
+	return s.byID(ctx, imageID)
+}
+
+// ClearLink removes an image's repository link, whichever source made it.
+// Clearing an unlinked image is not an error.
+func (s *Service) ClearLink(ctx context.Context, imageID int64) error {
+	if imageID <= 0 {
+		return fmt.Errorf("%w: asset id must be positive", ErrInvalid)
+	}
+	if err := s.requireAsset(ctx, imageID); err != nil {
+		return err
+	}
+	if err := store.ClearLink(ctx, s.db, imageID); err != nil {
+		return fmt.Errorf("assets: clear link of image %d: %w", imageID, err)
 	}
 	return nil
 }

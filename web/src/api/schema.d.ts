@@ -296,6 +296,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assets/{id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Link an image to the repository it was built from.
+         * @description `{id}` is the image asset. The link replaces any previous one for that
+         *     image, including a link the image's OCI labels created, and is marked
+         *     `manual`: a later scan never overwrites it. Both assets must exist and
+         *     the pair must be an image and a repository.
+         */
+        put: operations["setAssetLink"];
+        post?: never;
+        /**
+         * Remove an image's repository link.
+         * @description `{id}` is the image asset. The link is removed whichever source created
+         *     it; clearing an unlinked image is not an error.
+         */
+        delete: operations["clearAssetLink"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans": {
         parameters: {
             query?: never;
@@ -1081,6 +1109,48 @@ export interface components {
             created_at: string;
             last_scan?: components["schemas"]["AssetLastScan"];
             open_counts: components["schemas"]["SeverityTotals"];
+            linked_repo?: components["schemas"]["AssetLink"];
+            /**
+             * @description The images linked to this repository. Empty for paths and images,
+             *     and for a repository nothing was linked to yet.
+             */
+            linked_images: components["schemas"]["AssetLink"][];
+        };
+        /**
+         * AssetLink
+         * @description The other end of a repository <-> image link. `source` says who made it:
+         *     `manual` is a user's choice and is never overwritten by a scan, `oci` is
+         *     the image's own org.opencontainers.image.source label.
+         */
+        AssetLink: {
+            /**
+             * Format: int64
+             * @description The id of the linked asset.
+             */
+            asset_id: number;
+            /** @description The linked asset's canonical ref. */
+            ref: string;
+            display_name: string;
+            source: components["schemas"]["AssetLinkSource"];
+            /**
+             * @description The image's org.opencontainers.image.revision label. Absent for a
+             *     manual link and when the image carried no revision.
+             */
+            revision?: string;
+        };
+        /**
+         * AssetLinkSource
+         * @description How a repository <-> image link was made.
+         * @enum {string}
+         */
+        AssetLinkSource: "manual" | "oci";
+        /**
+         * SetAssetLinkRequest
+         * @description The repository an image was built from.
+         */
+        SetAssetLinkRequest: {
+            /** Format: int64 */
+            repo_asset_id: number;
         };
         /**
          * AssetLastScan
@@ -1773,6 +1843,90 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setAssetLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Asset id. */
+                id: components["parameters"]["AssetID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAssetLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The image asset with its new link. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Asset"];
+                };
+            };
+            /** @description An id is not usable, or the pair is not an image and a repository. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description The image or repository asset does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    clearAssetLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Asset id. */
+                id: components["parameters"]["AssetID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image has no link. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The id is not usable. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
             };
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];

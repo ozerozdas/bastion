@@ -149,6 +149,44 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 // artifactTypeContainerImage is Trivy's ArtifactType for an image scan.
 const artifactTypeContainerImage = "container_image"
 
+// The OCI labels an image uses to declare the repository it was built from
+// (org.opencontainers.image.source) and the revision it was built at.
+const (
+	labelImageSource   = "org.opencontainers.image.source"
+	labelImageRevision = "org.opencontainers.image.revision"
+)
+
+// ImageSource reads the image's OCI source labels from a Trivy report. Trivy
+// copies the image config into Metadata.ImageConfig, so the labels are there
+// even though no result row carries them. An unreadable report or an image
+// without labels yields the zero value: linking then does nothing.
+func (s *Scanner) ImageSource(raw *scanners.RawResult) scanners.ImageSource {
+	if raw == nil || len(raw.Raw) == 0 {
+		return scanners.ImageSource{}
+	}
+	var parsed imageSourceReport
+	if err := json.Unmarshal(raw.Raw, &parsed); err != nil {
+		return scanners.ImageSource{}
+	}
+	labels := parsed.Metadata.ImageConfig.Config.Labels
+	return scanners.ImageSource{
+		URL:      strings.TrimSpace(labels[labelImageSource]),
+		Revision: strings.TrimSpace(labels[labelImageRevision]),
+	}
+}
+
+// imageSourceReport mirrors the one path in a Trivy image report that carries
+// the OCI labels: Metadata.ImageConfig.config.Labels.
+type imageSourceReport struct {
+	Metadata struct {
+		ImageConfig struct {
+			Config struct {
+				Labels map[string]string `json:"Labels"`
+			} `json:"config"`
+		} `json:"ImageConfig"`
+	} `json:"Metadata"`
+}
+
 // imageLocation is the location of an image finding: the package path inside
 // the image, or its name when the package has no path (OS packages). A layer
 // digest is never used: a rebuild would make unchanged findings look new.

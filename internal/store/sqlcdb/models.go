@@ -25,6 +25,7 @@ type AssetLink struct {
 	RepoAssetID  int64
 	ImageAssetID int64
 	Source       string
+	Revision     sql.NullString
 	CreatedAt    string
 }
 

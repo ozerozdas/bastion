@@ -38,6 +38,24 @@ func (e AssetKind) Valid() bool {
 	}
 }
 
+// Defines values for AssetLinkSource.
+const (
+	Manual AssetLinkSource = "manual"
+	Oci    AssetLinkSource = "oci"
+)
+
+// Valid indicates whether the value is a known member of the AssetLinkSource enum.
+func (e AssetLinkSource) Valid() bool {
+	switch e {
+	case Manual:
+		return true
+	case Oci:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConnectionKind.
 const (
 	ConnectionKindAws    ConnectionKind = "aws"
@@ -410,6 +428,15 @@ type Asset struct {
 	// what the asset list must show.
 	LastScan *AssetLastScan `json:"last_scan,omitempty"`
 
+	// LinkedImages The images linked to this repository. Empty for paths and images,
+	// and for a repository nothing was linked to yet.
+	LinkedImages []AssetLink `json:"linked_images"`
+
+	// LinkedRepo The other end of a repository <-> image link. `source` says who made it:
+	// `manual` is a user's choice and is never overwritten by a scan, `oci` is
+	// the image's own org.opencontainers.image.source label.
+	LinkedRepo *AssetLink `json:"linked_repo,omitempty"`
+
 	// OpenCounts Findings per severity; severities without findings are zero.
 	OpenCounts SeverityTotals `json:"open_counts"`
 
@@ -431,6 +458,28 @@ type AssetLastScan struct {
 	// Status Lifecycle state of a scan.
 	Status ScanStatus `json:"status"`
 }
+
+// AssetLink The other end of a repository <-> image link. `source` says who made it:
+// `manual` is a user's choice and is never overwritten by a scan, `oci` is
+// the image's own org.opencontainers.image.source label.
+type AssetLink struct {
+	// AssetId The id of the linked asset.
+	AssetId     int64  `json:"asset_id"`
+	DisplayName string `json:"display_name"`
+
+	// Ref The linked asset's canonical ref.
+	Ref string `json:"ref"`
+
+	// Revision The image's org.opencontainers.image.revision label. Absent for a
+	// manual link and when the image carried no revision.
+	Revision *string `json:"revision,omitempty"`
+
+	// Source How a repository <-> image link was made.
+	Source AssetLinkSource `json:"source"`
+}
+
+// AssetLinkSource How a repository <-> image link was made.
+type AssetLinkSource string
 
 // AssetList Every non-archived asset.
 type AssetList struct {
@@ -951,6 +1000,11 @@ type ScannerRun struct {
 	Status ScanStatus `json:"status"`
 }
 
+// SetAssetLinkRequest The repository an image was built from.
+type SetAssetLinkRequest struct {
+	RepoAssetId int64 `json:"repo_asset_id"`
+}
+
 // SetFindingStateRequest defines model for SetFindingStateRequest.
 type SetFindingStateRequest struct {
 	// AssetId The asset the finding belongs to; decisions are per asset.
@@ -1146,6 +1200,9 @@ type ListScanFindingsParams struct {
 // CreateAssetJSONRequestBody defines body for CreateAsset for application/json ContentType.
 type CreateAssetJSONRequestBody = CreateAssetRequest
 
+// SetAssetLinkJSONRequestBody defines body for SetAssetLink for application/json ContentType.
+type SetAssetLinkJSONRequestBody = SetAssetLinkRequest
+
 // CreateConnectionJSONRequestBody defines body for CreateConnection for application/json ContentType.
 type CreateConnectionJSONRequestBody = CreateConnectionRequest
 
@@ -1291,6 +1348,12 @@ type ServerInterface interface {
 	// DeleteAsset Archive an asset.
 	// (DELETE /api/assets/{id})
 	DeleteAsset(w http.ResponseWriter, r *http.Request, id AssetID)
+	// ClearAssetLink Remove an image's repository link.
+	// (DELETE /api/assets/{id}/link)
+	ClearAssetLink(w http.ResponseWriter, r *http.Request, id AssetID)
+	// SetAssetLink Link an image to the repository it was built from.
+	// (PUT /api/assets/{id}/link)
+	SetAssetLink(w http.ResponseWriter, r *http.Request, id AssetID)
 	// ListConnections List configured connections.
 	// (GET /api/connections)
 	ListConnections(w http.ResponseWriter, r *http.Request)
@@ -1410,6 +1473,58 @@ func (siw *ServerInterfaceWrapper) DeleteAsset(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteAsset(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClearAssetLink operation middleware
+func (siw *ServerInterfaceWrapper) ClearAssetLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearAssetLink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAssetLink operation middleware
+func (siw *ServerInterfaceWrapper) SetAssetLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAssetLink(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2119,6 +2234,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assets", wrapper.ListAssets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assets", wrapper.CreateAsset)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/assets/{id}", wrapper.DeleteAsset)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/assets/{id}/link", wrapper.ClearAssetLink)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/assets/{id}/link", wrapper.SetAssetLink)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans", wrapper.ListScans)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans", wrapper.CreateScans)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/{id}", wrapper.GetScan)
@@ -2540,6 +2657,293 @@ type DeleteAsset500ApplicationProblemPlusJSONResponse struct {
 }
 
 func (response DeleteAsset500ApplicationProblemPlusJSONResponse) VisitDeleteAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearAssetLinkRequestObject struct {
+	Id AssetID `json:"id"`
+}
+
+type ClearAssetLinkResponseObject interface {
+	VisitClearAssetLinkResponse(w http.ResponseWriter) error
+}
+
+type ClearAssetLink204Response struct {
+}
+
+func (response ClearAssetLink204Response) VisitClearAssetLinkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ClearAssetLink400ApplicationProblemPlusJSONResponse Problem
+
+func (response ClearAssetLink400ApplicationProblemPlusJSONResponse) VisitClearAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearAssetLink401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ClearAssetLink401ApplicationProblemPlusJSONResponse) VisitClearAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearAssetLink403ResponseHeaders struct {
+	ContentType *string
+}
+
+type ClearAssetLink403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ClearAssetLink403ResponseHeaders
+}
+
+func (response ClearAssetLink403ApplicationProblemPlusJSONResponse) VisitClearAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearAssetLink404ResponseHeaders struct {
+	ContentType *string
+}
+
+type ClearAssetLink404ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ClearAssetLink404ResponseHeaders
+}
+
+func (response ClearAssetLink404ApplicationProblemPlusJSONResponse) VisitClearAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearAssetLink421ResponseHeaders struct {
+	ContentType *string
+}
+
+type ClearAssetLink421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ClearAssetLink421ResponseHeaders
+}
+
+func (response ClearAssetLink421ApplicationProblemPlusJSONResponse) VisitClearAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearAssetLink500ResponseHeaders struct {
+	ContentType *string
+}
+
+type ClearAssetLink500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ClearAssetLink500ResponseHeaders
+}
+
+func (response ClearAssetLink500ApplicationProblemPlusJSONResponse) VisitClearAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetLinkRequestObject struct {
+	Id   AssetID `json:"id"`
+	Body *SetAssetLinkJSONRequestBody
+}
+
+type SetAssetLinkResponseObject interface {
+	VisitSetAssetLinkResponse(w http.ResponseWriter) error
+}
+
+type SetAssetLink200JSONResponse Asset
+
+func (response SetAssetLink200JSONResponse) VisitSetAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetLink400ApplicationProblemPlusJSONResponse Problem
+
+func (response SetAssetLink400ApplicationProblemPlusJSONResponse) VisitSetAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetLink401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetAssetLink401ApplicationProblemPlusJSONResponse) VisitSetAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetLink403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetAssetLink403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetAssetLink403ResponseHeaders
+}
+
+func (response SetAssetLink403ApplicationProblemPlusJSONResponse) VisitSetAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetLink404ApplicationProblemPlusJSONResponse Problem
+
+func (response SetAssetLink404ApplicationProblemPlusJSONResponse) VisitSetAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetLink421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetAssetLink421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetAssetLink421ResponseHeaders
+}
+
+func (response SetAssetLink421ApplicationProblemPlusJSONResponse) VisitSetAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetLink500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetAssetLink500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetAssetLink500ResponseHeaders
+}
+
+func (response SetAssetLink500ApplicationProblemPlusJSONResponse) VisitSetAssetLinkResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5415,6 +5819,12 @@ type StrictServerInterface interface {
 	// DeleteAsset Archive an asset.
 	// (DELETE /api/assets/{id})
 	DeleteAsset(ctx context.Context, request DeleteAssetRequestObject) (DeleteAssetResponseObject, error)
+	// ClearAssetLink Remove an image's repository link.
+	// (DELETE /api/assets/{id}/link)
+	ClearAssetLink(ctx context.Context, request ClearAssetLinkRequestObject) (ClearAssetLinkResponseObject, error)
+	// SetAssetLink Link an image to the repository it was built from.
+	// (PUT /api/assets/{id}/link)
+	SetAssetLink(ctx context.Context, request SetAssetLinkRequestObject) (SetAssetLinkResponseObject, error)
 	// ListConnections List configured connections.
 	// (GET /api/connections)
 	ListConnections(ctx context.Context, request ListConnectionsRequestObject) (ListConnectionsResponseObject, error)
@@ -5593,6 +6003,65 @@ func (sh *strictHandler) DeleteAsset(w http.ResponseWriter, r *http.Request, id 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DeleteAssetResponseObject); ok {
 		if err := validResponse.VisitDeleteAssetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ClearAssetLink operation middleware
+func (sh *strictHandler) ClearAssetLink(w http.ResponseWriter, r *http.Request, id AssetID) {
+	var request ClearAssetLinkRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClearAssetLink(ctx, request.(ClearAssetLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClearAssetLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClearAssetLinkResponseObject); ok {
+		if err := validResponse.VisitClearAssetLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetAssetLink operation middleware
+func (sh *strictHandler) SetAssetLink(w http.ResponseWriter, r *http.Request, id AssetID) {
+	var request SetAssetLinkRequestObject
+
+	request.Id = id
+
+	var body SetAssetLinkJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetAssetLink(ctx, request.(SetAssetLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetAssetLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetAssetLinkResponseObject); ok {
+		if err := validResponse.VisitSetAssetLinkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

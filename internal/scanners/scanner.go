@@ -66,3 +66,20 @@ type Scanner interface {
 	// Scan runs the scanner against ws. Scans must honour ctx cancellation.
 	Scan(ctx context.Context, ws *sources.Workspace, opts Options) (*RawResult, error)
 }
+
+// ImageSource is the repository an image declares it was built from, through
+// the OCI labels org.opencontainers.image.source and .revision. It is a neutral
+// shape: the scanner adapter that can read it owns the format, the pipeline
+// only passes it on.
+type ImageSource struct {
+	URL      string
+	Revision string
+}
+
+// ImageSourceReader is implemented by adapters whose raw output can carry an
+// image's OCI source labels (Trivy reads them from the image config). Callers
+// that link images to repositories type-assert for it, so scanners without the
+// concept need no method.
+type ImageSourceReader interface {
+	ImageSource(raw *RawResult) ImageSource
+}
