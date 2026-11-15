@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/ozerozdas/bastion/internal/fixplan"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/reports"
 )
@@ -60,6 +61,35 @@ func (s *Server) ListFindings(ctx context.Context, request gen.ListFindingsReque
 	return gen.ListFindings200JSONResponse{Findings: out}, nil
 }
 
+// GetAssetFixPlan implements gen.StrictServerInterface.
+func (s *Server) GetAssetFixPlan(ctx context.Context, request gen.GetAssetFixPlanRequestObject) (gen.GetAssetFixPlanResponseObject, error) {
+	if s.reports == nil {
+		return gen.GetAssetFixPlan500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error", reportsUnavailable),
+		}, nil
+	}
+
+	plan, err := s.reports.FixPlan(ctx, int64(request.Id))
+	if err != nil {
+		switch {
+		case errors.Is(err, reports.ErrInvalid):
+			return gen.GetAssetFixPlan400ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusBadRequest, "Bad Request", err.Error()),
+			), nil
+		case errors.Is(err, reports.ErrNotFound):
+			return gen.GetAssetFixPlan404ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusNotFound, "Not Found", err.Error()),
+			), nil
+		}
+		s.log.Error("fix plan", "asset", request.Id, "error", err)
+		return gen.GetAssetFixPlan500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error",
+				"could not read the fix plan; see the server log"),
+		}, nil
+	}
+	return gen.GetAssetFixPlan200JSONResponse(fixPlanResponse(plan)), nil
+}
+
 // GetDashboard implements gen.StrictServerInterface.
 func (s *Server) GetDashboard(ctx context.Context, _ gen.GetDashboardRequestObject) (gen.GetDashboardResponseObject, error) {
 	if s.reports == nil {
@@ -113,6 +143,60 @@ func findingResponse(finding reports.Finding) gen.Finding {
 		out.Scanners = []string{}
 	}
 	return out
+}
+
+// fixPlanResponse maps a domain fix plan onto the API shape. Both lists are
+// always JSON arrays, never null.
+func fixPlanResponse(plan fixplan.Plan) gen.FixPlan {
+	steps := make([]gen.FixPlanStep, 0, len(plan.Steps))
+	for _, step := range plan.Steps {
+		installed := step.InstalledVersions
+		if installed == nil {
+			installed = []string{}
+		}
+		ids := step.FindingIDs
+		if ids == nil {
+			ids = []int64{}
+		}
+		steps = append(steps, gen.FixPlanStep{
+			Ecosystem:         step.Ecosystem,
+			Package:           step.Package,
+			InstalledVersions: installed,
+			TargetVersion:     step.TargetVersion,
+			Approximate:       step.Approximate,
+			FindingCount:      step.FindingCount,
+			SeverityCounts:    fixPlanSeverityTotals(step.SeverityCounts),
+			FindingIds:        ids,
+		})
+	}
+
+	noFix := make([]gen.FixPlanNoFix, 0, len(plan.NoFix))
+	for _, group := range plan.NoFix {
+		ids := group.FindingIDs
+		if ids == nil {
+			ids = []int64{}
+		}
+		noFix = append(noFix, gen.FixPlanNoFix{
+			Ecosystem:      group.Ecosystem,
+			Package:        group.Package,
+			FindingCount:   group.FindingCount,
+			SeverityCounts: fixPlanSeverityTotals(group.SeverityCounts),
+			FindingIds:     ids,
+		})
+	}
+
+	return gen.FixPlan{Steps: steps, NoFix: noFix}
+}
+
+// fixPlanSeverityTotals maps one step's severity counts onto the API shape.
+func fixPlanSeverityTotals(counts fixplan.SeverityCounts) gen.SeverityTotals {
+	return gen.SeverityTotals{
+		Critical: counts.Critical,
+		High:     counts.High,
+		Medium:   counts.Medium,
+		Low:      counts.Low,
+		Unknown:  counts.Unknown,
+	}
 }
 
 // scanDiffResponse maps a domain diff onto the API shape. Each group is always

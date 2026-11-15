@@ -501,6 +501,54 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/assets/{id}/fix-plan:
+    get:
+      operationId: getAssetFixPlan
+      summary: Fix plan of one asset.
+      description: |
+        Groups the asset's open vulnerability findings into package upgrades
+        (PROJECT_SPEC.md §7.2, §8 Phase 3). "Open" means the same as
+        `GET /api/findings`: the asset's most recent succeeded scan, with every
+        `finding_states` decision excluded.
+
+        A step is one upgrade that closes all its findings: each finding
+        contributes the smallest fixed version above its installed one, and the
+        step takes the highest of those, so the target satisfies every advisory
+        at once. `approximate` is true when no ecosystem-specific version
+        comparison decided the target, so its order is a best effort rather
+        than authoritative. Findings no upgrade closes are listed in `no_fix`.
+
+        Steps are ordered by critical findings, then high, then total count.
+      tags: [findings]
+      parameters:
+        - $ref: "#/components/parameters/AssetID"
+      responses:
+        "200":
+          description: The asset's fix plan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FixPlan"
+        "400":
+          description: The asset id is not a positive integer.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: The asset does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/assets/{id}/link:
     put:
       operationId: setAssetLink
@@ -1595,6 +1643,93 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Finding"
+    FixPlan:
+      type: object
+      title: FixPlan
+      description: |
+        One asset's open vulnerability findings grouped into package upgrades
+        (PROJECT_SPEC.md §7.2, §8 Phase 3).
+      additionalProperties: false
+      required: [steps, no_fix]
+      properties:
+        steps:
+          type: array
+          description: One package upgrade each, most impactful first.
+          items:
+            $ref: "#/components/schemas/FixPlanStep"
+        no_fix:
+          type: array
+          description: Packages whose open findings no upgrade closes.
+          items:
+            $ref: "#/components/schemas/FixPlanNoFix"
+    FixPlanStep:
+      type: object
+      title: FixPlanStep
+      description: |
+        One package upgrade that closes every finding in `finding_ids`. The
+        target is the highest of the findings' minimal fixed versions.
+      additionalProperties: false
+      required:
+        [ecosystem, package, installed_versions, target_version, approximate, finding_count, severity_counts, finding_ids]
+      properties:
+        ecosystem:
+          type: string
+          examples: ["npm", "os-deb"]
+        package:
+          type: string
+          examples: ["lodash"]
+        installed_versions:
+          type: array
+          description: |
+            Every installed version the step's findings report, in the
+            ecosystem's version order. Empty when the scanner reported none.
+          items:
+            type: string
+        target_version:
+          type: string
+          description: The version that closes every finding of the step.
+        approximate:
+          type: boolean
+          description: |
+            True when the target came from the generic version fallback rather
+            than the ecosystem's own comparison rules.
+        finding_count:
+          type: integer
+          minimum: 1
+        severity_counts:
+          $ref: "#/components/schemas/SeverityTotals"
+        finding_ids:
+          type: array
+          description: The step's findings, by id, in ascending order.
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+    FixPlanNoFix:
+      type: object
+      title: FixPlanNoFix
+      description: A package whose open findings no upgrade closes.
+      additionalProperties: false
+      required: [ecosystem, package, finding_count, severity_counts, finding_ids]
+      properties:
+        ecosystem:
+          type: string
+          examples: ["npm", "os-deb"]
+        package:
+          type: string
+          examples: ["openssl"]
+        finding_count:
+          type: integer
+          minimum: 1
+        severity_counts:
+          $ref: "#/components/schemas/SeverityTotals"
+        finding_ids:
+          type: array
+          description: The package's findings, by id, in ascending order.
+          items:
+            type: integer
+            format: int64
+            minimum: 1
     Dashboard:
       type: object
       title: Dashboard

@@ -825,6 +825,60 @@ type FindingStatus string
 // FindingType Kind of finding (PROJECT_SPEC.md §5).
 type FindingType string
 
+// FixPlan One asset's open vulnerability findings grouped into package upgrades
+// (PROJECT_SPEC.md §7.2, §8 Phase 3).
+type FixPlan struct {
+	// NoFix Packages whose open findings no upgrade closes.
+	NoFix []FixPlanNoFix `json:"no_fix"`
+
+	// Steps One package upgrade each, most impactful first.
+	Steps []FixPlanStep `json:"steps"`
+}
+
+// FixPlanNoFix A package whose open findings no upgrade closes.
+type FixPlanNoFix struct {
+	// Ecosystem Examples: npm, os-deb
+	Ecosystem    string `json:"ecosystem"`
+	FindingCount int    `json:"finding_count"`
+
+	// FindingIds The package's findings, by id, in ascending order.
+	FindingIds []int64 `json:"finding_ids"`
+
+	// Package Examples: openssl
+	Package string `json:"package"`
+
+	// SeverityCounts Findings per severity; severities without findings are zero.
+	SeverityCounts SeverityTotals `json:"severity_counts"`
+}
+
+// FixPlanStep One package upgrade that closes every finding in `finding_ids`. The
+// target is the highest of the findings' minimal fixed versions.
+type FixPlanStep struct {
+	// Approximate True when the target came from the generic version fallback rather
+	// than the ecosystem's own comparison rules.
+	Approximate bool `json:"approximate"`
+
+	// Ecosystem Examples: npm, os-deb
+	Ecosystem    string `json:"ecosystem"`
+	FindingCount int    `json:"finding_count"`
+
+	// FindingIds The step's findings, by id, in ascending order.
+	FindingIds []int64 `json:"finding_ids"`
+
+	// InstalledVersions Every installed version the step's findings report, in the
+	// ecosystem's version order. Empty when the scanner reported none.
+	InstalledVersions []string `json:"installed_versions"`
+
+	// Package Examples: lodash
+	Package string `json:"package"`
+
+	// SeverityCounts Findings per severity; severities without findings are zero.
+	SeverityCounts SeverityTotals `json:"severity_counts"`
+
+	// TargetVersion The version that closes every finding of the step.
+	TargetVersion string `json:"target_version"`
+}
+
 // Health Liveness of the local API.
 type Health struct {
 	// Status Always `ok` while the server is accepting requests.
@@ -1357,6 +1411,9 @@ type ServerInterface interface {
 	// DeleteAsset Archive an asset.
 	// (DELETE /api/assets/{id})
 	DeleteAsset(w http.ResponseWriter, r *http.Request, id AssetID)
+	// GetAssetFixPlan Fix plan of one asset.
+	// (GET /api/assets/{id}/fix-plan)
+	GetAssetFixPlan(w http.ResponseWriter, r *http.Request, id AssetID)
 	// ClearAssetLink Remove an image's repository link.
 	// (DELETE /api/assets/{id}/link)
 	ClearAssetLink(w http.ResponseWriter, r *http.Request, id AssetID)
@@ -1482,6 +1539,32 @@ func (siw *ServerInterfaceWrapper) DeleteAsset(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteAsset(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAssetFixPlan operation middleware
+func (siw *ServerInterfaceWrapper) GetAssetFixPlan(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAssetFixPlan(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2243,6 +2326,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assets", wrapper.ListAssets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assets", wrapper.CreateAsset)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/assets/{id}", wrapper.DeleteAsset)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assets/{id}/fix-plan", wrapper.GetAssetFixPlan)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/assets/{id}/link", wrapper.ClearAssetLink)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/assets/{id}/link", wrapper.SetAssetLink)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans", wrapper.ListScans)
@@ -2666,6 +2750,147 @@ type DeleteAsset500ApplicationProblemPlusJSONResponse struct {
 }
 
 func (response DeleteAsset500ApplicationProblemPlusJSONResponse) VisitDeleteAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetFixPlanRequestObject struct {
+	Id AssetID `json:"id"`
+}
+
+type GetAssetFixPlanResponseObject interface {
+	VisitGetAssetFixPlanResponse(w http.ResponseWriter) error
+}
+
+type GetAssetFixPlan200JSONResponse FixPlan
+
+func (response GetAssetFixPlan200JSONResponse) VisitGetAssetFixPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetFixPlan400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetAssetFixPlan400ApplicationProblemPlusJSONResponse) VisitGetAssetFixPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetFixPlan401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetAssetFixPlan401ApplicationProblemPlusJSONResponse) VisitGetAssetFixPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetFixPlan403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetAssetFixPlan403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetAssetFixPlan403ResponseHeaders
+}
+
+func (response GetAssetFixPlan403ApplicationProblemPlusJSONResponse) VisitGetAssetFixPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetFixPlan404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetAssetFixPlan404ApplicationProblemPlusJSONResponse) VisitGetAssetFixPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetFixPlan421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetAssetFixPlan421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetAssetFixPlan421ResponseHeaders
+}
+
+func (response GetAssetFixPlan421ApplicationProblemPlusJSONResponse) VisitGetAssetFixPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssetFixPlan500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetAssetFixPlan500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetAssetFixPlan500ResponseHeaders
+}
+
+func (response GetAssetFixPlan500ApplicationProblemPlusJSONResponse) VisitGetAssetFixPlanResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5828,6 +6053,9 @@ type StrictServerInterface interface {
 	// DeleteAsset Archive an asset.
 	// (DELETE /api/assets/{id})
 	DeleteAsset(ctx context.Context, request DeleteAssetRequestObject) (DeleteAssetResponseObject, error)
+	// GetAssetFixPlan Fix plan of one asset.
+	// (GET /api/assets/{id}/fix-plan)
+	GetAssetFixPlan(ctx context.Context, request GetAssetFixPlanRequestObject) (GetAssetFixPlanResponseObject, error)
 	// ClearAssetLink Remove an image's repository link.
 	// (DELETE /api/assets/{id}/link)
 	ClearAssetLink(ctx context.Context, request ClearAssetLinkRequestObject) (ClearAssetLinkResponseObject, error)
@@ -6012,6 +6240,32 @@ func (sh *strictHandler) DeleteAsset(w http.ResponseWriter, r *http.Request, id 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DeleteAssetResponseObject); ok {
 		if err := validResponse.VisitDeleteAssetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAssetFixPlan operation middleware
+func (sh *strictHandler) GetAssetFixPlan(w http.ResponseWriter, r *http.Request, id AssetID) {
+	var request GetAssetFixPlanRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAssetFixPlan(ctx, request.(GetAssetFixPlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAssetFixPlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAssetFixPlanResponseObject); ok {
+		if err := validResponse.VisitGetAssetFixPlanResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
