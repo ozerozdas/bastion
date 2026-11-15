@@ -582,7 +582,11 @@ paths:
         comparison decided the target, so its order is a best effort rather
         than authoritative. Findings no upgrade closes are listed in `no_fix`.
 
-        Steps are ordered by critical findings, then high, then total count.
+        Steps are ordered by their prioritization score (#29), highest first:
+        the severity weight sum times the EPSS and latest-image multipliers.
+        Each step carries that score and the factors behind it, so the ordering
+        is explainable; ties keep the critical, then high, then total-count
+        order.
       tags: [findings]
       parameters:
         - $ref: "#/components/parameters/AssetID"
@@ -1786,7 +1790,7 @@ components:
       properties:
         steps:
           type: array
-          description: One package upgrade each, most impactful first.
+          description: One package upgrade each, highest prioritization score first.
           items:
             $ref: "#/components/schemas/FixPlanStep"
         no_fix:
@@ -1802,7 +1806,7 @@ components:
         target is the highest of the findings' minimal fixed versions.
       additionalProperties: false
       required:
-        [ecosystem, package, installed_versions, target_version, approximate, finding_count, severity_counts, finding_ids]
+        [ecosystem, package, installed_versions, target_version, approximate, finding_count, severity_counts, finding_ids, score, factors]
       properties:
         ecosystem:
           type: string
@@ -1839,6 +1843,47 @@ components:
             minimum: 1
         max_epss:
           $ref: "#/components/schemas/EPSSScore"
+        score:
+          type: number
+          format: double
+          description: |
+            Prioritization score (#29): the step's severity weight sum
+            (critical 10, high 7, medium 4, low and unknown 1) times its EPSS
+            and latest-image multipliers. Steps are ordered by it, highest
+            first.
+        factors:
+          type: array
+          description: |
+            The terms that produced `score`, in computation order: the severity
+            weight sum followed by the multipliers. Shown next to the score so
+            the ordering is explainable.
+          items:
+            $ref: "#/components/schemas/FixPlanFactor"
+    FixPlanFactor:
+      type: object
+      title: FixPlanFactor
+      description: One term of a fix plan step's prioritization score.
+      additionalProperties: false
+      required: [name, value, detail]
+      properties:
+        name:
+          type: string
+          description: |
+            `severity` is the weight sum; `epss` and `latest_image` are
+            multipliers, 1 when the factor does not apply.
+          enum: [severity, epss, latest_image]
+          # Explicit Go names: the default "severity" would generate a
+          # Severity constant and clash with the Severity type.
+          x-enum-varnames: [FixPlanFactorSeverity, FixPlanFactorEPSS, FixPlanFactorLatestImage]
+        value:
+          type: number
+          format: double
+          description: "The term's value: a weight sum for severity, a multiplier otherwise."
+          examples: [17, 4.2, 1.5]
+        detail:
+          type: string
+          description: Why the term has this value, in words the UI can show.
+          examples: ["1 critical + 2 high", "EPSS 0.42", "in latest image"]
     FixPlanNoFix:
       type: object
       title: FixPlanNoFix

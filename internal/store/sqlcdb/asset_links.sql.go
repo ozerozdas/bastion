@@ -19,6 +19,32 @@ func (q *Queries) ClearAssetLink(ctx context.Context, imageAssetID int64) error 
 	return err
 }
 
+const getNewestLinkedImageScan = `-- name: GetNewestLinkedImageScan :one
+SELECT l.image_asset_id, MAX(s.id) AS scan_id
+FROM asset_links l
+JOIN scans s ON s.asset_id = l.image_asset_id AND s.status = 'succeeded'
+WHERE l.repo_asset_id = ?1
+GROUP BY l.image_asset_id
+ORDER BY scan_id DESC
+LIMIT 1
+`
+
+type GetNewestLinkedImageScanRow struct {
+	ImageAssetID int64
+	ScanID       interface{}
+}
+
+// The newest succeeded scan among the images linked to one repository, with
+// the image it belongs to. The fix plan's "latest image" factor for an image
+// asset (#29) asks whether this image is that one. sql.ErrNoRows means no
+// linked image has finished a scan.
+func (q *Queries) GetNewestLinkedImageScan(ctx context.Context, repoAssetID int64) (GetNewestLinkedImageScanRow, error) {
+	row := q.db.QueryRowContext(ctx, getNewestLinkedImageScan, repoAssetID)
+	var i GetNewestLinkedImageScanRow
+	err := row.Scan(&i.ImageAssetID, &i.ScanID)
+	return i, err
+}
+
 const listAssetLinks = `-- name: ListAssetLinks :many
 SELECT
     l.id,
@@ -73,6 +99,55 @@ func (q *Queries) ListAssetLinks(ctx context.Context) ([]ListAssetLinksRow, erro
 			&i.ImageRef,
 			&i.ImageDisplayName,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLinkedImageLatestFindingKeys = `-- name: ListLinkedImageLatestFindingKeys :many
+SELECT f.rule_id, f.package_name
+FROM (
+    SELECT l.image_asset_id,
+           (SELECT MAX(s.id) FROM scans s
+            WHERE s.asset_id = l.image_asset_id AND s.status = 'succeeded') AS scan_id
+    FROM asset_links l
+    WHERE l.repo_asset_id = ?1
+) linked
+JOIN findings f ON f.scan_id = linked.scan_id
+WHERE f.type = 'vulnerability'
+  AND f.rule_id IS NOT NULL
+  AND f.package_name IS NOT NULL
+GROUP BY f.rule_id, f.package_name
+`
+
+type ListLinkedImageLatestFindingKeysRow struct {
+	RuleID      sql.NullString
+	PackageName sql.NullString
+}
+
+// Vulnerability keys of each image linked to one repository, from that image's
+// newest succeeded scan. The fix plan's "latest image" factor (#29) asks
+// whether a step's fix ships in an image built from the repository. A finding
+// matches on rule id and package: the fingerprint embeds the asset id, so it
+// never matches across assets.
+func (q *Queries) ListLinkedImageLatestFindingKeys(ctx context.Context, repoAssetID int64) ([]ListLinkedImageLatestFindingKeysRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLinkedImageLatestFindingKeys, repoAssetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLinkedImageLatestFindingKeysRow
+	for rows.Next() {
+		var i ListLinkedImageLatestFindingKeysRow
+		if err := rows.Scan(&i.RuleID, &i.PackageName); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -7,6 +7,7 @@ import { epssQuery } from '../api/epss'
 import { latestFindingsQuery, type Finding } from '../api/findings'
 import {
   fixPlanQuery,
+  type FixPlanFactor,
   type FixPlanNoFix,
   type FixPlanStep,
 } from '../api/fixplan'
@@ -234,6 +235,22 @@ function stepColumns(
 ): DataTableColumn<FixPlanStep>[] {
   return [
     {
+      id: 'score',
+      header: 'Score',
+      headerClassName: 'pl-3',
+      cellClassName: 'py-2 pl-3 align-top whitespace-nowrap',
+      cell: (step) => (
+        <span className="flex flex-col gap-0.5">
+          <span className="text-[13px] font-medium tabular-nums">
+            {Math.round(step.score)}
+          </span>
+          <span className="text-[11px] text-faint" title={scoreTitle(step)}>
+            {scoreFactors(step.factors)}
+          </span>
+        </span>
+      ),
+    },
+    {
       id: 'upgrade',
       header: 'Upgrade',
       headerClassName: 'pl-3',
@@ -362,6 +379,41 @@ function installed(step: FixPlanStep): string {
   return step.installed_versions.length > 0
     ? step.installed_versions.join(', ')
     : 'unknown version'
+}
+
+/** scoreFactors is the one-line explanation next to a step's score. */
+function scoreFactors(factors: readonly FixPlanFactor[]): string {
+  return factors.map(scoreFactor).join(' × ')
+}
+
+/**
+ * scoreFactor labels one factor the way the row reads: "severity 17 × EPSS 4.2
+ * × latest image 1.5". A factor that does not apply says so in words instead
+ * of printing its 1x multiplier.
+ */
+function scoreFactor(factor: FixPlanFactor): string {
+  switch (factor.name) {
+    case 'severity':
+      return `severity ${String(Math.round(factor.value))}`
+    case 'epss':
+      return factor.value > 1
+        ? `EPSS ${factor.value.toFixed(1)}`
+        : factor.detail
+    case 'latest_image':
+      return factor.value > 1
+        ? `latest image ${factor.value.toFixed(1)}`
+        : factor.detail
+    default:
+      return `${factor.name} ${String(factor.value)}`
+  }
+}
+
+/** scoreTitle spells out every factor with its detail for the tooltip. */
+function scoreTitle(step: FixPlanStep): string {
+  const lines = step.factors.map(
+    (factor) => `${factor.name}: ${factor.value.toFixed(2)} (${factor.detail})`,
+  )
+  return [`Score ${step.score.toFixed(2)}`, ...lines].join('\n')
 }
 
 /**

@@ -2,6 +2,7 @@ package reports_test
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/ozerozdas/bastion/internal/epss"
@@ -10,13 +11,16 @@ import (
 )
 
 // fakeEPSS is a map-backed EPSSLookup; the real service is tested in its own
-// package, so this only proves the read-time join.
+// package, so this only proves the read-time join. Enabled mirrors a feed that
+// is on, so the fix plan's score includes the EPSS multiplier.
 type fakeEPSS map[string]epss.Score
 
 func (f fakeEPSS) Lookup(cve string) (epss.Score, bool) {
 	score, ok := f[cve]
 	return score, ok
 }
+
+func (f fakeEPSS) Enabled() bool { return true }
 
 func TestFindingsAndFixPlanCarryEPSS(t *testing.T) {
 	db := openTestDB(t)
@@ -67,6 +71,10 @@ func TestFindingsAndFixPlanCarryEPSS(t *testing.T) {
 	}
 	if highest.Score != 0.99999 || highest.Percentile != 1.0 {
 		t.Errorf("MaxEPSS = %+v, want the highest score", highest)
+	}
+	// The score carries the multiplier too: 17 × (1 + 9×0.99999).
+	if want := 17 * (1 + 9*0.99999); math.Abs(plan.Steps[0].Score-want) > 1e-9 {
+		t.Errorf("score = %v, want %v", plan.Steps[0].Score, want)
 	}
 }
 

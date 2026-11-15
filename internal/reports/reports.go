@@ -37,6 +37,13 @@ type EPSSLookup interface {
 	Lookup(cve string) (epss.Score, bool)
 }
 
+// EPSSState reports whether the EPSS feed is on. *epss.Service implements it;
+// the fix plan uses it to explain an omitted EPSS multiplier (#29). A lookup
+// without it counts as off.
+type EPSSState interface {
+	Enabled() bool
+}
+
 // Option configures a Service.
 type Option func(*Service)
 

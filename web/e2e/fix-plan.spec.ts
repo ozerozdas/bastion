@@ -72,6 +72,12 @@ const plan = {
       finding_count: 2,
       severity_counts: { critical: 1, high: 1, medium: 0, low: 0, unknown: 0 },
       finding_ids: [1, 2],
+      score: 17,
+      factors: [
+        { name: 'severity', value: 17, detail: '1 critical + 1 high' },
+        { name: 'epss', value: 1, detail: 'EPSS off' },
+        { name: 'latest_image', value: 1, detail: 'no image link' },
+      ],
     },
   ],
   no_fix: [
@@ -128,6 +134,11 @@ test('fix plan groups findings into one package upgrade per asset', async ({
 
   await expect(page.getByRole('heading', { name: 'Fix plan' })).toBeVisible()
   await expect(page.getByText(/1 upgrade close 2 findings/)).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Score' })).toBeVisible()
+  // The score explains itself: the weight sum and both omitted multipliers.
+  await expect(
+    page.getByRole('row', { name: /17.*severity 17.*EPSS off.*no image link/ }),
+  ).toBeVisible()
   await expect(
     page.getByRole('row', { name: /Upgrade lodash.*4\.17\.21.*2 findings/ }),
   ).toBeVisible()

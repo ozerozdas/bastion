@@ -7,6 +7,7 @@ import type { components } from './schema'
 export type FixPlan = components['schemas']['FixPlan']
 export type FixPlanStep = components['schemas']['FixPlanStep']
 export type FixPlanNoFix = components['schemas']['FixPlanNoFix']
+export type FixPlanFactor = components['schemas']['FixPlanFactor']
 
 export const fixPlanKey = ['fix-plan'] as const
 

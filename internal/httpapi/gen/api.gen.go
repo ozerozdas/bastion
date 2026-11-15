@@ -209,6 +209,27 @@ func (e FindingType) Valid() bool {
 	}
 }
 
+// Defines values for FixPlanFactorName.
+const (
+	FixPlanFactorEPSS        FixPlanFactorName = "epss"
+	FixPlanFactorLatestImage FixPlanFactorName = "latest_image"
+	FixPlanFactorSeverity    FixPlanFactorName = "severity"
+)
+
+// Valid indicates whether the value is a known member of the FixPlanFactorName enum.
+func (e FixPlanFactorName) Valid() bool {
+	switch e {
+	case FixPlanFactorEPSS:
+		return true
+	case FixPlanFactorLatestImage:
+		return true
+	case FixPlanFactorSeverity:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	HealthStatusOk HealthStatus = "ok"
@@ -872,9 +893,30 @@ type FixPlan struct {
 	// NoFix Packages whose open findings no upgrade closes.
 	NoFix []FixPlanNoFix `json:"no_fix"`
 
-	// Steps One package upgrade each, most impactful first.
+	// Steps One package upgrade each, highest prioritization score first.
 	Steps []FixPlanStep `json:"steps"`
 }
+
+// FixPlanFactor One term of a fix plan step's prioritization score.
+type FixPlanFactor struct {
+	// Detail Why the term has this value, in words the UI can show.
+	//
+	// Examples: 1 critical + 2 high, EPSS 0.42, in latest image
+	Detail string `json:"detail"`
+
+	// Name `severity` is the weight sum; `epss` and `latest_image` are
+	// multipliers, 1 when the factor does not apply.
+	Name FixPlanFactorName `json:"name"`
+
+	// Value The term's value: a weight sum for severity, a multiplier otherwise.
+	//
+	// Examples: 17, 4.2, 1.5
+	Value float64 `json:"value"`
+}
+
+// FixPlanFactorName `severity` is the weight sum; `epss` and `latest_image` are
+// multipliers, 1 when the factor does not apply.
+type FixPlanFactorName string
 
 // FixPlanNoFix A package whose open findings no upgrade closes.
 type FixPlanNoFix struct {
@@ -900,8 +942,13 @@ type FixPlanStep struct {
 	Approximate bool `json:"approximate"`
 
 	// Ecosystem Examples: npm, os-deb
-	Ecosystem    string `json:"ecosystem"`
-	FindingCount int    `json:"finding_count"`
+	Ecosystem string `json:"ecosystem"`
+
+	// Factors The terms that produced `score`, in computation order: the severity
+	// weight sum followed by the multipliers. Shown next to the score so
+	// the ordering is explainable.
+	Factors      []FixPlanFactor `json:"factors"`
+	FindingCount int             `json:"finding_count"`
 
 	// FindingIds The step's findings, by id, in ascending order.
 	FindingIds []int64 `json:"finding_ids"`
@@ -917,6 +964,12 @@ type FixPlanStep struct {
 
 	// Package Examples: lodash
 	Package string `json:"package"`
+
+	// Score Prioritization score (#29): the step's severity weight sum
+	// (critical 10, high 7, medium 4, low and unknown 1) times its EPSS
+	// and latest-image multipliers. Steps are ordered by it, highest
+	// first.
+	Score float64 `json:"score"`
 
 	// SeverityCounts Findings per severity; severities without findings are zero.
 	SeverityCounts SeverityTotals `json:"severity_counts"`

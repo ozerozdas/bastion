@@ -67,6 +67,12 @@ type Step struct {
 	// when the feed is off or scores none of them. It is filled by the caller
 	// that has the feed, not by Build.
 	MaxEPSS *epss.Score
+	// Score is the prioritization score (#29): the severity weight sum times
+	// the EPSS and latest-image multipliers. Zero until the caller that has the
+	// feed and the link context assigns it with Score.
+	Score float64
+	// Factors explains Score, in the order it was computed.
+	Factors []Factor
 }
 
 // NoFix is a package whose open findings no upgrade closes.
@@ -380,23 +386,44 @@ func groupKey(ecosystem, pkg string) string {
 }
 
 // sortSteps orders steps by impact: critical findings, then high, then the
-// total finding count, then name. The prioritization score arrives in #29.
+// total finding count, then name. It is Build's order, before the caller has
+// the EPSS and link context to score steps; SortByScore reorders once scores
+// are assigned.
 func sortSteps(steps []Step) {
+	slices.SortStableFunc(steps, compareSteps)
+}
+
+// SortByScore orders steps by prioritization score, highest first (#29). Ties
+// keep Build's impact order: critical findings, then high, then total count,
+// then name.
+func SortByScore(steps []Step) {
 	slices.SortStableFunc(steps, func(a, b Step) int {
-		if a.SeverityCounts.Critical != b.SeverityCounts.Critical {
-			return b.SeverityCounts.Critical - a.SeverityCounts.Critical
+		switch {
+		case a.Score > b.Score:
+			return -1
+		case a.Score < b.Score:
+			return 1
+		default:
+			return compareSteps(a, b)
 		}
-		if a.SeverityCounts.High != b.SeverityCounts.High {
-			return b.SeverityCounts.High - a.SeverityCounts.High
-		}
-		if a.FindingCount != b.FindingCount {
-			return b.FindingCount - a.FindingCount
-		}
-		if c := strings.Compare(a.Ecosystem, b.Ecosystem); c != 0 {
-			return c
-		}
-		return strings.Compare(a.Package, b.Package)
 	})
+}
+
+// compareSteps is the impact order Build uses and SortByScore breaks ties with.
+func compareSteps(a, b Step) int {
+	if a.SeverityCounts.Critical != b.SeverityCounts.Critical {
+		return b.SeverityCounts.Critical - a.SeverityCounts.Critical
+	}
+	if a.SeverityCounts.High != b.SeverityCounts.High {
+		return b.SeverityCounts.High - a.SeverityCounts.High
+	}
+	if a.FindingCount != b.FindingCount {
+		return b.FindingCount - a.FindingCount
+	}
+	if c := strings.Compare(a.Ecosystem, b.Ecosystem); c != 0 {
+		return c
+	}
+	return strings.Compare(a.Package, b.Package)
 }
 
 // sortNoFix orders the unfixable packages the same way as the steps.
