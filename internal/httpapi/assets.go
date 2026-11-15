@@ -58,6 +58,9 @@ func (s *Server) CreateAsset(ctx context.Context, request gen.CreateAssetRequest
 	if request.Body.ConnectionId != nil {
 		in.ConnectionID = *request.Body.ConnectionId
 	}
+	if request.Body.Tag != nil {
+		in.Tag = *request.Body.Tag
+	}
 
 	asset, err := s.assets.Create(ctx, in)
 	if err != nil {

@@ -78,6 +78,10 @@ func (s *Scanner) Scan(ctx context.Context, ws *sources.Workspace, opts scanners
 // scan dispatches on the workspace: an image has no directory.
 func (s *Scanner) scan(ctx context.Context, ws *sources.Workspace, opts scanners.Options) (json.RawMessage, error) {
 	switch {
+	case ws.Image != "" && ws.RegistryAuth != nil:
+		// A registry target carries a short-lived login resolved for this
+		// scan. Trivy pulls it remotely; the login never leaves memory.
+		return ScanRemoteImage(ctx, ws.Image, opts.CacheDir, *ws.RegistryAuth)
 	case ws.Image != "":
 		// The source resolved the daemon when it fetched the image; the
 		// option is only a fallback for callers that built a workspace

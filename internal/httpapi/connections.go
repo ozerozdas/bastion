@@ -160,9 +160,9 @@ func (s *Server) DiscoverConnectionRepos(ctx context.Context, request gen.Discov
 		}
 	}
 
-	out := make([]gen.DiscoveredRepo, 0, len(repos))
-	for _, repo := range repos {
-		out = append(out, gen.DiscoveredRepo{
+	reposOut := make([]gen.DiscoveredRepo, 0, len(repos.Repositories))
+	for _, repo := range repos.Repositories {
+		reposOut = append(reposOut, gen.DiscoveredRepo{
 			FullName:      repo.FullName,
 			DefaultBranch: repo.DefaultBranch,
 			Private:       repo.Private,
@@ -170,7 +170,28 @@ func (s *Server) DiscoverConnectionRepos(ctx context.Context, request gen.Discov
 			AlreadyAdded:  repo.AlreadyAdded,
 		})
 	}
-	return gen.DiscoverConnectionRepos200JSONResponse{Repos: out}, nil
+	ecrOut := make([]gen.EcrRepository, 0, len(repos.ECRRepositories))
+	for _, repo := range repos.ECRRepositories {
+		tags := make([]gen.EcrTag, 0, len(repo.Tags))
+		for _, tag := range repo.Tags {
+			tags = append(tags, gen.EcrTag{
+				Tags:         tag.Tags,
+				Digest:       tag.Digest,
+				Ref:          tag.Ref,
+				PushedAt:     tag.PushedAt,
+				AlreadyAdded: tag.AlreadyAdded,
+			})
+		}
+		ecrOut = append(ecrOut, gen.EcrRepository{
+			Name: repo.Name,
+			Uri:  repo.URI,
+			Tags: tags,
+		})
+	}
+	return gen.DiscoverConnectionRepos200JSONResponse{
+		Repos:           reposOut,
+		EcrRepositories: &ecrOut,
+	}, nil
 }
 
 // connectionProblem maps service errors to problem details and an HTTP status.

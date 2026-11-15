@@ -3,7 +3,14 @@ import { Link } from '@tanstack/react-router'
 
 import { assetsQuery, type Asset } from '../api/assets'
 import { ApiError } from '../api/client'
+import { connectionsQuery, type Connection } from '../api/connections'
 import { dockerImagesQuery, useScanDockerImage, type DockerImage } from '../api/docker'
+import {
+  ecrDiscoverQuery,
+  useScanEcrImage,
+  type EcrRepository,
+  type EcrTag,
+} from '../api/ecr'
 import { useStartScans, type Scan } from '../api/scans'
 import {
   DataTable,
@@ -38,6 +45,7 @@ type ContainerRow = {
 export function ContainersPage() {
   const images = useQuery(dockerImagesQuery)
   const assets = useQuery(assetsQuery)
+  const connections = useQuery(connectionsQuery)
   const scanImage = useScanDockerImage()
   const start = useStartScans()
 
@@ -210,7 +218,230 @@ export function ContainersPage() {
           />
         </section>
       ) : null}
+
+      <EcrSection
+        assets={assets.data ?? []}
+        connections={connections.data ?? []}
+        pending={connections.isPending}
+      />
     </>
+  )
+}
+
+/**
+ * EcrSection lists ECR repositories for every AWS connection, next to the
+ * local Docker images. A machine without an AWS connection gets a hint that
+ * links to Connections → Registry.
+ */
+function EcrSection({
+  assets,
+  connections,
+  pending,
+}: {
+  assets: Asset[]
+  connections: Connection[]
+  pending: boolean
+}) {
+  const aws = connections.filter((connection) => connection.kind === 'aws')
+
+  return (
+    <section aria-label="ECR" className="space-y-3">
+      <p className="text-xs text-faint">ECR images</p>
+      {pending ? (
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <p className="text-muted">Looking for an AWS connection…</p>
+        </section>
+      ) : null}
+      {!pending && aws.length === 0 ? (
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <p className="text-sm text-muted">
+            No AWS connection yet. Add one in{' '}
+            <Link
+              to="/connections"
+              search={{ tab: 'registry' }}
+              className="underline underline-offset-2 hover:text-fg"
+            >
+              Connections → Registry
+            </Link>{' '}
+            to list ECR images.
+          </p>
+        </section>
+      ) : null}
+      {aws.map((connection) => (
+        <EcrConnection
+          key={connection.id}
+          connection={connection}
+          assets={assets}
+        />
+      ))}
+    </section>
+  )
+}
+
+/** EcrRow is one ECR tag and the asset that tracks its digest, if any. */
+type EcrRow = {
+  repository: EcrRepository
+  tag: EcrTag
+  asset: Asset | undefined
+}
+
+/** EcrConnection lists one AWS connection's ECR repositories and tags. */
+function EcrConnection({
+  connection,
+  assets,
+}: {
+  connection: Connection
+  assets: Asset[]
+}) {
+  const discover = useQuery(ecrDiscoverQuery(connection.id))
+  const scan = useScanEcrImage(connection.id)
+
+  const rows: EcrRow[] = (discover.data ?? []).flatMap((repository) =>
+    repository.tags.map((tag) => ({
+      repository,
+      tag,
+      asset: assets.find(
+        (asset) => asset.kind === 'image' && asset.ref === tag.ref,
+      ),
+    })),
+  )
+
+  function scanning(row: EcrRow): boolean {
+    return scan.isPending && scan.variables?.ref === row.tag.ref
+  }
+
+  const columns: DataTableColumn<EcrRow>[] = [
+    {
+      id: 'image',
+      header: 'Image',
+      cell: (row) => {
+        const primary = row.tag.tags[0] ?? ''
+        return (
+          <div className="max-w-[40ch]">
+            <span
+              className="block truncate font-mono text-xs text-fg"
+              title={`${row.repository.uri}:${primary}`}
+            >
+              {row.repository.name}:{primary}
+            </span>
+            <span className="block truncate font-mono text-[11px] text-faint">
+              {shortID(row.tag.digest)}
+              {row.tag.tags.length > 1
+                ? ` · ${row.tag.tags.slice(1).join(' · ')}`
+                : ''}
+            </span>
+          </div>
+        )
+      },
+    },
+    {
+      id: 'pushed',
+      header: 'Pushed',
+      headerClassName: 'pl-3',
+      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      cell: (row) => (
+        <span className="text-muted">{relativeTime(row.tag.pushed_at)}</span>
+      ),
+    },
+    {
+      id: 'last-scan',
+      header: 'Last scan',
+      headerClassName: 'pl-3',
+      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      cell: (row) => <ScanCell asset={row.asset} />,
+    },
+    {
+      id: 'open-findings',
+      header: 'Open findings',
+      headerClassName: 'pl-3',
+      cellClassName: 'pl-3 align-top',
+      cell: (row) =>
+        row.asset ? (
+          <SeverityCountBadges counts={row.asset.open_counts} />
+        ) : (
+          <span className="text-faint">—</span>
+        ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      headerClassName: 'pl-3 text-right',
+      cellClassName: 'pl-3 align-top',
+      cell: (row) => {
+        const running =
+          row.asset?.last_scan?.status === 'queued' ||
+          row.asset?.last_scan?.status === 'running'
+        return (
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => scan.mutate(row.tag)}
+              disabled={scanning(row) || running}
+            >
+              {scanning(row)
+                ? 'Queueing…'
+                : row.asset
+                  ? 'Scan'
+                  : 'Add & scan'}
+            </Button>
+            {row.asset ? (
+              <Link
+                to="/findings"
+                search={{ asset: row.asset.id }}
+                className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+              >
+                View findings
+              </Link>
+            ) : null}
+          </div>
+        )
+      },
+    },
+  ]
+
+  return (
+    <section className="space-y-2">
+      <h2 className="text-[13px] font-semibold">
+        {connection.name}
+        {connection.region ? (
+          <span className="ml-2 font-mono text-[11px] font-normal text-faint">
+            {connection.region}
+          </span>
+        ) : null}
+      </h2>
+      {discover.isError ? (
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <ErrorNote error={discover.error} />
+        </section>
+      ) : null}
+      {scan.isError ? (
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <ErrorNote error={scan.error} />
+        </section>
+      ) : null}
+      {discover.isPending ? (
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <p className="text-muted">Listing ECR repositories…</p>
+        </section>
+      ) : null}
+      {discover.isSuccess && rows.length === 0 ? (
+        <EmptyState
+          title="No ECR tags found"
+          body="This AWS connection's repositories have no tagged images yet."
+        />
+      ) : null}
+      {rows.length > 0 ? (
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <DataTable
+            rows={rows}
+            columns={columns}
+            rowKey={(row) => row.tag.ref}
+          />
+        </section>
+      ) : null}
+    </section>
   )
 }
 

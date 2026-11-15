@@ -321,16 +321,20 @@ paths:
   /api/connections/{id}/discover:
     get:
       operationId: discoverConnectionRepos
-      summary: List repositories the connection can add.
+      summary: List what the connection can add.
       description: |
-        Calls GitHub's repository list and marks the ones that already exist as
-        assets with `already_added: true`.
+        For a `github` connection, calls GitHub's repository list and returns
+        `repos`, marking the ones that already exist as assets with
+        `already_added: true`. For an `aws` connection, returns
+        `ecr_repositories` with each repository's newest tags and digests and
+        marks the digest-pinned images already tracked as assets. The arrays
+        are empty when they do not apply.
       tags: [connections]
       parameters:
         - $ref: "#/components/parameters/ConnectionID"
       responses:
         "200":
-          description: Repositories visible to the connection.
+          description: Repositories and ECR images visible to the connection.
           content:
             application/json:
               schema:
@@ -1301,8 +1305,63 @@ components:
       properties:
         repos:
           type: array
+          description: GitHub repositories; empty for an AWS connection.
           items:
             $ref: "#/components/schemas/DiscoveredRepo"
+        ecr_repositories:
+          type: array
+          description: ECR repositories; empty for a GitHub connection.
+          items:
+            $ref: "#/components/schemas/EcrRepository"
+    EcrRepository:
+      type: object
+      title: EcrRepository
+      description: One ECR repository with its newest tags.
+      additionalProperties: false
+      required: [name, uri, tags]
+      properties:
+        name:
+          type: string
+          examples: ["t2n-api"]
+        uri:
+          type: string
+          description: Registry-qualified repository URI.
+          examples: ["143709573002.dkr.ecr.eu-central-1.amazonaws.com/t2n-api"]
+        tags:
+          type: array
+          description: Up to 10 newest tags, newest first.
+          items:
+            $ref: "#/components/schemas/EcrTag"
+    EcrTag:
+      type: object
+      title: EcrTag
+      description: |
+        One ECR image digest and the tags that point at it. Tags sharing a
+        digest are grouped, newest first.
+      additionalProperties: false
+      required: [tags, digest, ref, pushed_at, already_added]
+      properties:
+        tags:
+          type: array
+          minItems: 1
+          description: Every tag that points at this digest, newest first.
+          items:
+            type: string
+          examples: [["latest", "a5c55d6"]]
+        digest:
+          type: string
+          description: Image manifest digest.
+          examples: ["sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+        ref:
+          type: string
+          description: Digest-pinned reference to create the asset with.
+          examples: ["143709573002.dkr.ecr.eu-central-1.amazonaws.com/t2n-api@sha256:aaaa"]
+        pushed_at:
+          type: string
+          format: date-time
+        already_added:
+          type: boolean
+          description: True when an asset with this digest-pinned ref exists.
     DiscoveredRepo:
       type: object
       title: DiscoveredRepo
@@ -1793,20 +1852,30 @@ components:
           description: |
             `repo` takes an `owner/repo` ref; `path` takes an existing absolute
             directory; `image` takes an image reference the local Docker daemon
-            holds.
+            holds, or a digest-pinned ECR reference when `connection_id` names
+            an AWS connection.
           enum: [repo, path, image]
         ref:
           type: string
           minLength: 1
-          description: "`owner/repo` for repositories, an absolute directory for paths, an image reference for images."
-          examples: ["octo/hello", "/Users/me/src/hello", "nginx:latest"]
+          description: "`owner/repo` for repositories, an absolute directory for paths, an image reference for images. An ECR image is `<registry>/<repository>@sha256:<digest>`."
+          examples: ["octo/hello", "/Users/me/src/hello", "nginx:latest", "143709573002.dkr.ecr.eu-central-1.amazonaws.com/t2n-api@sha256:aaaa"]
+        tag:
+          type: string
+          maxLength: 128
+          description: |
+            ECR image only: the tag the digest came from. The asset's display
+            name is `<repository>:<tag>`. Absent for a local Docker image.
+          examples: ["latest"]
         connection_id:
           type: integer
           format: int64
           minimum: 1
           description: |
             Connection whose token resolves the default branch and authenticates
-            scans. Absent uses the default GitHub token.
+            scans. For an `image` it must be an `aws` connection, which makes
+            the image an ECR image. Absent uses the default GitHub token or,
+            for an image, the local Docker daemon.
     ScanList:
       type: object
       title: ScanList

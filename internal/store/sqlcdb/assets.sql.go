@@ -191,6 +191,35 @@ func (q *Queries) GetOrCreateAsset(ctx context.Context, arg GetOrCreateAssetPara
 	return i, err
 }
 
+const listAssetRefsByKind = `-- name: ListAssetRefsByKind :many
+SELECT ref FROM assets WHERE kind = ?1
+`
+
+// The refs of every asset of one kind, so discovery can mark the ones already
+// tracked without loading whole rows.
+func (q *Queries) ListAssetRefsByKind(ctx context.Context, kind string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listAssetRefsByKind, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var ref string
+		if err := rows.Scan(&ref); err != nil {
+			return nil, err
+		}
+		items = append(items, ref)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAssetSummaries = `-- name: ListAssetSummaries :many
 WITH newest_scan AS (
     SELECT s.asset_id, s.id AS scan_id, s.status, s.finished_at
