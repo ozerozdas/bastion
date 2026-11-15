@@ -18,10 +18,13 @@ import (
 	"sync"
 
 	"github.com/aquasecurity/trivy/pkg/commands/artifact"
+	ftypes "github.com/aquasecurity/trivy/pkg/fanal/types"
 	"github.com/aquasecurity/trivy/pkg/flag"
 	"github.com/aquasecurity/trivy/pkg/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/ozerozdas/bastion/internal/sources"
 )
 
 // Version is the Trivy release this adapter is built against. It must match the
@@ -108,6 +111,74 @@ func ScanImage(ctx context.Context, ref, cacheDir, dockerHost string) (out json.
 		func(ctx context.Context, opts flag.Options, runner artifact.Runner) (types.Report, error) {
 			return runner.ScanImage(ctx, opts)
 		})
+}
+
+// ScanRemoteImage pulls an image from a registry with a short-lived login and
+// returns Trivy's JSON report unchanged. Only the remote image source is
+// enabled; the credentials are set on the parsed options, never on the argv and
+// never logged, so they cannot leak through a flag dump.
+func ScanRemoteImage(ctx context.Context, ref, cacheDir string, auth sources.RegistryAuth) (out json.RawMessage, err error) {
+	scanMu.Lock()
+	defer scanMu.Unlock()
+
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return nil, errors.New("trivy: image reference is required")
+	}
+	if cacheDir == "" {
+		return nil, errors.New("trivy: cache dir is required")
+	}
+	if auth.Username == "" || auth.Password == "" {
+		return nil, errors.New("trivy: registry credentials are required")
+	}
+	if err = os.MkdirAll(cacheDir, 0o750); err != nil {
+		return nil, fmt.Errorf("trivy: create cache dir %q: %w", cacheDir, err)
+	}
+
+	scan := func(opts flag.Options) (json.RawMessage, error) {
+		return scanReport(ctx, opts, artifact.TargetContainerImage, ref,
+			func(ctx context.Context, opts flag.Options, runner artifact.Runner) (types.Report, error) {
+				return runner.ScanImage(ctx, opts)
+			})
+	}
+
+	opts, err := remoteImageOptions(ref, cacheDir, "", auth)
+	if err != nil {
+		return nil, err
+	}
+	out, err = scan(opts)
+	if err == nil || !arm64PlatformMissing(err) {
+		return out, err
+	}
+
+	// Trivy defaults to linux/amd64. An arm64-only image has no amd64 child;
+	// retry once for the platform it does have. The first attempt stays the
+	// default so an amd64 image is never pulled twice.
+	opts, err = remoteImageOptions(ref, cacheDir, "linux/arm64", auth)
+	if err != nil {
+		return nil, err
+	}
+	return scan(opts)
+}
+
+// remoteImageOptions builds the remote-scan options with the registry login
+// set in memory. The password never reaches argv or a log line.
+func remoteImageOptions(ref, cacheDir, platform string, auth sources.RegistryAuth) (flag.Options, error) {
+	opts, err := newOptions(ref, remoteImageScanArgs(cacheDir, platform))
+	if err != nil {
+		return flag.Options{}, err
+	}
+	opts.Credentials = []ftypes.Credential{{
+		Username: auth.Username,
+		Password: auth.Password,
+	}}
+	return opts, nil
+}
+
+// arm64PlatformMissing reports Trivy's "no child with platform" error, which
+// means the image index has no linux/amd64 manifest.
+func arm64PlatformMissing(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "no child with platform")
 }
 
 // scanFunc runs one Trivy artifact scan. The runner is passed in because
@@ -257,6 +328,18 @@ func imageScanArgs(cacheDir, dockerHost string) []string {
 	args := append(baseScanArgs(cacheDir), "--image-src", "docker")
 	if dockerHost != "" {
 		args = append(args, "--docker-host", dockerHost)
+	}
+	return args
+}
+
+// remoteImageScanArgs is the Trivy CLI surface for an image pulled from a
+// registry. Only the remote source is enabled, so Trivy never looks for the
+// image on the local daemon. platform is empty for Trivy's default
+// (linux/amd64) and set only for the arm64 retry.
+func remoteImageScanArgs(cacheDir, platform string) []string {
+	args := append(baseScanArgs(cacheDir), "--image-src", "remote")
+	if platform != "" {
+		args = append(args, "--platform", platform)
 	}
 	return args
 }

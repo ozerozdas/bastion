@@ -30,6 +30,18 @@ type Target struct {
 	// Ref is the source-specific reference: "owner/repo@sha", an image
 	// reference or an absolute path.
 	Ref string
+	// ConnectionID is the connection an image target authenticates with. Zero
+	// means no connection: a local Docker image or a filesystem target.
+	ConnectionID int64
+	// RegistryAuth is the short-lived registry login an image target needs.
+	// It is resolved per scan and never persisted or logged.
+	RegistryAuth *RegistryAuth
+}
+
+// RegistryAuth is a registry login held in memory for one scan.
+type RegistryAuth struct {
+	Username string
+	Password string
 }
 
 // Workspace is a fetched target. Scanners read from Dir or Image.
@@ -43,6 +55,9 @@ type Workspace struct {
 	// DockerHost is the daemon host that answered when the image was fetched.
 	// It is resolved per scan, so a stale socket is never reused.
 	DockerHost string
+	// RegistryAuth is set when the image is pulled from a remote registry with
+	// a short-lived login. It is never persisted or logged.
+	RegistryAuth *RegistryAuth
 	// Cleanup removes anything Fetch created. It is nil for sources that did
 	// not create the directory (such as a local path or an image).
 	Cleanup func() error

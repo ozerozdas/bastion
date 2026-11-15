@@ -90,6 +90,8 @@ type GitHubFactory func(token string) (GitHubClient, error)
 // through WithAWSFactory; no test calls AWS.
 type AWSClient interface {
 	Identity(ctx context.Context) (aws.Identity, error)
+	Repositories(ctx context.Context) ([]aws.Repository, error)
+	AuthorizationToken(ctx context.Context) (aws.Credentials, error)
 }
 
 // AWSFactory builds a client for a profile and region. No credential is passed:
@@ -130,6 +132,31 @@ type Repository struct {
 	Private       bool
 	Archived      bool
 	AlreadyAdded  bool
+}
+
+// ECRTag is one ECR image digest discovery offers. Tags that point at the same
+// digest are grouped, newest first, so a push that also tags a commit SHA is
+// one row, not two.
+type ECRTag struct {
+	Tags         []string
+	Digest       string
+	Ref          string
+	PushedAt     time.Time
+	AlreadyAdded bool
+}
+
+// ECRRepository is one ECR repository with its newest tags.
+type ECRRepository struct {
+	Name string
+	URI  string
+	Tags []ECRTag
+}
+
+// Discovery is what a connection can add: GitHub repositories for a github
+// connection, ECR repositories for an aws connection.
+type Discovery struct {
+	Repositories    []Repository
+	ECRRepositories []ECRRepository
 }
 
 // Option customises a Service. Tests use WithGitHubFactory and WithAWSFactory.
@@ -445,17 +472,34 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// Discover lists the repositories the connection can see and marks the ones
-// that already exist as assets.
-func (s *Service) Discover(ctx context.Context, id int64) ([]Repository, error) {
+// Discover lists what the connection can add: GitHub repositories for a github
+// connection, ECR repositories and their newest tags for an aws connection.
+// Existing assets are marked already_added.
+func (s *Service) Discover(ctx context.Context, id int64) (Discovery, error) {
 	row, err := s.row(ctx, id)
 	if err != nil {
-		return nil, err
+		return Discovery{}, err
 	}
-	if row.Kind != KindGitHub {
-		return nil, fmt.Errorf("%w: %q", ErrUnsupportedKind, row.Kind)
+	switch row.Kind {
+	case KindGitHub:
+		repos, err := s.discoverGitHub(ctx, row)
+		if err != nil {
+			return Discovery{}, err
+		}
+		return Discovery{Repositories: repos}, nil
+	case KindAWS:
+		repos, err := s.discoverECR(ctx, row)
+		if err != nil {
+			return Discovery{}, err
+		}
+		return Discovery{ECRRepositories: repos}, nil
+	default:
+		return Discovery{}, fmt.Errorf("%w: %q", ErrUnsupportedKind, row.Kind)
 	}
+}
 
+// discoverGitHub lists the repositories the connection can read.
+func (s *Service) discoverGitHub(ctx context.Context, row sqlcdb.Connection) ([]Repository, error) {
 	token, err := s.token(row)
 	if err != nil {
 		return nil, err
@@ -490,6 +534,128 @@ func (s *Service) Discover(ctx context.Context, id int64) ([]Repository, error) 
 		})
 	}
 	return out, nil
+}
+
+// discoverECR lists the account's repositories and their newest tags. The
+// asset ref is the digest-pinned image reference, so a moved tag is never
+// mistaken for the image that was scanned.
+func (s *Service) discoverECR(ctx context.Context, row sqlcdb.Connection) ([]ECRRepository, error) {
+	config, err := decodeConfig(row.ConfigJSON)
+	if err != nil {
+		return nil, err
+	}
+	client, err := s.newAWS(configString(config, "profile"), configString(config, "region"))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrUpstream, err)
+	}
+	repos, err := client.Repositories(ctx)
+	if err != nil {
+		logAWSError(row.ID, err)
+		return nil, fmt.Errorf("%w: %s", ErrUpstream, hintFor(err))
+	}
+
+	refs, err := sqlcdb.New(s.db).ListAssetRefsByKind(ctx, "image")
+	if err != nil {
+		return nil, fmt.Errorf("connections: list added images: %w", err)
+	}
+	added := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		added[ref] = struct{}{}
+	}
+
+	out := make([]ECRRepository, 0, len(repos))
+	for _, repo := range repos {
+		tags := make([]ECRTag, 0, len(repo.Tags))
+		index := make(map[string]int, len(repo.Tags))
+		for _, tag := range repo.Tags {
+			// Group by digest: one image row, with every tag that points at it.
+			if i, ok := index[tag.Digest]; ok {
+				tags[i].Tags = append(tags[i].Tags, tag.Name)
+				continue
+			}
+			ref := repo.URI + "@" + tag.Digest
+			_, exists := added[ref]
+			index[tag.Digest] = len(tags)
+			tags = append(tags, ECRTag{
+				Tags:         []string{tag.Name},
+				Digest:       tag.Digest,
+				Ref:          ref,
+				PushedAt:     tag.PushedAt,
+				AlreadyAdded: exists,
+			})
+		}
+		out = append(out, ECRRepository{Name: repo.Name, URI: repo.URI, Tags: tags})
+	}
+	return out, nil
+}
+
+// AWSRegistry returns the registry host an aws connection may pull from:
+// "<account>.dkr.ecr.<region>.amazonaws.com". The account comes from the last
+// successful test; before one there is no safe host to bind an image to.
+func (s *Service) AWSRegistry(ctx context.Context, id int64) (string, error) {
+	row, err := s.row(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if row.Kind != KindAWS {
+		return "", fmt.Errorf("%w: connection %d is %s, not %s", ErrUnsupportedKind, id, row.Kind, KindAWS)
+	}
+	config, err := decodeConfig(row.ConfigJSON)
+	if err != nil {
+		return "", err
+	}
+	account := configString(config, "account")
+	region := configString(config, "region")
+	if account == "" {
+		return "", fmt.Errorf("%w: the AWS connection has no account yet; test the connection first", ErrInvalid)
+	}
+	if region == "" {
+		return "", fmt.Errorf("%w: the AWS connection has no region", ErrInvalid)
+	}
+	return account + ".dkr.ecr." + region + ".amazonaws.com", nil
+}
+
+// ECRCredentials resolves a short-lived ECR registry login for one aws
+// connection. registry must be the connection's own host; anything else is
+// refused before a token is fetched, so a tampered asset cannot send this
+// connection's credentials to another registry. The caller keeps the login in
+// memory only.
+func (s *Service) ECRCredentials(ctx context.Context, id int64, registry string) (aws.Credentials, error) {
+	expected, err := s.AWSRegistry(ctx, id)
+	if err != nil {
+		return aws.Credentials{}, err
+	}
+	if registry != expected {
+		return aws.Credentials{}, fmt.Errorf("%w: registry %q does not belong to connection %d; expected %s", ErrInvalid, registry, id, expected)
+	}
+	row, err := s.row(ctx, id)
+	if err != nil {
+		return aws.Credentials{}, err
+	}
+	config, err := decodeConfig(row.ConfigJSON)
+	if err != nil {
+		return aws.Credentials{}, err
+	}
+	client, err := s.newAWS(configString(config, "profile"), configString(config, "region"))
+	if err != nil {
+		return aws.Credentials{}, fmt.Errorf("%w: %w", ErrUpstream, err)
+	}
+	credentials, err := client.AuthorizationToken(ctx)
+	if err != nil {
+		logAWSError(row.ID, err)
+		return aws.Credentials{}, fmt.Errorf("%w: %s", ErrUpstream, hintFor(err))
+	}
+	return credentials, nil
+}
+
+// ConnectionKind returns the kind of one connection. Asset creation uses it to
+// decide whether an image is local or belongs to an AWS registry.
+func (s *Service) ConnectionKind(ctx context.Context, id int64) (string, error) {
+	row, err := s.row(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return row.Kind, nil
 }
 
 // Hint returns a user-facing explanation for err, suitable for a problem

@@ -19,6 +19,10 @@ type AssetTarget struct {
 	Ref           string
 	ConnectionID  int64
 	DefaultBranch string
+	// MetadataJSON is the asset's non-secret metadata. An ECR image keeps its
+	// registry here, which lets a scan refuse an orphaned image instead of
+	// falling back to the local Docker daemon.
+	MetadataJSON string
 }
 
 // LoadAssetTarget reads one asset's target information. A missing asset is an
@@ -61,6 +65,7 @@ func assetTarget(row sqlcdb.Asset) AssetTarget {
 		Kind:          row.Kind,
 		Ref:           row.Ref,
 		DefaultBranch: row.DefaultBranch.String,
+		MetadataJSON:  row.MetadataJSON,
 	}
 	if row.ConnectionID.Valid {
 		target.ConnectionID = row.ConnectionID.Int64

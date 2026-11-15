@@ -180,7 +180,8 @@ func expandHome(path string) (string, error) {
 }
 
 // Source resolves image targets. It creates nothing, so its workspaces have no
-// cleanup hook: the scan reads the image the daemon already holds.
+// cleanup hook: the scan reads the image the daemon already holds, or pulls a
+// registry target with the login the resolver attached to it.
 type Source struct{}
 
 // NewSource returns a source for local Docker images.
@@ -201,6 +202,11 @@ func (*Source) Fetch(ctx context.Context, t sources.Target) (*sources.Workspace,
 	ref := strings.TrimSpace(t.Ref)
 	if ref == "" {
 		return nil, errors.New("docker: image reference is required")
+	}
+	// A registry target carries its own login (an ECR asset): the scanner pulls
+	// it remotely, so no local daemon is needed and none is probed.
+	if t.RegistryAuth != nil {
+		return &sources.Workspace{Image: ref, RegistryAuth: t.RegistryAuth}, nil
 	}
 	status := Status(ctx)
 	if !status.Found {

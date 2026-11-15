@@ -520,23 +520,34 @@ type ConnectionStatus string
 // CreateAssetRequest defines model for CreateAssetRequest.
 type CreateAssetRequest struct {
 	// ConnectionId Connection whose token resolves the default branch and authenticates
-	// scans. Absent uses the default GitHub token.
+	// scans. For an `image` it must be an `aws` connection, which makes
+	// the image an ECR image. Absent uses the default GitHub token or,
+	// for an image, the local Docker daemon.
 	ConnectionId *int64 `json:"connection_id,omitempty"`
 
 	// Kind `repo` takes an `owner/repo` ref; `path` takes an existing absolute
 	// directory; `image` takes an image reference the local Docker daemon
-	// holds.
+	// holds, or a digest-pinned ECR reference when `connection_id` names
+	// an AWS connection.
 	Kind CreateAssetRequestKind `json:"kind"`
 
-	// Ref `owner/repo` for repositories, an absolute directory for paths, an image reference for images.
+	// Ref `owner/repo` for repositories, an absolute directory for paths, an image reference for images. An ECR image is `<registry>/<repository>@sha256:<digest>`.
 	//
-	// Examples: octo/hello, /Users/me/src/hello, nginx:latest
+	// Examples: octo/hello, /Users/me/src/hello, nginx:latest, 143709573002.dkr.ecr.eu-central-1.amazonaws.com/t2n-api@sha256:aaaa
 	Ref string `json:"ref"`
+
+	// Tag ECR image only: the tag the digest came from. The asset's display
+	// name is `<repository>:<tag>`. Absent for a local Docker image.
+	//
+	//
+	// Examples: latest
+	Tag *string `json:"tag,omitempty"`
 }
 
 // CreateAssetRequestKind `repo` takes an `owner/repo` ref; `path` takes an existing absolute
 // directory; `image` takes an image reference the local Docker daemon
-// holds.
+// holds, or a digest-pinned ECR reference when `connection_id` names
+// an AWS connection.
 type CreateAssetRequestKind string
 
 // CreateConnectionRequest defines model for CreateConnectionRequest.
@@ -593,6 +604,10 @@ type Dashboard struct {
 
 // DiscoverReposResponse defines model for DiscoverReposResponse.
 type DiscoverReposResponse struct {
+	// EcrRepositories ECR repositories; empty for a GitHub connection.
+	EcrRepositories *[]EcrRepository `json:"ecr_repositories,omitempty"`
+
+	// Repos GitHub repositories; empty for an AWS connection.
 	Repos []DiscoveredRepo `json:"repos"`
 }
 
@@ -634,6 +649,43 @@ type DockerImageList struct {
 	// `unix:///var/run/docker.sock`. Empty when no daemon was reached.
 	Host   string        `json:"host"`
 	Images []DockerImage `json:"images"`
+}
+
+// EcrRepository One ECR repository with its newest tags.
+type EcrRepository struct {
+	// Name Examples: t2n-api
+	Name string `json:"name"`
+
+	// Tags Up to 10 newest tags, newest first.
+	Tags []EcrTag `json:"tags"`
+
+	// Uri Registry-qualified repository URI.
+	//
+	// Examples: 143709573002.dkr.ecr.eu-central-1.amazonaws.com/t2n-api
+	Uri string `json:"uri"`
+}
+
+// EcrTag One ECR image digest and the tags that point at it. Tags sharing a
+// digest are grouped, newest first.
+type EcrTag struct {
+	// AlreadyAdded True when an asset with this digest-pinned ref exists.
+	AlreadyAdded bool `json:"already_added"`
+
+	// Digest Image manifest digest.
+	//
+	// Examples: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+	Digest   string    `json:"digest"`
+	PushedAt time.Time `json:"pushed_at"`
+
+	// Ref Digest-pinned reference to create the asset with.
+	//
+	// Examples: 143709573002.dkr.ecr.eu-central-1.amazonaws.com/t2n-api@sha256:aaaa
+	Ref string `json:"ref"`
+
+	// Tags Every tag that points at this digest, newest first.
+	//
+	// Examples: ["latest","a5c55d6"]
+	Tags []string `json:"tags"`
 }
 
 // Finding One normalized finding of an asset's latest succeeded scan. Optional
@@ -1248,7 +1300,7 @@ type ServerInterface interface {
 	// DeleteConnection Remove a connection and its stored secret.
 	// (DELETE /api/connections/{id})
 	DeleteConnection(w http.ResponseWriter, r *http.Request, id ConnectionID)
-	// DiscoverConnectionRepos List repositories the connection can add.
+	// DiscoverConnectionRepos List what the connection can add.
 	// (GET /api/connections/{id}/discover)
 	DiscoverConnectionRepos(w http.ResponseWriter, r *http.Request, id ConnectionID)
 	// TestConnection Test a connection and record the result.
@@ -5372,7 +5424,7 @@ type StrictServerInterface interface {
 	// DeleteConnection Remove a connection and its stored secret.
 	// (DELETE /api/connections/{id})
 	DeleteConnection(ctx context.Context, request DeleteConnectionRequestObject) (DeleteConnectionResponseObject, error)
-	// DiscoverConnectionRepos List repositories the connection can add.
+	// DiscoverConnectionRepos List what the connection can add.
 	// (GET /api/connections/{id}/discover)
 	DiscoverConnectionRepos(ctx context.Context, request DiscoverConnectionReposRequestObject) (DiscoverConnectionReposResponseObject, error)
 	// TestConnection Test a connection and record the result.

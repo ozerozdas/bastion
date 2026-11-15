@@ -10,10 +10,12 @@ package assets
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -55,6 +57,11 @@ var (
 type TokenSource interface {
 	Token(ctx context.Context) (string, error)
 	ConnectionToken(ctx context.Context, id int64) (string, error)
+	// ConnectionKind lets image creation tell a local image (no connection)
+	// from an AWS ECR image (an aws connection).
+	ConnectionKind(ctx context.Context, id int64) (string, error)
+	// AWSRegistry is the only registry host an aws connection may pull from.
+	AWSRegistry(ctx context.Context, id int64) (string, error)
 }
 
 // RepoClient is the GitHub call asset creation needs. *github.Client
@@ -177,10 +184,12 @@ type QueuedScan struct {
 	AssetID int64
 }
 
-// CreateInput is one POST /api/assets request.
+// CreateInput is one POST /api/assets request. Tag is ECR-only: it names the
+// tag a digest-pinned image ref came from.
 type CreateInput struct {
 	Kind         string
 	Ref          string
+	Tag          string
 	ConnectionID int64
 }
 
@@ -291,10 +300,22 @@ func (s *Service) createPath(ctx context.Context, in CreateInput) (Asset, error)
 // not consulted here: the UI only offers images it listed, and a scan reports a
 // missing image or daemon itself. The reference is the asset's ref, so the same
 // image tag is never tracked twice.
+//
+// An image with a connection is an ECR image: its ref is digest-pinned and the
+// connection says which AWS profile and region pull it.
 func (s *Service) createImage(ctx context.Context, in CreateInput) (Asset, error) {
+	if in.ConnectionID < 0 {
+		return Asset{}, fmt.Errorf("%w: connection_id must be positive", ErrInvalid)
+	}
 	ref := strings.TrimSpace(in.Ref)
+	if in.ConnectionID > 0 {
+		return s.createECRImage(ctx, in)
+	}
 	if err := validateImageRef(ref); err != nil {
 		return Asset{}, err
+	}
+	if strings.TrimSpace(in.Tag) != "" {
+		return Asset{}, fmt.Errorf("%w: tag is only used by an ECR image with a connection", ErrInvalid)
 	}
 
 	if existing, err := s.existing(ctx, string(findings.AssetKindImage), ref); err != nil {
@@ -307,6 +328,100 @@ func (s *Service) createImage(ctx context.Context, in CreateInput) (Asset, error
 		ref:         ref,
 		displayName: ref,
 	})
+}
+
+// createECRImage tracks one tag of an ECR repository by its digest-pinned
+// reference. Registry, repository, tag and digest are kept in metadata_json so
+// the UI can show the tag without guessing it from the digest.
+func (s *Service) createECRImage(ctx context.Context, in CreateInput) (Asset, error) {
+	ref := strings.TrimSpace(in.Ref)
+	if err := validateImageRef(ref); err != nil {
+		return Asset{}, err
+	}
+	registry, repository, digest, err := parseECRRef(ref)
+	if err != nil {
+		return Asset{}, err
+	}
+	tag := strings.TrimSpace(in.Tag)
+	if !imageTagPattern.MatchString(tag) {
+		return Asset{}, fmt.Errorf("%w: tag %q must be 1-128 characters of A-Z, a-z, 0-9, '.', '_' or '-'", ErrInvalid, tag)
+	}
+	if s.tokens == nil {
+		return Asset{}, fmt.Errorf("%w: connections are not configured; start bastion serve with its database", ErrUnavailable)
+	}
+	kind, err := s.tokens.ConnectionKind(ctx, in.ConnectionID)
+	if errors.Is(err, connections.ErrNotFound) {
+		return Asset{}, fmt.Errorf("%w: connection %d", ErrNotFound, in.ConnectionID)
+	}
+	if err != nil {
+		return Asset{}, fmt.Errorf("assets: read connection %d: %w", in.ConnectionID, err)
+	}
+	if kind != connections.KindAWS {
+		return Asset{}, fmt.Errorf("%w: connection %d is %s, not an AWS connection", ErrInvalid, in.ConnectionID, kind)
+	}
+	expected, err := s.tokens.AWSRegistry(ctx, in.ConnectionID)
+	if errors.Is(err, connections.ErrNotFound) {
+		return Asset{}, fmt.Errorf("%w: connection %d", ErrNotFound, in.ConnectionID)
+	}
+	if err != nil {
+		return Asset{}, err
+	}
+	if registry != expected {
+		return Asset{}, fmt.Errorf("%w: registry %q does not belong to connection %d; expected %s", ErrInvalid, registry, in.ConnectionID, expected)
+	}
+
+	if existing, err := s.existing(ctx, string(findings.AssetKindImage), ref); err != nil {
+		return Asset{}, err
+	} else if existing != nil && !existing.ArchivedAt.Valid {
+		return Asset{}, fmt.Errorf("%w: image %s is already tracked", ErrConflict, ref)
+	}
+
+	metadata, err := json.Marshal(map[string]string{
+		"registry":   registry,
+		"repository": repository,
+		"tag":        tag,
+		"digest":     digest,
+	})
+	if err != nil {
+		return Asset{}, fmt.Errorf("assets: encode image metadata: %w", err)
+	}
+	return s.save(ctx, saveInput{
+		kind:         string(findings.AssetKindImage),
+		ref:          ref,
+		displayName:  repository + ":" + tag,
+		connectionID: sql.NullInt64{Int64: in.ConnectionID, Valid: true},
+		metadata:     string(metadata),
+	})
+}
+
+var (
+	// ecrDigestPattern is a sha256 image digest, the only digest ECR returns.
+	ecrDigestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	// imageTagPattern is the character set a Docker tag may use.
+	imageTagPattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`)
+)
+
+// parseECRRef splits a digest-pinned ECR reference
+// ("<registry>/<repository>@sha256:<hex>") into its parts.
+func parseECRRef(ref string) (registry, repository, digest string, err error) {
+	at := strings.LastIndex(ref, "@")
+	if at <= 0 || at == len(ref)-1 {
+		return "", "", "", fmt.Errorf("%w: image reference %q must be digest-pinned as registry/repository@sha256:<digest>", ErrInvalid, ref)
+	}
+	digest = ref[at+1:]
+	if !ecrDigestPattern.MatchString(digest) {
+		return "", "", "", fmt.Errorf("%w: ECR image digest %q is not a sha256 digest", ErrInvalid, digest)
+	}
+	name := ref[:at]
+	slash := strings.Index(name, "/")
+	if slash <= 0 || slash == len(name)-1 {
+		return "", "", "", fmt.Errorf("%w: ECR image reference %q must name a registry and a repository", ErrInvalid, ref)
+	}
+	registry, repository = name[:slash], name[slash+1:]
+	if !strings.Contains(registry, ".") {
+		return "", "", "", fmt.Errorf("%w: ECR registry %q is not a registry host", ErrInvalid, registry)
+	}
+	return registry, repository, digest, nil
 }
 
 // validateImageRef accepts the character set a Docker reference may contain.
@@ -374,6 +489,7 @@ type saveInput struct {
 	displayName   string
 	defaultBranch sql.NullString
 	connectionID  sql.NullInt64
+	metadata      string
 }
 
 // save inserts the asset or, when the row exists but is archived, revives it.
@@ -396,7 +512,10 @@ func (s *Service) save(ctx context.Context, in saveInput) (Asset, error) {
 		return Asset{}, fmt.Errorf("assets: look up %s %q: %w", in.kind, in.ref, err)
 	}
 
-	metadata := "{}"
+	metadata := in.metadata
+	if metadata == "" {
+		metadata = "{}"
+	}
 	created, err := queries.CreateAsset(ctx, sqlcdb.CreateAssetParams{
 		Kind:          in.kind,
 		ConnectionID:  in.connectionID,

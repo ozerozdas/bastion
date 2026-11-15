@@ -89,11 +89,13 @@ func (f *fakeGitHub) setRepos(repos []github.Repo, err error) {
 // fakeAWS stands in for internal/aws. Handler tests never call AWS: the
 // factory records the profile and region it was given and answers from state.
 type fakeAWS struct {
-	mu       sync.Mutex
-	identity awsclient.Identity
-	err      error
-	profile  string
-	region   string
+	mu           sync.Mutex
+	identity     awsclient.Identity
+	repositories []awsclient.Repository
+	credentials  awsclient.Credentials
+	err          error
+	profile      string
+	region       string
 }
 
 func newFakeAWS() *fakeAWS {
@@ -108,6 +110,18 @@ func (f *fakeAWS) Identity(context.Context) (awsclient.Identity, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.identity, f.err
+}
+
+func (f *fakeAWS) Repositories(context.Context) ([]awsclient.Repository, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.repositories, f.err
+}
+
+func (f *fakeAWS) AuthorizationToken(context.Context) (awsclient.Credentials, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.credentials, f.err
 }
 
 func (f *fakeAWS) setError(err error) {
@@ -138,6 +152,14 @@ func (fakeTokens) Token(context.Context) (string, error) { return "test-token", 
 
 func (fakeTokens) ConnectionToken(context.Context, int64) (string, error) {
 	return "test-token", nil
+}
+
+func (fakeTokens) ConnectionKind(context.Context, int64) (string, error) {
+	return connections.KindAWS, nil
+}
+
+func (fakeTokens) AWSRegistry(context.Context, int64) (string, error) {
+	return "123456789012.dkr.ecr.eu-central-1.amazonaws.com", nil
 }
 
 // testServer is a Server listening on a real loopback port, with request logs

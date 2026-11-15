@@ -46,6 +46,11 @@ SELECT * FROM assets WHERE archived_at IS NULL ORDER BY display_name, id;
 -- name: GetAssetByKindRef :one
 SELECT * FROM assets WHERE kind = sqlc.arg(kind) AND ref = sqlc.arg(ref);
 
+-- name: ListAssetRefsByKind :many
+-- The refs of every asset of one kind, so discovery can mark the ones already
+-- tracked without loading whole rows.
+SELECT ref FROM assets WHERE kind = sqlc.arg(kind);
+
 -- name: UnarchiveAsset :one
 -- Re-adding an archived asset revives its row, so its historical scans and
 -- findings keep pointing at the same id (fingerprints include it).

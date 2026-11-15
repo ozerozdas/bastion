@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -86,7 +88,12 @@ func newScanManager(cfg pipelineConfig) (*jobs.Manager, error) {
 func newRepoResolver(db *sql.DB, tokens *connections.Service, buildVersion string) jobs.ResolveFunc {
 	return func(ctx context.Context, asset jobs.Asset) (sources.Target, string, error) {
 		target := sources.Target{Kind: asset.Kind, AssetID: asset.ID, Ref: asset.Ref}
-		if asset.Kind != sources.KindRepo {
+		switch asset.Kind {
+		case sources.KindImage:
+			return resolveImageTarget(ctx, db, tokens, target)
+		case sources.KindRepo:
+			// Continue below.
+		default:
 			return target, "", nil
 		}
 
@@ -124,6 +131,77 @@ func newRepoResolver(db *sql.DB, tokens *connections.Service, buildVersion strin
 		}
 		return sources.Target{Kind: sources.KindRepo, AssetID: asset.ID, Ref: asset.Ref + "@" + sha}, sha, nil
 	}
+}
+
+// resolveImageTarget attaches a short-lived ECR login when the image asset
+// belongs to an AWS connection. A local image has no connection and keeps
+// using the Docker daemon. The login is held in memory for this scan only.
+func resolveImageTarget(ctx context.Context, db *sql.DB, tokens *connections.Service, target sources.Target) (sources.Target, string, error) {
+	stored, err := store.LoadAssetTarget(ctx, db, target.AssetID)
+	if err != nil {
+		return sources.Target{}, "", fmt.Errorf("scan: %w", err)
+	}
+	target.ConnectionID = stored.ConnectionID
+	registry := metadataRegistry(stored.MetadataJSON)
+	if registry == "" {
+		registry = registryFromRef(target.Ref)
+	}
+	if stored.ConnectionID <= 0 {
+		// An ECR image whose connection was deleted must not silently fall back
+		// to the local daemon: the ref would not be there and the failure would
+		// be confusing.
+		if strings.Contains(registry, ".dkr.ecr.") {
+			return sources.Target{}, "", errors.New("the AWS connection for this image was removed; add it again")
+		}
+		return target, "", nil
+	}
+
+	credentials, err := tokens.ECRCredentials(ctx, stored.ConnectionID, registry)
+	if err != nil {
+		return sources.Target{}, "", fmt.Errorf("scan: %s: %w", target.Ref, err)
+	}
+	target.RegistryAuth = &sources.RegistryAuth{
+		Username: credentials.Username,
+		Password: credentials.Password,
+	}
+	// The ref is digest-pinned, so the digest is the scan's resolved target.
+	return target, digestFromRef(target.Ref), nil
+}
+
+// metadataRegistry reads the registry an ECR asset stored at creation.
+func metadataRegistry(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	var metadata map[string]string
+	if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+		return ""
+	}
+	return metadata["registry"]
+}
+
+// registryFromRef is the host part of a digest-pinned reference. It backs the
+// metadata check for an asset created before metadata existed.
+func registryFromRef(ref string) string {
+	name, _, ok := strings.Cut(ref, "@")
+	if !ok {
+		return ""
+	}
+	registry, _, ok := strings.Cut(name, "/")
+	if !ok {
+		return ""
+	}
+	return registry
+}
+
+// digestFromRef returns the "@sha256:..." digest of a pinned image reference,
+// or "" when the reference is not pinned.
+func digestFromRef(ref string) string {
+	_, digest, ok := strings.Cut(ref, "@")
+	if !ok {
+		return ""
+	}
+	return digest
 }
 
 // splitRepoRef splits an asset's canonical owner/name ref. The API validated
