@@ -709,6 +709,42 @@ type DockerImageList struct {
 	Images []DockerImage `json:"images"`
 }
 
+// EPSSScore FIRST.org's EPSS prediction for one CVE: the probability that it is
+// exploited in the next 30 days, and the score's percentile among all
+// scored CVEs. Both are fractions between 0 and 1.
+type EPSSScore struct {
+	// Percentile Examples: 1
+	Percentile float64 `json:"percentile"`
+
+	// Score Examples: 0.99999
+	Score float64 `json:"score"`
+}
+
+// EPSSStatus The EPSS feed as the UI and the CLI see it. Optional fields are absent
+// when the feed has not been downloaded or the last download failed.
+type EPSSStatus struct {
+	// Count Number of CVEs the cached feed scores.
+	Count *int `json:"count,omitempty"`
+
+	// Enabled The stored opt-in setting. False means no request is ever made and
+	// findings carry no EPSS score.
+	Enabled bool `json:"enabled"`
+
+	// Error Why the last download failed. The previous cache, if any, stays in
+	// use, so findings keep their scores.
+	Error *string `json:"error,omitempty"`
+
+	// LastRefresh When the cached feed was last downloaded.
+	LastRefresh *time.Time `json:"last_refresh,omitempty"`
+
+	// ScoreDate The feed's own score date, from its header. Later than
+	// `last_refresh` when the published scores did not change.
+	//
+	//
+	// Examples: 2026-11-15T12:03:04Z
+	ScoreDate *string `json:"score_date,omitempty"`
+}
+
 // EcrRepository One ECR repository with its newest tags.
 type EcrRepository struct {
 	// Name Examples: t2n-api
@@ -754,6 +790,11 @@ type Finding struct {
 
 	// Ecosystem Examples: npm, go, deb
 	Ecosystem *string `json:"ecosystem,omitempty"`
+
+	// Epss FIRST.org's EPSS prediction for one CVE: the probability that it is
+	// exploited in the next 30 days, and the score's percentile among all
+	// scored CVEs. Both are fractions between 0 and 1.
+	Epss *EPSSScore `json:"epss,omitempty"`
 
 	// Fingerprint Stable identifier of the finding across scans (PROJECT_SPEC.md §5).
 	Fingerprint string `json:"fingerprint"`
@@ -868,6 +909,11 @@ type FixPlanStep struct {
 	// InstalledVersions Every installed version the step's findings report, in the
 	// ecosystem's version order. Empty when the scanner reported none.
 	InstalledVersions []string `json:"installed_versions"`
+
+	// MaxEpss FIRST.org's EPSS prediction for one CVE: the probability that it is
+	// exploited in the next 30 days, and the score's percentile among all
+	// scored CVEs. Both are fractions between 0 and 1.
+	MaxEpss *EPSSScore `json:"max_epss,omitempty"`
 
 	// Package Examples: lodash
 	Package string `json:"package"`
@@ -1066,6 +1112,13 @@ type ScannerRun struct {
 // SetAssetLinkRequest The repository an image was built from.
 type SetAssetLinkRequest struct {
 	RepoAssetId int64 `json:"repo_asset_id"`
+}
+
+// SetEPSSEnabledRequest defines model for SetEPSSEnabledRequest.
+type SetEPSSEnabledRequest struct {
+	// Enabled True opts in to the daily FIRST.org download; false turns it off and
+	// stops every future request.
+	Enabled bool `json:"enabled"`
 }
 
 // SetFindingStateRequest defines model for SetFindingStateRequest.
@@ -1269,6 +1322,9 @@ type SetAssetLinkJSONRequestBody = SetAssetLinkRequest
 // CreateConnectionJSONRequestBody defines body for CreateConnection for application/json ContentType.
 type CreateConnectionJSONRequestBody = CreateConnectionRequest
 
+// SetEPSSEnabledJSONRequestBody defines body for SetEPSSEnabled for application/json ContentType.
+type SetEPSSEnabledJSONRequestBody = SetEPSSEnabledRequest
+
 // SetFindingStateJSONRequestBody defines body for SetFindingState for application/json ContentType.
 type SetFindingStateJSONRequestBody = SetFindingStateRequest
 
@@ -1438,6 +1494,12 @@ type ServerInterface interface {
 	// GetDockerImages List images on the local Docker daemon.
 	// (GET /api/docker/images)
 	GetDockerImages(w http.ResponseWriter, r *http.Request)
+	// GetEPSSStatus Report the EPSS feed state.
+	// (GET /api/epss)
+	GetEPSSStatus(w http.ResponseWriter, r *http.Request)
+	// SetEPSSEnabled Store the EPSS opt-in choice.
+	// (PUT /api/epss)
+	SetEPSSEnabled(w http.ResponseWriter, r *http.Request)
 	// ListFindings Latest findings across assets.
 	// (GET /api/findings)
 	ListFindings(w http.ResponseWriter, r *http.Request, params ListFindingsParams)
@@ -1737,6 +1799,34 @@ func (siw *ServerInterfaceWrapper) GetDockerImages(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDockerImages(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEPSSStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetEPSSStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEPSSStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetEPSSEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetEPSSEnabled(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetEPSSEnabled(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2317,6 +2407,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/update/consent", wrapper.SetUpdateConsent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/trivy-db", wrapper.GetTrivyDB)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/trivy-db/download", wrapper.DownloadTrivyDB)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/epss", wrapper.GetEPSSStatus)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/epss", wrapper.SetEPSSEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections", wrapper.ListConnections)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections", wrapper.CreateConnection)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/connections/{id}", wrapper.DeleteConnection)
@@ -4034,6 +4126,255 @@ type GetDockerImages500ApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetDockerImages500ApplicationProblemPlusJSONResponse) VisitGetDockerImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEPSSStatusRequestObject struct {
+}
+
+type GetEPSSStatusResponseObject interface {
+	VisitGetEPSSStatusResponse(w http.ResponseWriter) error
+}
+
+type GetEPSSStatus200JSONResponse EPSSStatus
+
+func (response GetEPSSStatus200JSONResponse) VisitGetEPSSStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEPSSStatus401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetEPSSStatus401ApplicationProblemPlusJSONResponse) VisitGetEPSSStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEPSSStatus403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetEPSSStatus403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetEPSSStatus403ResponseHeaders
+}
+
+func (response GetEPSSStatus403ApplicationProblemPlusJSONResponse) VisitGetEPSSStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEPSSStatus421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetEPSSStatus421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetEPSSStatus421ResponseHeaders
+}
+
+func (response GetEPSSStatus421ApplicationProblemPlusJSONResponse) VisitGetEPSSStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEPSSStatus500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetEPSSStatus500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetEPSSStatus500ResponseHeaders
+}
+
+func (response GetEPSSStatus500ApplicationProblemPlusJSONResponse) VisitGetEPSSStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEPSSEnabledRequestObject struct {
+	Body *SetEPSSEnabledJSONRequestBody
+}
+
+type SetEPSSEnabledResponseObject interface {
+	VisitSetEPSSEnabledResponse(w http.ResponseWriter) error
+}
+
+type SetEPSSEnabled200JSONResponse EPSSStatus
+
+func (response SetEPSSEnabled200JSONResponse) VisitSetEPSSEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEPSSEnabled400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetEPSSEnabled400ApplicationProblemPlusJSONResponse) VisitSetEPSSEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEPSSEnabled401ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetEPSSEnabled401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetEPSSEnabled401ResponseHeaders
+}
+
+func (response SetEPSSEnabled401ApplicationProblemPlusJSONResponse) VisitSetEPSSEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEPSSEnabled403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetEPSSEnabled403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetEPSSEnabled403ResponseHeaders
+}
+
+func (response SetEPSSEnabled403ApplicationProblemPlusJSONResponse) VisitSetEPSSEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEPSSEnabled421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetEPSSEnabled421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetEPSSEnabled421ResponseHeaders
+}
+
+func (response SetEPSSEnabled421ApplicationProblemPlusJSONResponse) VisitSetEPSSEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEPSSEnabled500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetEPSSEnabled500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetEPSSEnabled500ResponseHeaders
+}
+
+func (response SetEPSSEnabled500ApplicationProblemPlusJSONResponse) VisitSetEPSSEnabledResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -6080,6 +6421,12 @@ type StrictServerInterface interface {
 	// GetDockerImages List images on the local Docker daemon.
 	// (GET /api/docker/images)
 	GetDockerImages(ctx context.Context, request GetDockerImagesRequestObject) (GetDockerImagesResponseObject, error)
+	// GetEPSSStatus Report the EPSS feed state.
+	// (GET /api/epss)
+	GetEPSSStatus(ctx context.Context, request GetEPSSStatusRequestObject) (GetEPSSStatusResponseObject, error)
+	// SetEPSSEnabled Store the EPSS opt-in choice.
+	// (PUT /api/epss)
+	SetEPSSEnabled(ctx context.Context, request SetEPSSEnabledRequestObject) (SetEPSSEnabledResponseObject, error)
 	// ListFindings Latest findings across assets.
 	// (GET /api/findings)
 	ListFindings(ctx context.Context, request ListFindingsRequestObject) (ListFindingsResponseObject, error)
@@ -6482,6 +6829,61 @@ func (sh *strictHandler) GetDockerImages(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDockerImagesResponseObject); ok {
 		if err := validResponse.VisitGetDockerImagesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEPSSStatus operation middleware
+func (sh *strictHandler) GetEPSSStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetEPSSStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEPSSStatus(ctx, request.(GetEPSSStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEPSSStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEPSSStatusResponseObject); ok {
+		if err := validResponse.VisitGetEPSSStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetEPSSEnabled operation middleware
+func (sh *strictHandler) SetEPSSEnabled(w http.ResponseWriter, r *http.Request) {
+	var request SetEPSSEnabledRequestObject
+
+	var body SetEPSSEnabledJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetEPSSEnabled(ctx, request.(SetEPSSEnabledRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetEPSSEnabled")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetEPSSEnabledResponseObject); ok {
+		if err := validResponse.VisitSetEPSSEnabledResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

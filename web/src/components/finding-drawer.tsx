@@ -7,6 +7,7 @@ import {
   type FindingState,
 } from '../api/findings'
 import { capitalize, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
+import { epssLabel } from '../lib/epss'
 import { isHttpsUrl } from '../lib/urls'
 import { useDrawerFocus } from './drawer-focus'
 import { ErrorNote } from './error-note'
@@ -167,6 +168,15 @@ export function FindingDrawer({
 
           <dt className="text-muted">Occurrences</dt>
           <dd className="tabular-nums">{finding.occurrences}</dd>
+
+          {finding.epss ? (
+            <>
+              <dt className="text-muted">EPSS</dt>
+              <dd className="tabular-nums">
+                {epssLabel(finding.epss)}
+              </dd>
+            </>
+          ) : null}
 
           {finding.first_seen_scan_id !== undefined ? (
             <>

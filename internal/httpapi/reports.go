@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/fixplan"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/reports"
@@ -136,6 +137,12 @@ func findingResponse(finding reports.Finding) gen.Finding {
 		Description:     stringPointer(finding.Description),
 		References:      finding.References,
 	}
+	if finding.EPSS != nil {
+		out.Epss = &gen.EPSSScore{
+			Score:      finding.EPSS.Score,
+			Percentile: finding.EPSS.Percentile,
+		}
+	}
 	if out.References == nil {
 		out.References = []string{}
 	}
@@ -167,6 +174,7 @@ func fixPlanResponse(plan fixplan.Plan) gen.FixPlan {
 			FindingCount:      step.FindingCount,
 			SeverityCounts:    fixPlanSeverityTotals(step.SeverityCounts),
 			FindingIds:        ids,
+			MaxEpss:           epssScorePointer(step.MaxEPSS),
 		})
 	}
 
@@ -186,6 +194,16 @@ func fixPlanResponse(plan fixplan.Plan) gen.FixPlan {
 	}
 
 	return gen.FixPlan{Steps: steps, NoFix: noFix}
+}
+
+// epssScorePointer maps an optional domain score onto the API shape. Nil stays
+// absent, which is what a finding without a score (feed off or CVE unscored)
+// reports.
+func epssScorePointer(score *epss.Score) *gen.EPSSScore {
+	if score == nil {
+		return nil
+	}
+	return &gen.EPSSScore{Score: score.Score, Percentile: score.Percentile}
 }
 
 // fixPlanSeverityTotals maps one step's severity counts onto the API shape.

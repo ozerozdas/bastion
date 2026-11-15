@@ -156,7 +156,11 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		return errors.Join(fmt.Errorf("create connections service: %w", err), ln.Close())
 	}
 
-	reportService, err := reports.NewService(db)
+	// The EPSS feed is opt-in and off by default; with the setting off its
+	// Status call and every lookup are no-ops and no request is made.
+	epssService := newEPSSService(opts.paths)
+
+	reportService, err := reports.NewService(db, reports.WithEPSS(epssService))
 	if err != nil {
 		return errors.Join(fmt.Errorf("create reports service: %w", err), ln.Close())
 	}
@@ -199,6 +203,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		Events:      bus,
 		Update:      updateChecker,
 		TrivyDB:     trivyDB,
+		EPSS:        epssService,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())
@@ -213,6 +218,9 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	// machine-readable output stay untouched. Status() never waits for the
 	// network, so startup is not delayed by the check.
 	writeUpdateNotice(out, updateChecker.Status())
+	// Start the daily EPSS refresh when the user opted in and the cache is
+	// stale. Status never waits for the network, so startup is not delayed.
+	epssService.Status()
 
 	if !opts.noBrowser {
 		// Opening the browser must not block startup: a failure (headless box,

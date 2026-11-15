@@ -34,7 +34,7 @@ func (s *Service) ScanFindings(ctx context.Context, scanID int64, filter ScanFil
 
 	out := make([]Finding, 0, len(rows))
 	for _, row := range rows {
-		finding, err := findingFromScanRow(row)
+		finding, err := s.findingFromScanRow(row)
 		if err != nil {
 			return nil, fmt.Errorf("reports: finding %d of scan %d: %w", row.ID, scanID, err)
 		}
@@ -64,7 +64,7 @@ func (f ScanFilter) params(scanID int64) (sqlcdb.ListFindingsByScanParams, error
 
 // findingFromScanRow converts one ListFindingsByScan row into the read model.
 // The columns mirror ListLatestFindings', so the two conversions stay parallel.
-func findingFromScanRow(row sqlcdb.ListFindingsByScanRow) (Finding, error) {
+func (s *Service) findingFromScanRow(row sqlcdb.ListFindingsByScanRow) (Finding, error) {
 	references, err := decodeReferences(row.ReferencesJSON)
 	if err != nil {
 		return Finding{}, err
@@ -100,5 +100,6 @@ func findingFromScanRow(row sqlcdb.ListFindingsByScanRow) (Finding, error) {
 		firstSeen := row.FirstSeenScanID.Int64
 		finding.FirstSeenScanID = &firstSeen
 	}
+	s.enrich(&finding)
 	return finding, nil
 }

@@ -17,6 +17,7 @@ import (
 
 	"github.com/ozerozdas/bastion/internal/app"
 	"github.com/ozerozdas/bastion/internal/docker"
+	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
@@ -48,6 +49,8 @@ type doctorDeps struct {
 	// updateStatus is a read-only snapshot of the release check; doctor never
 	// waits for the network.
 	updateStatus func() update.Status
+	// epssStatus is a read-only snapshot of the EPSS feed, same contract.
+	epssStatus func() epss.Status
 	// dockerStatus probes the local Docker daemon with a short timeout.
 	dockerStatus func(ctx context.Context) docker.DaemonStatus
 }
@@ -69,6 +72,7 @@ type doctorReport struct {
 	Keyring         doctorStatus     `json:"keyring"`
 	HMACKey         doctorStatus     `json:"hmac_key"`
 	Update          doctorUpdate     `json:"update"`
+	EPSS            doctorEPSS       `json:"epss"`
 	Warnings        []string         `json:"warnings,omitempty"`
 }
 
@@ -152,6 +156,7 @@ func newDoctorDeps(opts *rootOptions) doctorDeps {
 		secretStore:      secrets.NewStore(),
 		getenv:           os.Getenv,
 		updateStatus:     newUpdateChecker(opts.paths).Snapshot,
+		epssStatus:       func() epss.Status { return newEPSSService(opts.paths).Snapshot() },
 		dockerStatus:     docker.Status,
 	}
 }
@@ -199,6 +204,11 @@ func runDoctor(ctx context.Context, deps doctorDeps) (doctorReport, error) {
 	report.Update = doctorUpdate{State: string(update.ConsentUnset)}
 	if deps.updateStatus != nil {
 		report.Update = doctorUpdateFromStatus(deps.updateStatus())
+	}
+
+	report.EPSS = doctorEPSS{State: "off"}
+	if deps.epssStatus != nil {
+		report.EPSS = doctorEPSSFromStatus(deps.epssStatus())
 	}
 
 	if deps.dockerStatus != nil {
@@ -315,6 +325,7 @@ func writeDoctorText(w io.Writer, report doctorReport) error {
 		{"keyring", report.Keyring.summary()},
 		{"hmac key", report.HMACKey.summary()},
 		{"update", report.Update.summary()},
+		{"epss", report.EPSS.summary()},
 	}
 
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)

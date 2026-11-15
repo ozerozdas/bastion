@@ -67,7 +67,10 @@ for (const [answer, label] of [
     await openSession(page, server.url)
 
     await expect(page.getByText(consentQuestion, { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: label }).click()
+    await page
+      .getByRole('region', { name: 'Release check' })
+      .getByRole('button', { name: label })
+      .click()
     await expect(page.getByText(consentQuestion, { exact: true })).toHaveCount(0)
 
     await page.reload()

@@ -22,6 +22,7 @@ const (
 	cacheDirName      = "bastion"
 	dbFileName        = "bastion.db"
 	trivyCacheDirName = "trivy"
+	epssDirName       = "epss"
 	workspacesDirName = "workspaces"
 )
 
@@ -78,6 +79,13 @@ func (p Paths) DBPath() string {
 // cache directory.
 func (p Paths) TrivyCacheDir() string {
 	return filepath.Join(p.CacheDir, trivyCacheDirName)
+}
+
+// EPSSDir is the EPSS feed cache inside the cache directory. The downloaded
+// scores are derived data, so they never sit in the data directory next to the
+// database.
+func (p Paths) EPSSDir() string {
+	return filepath.Join(p.CacheDir, epssDirName)
 }
 
 // WorkspacesDir is where fetched repository checkouts live, inside the cache

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/findings"
 	"github.com/ozerozdas/bastion/internal/store/sqlcdb"
 )
@@ -25,14 +26,37 @@ import (
 // is.
 type Service struct {
 	db *sql.DB
+	// epss enriches findings at read time, so a refreshed feed applies to
+	// stored findings without rewriting the database. Nil means no EPSS.
+	epss EPSSLookup
+}
+
+// EPSSLookup resolves a CVE to its EPSS prediction. *epss.Service implements
+// it; tests use a map.
+type EPSSLookup interface {
+	Lookup(cve string) (epss.Score, bool)
+}
+
+// Option configures a Service.
+type Option func(*Service)
+
+// WithEPSS enriches findings and fix-plan steps with EPSS scores. A nil lookup
+// leaves every finding without one, which is what the opt-in setting being off
+// means.
+func WithEPSS(lookup EPSSLookup) Option {
+	return func(s *Service) { s.epss = lookup }
 }
 
 // NewService validates its dependencies and returns a Service.
-func NewService(db *sql.DB) (*Service, error) {
+func NewService(db *sql.DB, opts ...Option) (*Service, error) {
 	if db == nil {
 		return nil, errors.New("reports: database is required")
 	}
-	return &Service{db: db}, nil
+	service := &Service{db: db}
+	for _, opt := range opts {
+		opt(service)
+	}
+	return service, nil
 }
 
 // SeverityTotals is the open finding count per severity.

@@ -39,6 +39,13 @@ tags:
       The Trivy vulnerability DB a scan needs. `GET /api/trivy-db` never blocks
       on the network; `POST /api/trivy-db/download` starts one download and is
       idempotent while a download is in flight.
+  - name: epss
+    description: |
+      The opt-in FIRST.org EPSS feed: the probability that a CVE is exploited
+      in the next 30 days. Off by default; with the setting off no request is
+      made. When on, the gzipped CSV is cached and refreshed at most daily, and
+      findings carry its score at read time. `GET /api/epss` never blocks on
+      the network.
   - name: connections
     description: |
       Credentialed integrations used to discover and fetch sources. Tokens live
@@ -190,6 +197,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TrivyDBStatus"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/epss:
+    get:
+      operationId: getEPSSStatus
+      summary: Report the EPSS feed state.
+      description: |
+        Returns the stored opt-in setting and the cached feed: when it was last
+        downloaded, the feed's own score date and how many CVEs it scores. With
+        the setting off no request is made. With it on, a cache older than 24
+        hours is refreshed in the background; this response carries the cached
+        values immediately.
+      tags: [epss]
+      responses:
+        "200":
+          description: The current EPSS feed state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EPSSStatus"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setEPSSEnabled
+      summary: Store the EPSS opt-in choice.
+      description: |
+        Only the UI calls this. `enabled: false` stops every future request and
+        leaves findings without a score. Turning it on starts a download when
+        no fresh cache exists; the response is the updated status.
+      tags: [epss]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEPSSEnabledRequest"
+      responses:
+        "200":
+          description: The choice was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EPSSStatus"
+        "400":
+          $ref: "#/components/responses/Problem"
         "401":
           $ref: "#/components/responses/Problem"
         "403":
@@ -1268,6 +1332,72 @@ components:
         enabled:
           type: boolean
           description: True turns the daily release check on; false turns it off.
+    EPSSScore:
+      type: object
+      title: EPSSScore
+      description: |
+        FIRST.org's EPSS prediction for one CVE: the probability that it is
+        exploited in the next 30 days, and the score's percentile among all
+        scored CVEs. Both are fractions between 0 and 1.
+      additionalProperties: false
+      required: [score, percentile]
+      properties:
+        score:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          examples: [0.99999]
+        percentile:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          examples: [1.0]
+    EPSSStatus:
+      type: object
+      title: EPSSStatus
+      description: |
+        The EPSS feed as the UI and the CLI see it. Optional fields are absent
+        when the feed has not been downloaded or the last download failed.
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            The stored opt-in setting. False means no request is ever made and
+            findings carry no EPSS score.
+        last_refresh:
+          type: string
+          format: date-time
+          description: When the cached feed was last downloaded.
+        score_date:
+          type: string
+          description: |
+            The feed's own score date, from its header. Later than
+            `last_refresh` when the published scores did not change.
+          examples: ["2026-11-15T12:03:04Z"]
+        count:
+          type: integer
+          minimum: 0
+          description: Number of CVEs the cached feed scores.
+        error:
+          type: string
+          description: |
+            Why the last download failed. The previous cache, if any, stays in
+            use, so findings keep their scores.
+    SetEPSSEnabledRequest:
+      type: object
+      title: SetEPSSEnabledRequest
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            True opts in to the daily FIRST.org download; false turns it off and
+            stops every future request.
     TrivyDBState:
       type: string
       title: TrivyDBState
@@ -1633,6 +1763,8 @@ components:
           description: Advisory or rule references; `[]` when there are none.
           items:
             type: string
+        epss:
+          $ref: "#/components/schemas/EPSSScore"
     FindingList:
       type: object
       title: FindingList
@@ -1705,6 +1837,8 @@ components:
             type: integer
             format: int64
             minimum: 1
+        max_epss:
+          $ref: "#/components/schemas/EPSSScore"
     FixPlanNoFix:
       type: object
       title: FixPlanNoFix

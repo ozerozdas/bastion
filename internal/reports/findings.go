@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/findings"
 	"github.com/ozerozdas/bastion/internal/store/sqlcdb"
 )
@@ -54,6 +55,10 @@ type Finding struct {
 	FirstSeenScanID *int64
 	Description     string
 	References      []string
+	// EPSS is the CVE's exploit prediction from the cached FIRST.org feed.
+	// Nil when the feed is off, not downloaded yet, or does not score the
+	// finding's rule id.
+	EPSS *epss.Score
 }
 
 // Findings lists the findings of the most recent succeeded scan of every
@@ -108,9 +113,21 @@ func (s *Service) Findings(ctx context.Context, filter Filter) ([]Finding, error
 			firstSeen := row.FirstSeenScanID.Int64
 			finding.FirstSeenScanID = &firstSeen
 		}
+		s.enrich(&finding)
 		out = append(out, finding)
 	}
 	return out, nil
+}
+
+// enrich attaches the CVE's EPSS score when the feed is on and scores it. It is
+// a read-time join: the database never stores a stale score.
+func (s *Service) enrich(finding *Finding) {
+	if s.epss == nil || finding.RuleID == "" {
+		return
+	}
+	if score, ok := s.epss.Lookup(finding.RuleID); ok {
+		finding.EPSS = &score
+	}
 }
 
 // params validates the filter and converts it to the query's nullable

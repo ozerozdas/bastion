@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { assetsQuery } from '../api/assets'
+import { epssQuery } from '../api/epss'
 import {
   latestFindingsQuery,
   useBulkFindingState,
@@ -27,6 +28,7 @@ import { Tabs, type TabItem } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { capitalize, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
+import { epssLabel, ordinal } from '../lib/epss'
 import { groupFindings, type FindingGroup } from '../lib/group-findings'
 import type { FindingsView } from '../lib/urls'
 import { cn } from '../lib/utils'
@@ -60,6 +62,7 @@ const findingsTabs: TabItem<'findings' | 'fix-plan'>[] = [
  */
 export function findingColumns(
   assetNames: ReadonlyMap<number, string>,
+  showEPSS = false,
 ): DataTableColumn<Finding>[] {
   const projectName = (finding: Finding) =>
     assetNames.get(finding.asset_id) ?? `Asset ${String(finding.asset_id)}`
@@ -76,6 +79,28 @@ export function findingColumns(
         </Badge>
       ),
     },
+    ...(showEPSS
+      ? [
+          {
+            id: 'epss',
+            header: 'EPSS',
+            headerClassName: 'pl-3',
+            cellClassName:
+              'py-2 pl-3 whitespace-nowrap tabular-nums text-[13px]',
+            cell: (finding: Finding) =>
+              finding.epss ? (
+                <span title={epssLabel(finding.epss)}>
+                  {finding.epss.score.toFixed(2)}
+                  <span className="ml-1 text-xs text-faint">
+                    {ordinal(finding.epss.percentile * 100)}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-faint">—</span>
+              ),
+          } satisfies DataTableColumn<Finding>,
+        ]
+      : []),
     {
       id: 'project',
       header: 'Project',
@@ -250,6 +275,7 @@ export function FindingsPage() {
   const search = useSearch({ from: '/findings' })
   const navigate = useNavigate()
   const assets = useQuery(assetsQuery)
+  const epss = useQuery(epssQuery)
   const tab = search.tab ?? 'findings'
 
   // Grouped is the default (#106); a project filter forces single, because
@@ -309,7 +335,10 @@ export function FindingsPage() {
     () => new Map(assetList.map((asset) => [asset.id, asset.display_name])),
     [assetList],
   )
-  const columns = useMemo(() => findingColumns(assetNames), [assetNames])
+  const columns = useMemo(
+    () => findingColumns(assetNames, epss.data?.enabled === true),
+    [assetNames, epss.data?.enabled],
+  )
   const groupColumns = useMemo(() => groupedColumns(assetNames), [assetNames])
   const groups = useMemo(
     () => (findings.data === undefined ? undefined : groupFindings(findings.data)),

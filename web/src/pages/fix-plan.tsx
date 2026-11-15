@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 
 import type { Asset } from '../api/assets'
+import { epssQuery } from '../api/epss'
 import { latestFindingsQuery, type Finding } from '../api/findings'
 import {
   fixPlanQuery,
@@ -21,6 +22,7 @@ import { FindingDrawer } from '../components/finding-drawer'
 import { SeverityCountBadges } from '../components/severity-counts'
 import { Badge } from '../components/ui/badge'
 import { capitalize, severityTone } from '../lib/finding-labels'
+import { epssLabel } from '../lib/epss'
 
 /**
  * FixPlanPanel is §7.2's "Fix plan" tab: one project's open vulnerabilities
@@ -39,6 +41,7 @@ export function FixPlanPanel({
   const [openFingerprint, setOpenFingerprint] = useState<string | null>(null)
 
   const plan = useQuery(fixPlanQuery(selected?.id))
+  const epss = useQuery(epssQuery)
   // The plan carries finding ids; the list supplies the rows the drawer needs.
   const findings = useQuery({
     ...latestFindingsQuery({
@@ -156,7 +159,7 @@ export function FixPlanPanel({
           </div>
           <PlanTable
             rows={plan.data.steps}
-            columns={stepColumns(expanded)}
+            columns={stepColumns(expanded, epss.data?.enabled === true)}
             rowKey={(step) => planRowKey('step', step.ecosystem, step.package)}
             expanded={expanded}
             onToggle={toggle}
@@ -227,6 +230,7 @@ function planRowKey(prefix: string, ecosystem: string, pkg: string): string {
 /** stepColumns is the fix plan row: the upgrade, its ecosystem and what it closes. */
 function stepColumns(
   expanded: ReadonlySet<string>,
+  showEPSS = false,
 ): DataTableColumn<FixPlanStep>[] {
   return [
     {
@@ -258,6 +262,24 @@ function stepColumns(
       cellClassName: 'py-2 pl-3 font-mono text-xs text-muted',
       cell: (step) => step.ecosystem,
     },
+    ...(showEPSS
+      ? [
+          {
+            id: 'epss',
+            header: 'Max EPSS',
+            headerClassName: 'pl-3',
+            cellClassName: 'py-2 pl-3 whitespace-nowrap text-[13px] tabular-nums',
+            cell: (step: FixPlanStep) =>
+              step.max_epss ? (
+                <span title={epssLabel(step.max_epss)}>
+                  {step.max_epss.score.toFixed(2)}
+                </span>
+              ) : (
+                <span className="text-faint">—</span>
+              ),
+          } satisfies DataTableColumn<FixPlanStep>,
+        ]
+      : []),
     {
       id: 'closes',
       header: 'Closes',
