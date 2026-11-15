@@ -55,15 +55,23 @@ func (s *Server) CreateConnection(ctx context.Context, request gen.CreateConnect
 			},
 		}, nil
 	}
-	var token string
+	var token, profile, region string
 	if request.Body.Token != nil {
 		token = *request.Body.Token
 	}
+	if request.Body.Profile != nil {
+		profile = *request.Body.Profile
+	}
+	if request.Body.Region != nil {
+		region = *request.Body.Region
+	}
 
 	conn, err := s.connections.Create(ctx, connections.CreateInput{
-		Kind:  string(request.Body.Kind),
-		Name:  request.Body.Name,
-		Token: token,
+		Kind:    string(request.Body.Kind),
+		Name:    request.Body.Name,
+		Token:   token,
+		Profile: profile,
+		Region:  region,
 	})
 	if err != nil {
 		s.log.Error("create connection", "error", err)
@@ -212,6 +220,22 @@ func connectionResponse(conn connections.Connection) gen.Connection {
 	if conn.Login != "" {
 		login := conn.Login
 		out.Login = &login
+	}
+	if conn.Profile != "" {
+		profile := conn.Profile
+		out.Profile = &profile
+	}
+	if conn.Region != "" {
+		region := conn.Region
+		out.Region = &region
+	}
+	if conn.Account != "" {
+		account := conn.Account
+		out.Account = &account
+	}
+	if conn.ARN != "" {
+		arn := conn.ARN
+		out.Arn = &arn
 	}
 	if conn.Hint != "" {
 		hint := conn.Hint

@@ -1,9 +1,10 @@
 // Package connections manages bastion's credentialed integrations
 // (PROJECT_SPEC.md §4.1, §7).
 //
-// A connection row holds only non-secret data; its credential lives in the OS
-// keyring under a key stored in secret_ref. Tokens are never put in SQLite,
-// logged or returned by the API (§4.3).
+// A GitHub connection row holds only non-secret data; its token lives in the OS
+// keyring under a key stored in secret_ref. An AWS connection stores only a
+// profile name and a region: its credentials stay in the SDK's default chain.
+// Tokens are never put in SQLite, logged or returned by the API (§4.3).
 package connections
 
 import (
@@ -12,18 +13,33 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/ozerozdas/bastion/internal/aws"
 	"github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store/sqlcdb"
 )
 
+var (
+	// awsRegionPattern is the shape of an AWS region: eu-central-1,
+	// us-gov-west-1, ap-southeast-4.
+	awsRegionPattern = regexp.MustCompile(`^[a-z]{2}(-[a-z0-9]+)+-\d$`)
+	// awsProfilePattern is the character set a shared-config profile name may
+	// use. An empty profile is allowed and means "let the SDK resolve it".
+	awsProfilePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+)
+
 const (
-	// KindGitHub is the only kind v0.1 can create (AWS and Docker are Phase 2).
+	// KindGitHub is a GitHub token connection.
 	KindGitHub = "github"
+	// KindAWS is an AWS account reached through the SDK's default credential
+	// chain. It stores a profile name and a region, never a key.
+	KindAWS = "aws"
 
 	// StatusOK is a connection whose last test succeeded.
 	StatusOK = "ok"
@@ -47,7 +63,7 @@ var (
 	ErrNotFound = errors.New("connections: connection not found")
 	// ErrConflict is returned when (kind, name) is already taken.
 	ErrConflict = errors.New("connections: name already in use")
-	// ErrUnsupportedKind is returned for a kind v0.1 cannot manage.
+	// ErrUnsupportedKind is returned for a kind bastion cannot manage.
 	ErrUnsupportedKind = errors.New("connections: unsupported kind")
 	// ErrInvalid is returned for a request the service refuses before SQL.
 	ErrInvalid = errors.New("connections: invalid input")
@@ -70,6 +86,16 @@ type GitHubClient interface {
 // memory.
 type GitHubFactory func(token string) (GitHubClient, error)
 
+// AWSClient is the part of internal/aws the service uses. Tests inject a fake
+// through WithAWSFactory; no test calls AWS.
+type AWSClient interface {
+	Identity(ctx context.Context) (aws.Identity, error)
+}
+
+// AWSFactory builds a client for a profile and region. No credential is passed:
+// the SDK resolves one from the default chain on the call.
+type AWSFactory func(profile, region string) (AWSClient, error)
+
 // Connection is a connection row with its credential removed. ConfigJSON is
 // decoded into the identity fields; SecretRef never leaves the service.
 type Connection struct {
@@ -79,15 +105,22 @@ type Connection struct {
 	Status        string
 	Login         string
 	Hint          string
+	Profile       string
+	Region        string
+	Account       string
+	ARN           string
 	LastCheckedAt *time.Time
 	CreatedAt     time.Time
 }
 
-// CreateInput is one POST /api/connections request.
+// CreateInput is one POST /api/connections request. Token is GitHub-only;
+// Profile and Region are AWS-only.
 type CreateInput struct {
-	Kind  string
-	Name  string
-	Token string
+	Kind    string
+	Name    string
+	Token   string
+	Profile string
+	Region  string
 }
 
 // Repository is one repo returned by discovery.
@@ -99,7 +132,7 @@ type Repository struct {
 	AlreadyAdded  bool
 }
 
-// Option customises a Service. Tests use WithGitHubFactory.
+// Option customises a Service. Tests use WithGitHubFactory and WithAWSFactory.
 type Option func(*Service)
 
 // WithGitHubFactory replaces the client factory. Tests pass a fake; serve
@@ -112,12 +145,23 @@ func WithGitHubFactory(factory GitHubFactory) Option {
 	}
 }
 
+// WithAWSFactory replaces the AWS client factory. Tests pass a fake; serve
+// passes one that carries the build version in the SDK's user agent.
+func WithAWSFactory(factory AWSFactory) Option {
+	return func(s *Service) {
+		if factory != nil {
+			s.newAWS = factory
+		}
+	}
+}
+
 // Service implements connection management. It is safe for concurrent use:
 // *sql.DB is, and the secrets store is expected to be.
 type Service struct {
 	db        *sql.DB
 	secrets   secrets.Store
 	newGitHub GitHubFactory
+	newAWS    AWSFactory
 	now       func() time.Time
 }
 
@@ -133,6 +177,7 @@ func NewService(db *sql.DB, secretStore secrets.Store, opts ...Option) (*Service
 		db:        db,
 		secrets:   secretStore,
 		newGitHub: defaultGitHubFactory,
+		newAWS:    defaultAWSFactory,
 		now:       time.Now,
 	}
 	for _, opt := range opts {
@@ -145,6 +190,12 @@ func NewService(db *sql.DB, secretStore secrets.Store, opts ...Option) (*Service
 // knows the build version.
 func defaultGitHubFactory(token string) (GitHubClient, error) {
 	return github.New(github.Config{Token: token})
+}
+
+// defaultAWSFactory builds the real client. serve replaces it with one that
+// knows the build version.
+func defaultAWSFactory(profile, region string) (AWSClient, error) {
+	return aws.New(aws.Config{Profile: profile, Region: region})
 }
 
 // SecretRef is the keyring key that holds connection id's token.
@@ -178,22 +229,45 @@ func (s *Service) Get(ctx context.Context, id int64) (Connection, error) {
 	return connectionFromRow(row)
 }
 
-// Create inserts the connection, stores the token in the keyring and tests it
-// once. A failed test is not an API error: the connection is returned with
-// status error and a hint. If the token cannot be stored, the row is removed
-// again so a broken keyring never leaves an unusable connection behind.
+// Create inserts the connection, stores what its kind needs and tests it once.
+// A GitHub token goes into the keyring; an AWS connection stores only a profile
+// name and a region. A failed test is not an API error: the connection is
+// returned with status error and a hint. If the token cannot be stored, the row
+// is removed again so a broken keyring never leaves an unusable connection
+// behind.
 func (s *Service) Create(ctx context.Context, in CreateInput) (Connection, error) {
 	kind := strings.TrimSpace(in.Kind)
-	if kind != KindGitHub {
-		return Connection{}, fmt.Errorf("%w: %q (only %s is supported)", ErrUnsupportedKind, kind, KindGitHub)
-	}
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return Connection{}, fmt.Errorf("%w: name is required", ErrInvalid)
 	}
-	token := strings.TrimSpace(in.Token)
-	if token == "" {
-		return Connection{}, fmt.Errorf("%w: token is required", ErrInvalid)
+
+	var (
+		token   string
+		profile string
+		region  string
+	)
+	switch kind {
+	case KindGitHub:
+		token = strings.TrimSpace(in.Token)
+		if token == "" {
+			return Connection{}, fmt.Errorf("%w: token is required", ErrInvalid)
+		}
+	case KindAWS:
+		profile = strings.TrimSpace(in.Profile)
+		if profile != "" && !awsProfilePattern.MatchString(profile) {
+			return Connection{}, fmt.Errorf("%w: profile %q must be 1-64 characters of A-Z, a-z, 0-9, '.', '_' or '-'", ErrInvalid, profile)
+		}
+		region = strings.TrimSpace(in.Region)
+		if region == "" {
+			return Connection{}, fmt.Errorf("%w: region is required", ErrInvalid)
+		}
+		if len(region) > 32 || !awsRegionPattern.MatchString(region) {
+			return Connection{}, fmt.Errorf("%w: region %q is not an AWS region like eu-central-1", ErrInvalid, region)
+		}
+	default:
+		return Connection{}, fmt.Errorf("%w: %q (only %s and %s are supported)",
+			ErrUnsupportedKind, kind, KindGitHub, KindAWS)
 	}
 
 	queries := sqlcdb.New(s.db)
@@ -205,22 +279,38 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Connection, error
 		return Connection{}, fmt.Errorf("connections: create %s %q: %w", kind, name, err)
 	}
 
-	key := SecretRef(row.ID)
-	if err := s.secrets.Set(key, token); err != nil {
-		_, cleanupErr := queries.DeleteConnection(ctx, row.ID)
-		return Connection{}, errors.Join(
-			fmt.Errorf("connections: store token for %s %q: %w", kind, name, err),
-			cleanupErr,
-		)
-	}
-	if _, err := queries.SetConnectionSecretRef(ctx, sqlcdb.SetConnectionSecretRefParams{
-		SecretRef: sql.NullString{String: key, Valid: true},
-		ID:        row.ID,
-	}); err != nil {
-		// Do not leave the token behind in the keyring without a row.
-		_ = s.secrets.Delete(key)
-		_, _ = queries.DeleteConnection(ctx, row.ID)
-		return Connection{}, fmt.Errorf("connections: record keyring key for %s %q: %w", kind, name, err)
+	switch kind {
+	case KindGitHub:
+		key := SecretRef(row.ID)
+		if err := s.secrets.Set(key, token); err != nil {
+			_, cleanupErr := queries.DeleteConnection(ctx, row.ID)
+			return Connection{}, errors.Join(
+				fmt.Errorf("connections: store token for %s %q: %w", kind, name, err),
+				cleanupErr,
+			)
+		}
+		if _, err := queries.SetConnectionSecretRef(ctx, sqlcdb.SetConnectionSecretRefParams{
+			SecretRef: sql.NullString{String: key, Valid: true},
+			ID:        row.ID,
+		}); err != nil {
+			// Do not leave the token behind in the keyring without a row.
+			_ = s.secrets.Delete(key)
+			_, _ = queries.DeleteConnection(ctx, row.ID)
+			return Connection{}, fmt.Errorf("connections: record keyring key for %s %q: %w", kind, name, err)
+		}
+	case KindAWS:
+		encoded, err := encodeConfig(map[string]any{"profile": profile, "region": region})
+		if err != nil {
+			_, _ = queries.DeleteConnection(ctx, row.ID)
+			return Connection{}, err
+		}
+		if _, err := queries.SetConnectionConfig(ctx, sqlcdb.SetConnectionConfigParams{
+			ConfigJSON: encoded,
+			ID:         row.ID,
+		}); err != nil {
+			_, _ = queries.DeleteConnection(ctx, row.ID)
+			return Connection{}, fmt.Errorf("connections: store config for %s %q: %w", kind, name, err)
+		}
 	}
 
 	// Test immediately: the UI shows the identity (or the reason it failed)
@@ -228,62 +318,99 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Connection, error
 	return s.Test(ctx, row.ID)
 }
 
-// Test calls GitHub's GET /user with the connection's token and records the
-// result: status, last_checked_at, the login on success, a hint on failure.
+// Test performs the kind's test call and records the result: status,
+// last_checked_at, the identity on success, a hint on failure. GitHub uses
+// GET /user; AWS uses STS GetCallerIdentity.
 func (s *Service) Test(ctx context.Context, id int64) (Connection, error) {
 	row, err := s.row(ctx, id)
 	if err != nil {
 		return Connection{}, err
 	}
-	if row.Kind != KindGitHub {
+	switch row.Kind {
+	case KindGitHub:
+		return s.check(ctx, row)
+	case KindAWS:
+		return s.checkAWS(ctx, row)
+	default:
 		return Connection{}, fmt.Errorf("%w: %q", ErrUnsupportedKind, row.Kind)
 	}
-	return s.check(ctx, row)
 }
 
-// check performs the test and persists its outcome.
+// check performs the GitHub test and persists its outcome.
 func (s *Service) check(ctx context.Context, row sqlcdb.Connection) (Connection, error) {
 	checkedAt := s.now().UTC().Format(time.RFC3339Nano)
 
 	token, tokenErr := s.token(row)
 	if tokenErr != nil {
-		return s.record(ctx, row, StatusError, tokenErr.Error(), "", checkedAt)
+		return s.record(ctx, row, StatusError, tokenErr.Error(), nil, checkedAt)
 	}
 	client, err := s.newGitHub(token)
 	if err != nil {
-		return s.record(ctx, row, StatusError, "could not initialise the GitHub client", "", checkedAt)
+		return s.record(ctx, row, StatusError, "could not initialise the GitHub client", nil, checkedAt)
 	}
 	user, err := client.User(ctx)
 	if err != nil {
-		return s.record(ctx, row, StatusError, hintFor(err), "", checkedAt)
+		return s.record(ctx, row, StatusError, hintFor(err), nil, checkedAt)
 	}
-	return s.record(ctx, row, StatusOK, "", user.Login, checkedAt)
+	return s.record(ctx, row, StatusOK, "", map[string]string{"login": user.Login}, checkedAt)
 }
 
-// record writes one test result. login replaces the stored identity; an empty
-// hint clears the previous failure.
-func (s *Service) record(ctx context.Context, row sqlcdb.Connection, status, hint, login, checkedAt string) (Connection, error) {
+// checkAWS performs the AWS test with the connection's profile and region. No
+// credential is read or written: the SDK resolves one from its default chain.
+func (s *Service) checkAWS(ctx context.Context, row sqlcdb.Connection) (Connection, error) {
+	checkedAt := s.now().UTC().Format(time.RFC3339Nano)
+
 	config, err := decodeConfig(row.ConfigJSON)
 	if err != nil {
 		return Connection{}, err
 	}
-	if login != "" {
-		config["login"] = login
+	client, err := s.newAWS(configString(config, "profile"), configString(config, "region"))
+	if err != nil {
+		return s.record(ctx, row, StatusError, "could not initialise the AWS client", nil, checkedAt)
+	}
+	identity, err := client.Identity(ctx)
+	if err != nil {
+		logAWSError(row.ID, err)
+		return s.record(ctx, row, StatusError, hintFor(err), nil, checkedAt)
+	}
+	return s.record(ctx, row, StatusOK, "", map[string]string{
+		"account": identity.Account,
+		"arn":     identity.ARN,
+	}, checkedAt)
+}
+
+// record writes one test result. identity replaces the stored non-secret
+// identity fields; an empty hint clears the previous failure.
+func (s *Service) record(ctx context.Context, row sqlcdb.Connection, status, hint string, identity map[string]string, checkedAt string) (Connection, error) {
+	config, err := decodeConfig(row.ConfigJSON)
+	if err != nil {
+		return Connection{}, err
+	}
+	for key, value := range identity {
+		if value != "" {
+			config[key] = value
+		}
+	}
+	if status == StatusError {
+		// A failed test has no identity to show; a stale account or ARN from an
+		// earlier success would be misleading.
+		delete(config, "account")
+		delete(config, "arn")
 	}
 	if hint != "" {
 		config["hint"] = hint
 	} else {
 		delete(config, "hint")
 	}
-	encoded, err := json.Marshal(config)
+	encoded, err := encodeConfig(config)
 	if err != nil {
-		return Connection{}, fmt.Errorf("connections: encode config for %d: %w", row.ID, err)
+		return Connection{}, err
 	}
 
 	updated, err := sqlcdb.New(s.db).SetConnectionStatus(ctx, sqlcdb.SetConnectionStatusParams{
 		Status:        status,
 		LastCheckedAt: sql.NullString{String: checkedAt, Valid: true},
-		ConfigJSON:    string(encoded),
+		ConfigJSON:    encoded,
 		ID:            row.ID,
 	})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -459,6 +586,15 @@ func decodeConfig(raw string) (map[string]any, error) {
 	return config, nil
 }
 
+// encodeConfig marshals the non-secret config object.
+func encodeConfig(config map[string]any) (string, error) {
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		return "", fmt.Errorf("connections: encode config: %w", err)
+	}
+	return string(encoded), nil
+}
+
 // connectionFromRow converts a row into the API-facing shape. The credential
 // and secret_ref are deliberately dropped here.
 func connectionFromRow(row sqlcdb.Connection) (Connection, error) {
@@ -486,6 +622,10 @@ func connectionFromRow(row sqlcdb.Connection) (Connection, error) {
 		return Connection{}, err
 	}
 	conn.Login = configString(config, "login")
+	conn.Profile = configString(config, "profile")
+	conn.Region = configString(config, "region")
+	conn.Account = configString(config, "account")
+	conn.ARN = configString(config, "arn")
 	conn.Hint = configString(config, "hint")
 	return conn, nil
 }
@@ -500,9 +640,28 @@ func configString(config map[string]any, key string) string {
 	return value
 }
 
-// hintFor maps a GitHub client error to the user-facing hint. Raw error text
-// is never shown: it may carry a request URL (ADR-005).
+// logAWSError records the raw failure for the operator. The user sees the
+// hint; the SDK text (operation, error code, request id) stays in the log.
+// Credentials are never part of an SDK error.
+func logAWSError(id int64, err error) {
+	var awsErr *aws.Error
+	if errors.As(err, &awsErr) {
+		slog.Error("aws connection test failed",
+			"connection", id, "op", awsErr.Op, "code", awsErr.Code, "error", err)
+		return
+	}
+	slog.Error("aws connection test failed", "connection", id, "error", err)
+}
+
+// hintFor maps a client error to the user-facing hint. Raw error text is never
+// shown: it may carry a request URL (ADR-005) or an AWS request id.
 func hintFor(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "the request to the provider was canceled"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "the request to the provider timed out"
+	}
 	var ghErr *github.Error
 	if errors.As(err, &ghErr) {
 		if ghErr.Hint != "" {
@@ -513,11 +672,12 @@ func hintFor(err error) string {
 		}
 		return "could not reach GitHub"
 	}
-	if errors.Is(err, context.Canceled) {
-		return "the request to GitHub was canceled"
+	var awsErr *aws.Error
+	if errors.As(err, &awsErr) {
+		if awsErr.Hint != "" {
+			return awsErr.Hint
+		}
+		return "could not reach AWS"
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return "the request to GitHub timed out"
-	}
-	return "could not reach GitHub"
+	return "could not reach the provider"
 }

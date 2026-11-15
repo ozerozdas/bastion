@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/ozerozdas/bastion/internal/assets"
+	awsclient "github.com/ozerozdas/bastion/internal/aws"
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/events"
@@ -85,6 +86,50 @@ func (f *fakeGitHub) setRepos(repos []github.Repo, err error) {
 	f.repos, f.reposErr = repos, err
 }
 
+// fakeAWS stands in for internal/aws. Handler tests never call AWS: the
+// factory records the profile and region it was given and answers from state.
+type fakeAWS struct {
+	mu       sync.Mutex
+	identity awsclient.Identity
+	err      error
+	profile  string
+	region   string
+}
+
+func newFakeAWS() *fakeAWS {
+	return &fakeAWS{identity: awsclient.Identity{
+		Account: "123456789012",
+		ARN:     "arn:aws:iam::123456789012:user/bastion-test",
+		UserID:  "AIDAEXAMPLE",
+	}}
+}
+
+func (f *fakeAWS) Identity(context.Context) (awsclient.Identity, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.identity, f.err
+}
+
+func (f *fakeAWS) setError(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.err = err
+}
+
+// setCall records the profile and region the service built the client with.
+func (f *fakeAWS) setCall(profile, region string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.profile, f.region = profile, region
+}
+
+// lastCall returns the profile and region of the most recent client.
+func (f *fakeAWS) lastCall() (string, string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.profile, f.region
+}
+
 // fakeTokens answers every credential lookup, so asset creation never needs a
 // keyring or the environment fallback.
 type fakeTokens struct{}
@@ -106,6 +151,7 @@ type testServer struct {
 	db          *sql.DB
 	secretStore *secrets.MemoryStore
 	github      *fakeGitHub
+	aws         *fakeAWS
 	scanManager *jobs.Manager
 	events      *events.Broker
 }
@@ -165,9 +211,18 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 	t.Cleanup(func() { _ = db.Close() })
 
 	secretStore := secrets.NewMemoryStore()
-	service, err := connections.NewService(db, secretStore, connections.WithGitHubFactory(
-		func(string) (connections.GitHubClient, error) { return fake, nil },
-	))
+	awsFake := newFakeAWS()
+	service, err := connections.NewService(db, secretStore,
+		connections.WithGitHubFactory(
+			func(string) (connections.GitHubClient, error) { return fake, nil },
+		),
+		connections.WithAWSFactory(
+			func(profile, region string) (connections.AWSClient, error) {
+				awsFake.setCall(profile, region)
+				return awsFake, nil
+			},
+		),
+	)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -234,6 +289,7 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 		db:          db,
 		secretStore: secretStore,
 		github:      fake,
+		aws:         awsFake,
 		scanManager: scanManager,
 		events:      bus,
 		client: &http.Client{

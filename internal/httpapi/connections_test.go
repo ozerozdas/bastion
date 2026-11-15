@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	awsclient "github.com/ozerozdas/bastion/internal/aws"
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
@@ -519,4 +520,138 @@ func isTextColumn(declared string) bool {
 
 func quoteIdentifier(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+// TestAWSConnectionLifecycle: an AWS connection stores a profile and region,
+// tests with STS (through a fake), records the account and ARN, and never
+// touches the keyring.
+func TestAWSConnectionLifecycle(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+
+	create := doJSON(t, ts, http.MethodPost, "/api/connections", gen.CreateConnectionRequest{
+		Kind:    gen.CreateConnectionRequestKindAws,
+		Name:    "prod",
+		Profile: stringPtr("work"),
+		Region:  stringPtr("eu-central-1"),
+	}, withBastion(cookie))
+	if create.StatusCode != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d", create.StatusCode, http.StatusCreated)
+	}
+	created := decodeConnection(t, readBody(t, create))
+	if created.Status != gen.ConnectionStatus(connections.StatusOK) {
+		t.Errorf("created.status = %q, want %q", created.Status, connections.StatusOK)
+	}
+	if created.Account == nil || *created.Account != "123456789012" {
+		t.Errorf("created.account = %v, want 123456789012", created.Account)
+	}
+	if created.Arn == nil || !strings.HasPrefix(*created.Arn, "arn:aws:iam::") {
+		t.Errorf("created.arn = %v, want an IAM ARN", created.Arn)
+	}
+	if created.Profile == nil || *created.Profile != "work" {
+		t.Errorf("created.profile = %v, want work", created.Profile)
+	}
+	if created.Region == nil || *created.Region != "eu-central-1" {
+		t.Errorf("created.region = %v, want eu-central-1", created.Region)
+	}
+	if profile, region := ts.aws.lastCall(); profile != "work" || region != "eu-central-1" {
+		t.Errorf("factory called with (%q, %q), want (work, eu-central-1)", profile, region)
+	}
+
+	// AWS keeps no credential anywhere, so there is no keyring entry.
+	if _, err := ts.secretStore.Get(connections.SecretRef(created.Id)); !errors.Is(err, secrets.ErrNotFound) {
+		t.Errorf("keyring entry for an AWS connection = %v, want ErrNotFound", err)
+	}
+
+	// An omitted profile is stored empty: the SDK resolves AWS_PROFILE or
+	// "default" itself.
+	defaulted := decodeConnection(t, readBody(t, doJSON(t, ts, http.MethodPost, "/api/connections",
+		gen.CreateConnectionRequest{
+			Kind:   gen.CreateConnectionRequestKindAws,
+			Name:   "defaulted",
+			Region: stringPtr("us-east-1"),
+		}, withBastion(cookie))))
+	if defaulted.Profile != nil {
+		t.Errorf("defaulted.profile = %v, want absent", defaulted.Profile)
+	}
+	if profile, _ := ts.aws.lastCall(); profile != "" {
+		t.Errorf("factory profile = %q, want empty", profile)
+	}
+
+	// A region is required before SQL.
+	bad := doJSON(t, ts, http.MethodPost, "/api/connections", gen.CreateConnectionRequest{
+		Kind: gen.CreateConnectionRequestKindAws,
+		Name: "no-region",
+	}, withBastion(cookie))
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("create without region = %d, want %d", bad.StatusCode, http.StatusBadRequest)
+	}
+	readProblem(t, bad)
+
+	// A failed test is a status, not an API error.
+	ts.aws.setError(&awsclient.Error{
+		Op:   "get caller identity",
+		Hint: "AWS rejected the credentials (ExpiredToken); refresh the AWS session and test again",
+	})
+	tested := decodeConnection(t, readBody(t, doJSON(t, ts, http.MethodPost,
+		fmt.Sprintf("/api/connections/%d/test", created.Id), nil, withBastion(cookie))))
+	if tested.Status != gen.ConnectionStatus(connections.StatusError) {
+		t.Errorf("tested.status = %q, want %q", tested.Status, connections.StatusError)
+	}
+	if tested.Hint == nil || !strings.Contains(*tested.Hint, "ExpiredToken") {
+		t.Errorf("tested.hint = %v, want the AWS hint", tested.Hint)
+	}
+	// A failed test clears the identity from the earlier success.
+	if tested.Account != nil || tested.Arn != nil {
+		t.Errorf("tested.account/arn = %v/%v, want cleared after a failure", tested.Account, tested.Arn)
+	}
+
+	// Delete removes the row and has no credential to clean up.
+	del := doJSON(t, ts, http.MethodDelete,
+		fmt.Sprintf("/api/connections/%d", created.Id), nil, withBastion(cookie))
+	if del.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want %d", del.StatusCode, http.StatusNoContent)
+	}
+	if _, err := ts.connections.Get(t.Context(), created.Id); !errors.Is(err, connections.ErrNotFound) {
+		t.Errorf("connection after delete = %v, want ErrNotFound", err)
+	}
+}
+
+// TestAWSConnectionCreateValidation: the region and profile are checked before
+// SQL, so a typo is a 400 with a readable detail and no row.
+func TestAWSConnectionCreateValidation(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+
+	tests := []struct {
+		name    string
+		profile string
+		region  string
+	}{
+		{name: "missing region", region: ""},
+		{name: "short region", region: "eu-central"},
+		{name: "uppercase region", region: "EU-CENTRAL-1"},
+		{name: "long region", region: "eu-" + strings.Repeat("a", 30) + "-1"},
+		{name: "bad profile", profile: "work profile", region: "eu-central-1"},
+		{name: "long profile", profile: strings.Repeat("a", 65), region: "eu-central-1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := doJSON(t, ts, http.MethodPost, "/api/connections", gen.CreateConnectionRequest{
+				Kind:    gen.CreateConnectionRequestKindAws,
+				Name:    "invalid",
+				Profile: stringPtr(tt.profile),
+				Region:  stringPtr(tt.region),
+			}, withBastion(cookie))
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("create status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+			}
+			readProblem(t, resp)
+		})
+	}
+
+	list := decodeConnectionList(t, readBody(t, ts.do(t, http.MethodGet, "/api/connections", withCookie(cookie))))
+	if len(list.Connections) != 0 {
+		t.Errorf("list has %d connections after rejected creates, want 0", len(list.Connections))
+	}
 }

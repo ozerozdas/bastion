@@ -16,6 +16,7 @@ import (
 
 	"github.com/ozerozdas/bastion/internal/app"
 	"github.com/ozerozdas/bastion/internal/assets"
+	awsclient "github.com/ozerozdas/bastion/internal/aws"
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
 	"github.com/ozerozdas/bastion/internal/events"
@@ -139,11 +140,18 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	defer func() { _ = db.Close() }()
 
 	secretStore := deps.newSecretStore()
-	service, err := connections.NewService(db, secretStore, connections.WithGitHubFactory(
-		func(token string) (connections.GitHubClient, error) {
-			return github.New(github.Config{Token: token, Version: version})
-		},
-	))
+	service, err := connections.NewService(db, secretStore,
+		connections.WithGitHubFactory(
+			func(token string) (connections.GitHubClient, error) {
+				return github.New(github.Config{Token: token, Version: version})
+			},
+		),
+		connections.WithAWSFactory(
+			func(profile, region string) (connections.AWSClient, error) {
+				return awsclient.New(awsclient.Config{Profile: profile, Region: region, Version: version})
+			},
+		),
+	)
 	if err != nil {
 		return errors.Join(fmt.Errorf("create connections service: %w", err), ln.Close())
 	}
