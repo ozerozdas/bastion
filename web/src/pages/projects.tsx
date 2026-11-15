@@ -25,6 +25,7 @@ import { Button, buttonVariants } from '../components/ui/button'
 import { CountBadge, severityCounts } from '../components/severity-counts'
 import { Tabs, type TabItem } from '../components/ui/tabs'
 import { suggestFix } from '../lib/hints'
+import { isLiveActive, liveDetail } from '../lib/live-scan'
 import { relativeTime } from '../lib/time'
 import type { ProjectsTab } from '../lib/urls'
 import { ScansPanel } from './history'
@@ -269,7 +270,7 @@ function ProjectRow({
 
   const lastScan = asset.last_scan
   // A live event wins over the list row until the finished event refetches it.
-  const liveActive = live?.status === 'queued' || live?.status === 'running'
+  const liveActive = isLiveActive(live)
   const status = liveActive && live ? live.status : lastScan?.status
   const running = status === 'queued' || status === 'running'
 
@@ -945,17 +946,6 @@ function ErrorNote({ error, fix }: { error: unknown; fix: string }) {
       {cause} <span className="text-muted">{fix}</span>
     </p>
   )
-}
-
-/** liveDetail names the scanner or stage the live event is on. */
-function liveDetail(live: LiveScan): string | null {
-  const step = live.scanner ?? (live.stage ? stageLabel(live.stage) : null)
-  return step ? `· ${step}` : null
-}
-
-/** stageLabel spells out the one stage whose wire name does not read as a step. */
-function stageLabel(stage: NonNullable<LiveScan['stage']>): string {
-  return stage === 'wait_db' ? 'Waiting for vulnerability DB' : stage
 }
 
 /** scanWhen says when the last scan finished, or that it is still running. */
