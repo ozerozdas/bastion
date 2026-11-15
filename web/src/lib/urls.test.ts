@@ -72,6 +72,20 @@ describe('parseFindingsSearch', () => {
     })
     expect(parseFindingsSearch({ asset: '7' })).toEqual({ asset: 7 })
   })
+
+  it('keeps the fix plan tab and the project it belongs to (#27)', () => {
+    expect(parseFindingsSearch({ tab: 'fix-plan' })).toEqual({
+      tab: 'fix-plan',
+    })
+    expect(parseFindingsSearch({ tab: 'fix-plan', asset: '7' })).toEqual({
+      tab: 'fix-plan',
+      asset: 7,
+    })
+  })
+
+  it('drops an unknown tab instead of hiding the findings list', () => {
+    expect(parseFindingsSearch({ tab: 'plan' })).toEqual({})
+  })
 })
 
 describe('parseScanDiffSearch', () => {

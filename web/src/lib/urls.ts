@@ -39,18 +39,24 @@ export type FindingsSearch = {
    * spans projects, so a project filter forces single and the view is ignored.
    */
   asset?: number
+  /** ?tab=fix-plan shows the package upgrade plan; absent is the findings list. */
+  tab?: 'fix-plan'
 }
 
 /**
- * parseFindingsSearch reads ?view=single and ?asset=<id> from the Findings
- * route. Without an asset the view defaults to grouped (#106), so its URL is
- * the bare path; an unknown view falls back to that default. ?asset= forces
- * single, keeps the validation the old reports route had, and drops any view.
+ * parseFindingsSearch reads ?view=single, ?asset=<id> and ?tab=fix-plan from the
+ * Findings route. Without an asset the view defaults to grouped (#106), so its
+ * URL is the bare path; an unknown view falls back to that default. ?asset=
+ * forces single, keeps the validation the old reports route had, and drops any
+ * view. ?tab=fix-plan keeps the project filter: the plan is per asset.
  */
 export function parseFindingsSearch(
   search: Record<string, unknown>,
 ): FindingsSearch {
   const asset = parseAssetSearch(search)
+  if (search.tab === 'fix-plan') {
+    return { tab: 'fix-plan', ...asset }
+  }
   if (asset.asset !== undefined) {
     return asset
   }

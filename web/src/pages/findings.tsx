@@ -23,12 +23,14 @@ import { ErrorNote } from '../components/error-note'
 import { FilterBar, type FilterField } from '../components/filter-bar'
 import { FindingDrawer } from '../components/finding-drawer'
 import { GroupDrawer } from '../components/group-drawer'
+import { Tabs, type TabItem } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { capitalize, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
 import { groupFindings, type FindingGroup } from '../lib/group-findings'
 import type { FindingsView } from '../lib/urls'
 import { cn } from '../lib/utils'
+import { FixPlanPanel } from './fix-plan'
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
@@ -44,6 +46,12 @@ const typeOptions: FindingType[] = [
 ]
 
 const severityOptions: Severity[] = ['critical', 'high', 'medium', 'low', 'unknown']
+
+/** findingsTabs are the two views of §7.2: the findings list and its fix plan (#27). */
+const findingsTabs: TabItem<'findings' | 'fix-plan'>[] = [
+  { value: 'findings', label: 'Findings' },
+  { value: 'fix-plan', label: 'Fix plan' },
+]
 
 /**
  * findingColumns builds the table for the projects on screen. The Project
@@ -242,6 +250,7 @@ export function FindingsPage() {
   const search = useSearch({ from: '/findings' })
   const navigate = useNavigate()
   const assets = useQuery(assetsQuery)
+  const tab = search.tab ?? 'findings'
 
   // Grouped is the default (#106); a project filter forces single, because
   // grouping exists to fold the same rule across projects.
@@ -277,10 +286,10 @@ export function FindingsPage() {
     if (assets.data.some((asset) => asset.id === search.asset)) return
     void navigate({
       to: '/findings',
-      search: {},
+      search: search.tab === 'fix-plan' ? { tab: 'fix-plan' } : {},
       replace: true,
     })
-  }, [assets.data, navigate, search.asset])
+  }, [assets.data, navigate, search.asset, search.tab])
 
   const findings = useQuery({
     ...latestFindingsQuery({
@@ -291,7 +300,9 @@ export function FindingsPage() {
     }),
     // While the project list loads, a URL with an id may still name a project
     // that exists; asking for all findings first would be the wrong question.
-    enabled: search.asset === undefined || assets.isSuccess,
+    enabled:
+      tab === 'findings' &&
+      (search.asset === undefined || assets.isSuccess),
   })
 
   const assetNames = useMemo(
@@ -395,6 +406,28 @@ export function FindingsPage() {
     void navigate({
       to: '/findings',
       search: next === 'single' ? { view: 'single' } : {},
+      replace: true,
+    })
+    setOpenFingerprint(null)
+    setOpenGroupKey(null)
+    setChecked(new Set())
+    setCheckedGroups(new Set())
+  }
+
+  // The URL owns the tab, so a reload or a copied link lands on it; switching
+  // keeps the project filter, because the plan is per asset.
+  function changeTab(next: 'findings' | 'fix-plan') {
+    void navigate({
+      to: '/findings',
+      search:
+        next === 'fix-plan'
+          ? {
+              tab: 'fix-plan',
+              ...(search.asset === undefined ? {} : { asset: search.asset }),
+            }
+          : search.asset === undefined
+            ? {}
+            : { asset: search.asset },
       replace: true,
     })
     setOpenFingerprint(null)
@@ -527,6 +560,16 @@ export function FindingsPage() {
 
   return (
     <>
+      <Tabs
+        label="Findings views"
+        items={findingsTabs}
+        value={tab}
+        onChange={changeTab}
+      >
+        {tab === 'fix-plan' ? (
+          <FixPlanPanel assetList={assetList} selected={selected} />
+        ) : (
+          <>
       <FilterBar label="Finding filters" fields={filters}>
         {/* Grouping folds a rule across projects, so it is only offered while
             every project is in the list (#106). */}
@@ -691,6 +734,9 @@ export function FindingsPage() {
           onRemoveFailed={rowFocus.cancelRemoval}
         />
       ) : null}
+          </>
+        )}
+      </Tabs>
     </>
   )
 }

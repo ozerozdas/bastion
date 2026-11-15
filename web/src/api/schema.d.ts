@@ -296,6 +296,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assets/{id}/fix-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fix plan of one asset.
+         * @description Groups the asset's open vulnerability findings into package upgrades
+         *     (PROJECT_SPEC.md §7.2, §8 Phase 3). "Open" means the same as
+         *     `GET /api/findings`: the asset's most recent succeeded scan, with every
+         *     `finding_states` decision excluded.
+         *
+         *     A step is one upgrade that closes all its findings: each finding
+         *     contributes the smallest fixed version above its installed one, and the
+         *     step takes the highest of those, so the target satisfies every advisory
+         *     at once. `approximate` is true when no ecosystem-specific version
+         *     comparison decided the target, so its order is a best effort rather
+         *     than authoritative. Findings no upgrade closes are listed in `no_fix`.
+         *
+         *     Steps are ordered by critical findings, then high, then total count.
+         */
+        get: operations["getAssetFixPlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assets/{id}/link": {
         parameters: {
             query?: never;
@@ -953,6 +985,64 @@ export interface components {
         /** FindingList */
         FindingList: {
             findings: components["schemas"]["Finding"][];
+        };
+        /**
+         * FixPlan
+         * @description One asset's open vulnerability findings grouped into package upgrades
+         *     (PROJECT_SPEC.md §7.2, §8 Phase 3).
+         */
+        FixPlan: {
+            /** @description One package upgrade each, most impactful first. */
+            steps: components["schemas"]["FixPlanStep"][];
+            /** @description Packages whose open findings no upgrade closes. */
+            no_fix: components["schemas"]["FixPlanNoFix"][];
+        };
+        /**
+         * FixPlanStep
+         * @description One package upgrade that closes every finding in `finding_ids`. The
+         *     target is the highest of the findings' minimal fixed versions.
+         */
+        FixPlanStep: {
+            /**
+             * @example npm
+             * @example os-deb
+             */
+            ecosystem: string;
+            /** @example lodash */
+            package: string;
+            /**
+             * @description Every installed version the step's findings report, in the
+             *     ecosystem's version order. Empty when the scanner reported none.
+             */
+            installed_versions: string[];
+            /** @description The version that closes every finding of the step. */
+            target_version: string;
+            /**
+             * @description True when the target came from the generic version fallback rather
+             *     than the ecosystem's own comparison rules.
+             */
+            approximate: boolean;
+            finding_count: number;
+            severity_counts: components["schemas"]["SeverityTotals"];
+            /** @description The step's findings, by id, in ascending order. */
+            finding_ids: number[];
+        };
+        /**
+         * FixPlanNoFix
+         * @description A package whose open findings no upgrade closes.
+         */
+        FixPlanNoFix: {
+            /**
+             * @example npm
+             * @example os-deb
+             */
+            ecosystem: string;
+            /** @example openssl */
+            package: string;
+            finding_count: number;
+            severity_counts: components["schemas"]["SeverityTotals"];
+            /** @description The package's findings, by id, in ascending order. */
+            finding_ids: number[];
         };
         /**
          * Dashboard
@@ -1859,6 +1949,51 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getAssetFixPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Asset id. */
+                id: components["parameters"]["AssetID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The asset's fix plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FixPlan"];
+                };
+            };
+            /** @description The asset id is not a positive integer. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description The asset does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
