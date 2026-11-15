@@ -655,3 +655,46 @@ func TestAWSConnectionCreateValidation(t *testing.T) {
 		t.Errorf("list has %d connections after rejected creates, want 0", len(list.Connections))
 	}
 }
+
+// TestAWSConnectionReportsECRAssetCount: the connection response carries how
+// many non-archived ECR images a removal would archive, so the UI can warn.
+func TestAWSConnectionReportsECRAssetCount(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+
+	created := decodeConnection(t, readBody(t, doJSON(t, ts, http.MethodPost,
+		"/api/connections", gen.CreateConnectionRequest{
+			Kind:   gen.CreateConnectionRequestKindAws,
+			Name:   "prod",
+			Region: stringPtr("eu-central-1"),
+		}, withBastion(cookie))))
+
+	registry := "123456789012.dkr.ecr.eu-central-1.amazonaws.com"
+	digest := "sha256:" + strings.Repeat("a", 64)
+	insertAsset := func(connectionID any, ref string, archived any) {
+		t.Helper()
+		if _, err := ts.db.ExecContext(t.Context(), `
+			INSERT INTO assets (kind, connection_id, display_name, ref, metadata_json, archived_at)
+			VALUES ('image', ?, ?, ?, ?, ?)`,
+			connectionID, ref, ref, `{"registry":"`+registry+`"}`, archived); err != nil {
+			t.Fatalf("insert asset %s: %v", ref, err)
+		}
+	}
+	insertAsset(created.Id, registry+"/app@"+digest, nil)
+	insertAsset(created.Id, registry+"/old@"+digest, "2026-11-01T10:00:00Z")
+	insertAsset(nil, "nginx:latest", nil)
+
+	list := decodeConnectionList(t, readBody(t, ts.do(t, http.MethodGet, "/api/connections", withCookie(cookie))))
+	if len(list.Connections) != 1 {
+		t.Fatalf("list has %d connections, want 1", len(list.Connections))
+	}
+	if got := list.Connections[0].EcrAssetCount; got != 1 {
+		t.Errorf("list ecr_asset_count = %d, want 1", got)
+	}
+
+	tested := decodeConnection(t, readBody(t, doJSON(t, ts, http.MethodPost,
+		fmt.Sprintf("/api/connections/%d/test", created.Id), nil, withBastion(cookie))))
+	if got := tested.EcrAssetCount; got != 1 {
+		t.Errorf("test ecr_asset_count = %d, want 1", got)
+	}
+}

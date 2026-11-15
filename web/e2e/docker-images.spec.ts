@@ -177,3 +177,57 @@ test('Containers explains when no Docker daemon is available', async ({
   await expect(page.getByRole('heading', { name: 'Docker' })).toHaveCount(0)
   expect(problems).toEqual([])
 })
+
+test('Containers removes a tracked image after confirming', async ({
+  page,
+  server,
+}) => {
+  const problems = watch(page)
+  await fakeDockerApi(page, true)
+
+  let assets: unknown[] = [alpineAsset]
+  await page.route('**/api/assets/7', (route) => {
+    assets = []
+    return route.fulfill({ status: 204, body: '' })
+  })
+  await page.route('**/api/assets', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ assets }),
+    }),
+  )
+
+  await page.goto(server.url)
+  await page.getByRole('link', { name: 'Containers, 1' }).click()
+
+  const row = page.getByRole('row').filter({ hasText: 'alpine:3.20' })
+  await row.getByRole('button', { name: 'Remove' }).click()
+
+  const confirm = page
+    .getByRole('row')
+    .filter({ hasText: 'Its findings are hidden and it leaves this list' })
+  await expect(confirm).toBeVisible()
+
+  const removeRequest = page.waitForRequest(
+    (request) =>
+      request.url().endsWith('/api/assets/7') && request.method() === 'DELETE',
+  )
+  await confirm.getByRole('button', { name: 'Remove' }).click()
+  await removeRequest
+
+  // The daemon still lists the image; the row is untracked again.
+  await expect(
+    page
+      .getByRole('row')
+      .filter({ hasText: 'alpine:3.20' })
+      .getByRole('link', { name: 'View findings' }),
+  ).toHaveCount(0)
+  await expect(
+    page
+      .getByRole('row')
+      .filter({ hasText: 'alpine:3.20' })
+      .getByRole('button', { name: 'Remove' }),
+  ).toHaveCount(0)
+  expect(problems).toEqual([])
+})

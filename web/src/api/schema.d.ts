@@ -722,6 +722,13 @@ export interface components {
              */
             arn?: string;
             /**
+             * Format: int64
+             * @description Non-archived ECR image assets this connection owns. Removing the
+             *     connection archives them, so their findings leave the open lists.
+             *     Always 0 for a GitHub connection.
+             */
+            ecr_asset_count: number;
+            /**
              * @description Human-readable explanation of the last failed test (never a token
              *     or a GitHub response body). Absent after a successful test.
              */
@@ -1105,6 +1112,11 @@ export interface components {
             ref: string;
             /** @description Branch the repository tracks; absent for paths and images. */
             default_branch?: string;
+            /**
+             * @description The ECR registry an image was added from, read from its stored
+             *     metadata. Absent for other kinds and for an image added without one.
+             */
+            ecr_registry?: string;
             /** Format: date-time */
             created_at: string;
             last_scan?: components["schemas"]["AssetLastScan"];

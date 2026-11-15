@@ -458,6 +458,10 @@ func assetResponse(asset assets.Asset) gen.Asset {
 		branch := asset.DefaultBranch
 		out.DefaultBranch = &branch
 	}
+	if asset.ECRRegistry != "" {
+		registry := asset.ECRRegistry
+		out.EcrRegistry = &registry
+	}
 	if asset.LastScan != nil {
 		last := gen.AssetLastScan{
 			ScanId:     asset.LastScan.ScanID,

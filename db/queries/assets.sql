@@ -40,6 +40,34 @@ SELECT * FROM assets WHERE id = sqlc.arg(id);
 UPDATE assets SET archived_at = sqlc.arg(archived_at) WHERE id = sqlc.arg(id)
 RETURNING *;
 
+-- name: ArchiveImageAssetsForConnection :execrows
+-- Removing a connection archives its ECR images in the same transaction: the
+-- rows stay for history, but their findings leave the open lists exactly as
+-- when an asset is archived by hand.
+UPDATE assets
+SET archived_at = sqlc.arg(archived_at)
+WHERE kind = 'image'
+  AND connection_id = sqlc.arg(connection_id)
+  AND archived_at IS NULL;
+
+-- name: CountImageAssetsByConnection :many
+-- Non-archived image assets per connection, so a list read shows how many a
+-- removal would archive without one query per connection.
+SELECT connection_id, CAST(COUNT(*) AS INTEGER) AS image_count
+FROM assets
+WHERE kind = 'image'
+  AND connection_id IS NOT NULL
+  AND archived_at IS NULL
+GROUP BY connection_id;
+
+-- name: CountImageAssetsForConnection :one
+-- Non-archived image assets of one connection, for a single-connection read.
+SELECT CAST(COUNT(*) AS INTEGER) AS image_count
+FROM assets
+WHERE kind = 'image'
+  AND connection_id = sqlc.arg(connection_id)
+  AND archived_at IS NULL;
+
 -- name: ListAssets :many
 SELECT * FROM assets WHERE archived_at IS NULL ORDER BY display_name, id;
 
@@ -109,6 +137,7 @@ SELECT
     a.display_name,
     a.ref,
     a.default_branch,
+    a.metadata_json,
     a.created_at,
     ns.scan_id AS last_scan_id,
     ns.status AS last_scan_status,

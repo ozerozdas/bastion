@@ -49,6 +49,14 @@ func GetOrCreateAsset(ctx context.Context, db *sql.DB, asset findings.Asset) (fi
 	if err != nil {
 		return findings.Asset{}, fmt.Errorf("store: get or create asset %s %q: %w", asset.Kind, asset.Ref, err)
 	}
+	// A removed asset is scanned again rather than shadowed: reviving keeps its
+	// id and history, and its findings count again. This mirrors assets.save.
+	if row.ArchivedAt.Valid {
+		row, err = sqlcdb.New(db).UnarchiveAsset(ctx, row.ID)
+		if err != nil {
+			return findings.Asset{}, fmt.Errorf("store: revive asset %s %q: %w", asset.Kind, asset.Ref, err)
+		}
+	}
 
 	return findings.Asset{
 		ID:          row.ID,

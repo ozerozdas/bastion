@@ -419,7 +419,11 @@ type Asset struct {
 	// DefaultBranch Branch the repository tracks; absent for paths and images.
 	DefaultBranch *string `json:"default_branch,omitempty"`
 	DisplayName   string  `json:"display_name"`
-	Id            int64   `json:"id"`
+
+	// EcrRegistry The ECR registry an image was added from, read from its stored
+	// metadata. Absent for other kinds and for an image added without one.
+	EcrRegistry *string `json:"ecr_registry,omitempty"`
+	Id          int64   `json:"id"`
 
 	// Kind What the asset is.
 	Kind AssetKind `json:"kind"`
@@ -523,6 +527,11 @@ type Connection struct {
 	// AWS connections only; absent until a test succeeds.
 	Arn       *string   `json:"arn,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+
+	// EcrAssetCount Non-archived ECR image assets this connection owns. Removing the
+	// connection archives them, so their findings leave the open lists.
+	// Always 0 for a GitHub connection.
+	EcrAssetCount int64 `json:"ecr_asset_count"`
 
 	// Hint Human-readable explanation of the last failed test (never a token
 	// or a GitHub response body). Absent after a successful test.

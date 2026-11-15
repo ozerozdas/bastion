@@ -38,6 +38,85 @@ func (q *Queries) ArchiveAsset(ctx context.Context, arg ArchiveAssetParams) (Ass
 	return i, err
 }
 
+const archiveImageAssetsForConnection = `-- name: ArchiveImageAssetsForConnection :execrows
+UPDATE assets
+SET archived_at = ?1
+WHERE kind = 'image'
+  AND connection_id = ?2
+  AND archived_at IS NULL
+`
+
+type ArchiveImageAssetsForConnectionParams struct {
+	ArchivedAt   sql.NullString
+	ConnectionID sql.NullInt64
+}
+
+// Removing a connection archives its ECR images in the same transaction: the
+// rows stay for history, but their findings leave the open lists exactly as
+// when an asset is archived by hand.
+func (q *Queries) ArchiveImageAssetsForConnection(ctx context.Context, arg ArchiveImageAssetsForConnectionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, archiveImageAssetsForConnection, arg.ArchivedAt, arg.ConnectionID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const countImageAssetsByConnection = `-- name: CountImageAssetsByConnection :many
+SELECT connection_id, CAST(COUNT(*) AS INTEGER) AS image_count
+FROM assets
+WHERE kind = 'image'
+  AND connection_id IS NOT NULL
+  AND archived_at IS NULL
+GROUP BY connection_id
+`
+
+type CountImageAssetsByConnectionRow struct {
+	ConnectionID sql.NullInt64
+	ImageCount   int64
+}
+
+// Non-archived image assets per connection, so a list read shows how many a
+// removal would archive without one query per connection.
+func (q *Queries) CountImageAssetsByConnection(ctx context.Context) ([]CountImageAssetsByConnectionRow, error) {
+	rows, err := q.db.QueryContext(ctx, countImageAssetsByConnection)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountImageAssetsByConnectionRow
+	for rows.Next() {
+		var i CountImageAssetsByConnectionRow
+		if err := rows.Scan(&i.ConnectionID, &i.ImageCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countImageAssetsForConnection = `-- name: CountImageAssetsForConnection :one
+SELECT CAST(COUNT(*) AS INTEGER) AS image_count
+FROM assets
+WHERE kind = 'image'
+  AND connection_id = ?1
+  AND archived_at IS NULL
+`
+
+// Non-archived image assets of one connection, for a single-connection read.
+func (q *Queries) CountImageAssetsForConnection(ctx context.Context, connectionID sql.NullInt64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countImageAssetsForConnection, connectionID)
+	var image_count int64
+	err := row.Scan(&image_count)
+	return image_count, err
+}
+
 const createAsset = `-- name: CreateAsset :one
 INSERT INTO assets (kind, connection_id, display_name, ref, default_branch, metadata_json, created_at)
 VALUES (
@@ -286,6 +365,7 @@ SELECT
     a.display_name,
     a.ref,
     a.default_branch,
+    a.metadata_json,
     a.created_at,
     ns.scan_id AS last_scan_id,
     ns.status AS last_scan_status,
@@ -309,6 +389,7 @@ type ListAssetSummariesRow struct {
 	DisplayName        string
 	Ref                string
 	DefaultBranch      sql.NullString
+	MetadataJSON       string
 	CreatedAt          string
 	LastScanID         sql.NullInt64
 	LastScanStatus     sql.NullString
@@ -340,6 +421,7 @@ func (q *Queries) ListAssetSummaries(ctx context.Context) ([]ListAssetSummariesR
 			&i.DisplayName,
 			&i.Ref,
 			&i.DefaultBranch,
+			&i.MetadataJSON,
 			&i.CreatedAt,
 			&i.LastScanID,
 			&i.LastScanStatus,

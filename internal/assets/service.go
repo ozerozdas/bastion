@@ -123,12 +123,15 @@ func NewService(db *sql.DB, opts ...Option) (*Service, error) {
 
 // Asset is one tracked asset with the summary the API returns.
 type Asset struct {
-	ID             int64
-	Kind           string
-	ConnectionID   *int64
-	DisplayName    string
-	Ref            string
-	DefaultBranch  string
+	ID            int64
+	Kind          string
+	ConnectionID  *int64
+	DisplayName   string
+	Ref           string
+	DefaultBranch string
+	// ECRRegistry is the registry an image was added from, read from its
+	// metadata; empty for other kinds and for an image added without one.
+	ECRRegistry    string
 	CreatedAt      time.Time
 	LastScan       *LastScan
 	OpenSeverities SeverityCounts
@@ -957,6 +960,17 @@ func assetSummary(row sqlcdb.ListAssetSummariesRow) Asset {
 			last.FinishedAt = finished
 		}
 		asset.LastScan = last
+	}
+	if row.Kind == string(findings.AssetKindImage) {
+		// Metadata is opaque to the list; only the registry is surfaced, so the
+		// UI can tell an ECR image from a local one. A malformed value simply
+		// has no registry.
+		var metadata struct {
+			Registry string `json:"registry"`
+		}
+		if err := json.Unmarshal([]byte(row.MetadataJSON), &metadata); err == nil {
+			asset.ECRRegistry = metadata.Registry
+		}
 	}
 	return asset
 }

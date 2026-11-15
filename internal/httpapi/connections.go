@@ -237,6 +237,7 @@ func connectionResponse(conn connections.Connection) gen.Connection {
 		Status:        gen.ConnectionStatus(conn.Status),
 		CreatedAt:     conn.CreatedAt,
 		LastCheckedAt: conn.LastCheckedAt,
+		EcrAssetCount: int64(conn.ECRAssetCount),
 	}
 	if conn.Login != "" {
 		login := conn.Login

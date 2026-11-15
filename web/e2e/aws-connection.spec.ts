@@ -13,6 +13,7 @@ const awsConnection = {
   arn: 'arn:aws:iam::123456789012:user/bastion-test',
   created_at: '2026-11-15T10:00:00Z',
   last_checked_at: '2026-11-15T10:00:01Z',
+  ecr_asset_count: 2,
 }
 
 /**
@@ -118,6 +119,11 @@ test('AWS connections are created, tested and removed on the Registry tab', asyn
   await page.getByRole('button', { name: 'Remove', exact: true }).click()
   await expect(
     page.getByText('Only the profile and region are forgotten'),
+  ).toBeVisible()
+  await expect(
+    page.getByText(
+      'This also archives 2 ECR images and hides their findings.',
+    ),
   ).toBeVisible()
   await page.getByRole('button', { name: 'Remove', exact: true }).click()
 
