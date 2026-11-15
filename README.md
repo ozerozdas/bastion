@@ -99,6 +99,10 @@ bastion scan --repo ozerozdas/bastion --format json
 # Scan an image the local Docker daemon already holds (never pulls)
 bastion scan --image nginx:latest --format table
 
+# Scan an ECR tag: the saved, tested AWS connection supplies the login and the
+# tag is pinned to its digest before it is scanned
+bastion scan --image 123456789012.dkr.ecr.eu-central-1.amazonaws.com/app:latest --format table
+
 # CI: write SARIF, fail the build on critical findings
 export BASTION_HMAC_KEY="$(openssl rand -base64 32)"
 bastion scan --path . --no-store --skip-dirs testdata \
@@ -106,8 +110,12 @@ bastion scan --path . --no-store --skip-dirs testdata \
 ```
 
 `--fail-on` exits **2** when an open finding is at or above the threshold, so CI can tell
-"findings found" from "the scan broke" (exit 1). `--no-store` does not touch the database,
-which is what a CI runner wants.
+"findings found" from "the scan broke" (exit 1). `--no-store` writes nothing to the
+database, which is what a CI runner wants; an ECR image still reads its saved AWS
+connection from it, because that connection supplies the registry login and the tag's
+digest. A reference whose registry is `<account>.dkr.ecr.<region>.amazonaws.com` and
+whose account and region match no saved, tested AWS connection fails with a message
+saying to add one in **Connections → Registry**.
 
 `--format cyclonedx` prints the scan's package inventory as a CycloneDX 1.6 JSON BOM; the
 same document is a download on **Projects → Scans** (`GET /api/scans/{id}/sbom`).

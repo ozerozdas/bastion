@@ -58,6 +58,26 @@ func RepoAssetTarget(ctx context.Context, db *sql.DB, fullName string) (target A
 	return assetTarget(row), true, nil
 }
 
+// ImageAssetTarget reads the image asset with this digest-pinned ref, so a
+// repeated CLI scan of the same digest reuses its row. found is false when no
+// such asset exists.
+func ImageAssetTarget(ctx context.Context, db *sql.DB, ref string) (target AssetTarget, found bool, err error) {
+	if db == nil {
+		return AssetTarget{}, false, errors.New("store: load image asset: database is required")
+	}
+	row, err := sqlcdb.New(db).GetAssetByKindRef(ctx, sqlcdb.GetAssetByKindRefParams{
+		Kind: string(findings.AssetKindImage),
+		Ref:  ref,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return AssetTarget{}, false, nil
+	}
+	if err != nil {
+		return AssetTarget{}, false, fmt.Errorf("store: load image asset %q: %w", ref, err)
+	}
+	return assetTarget(row), true, nil
+}
+
 // assetTarget copies the resolver's view out of an assets row.
 func assetTarget(row sqlcdb.Asset) AssetTarget {
 	target := AssetTarget{

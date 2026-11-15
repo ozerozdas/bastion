@@ -2,6 +2,7 @@ package connections
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -196,5 +197,53 @@ func TestAWSRegistryNeedsAccount(t *testing.T) {
 	}
 	if _, err := service.AWSRegistry(t.Context(), conn.ID); err == nil {
 		t.Fatal("AWSRegistry succeeded without an account")
+	}
+}
+
+// TestAWSConnectionForRegistry: a CLI image reference is mapped to the tested
+// aws connection that owns its registry host, and a foreign host finds none.
+func TestAWSConnectionForRegistry(t *testing.T) {
+	service, _ := newECRTestService(t)
+	conn, err := service.Create(t.Context(), CreateInput{
+		Kind: KindAWS, Name: "prod", Region: "eu-central-1",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	found, err := service.AWSConnectionForRegistry(t.Context(), testRegistry)
+	if err != nil {
+		t.Fatalf("AWSConnectionForRegistry: %v", err)
+	}
+	if found.ID != conn.ID {
+		t.Errorf("connection = %d, want %d", found.ID, conn.ID)
+	}
+	if found.Profile != "" || found.Region != "eu-central-1" {
+		t.Errorf("connection = %+v, want its profile and region", found)
+	}
+
+	_, err = service.AWSConnectionForRegistry(t.Context(), "999999999999.dkr.ecr.us-east-1.amazonaws.com")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("AWSConnectionForRegistry error = %v, want ErrNotFound", err)
+	}
+}
+
+// TestAWSConnectionForRegistrySkipsUntested: a connection without an account
+// owns no registry, so it is skipped instead of failing the lookup.
+func TestAWSConnectionForRegistrySkipsUntested(t *testing.T) {
+	service, _ := newECRTestService(t)
+	conn, err := service.Create(t.Context(), CreateInput{
+		Kind: KindAWS, Name: "prod", Region: "eu-central-1",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := service.db.ExecContext(t.Context(),
+		`UPDATE connections SET config_json = '{"region":"eu-central-1"}' WHERE id = ?`, conn.ID); err != nil {
+		t.Fatalf("clear account: %v", err)
+	}
+
+	if _, err := service.AWSConnectionForRegistry(t.Context(), testRegistry); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("AWSConnectionForRegistry error = %v, want ErrNotFound", err)
 	}
 }

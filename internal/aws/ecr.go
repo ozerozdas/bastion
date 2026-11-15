@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -41,6 +42,15 @@ type Tag struct {
 	Name     string
 	Digest   string
 	PushedAt time.Time
+}
+
+// Image is one ECR image resolved from a tag or a digest.
+type Image struct {
+	// Tag is the tag the image is known by: the requested one, or a tag that
+	// points at the requested digest.
+	Tag string
+	// Digest is the image's sha256 digest.
+	Digest string
 }
 
 // Credentials is a short-lived ECR registry login. It is derived from
@@ -141,6 +151,85 @@ func (c *Client) recentTags(ctx context.Context, client *ecr.Client, repository 
 	return tags, nil
 }
 
+// Image resolves one image in repository by tag or by digest, so a scan can
+// pin a tag to the digest it will read. Exactly one of tag and digest is
+// needed; when only the digest is known, a tag pointing at it is returned so an
+// asset can record one.
+func (c *Client) Image(ctx context.Context, repository, tag, digest string) (Image, error) {
+	const op = "describe ECR image"
+
+	if repository == "" || (tag == "" && digest == "") {
+		return Image{}, &Error{Op: op, Hint: "an ECR repository and a tag or a digest are required"}
+	}
+	cfg, err := awscfg.LoadDefaultConfig(ctx, c.loadOptions()...)
+	if err != nil {
+		return Image{}, &Error{Op: op, Hint: configHint(err, c.profile), Err: err}
+	}
+	image, err := resolveImage(ctx, ecr.NewFromConfig(cfg), repository, tag, digest)
+	if err != nil {
+		return Image{}, &Error{Op: op, Code: errorCode(err), Hint: ecrHint(err, c.profile), Err: err}
+	}
+	return image, nil
+}
+
+// describeImageAPI is the one ECR call tag resolution needs, so tests fake it
+// instead of reaching AWS.
+type describeImageAPI interface {
+	DescribeImages(context.Context, *ecr.DescribeImagesInput, ...func(*ecr.Options)) (*ecr.DescribeImagesOutput, error)
+}
+
+// resolveImage asks ECR for one image and returns its tag and digest. A tag
+// identifies the image when one is given; otherwise the digest does.
+func resolveImage(ctx context.Context, api describeImageAPI, repository, tag, digest string) (Image, error) {
+	identifier := ecrtypes.ImageIdentifier{}
+	if tag != "" {
+		identifier.ImageTag = &tag
+	} else {
+		identifier.ImageDigest = &digest
+	}
+	out, err := api.DescribeImages(ctx, &ecr.DescribeImagesInput{
+		RepositoryName: &repository,
+		ImageIds:       []ecrtypes.ImageIdentifier{identifier},
+	})
+	if err != nil {
+		return Image{}, err
+	}
+	if len(out.ImageDetails) == 0 {
+		return Image{}, errors.New("ECR returned no image")
+	}
+
+	detail := out.ImageDetails[0]
+	image := Image{Digest: deref(detail.ImageDigest), Tag: tag}
+	if image.Tag == "" {
+		image.Tag = displayTag(detail.ImageTags)
+	}
+	switch {
+	case image.Digest == "":
+		return Image{}, errors.New("ECR returned an image without a digest")
+	case image.Tag == "":
+		return Image{}, errors.New("ECR returned an image without a tag")
+	}
+	return image, nil
+}
+
+// displayTag picks the tag an asset records for a digest: "latest" when the
+// image carries it, otherwise the lexicographically first tag.
+func displayTag(tags []string) string {
+	chosen := ""
+	for _, tag := range tags {
+		if tag == "" {
+			continue
+		}
+		if tag == "latest" {
+			return tag
+		}
+		if chosen == "" || tag < chosen {
+			chosen = tag
+		}
+	}
+	return chosen
+}
+
 // AuthorizationToken returns a short-lived registry login for this account's
 // ECR registry. The token is valid for 12 hours; bastion keeps it in memory
 // for one scan and never writes it anywhere.
@@ -186,6 +275,8 @@ func ecrHint(err error, profile string) string {
 			return "AWS denied the ECR request (" + code + "); check the profile's ECR permissions"
 		case "RepositoryNotFoundException":
 			return "the ECR repository was not found in this region"
+		case "ImageNotFoundException":
+			return "the image tag or digest was not found in this ECR repository"
 		case "InvalidClientTokenId", "UnrecognizedClientException",
 			"ExpiredToken", "ExpiredTokenException", "RequestExpired",
 			"SignatureDoesNotMatch":
