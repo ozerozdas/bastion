@@ -12,6 +12,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/app"
 	"github.com/ozerozdas/bastion/internal/connections"
 	githubclient "github.com/ozerozdas/bastion/internal/connections/github"
+	"github.com/ozerozdas/bastion/internal/docker"
 	"github.com/ozerozdas/bastion/internal/findings"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/scanners"
@@ -209,8 +210,9 @@ func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, t
 		// another also keeps Gitleaks independent of that lock.
 		ScannerList: []scanners.Scanner{trivy.NewWithManager(trivyDB), gitleaks.New()},
 		Sources: map[sources.TargetKind]sources.Source{
-			sources.KindPath: localpath.New(),
-			sources.KindRepo: repoSource,
+			sources.KindPath:  localpath.New(),
+			sources.KindRepo:  repoSource,
+			sources.KindImage: docker.NewSource(),
 		},
 		Options: scanners.Options{
 			CacheDir: opts.paths.TrivyCacheDir(),

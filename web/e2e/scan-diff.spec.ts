@@ -107,7 +107,7 @@ test('compares two scans from the Scans tab (#17)', async ({ page, server }) => 
   const origin = new URL(page.url()).origin
 
   // One Compare link per succeeded scan; the failed scan has none.
-  await page.goto(`${origin}/projects?tab=scans`)
+  await page.goto(`${origin}/repositories?tab=scans`)
   const rows = page.locator('tbody tr')
   await expect(rows).toHaveCount(4)
   await expect(page.getByRole('link', { name: 'Compare' })).toHaveCount(3)

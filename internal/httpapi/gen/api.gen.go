@@ -82,13 +82,16 @@ func (e ConnectionStatus) Valid() bool {
 
 // Defines values for CreateAssetRequestKind.
 const (
-	CreateAssetRequestKindPath CreateAssetRequestKind = "path"
-	CreateAssetRequestKindRepo CreateAssetRequestKind = "repo"
+	CreateAssetRequestKindImage CreateAssetRequestKind = "image"
+	CreateAssetRequestKindPath  CreateAssetRequestKind = "path"
+	CreateAssetRequestKindRepo  CreateAssetRequestKind = "repo"
 )
 
 // Valid indicates whether the value is a known member of the CreateAssetRequestKind enum.
 func (e CreateAssetRequestKind) Valid() bool {
 	switch e {
+	case CreateAssetRequestKindImage:
+		return true
 	case CreateAssetRequestKindPath:
 		return true
 	case CreateAssetRequestKindRepo:
@@ -386,13 +389,13 @@ func (e UpdateConsent) Valid() bool {
 	}
 }
 
-// Asset One tracked repository or path.
+// Asset One tracked repository, path or image.
 type Asset struct {
 	// ConnectionId The connection repo scans authenticate with.
 	ConnectionId *int64    `json:"connection_id,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 
-	// DefaultBranch Branch the repository tracks; absent for paths.
+	// DefaultBranch Branch the repository tracks; absent for paths and images.
 	DefaultBranch *string `json:"default_branch,omitempty"`
 	DisplayName   string  `json:"display_name"`
 	Id            int64   `json:"id"`
@@ -408,7 +411,7 @@ type Asset struct {
 	OpenCounts SeverityTotals `json:"open_counts"`
 
 	// Ref Canonical reference: `owner/repo` for repositories, the absolute
-	// directory for paths.
+	// directory for paths, the image reference for images.
 	Ref string `json:"ref"`
 }
 
@@ -503,17 +506,19 @@ type CreateAssetRequest struct {
 	ConnectionId *int64 `json:"connection_id,omitempty"`
 
 	// Kind `repo` takes an `owner/repo` ref; `path` takes an existing absolute
-	// directory. Images arrive in a later phase.
+	// directory; `image` takes an image reference the local Docker daemon
+	// holds.
 	Kind CreateAssetRequestKind `json:"kind"`
 
-	// Ref `owner/repo` for repositories, an absolute directory for paths.
+	// Ref `owner/repo` for repositories, an absolute directory for paths, an image reference for images.
 	//
-	// Examples: octo/hello, /Users/me/src/hello
+	// Examples: octo/hello, /Users/me/src/hello, nginx:latest
 	Ref string `json:"ref"`
 }
 
 // CreateAssetRequestKind `repo` takes an `owner/repo` ref; `path` takes an existing absolute
-// directory. Images arrive in a later phase.
+// directory; `image` takes an image reference the local Docker daemon
+// holds.
 type CreateAssetRequestKind string
 
 // CreateConnectionRequest defines model for CreateConnectionRequest.
@@ -579,6 +584,29 @@ type DiscoveredRepo struct {
 	// Examples: octo/hello
 	FullName string `json:"full_name"`
 	Private  bool   `json:"private"`
+}
+
+// DockerImage One tagged image on the local daemon.
+type DockerImage struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id The image's content-addressable id.
+	Id string `json:"id"`
+
+	// Reference The image tag, for example `nginx:latest`.
+	Reference string `json:"reference"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+// DockerImageList The local daemon's state and its tagged images. `available` is false
+// when no daemon was found.
+type DockerImageList struct {
+	Available bool `json:"available"`
+
+	// Host The daemon host that answered the probe, for example
+	// `unix:///var/run/docker.sock`. Empty when no daemon was reached.
+	Host   string        `json:"host"`
+	Images []DockerImage `json:"images"`
 }
 
 // Finding One normalized finding of an asset's latest succeeded scan. Optional
@@ -1199,6 +1227,9 @@ type ServerInterface interface {
 	// TestConnection Test a connection and record the result.
 	// (POST /api/connections/{id}/test)
 	TestConnection(w http.ResponseWriter, r *http.Request, id ConnectionID)
+	// GetDockerImages List images on the local Docker daemon.
+	// (GET /api/docker/images)
+	GetDockerImages(w http.ResponseWriter, r *http.Request)
 	// ListFindings Latest findings across assets.
 	// (GET /api/findings)
 	ListFindings(w http.ResponseWriter, r *http.Request, params ListFindingsParams)
@@ -1406,6 +1437,20 @@ func (siw *ServerInterfaceWrapper) TestConnection(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.TestConnection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDockerImages operation middleware
+func (siw *ServerInterfaceWrapper) GetDockerImages(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDockerImages(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1991,6 +2036,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/connections/{id}", wrapper.DeleteConnection)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections/{id}/test", wrapper.TestConnection)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections/{id}/discover", wrapper.DiscoverConnectionRepos)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/docker/images", wrapper.GetDockerImages)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/assets", wrapper.ListAssets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assets", wrapper.CreateAsset)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/assets/{id}", wrapper.DeleteAsset)
@@ -3159,6 +3205,118 @@ type TestConnection500ApplicationProblemPlusJSONResponse struct {
 }
 
 func (response TestConnection500ApplicationProblemPlusJSONResponse) VisitTestConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDockerImagesRequestObject struct {
+}
+
+type GetDockerImagesResponseObject interface {
+	VisitGetDockerImagesResponse(w http.ResponseWriter) error
+}
+
+type GetDockerImages200JSONResponse DockerImageList
+
+func (response GetDockerImages200JSONResponse) VisitGetDockerImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDockerImages401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetDockerImages401ApplicationProblemPlusJSONResponse) VisitGetDockerImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDockerImages403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetDockerImages403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetDockerImages403ResponseHeaders
+}
+
+func (response GetDockerImages403ApplicationProblemPlusJSONResponse) VisitGetDockerImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDockerImages421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetDockerImages421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetDockerImages421ResponseHeaders
+}
+
+func (response GetDockerImages421ApplicationProblemPlusJSONResponse) VisitGetDockerImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDockerImages500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetDockerImages500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetDockerImages500ResponseHeaders
+}
+
+func (response GetDockerImages500ApplicationProblemPlusJSONResponse) VisitGetDockerImagesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5193,6 +5351,9 @@ type StrictServerInterface interface {
 	// TestConnection Test a connection and record the result.
 	// (POST /api/connections/{id}/test)
 	TestConnection(ctx context.Context, request TestConnectionRequestObject) (TestConnectionResponseObject, error)
+	// GetDockerImages List images on the local Docker daemon.
+	// (GET /api/docker/images)
+	GetDockerImages(ctx context.Context, request GetDockerImagesRequestObject) (GetDockerImagesResponseObject, error)
 	// ListFindings Latest findings across assets.
 	// (GET /api/findings)
 	ListFindings(ctx context.Context, request ListFindingsRequestObject) (ListFindingsResponseObject, error)
@@ -5486,6 +5647,30 @@ func (sh *strictHandler) TestConnection(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TestConnectionResponseObject); ok {
 		if err := validResponse.VisitTestConnectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDockerImages operation middleware
+func (sh *strictHandler) GetDockerImages(w http.ResponseWriter, r *http.Request) {
+	var request GetDockerImagesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDockerImages(ctx, request.(GetDockerImagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDockerImages")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDockerImagesResponseObject); ok {
+		if err := validResponse.VisitGetDockerImagesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

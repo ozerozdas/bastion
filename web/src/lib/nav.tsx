@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 
 import {
   ConnectionsIcon,
+  ContainersIcon,
   DashboardIcon,
   ProjectsIcon,
   ReportsIcon,
@@ -11,6 +12,8 @@ import {
 export type NavCounts = {
   /** Non-archived projects from assetsQuery. */
   projects?: number
+  /** Tracked image assets from assetsQuery. */
+  containers?: number
   /** Open findings from dashboardQuery. */
   openFindings?: number
 }
@@ -31,7 +34,7 @@ export type NavItem = {
   section?: Exclude<NavSection, 'main'>
 }
 
-/** navItems follows ADR-007: Findings is a main view, Projects owns the scans. */
+/** navItems follows ADR-007: Findings is a main view, Repositories owns the scans. */
 export const navItems: NavItem[] = [
   {
     to: '/',
@@ -47,11 +50,19 @@ export const navItems: NavItem[] = [
     count: 'openFindings',
   },
   {
-    to: '/projects',
-    label: 'Projects',
-    subtitle: 'Repositories and images you scan',
+    to: '/repositories',
+    label: 'Repositories',
+    subtitle: 'GitHub repositories and local paths you scan',
     icon: ProjectsIcon,
     count: 'projects',
+    section: 'assets',
+  },
+  {
+    to: '/containers',
+    label: 'Containers',
+    subtitle: 'Images on the local Docker daemon',
+    icon: ContainersIcon,
+    count: 'containers',
     section: 'assets',
   },
   {
@@ -88,13 +99,14 @@ export function navGroups(items: NavItem[] = navItems): NavGroup[] {
 
 /** legacyPathnames keeps the header sensible for URLs that redirect (#88). */
 const legacyPathnames: Record<string, string> = {
-  '/scan-history': '/projects',
+  '/projects': '/repositories',
+  '/scan-history': '/repositories',
 }
 
 /** sectionPathnames keeps a page under the nav entry that owns it (#17). */
 const sectionPathnames: { prefix: string; to: string }[] = [
   // The scan diff page is the Scans tab's detail view.
-  { prefix: '/scans/', to: '/projects' },
+  { prefix: '/scans/', to: '/repositories' },
 ]
 
 /** navItemFor returns the nav entry for a pathname. */

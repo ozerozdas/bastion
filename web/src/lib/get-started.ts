@@ -12,7 +12,7 @@ export type GetStartedStep = {
   hint: string
   done: boolean
   /** In-app route where the step is done; absent for the CLI step. */
-  to?: '/connections' | '/projects'
+  to?: '/connections' | '/repositories'
   /** Documentation link; only the CLI step has one. */
   href?: string
 }
@@ -54,17 +54,17 @@ export function getStartedState(input: GetStartedInput): GetStartedState {
     },
     {
       id: 'add-project',
-      title: 'Add a project',
-      hint: 'Pick a repository or an absolute path on this machine in Projects.',
+      title: 'Add a repository',
+      hint: 'Pick a repository or an absolute path on this machine in Repositories.',
       done: input.assetCount > 0,
-      to: '/projects',
+      to: '/repositories',
     },
     {
       id: 'run-scan',
       title: 'Run the first scan',
-      hint: 'Select a project in Projects and press Scan; findings appear when it finishes.',
+      hint: 'Select a repository in Repositories and press Scan; findings appear when it finishes.',
       done: input.hasSucceededScan,
-      to: '/projects',
+      to: '/repositories',
     },
     {
       id: 'scan-in-ci',

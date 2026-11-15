@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate, useSearch } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 
 import { ApiError } from '../api/client'
+import { dockerImagesQuery } from '../api/docker'
 import {
   connectionsQuery,
   useCreateConnection,
@@ -129,7 +130,7 @@ function RepositoryPanel() {
   )
 }
 
-/** RegistryPanel is §8's registry sources, both P2 placeholders for now. */
+/** RegistryPanel is §8's registry sources: AWS is still a placeholder. */
 function RegistryPanel() {
   return (
     <>
@@ -138,12 +139,42 @@ function RegistryPanel() {
         action="Connect AWS account"
         body="Reads ECR repositories and image tags through your existing AWS profile or SSO session. Bastion never stores AWS credentials; it uses the profile you already signed in with."
       />
-      <ComingSoonCard
-        title="Docker"
-        action="Connect Docker"
-        body="Scans images from a local Docker daemon, when one is running. Nothing is pulled or pushed without your action."
-      />
+      <DockerPanel />
     </>
+  )
+}
+
+/**
+ * DockerPanel is a compact status card. Connections configures sources; the
+ * image list and scans live on the Containers page. Without a daemon it
+ * renders nothing: a machine without Docker is a normal state, not an error.
+ */
+function DockerPanel() {
+  const images = useQuery(dockerImagesQuery)
+
+  if (!images.isSuccess || !images.data.available) {
+    return null
+  }
+
+  const count = images.data.images.length
+  return (
+    <section className="flex flex-col gap-2 rounded-card border border-border-subtle bg-surface p-4">
+      <div className="flex flex-wrap items-baseline gap-2.5">
+        <h2 className="text-[13px] font-semibold">Docker</h2>
+        <Badge tone="ok">available</Badge>
+        <span className="text-faint">
+          {count} {count === 1 ? 'image' : 'images'}
+        </span>
+      </div>
+      <p className="text-xs text-muted">
+        Reached at <span className="font-mono">{images.data.host}</span>
+      </p>
+      <div>
+        <Link to="/containers" className={buttonVariants({ size: 'sm' })}>
+          View containers
+        </Link>
+      </div>
+    </section>
   )
 }
 

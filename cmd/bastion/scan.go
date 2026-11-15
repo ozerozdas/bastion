@@ -23,6 +23,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/app"
 	"github.com/ozerozdas/bastion/internal/connections"
 	githubclient "github.com/ozerozdas/bastion/internal/connections/github"
+	"github.com/ozerozdas/bastion/internal/docker"
 	"github.com/ozerozdas/bastion/internal/findings"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/report/sarif"
@@ -65,6 +66,7 @@ type adapter interface {
 type scanOptions struct {
 	path     string
 	repo     string
+	image    string
 	format   string
 	failOn   string
 	noStore  bool
@@ -120,6 +122,9 @@ type scanDeps struct {
 	// environment fallback.
 	githubToken func(ctx context.Context, db *sql.DB) (string, error)
 	newGitHub   func(token string) (gitHubClient, error)
+	// newImageSource builds the --image source. Tests inject a fake so no
+	// daemon is needed.
+	newImageSource func() sources.Source
 	// version is the bastion build version reported in SARIF.
 	version string
 	// progress receives the scan's progress lines (stderr in production).
@@ -144,6 +149,8 @@ func newScanCmd(root *rootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&opts.path, "path", "", "directory to scan")
 	cmd.Flags().StringVar(&opts.repo, "repo", "",
 		"GitHub repository to scan as owner/name[@ref]; requires a token from a saved connection or BASTION_GITHUB_TOKEN")
+	cmd.Flags().StringVar(&opts.image, "image", "",
+		"container image on the local Docker daemon to scan, for example nginx:latest")
 	cmd.Flags().StringVar(&opts.format, "format", scanFormatJSON,
 		"output format: "+scanFormatJSON+", "+scanFormatTable+", "+scanFormatSARIF+" or "+scanFormatCycloneDX)
 	cmd.Flags().BoolVar(&opts.noStore, "no-store", false, "print findings without writing to the database")
@@ -184,18 +191,25 @@ func newScanDeps(root *rootOptions) scanDeps {
 		newGitHub: func(token string) (gitHubClient, error) {
 			return githubclient.New(githubclient.Config{Token: token, Version: version})
 		},
-		version: version,
+		newImageSource: func() sources.Source { return docker.NewSource() },
+		version:        version,
 	}
 }
 
 // validate rejects flag combinations before any work starts: cobra only knows
 // the flags, not that exactly one target is required.
 func (o *scanOptions) validate() error {
+	targets := 0
+	for _, target := range []string{o.path, o.repo, o.image} {
+		if target != "" {
+			targets++
+		}
+	}
 	switch {
-	case o.path == "" && o.repo == "":
-		return errors.New("scan: one of --path or --repo is required")
-	case o.path != "" && o.repo != "":
-		return errors.New("scan: --path and --repo are mutually exclusive")
+	case targets == 0:
+		return errors.New("scan: one of --path, --repo or --image is required")
+	case targets > 1:
+		return errors.New("scan: --path, --repo and --image are mutually exclusive")
 	}
 	switch o.format {
 	case scanFormatJSON, scanFormatTable, scanFormatSARIF, scanFormatCycloneDX:
@@ -253,7 +267,8 @@ func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDep
 		asset findings.Asset
 		repo  *repoTarget
 	)
-	if opts.repo != "" {
+	switch {
+	case opts.repo != "":
 		resolved, err := resolveRepo(ctx, opts.repo, db, deps)
 		if err != nil {
 			return err
@@ -265,7 +280,10 @@ func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDep
 			DisplayName: repo.fullName,
 			Ref:         repo.fullName,
 		}
-	} else {
+	case opts.image != "":
+		kind = sources.KindImage
+		asset = imageAsset(opts.image)
+	default:
 		asset, err = pathAsset(opts.path)
 		if err != nil {
 			return err
@@ -427,7 +445,10 @@ func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, ass
 
 	scannerList := deps.newScanners()
 
-	srcs := map[sources.TargetKind]sources.Source{sources.KindPath: localpath.New()}
+	srcs := map[sources.TargetKind]sources.Source{
+		sources.KindPath:  localpath.New(),
+		sources.KindImage: deps.newImageSource(),
+	}
 	if repo != nil {
 		src, err := newGitHubSource(repo, deps)
 		if err != nil {
@@ -553,7 +574,8 @@ func storedAsset(ctx context.Context, db *sql.DB, kind sources.TargetKind, asset
 func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, scanOpts scanners.Options, progress *scanProgress, deps scanDeps) (scanOutput, error) {
 	src := sources.Source(localpath.New())
 	target := sources.Target{Kind: sources.KindPath, Ref: asset.Ref}
-	if kind == sources.KindRepo {
+	switch kind {
+	case sources.KindRepo:
 		if repo == nil {
 			return scanOutput{}, errors.New("scan: repo target was not resolved")
 		}
@@ -563,6 +585,9 @@ func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.
 		}
 		src = s
 		target = sources.Target{Kind: sources.KindRepo, AssetID: asset.ID, Ref: asset.Ref + "@" + repo.sha}
+	case sources.KindImage:
+		src = deps.newImageSource()
+		target = sources.Target{Kind: sources.KindImage, AssetID: asset.ID, Ref: asset.Ref}
 	}
 
 	progress.stage(jobs.StageFetch, "")
@@ -768,6 +793,17 @@ func pathAsset(dir string) (findings.Asset, error) {
 		DisplayName: filepath.Base(ref),
 		Ref:         ref,
 	}, nil
+}
+
+// imageAsset builds the asset an image scan belongs to. The ref is the image
+// reference the daemon knows it by.
+func imageAsset(ref string) findings.Asset {
+	ref = strings.TrimSpace(ref)
+	return findings.Asset{
+		Kind:        findings.AssetKindImage,
+		DisplayName: ref,
+		Ref:         ref,
+	}
 }
 
 // scanTarget runs every scanner that supports kind, normalizes the output and

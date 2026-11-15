@@ -333,7 +333,7 @@ export function FindingsPage() {
   if (assets.isError) {
     return (
       <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">Projects failed to load</h2>
+        <h2 className="text-[13px] font-semibold">Repositories failed to load</h2>
         <ErrorNote error={assets.error} />
       </section>
     )
@@ -342,11 +342,11 @@ export function FindingsPage() {
   if (assetList.length === 0) {
     return (
       <EmptyState
-        title="No projects yet"
-        body="Findings come from each project's latest succeeded scan. Add a repository or a local path in Projects, run a scan, then come back to see vulnerabilities, secrets and the fixed version that closes each finding."
+        title="No repositories yet"
+        body="Findings come from each asset's latest succeeded scan. Add a repository or a local path in Repositories, run a scan, then come back to see vulnerabilities, secrets and the fixed version that closes each finding."
       >
-        <Link to="/projects" className={buttonVariants()}>
-          Go to projects
+        <Link to="/repositories" className={buttonVariants()}>
+          Go to repositories
         </Link>
       </EmptyState>
     )
@@ -594,8 +594,8 @@ export function FindingsPage() {
             {filtered || status === 'ignored'
               ? 'Clear a filter, or switch Status to Open to see the findings still waiting for a decision.'
               : selected === undefined
-                ? 'Either no project has a succeeded scan yet, or their latest scans found nothing open. Run a scan from Projects, then reload this page.'
-                : 'Either the project has no succeeded scan yet, or its latest scan found nothing open. Run a scan from Projects, then reload this page.'}
+                ? 'Either no asset has a succeeded scan yet, or their latest scans found nothing open. Run a scan from Repositories, then reload this page.'
+                : 'Either the asset has no succeeded scan yet, or its latest scan found nothing open. Run a scan from Repositories, then reload this page.'}
           </p>
         </section>
       ) : null}

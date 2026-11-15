@@ -78,6 +78,15 @@ func (c *cancelingScanner) Normalize(*scanners.RawResult, findings.Asset) ([]fin
 	return nil, nil, nil
 }
 
+// fakeImageSource resolves an image target without a Docker daemon.
+type fakeImageSource struct{}
+
+func (fakeImageSource) Kind() sources.TargetKind { return sources.KindImage }
+
+func (fakeImageSource) Fetch(_ context.Context, t sources.Target) (*sources.Workspace, error) {
+	return &sources.Workspace{Image: t.Ref}, nil
+}
+
 // testScanDeps returns production code paths with the keyring faked out: the
 // database is a real SQLite file and Ctrl-C is a plain cancelable context.
 func testScanDeps(t *testing.T, dataDir string) scanDeps {
@@ -97,9 +106,10 @@ func testScanDeps(t *testing.T, dataDir string) scanDeps {
 		// HMACs anything, so it only has to be present.
 		hmacKey: func() ([]byte, error) { return bytes.Repeat([]byte{1}, 32), nil },
 		// --repo tests replace these with fakes; a path scan never calls them.
-		githubToken: nil,
-		newGitHub:   nil,
-		version:     "test",
+		githubToken:    nil,
+		newGitHub:      nil,
+		newImageSource: func() sources.Source { return fakeImageSource{} },
+		version:        "test",
 	}
 }
 
@@ -400,11 +410,16 @@ func TestScanOptionsValidate(t *testing.T) {
 		{
 			name: "neither target",
 			opts: scanOptions{format: scanFormatJSON},
-			want: "one of --path or --repo",
+			want: "one of --path, --repo or --image",
 		},
 		{
 			name: "both targets",
 			opts: scanOptions{path: "/tmp", repo: "acme/widgets", format: scanFormatJSON},
+			want: "mutually exclusive",
+		},
+		{
+			name: "path and image",
+			opts: scanOptions{path: "/tmp", image: "nginx:latest", format: scanFormatJSON},
 			want: "mutually exclusive",
 		},
 		{
@@ -441,6 +456,7 @@ func TestScanOptionsValidate(t *testing.T) {
 		{path: "/tmp", format: scanFormatJSON},
 		{path: "/tmp", format: scanFormatTable, failOn: "high"},
 		{repo: "acme/widgets", format: scanFormatSARIF, failOn: "low"},
+		{image: "nginx:latest", format: scanFormatJSON},
 		{path: "/tmp", format: scanFormatJSON, skipDirs: []string{"testdata", "web/dist"}},
 	} {
 		if err := opts.validate(); err != nil {
@@ -691,6 +707,32 @@ func repoScanDeps(t *testing.T, dataDir, baseURL string) scanDeps {
 		return githubclient.New(githubclient.Config{Token: token, BaseURL: baseURL})
 	}
 	return deps
+}
+
+func TestRunScanImageNoStore(t *testing.T) {
+	deps := testScanDeps(t, filepath.Join(t.TempDir(), "data"))
+	deps.openDB = func(context.Context, string) (*sql.DB, error) {
+		t.Fatal("--no-store opened the database")
+		return nil, nil
+	}
+
+	var out bytes.Buffer
+	if err := runScan(context.Background(), &out, &scanOptions{
+		image: "nginx:latest", format: scanFormatJSON, noStore: true,
+	}, deps); err != nil {
+		t.Fatalf("scan --image --no-store: %v\n%s", err, out.String())
+	}
+
+	var doc scanOutput
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatalf("decode scan output: %v\n%s", err, out.String())
+	}
+	if doc.Asset.Kind != findings.AssetKindImage || doc.Asset.Ref != "nginx:latest" {
+		t.Fatalf("asset = %+v, want the image asset nginx:latest", doc.Asset)
+	}
+	if len(doc.Findings) != 1 {
+		t.Fatalf("findings = %d, want 1", len(doc.Findings))
+	}
 }
 
 func TestRunScanRepoNoStore(t *testing.T) {

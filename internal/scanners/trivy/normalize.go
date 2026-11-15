@@ -30,11 +30,20 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 	// inventory by package name (plus ecosystem when the report states one).
 	versions := packageVersions(report)
 
+	// Image results name the image (and its OS) as the target, not a manifest
+	// path, so their locations come from the affected package instead.
+	image := report.ArtifactType == artifactTypeContainerImage
+
 	fs := make([]findings.Finding, 0)
 	pkgs := make([]findings.Package, 0)
 	for _, res := range report.Results {
 		target := findings.NormalizeLocation(raw.WorkspaceDir, res.Target)
 		eco := ecosystem(res)
+		packagePath := target
+		if image {
+			// An image has no manifest; the package itself is the location.
+			packagePath = ""
+		}
 
 		for _, p := range res.Packages {
 			pkgs = append(pkgs, findings.Package{
@@ -42,12 +51,16 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 				Name:      p.Name,
 				Version:   p.Version,
 				PURL:      p.Identifier.PURL,
-				Path:      target,
+				Path:      packagePath,
 				Direct:    directPtr(p.Relationship),
 			})
 		}
 
 		for _, v := range res.Vulnerabilities {
+			location := target
+			if image {
+				location = imageLocation(v.PkgPath, v.PkgName)
+			}
 			f := findings.Finding{
 				AssetID:        asset.ID,
 				Type:           findings.TypeVulnerability,
@@ -58,7 +71,7 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 				PackageVersion: v.InstalledVersion,
 				FixedVersion:   v.FixedVersion,
 				Ecosystem:      eco,
-				Location:       target,
+				Location:       location,
 				CVSS:           maxCVSS(v.CVSS),
 				Description:    v.Description,
 				References:     references(v.PrimaryURL, v.References),
@@ -100,6 +113,10 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 			case "notice", "permissive", "unencumbered":
 				continue
 			}
+			location := findings.NormalizeLocation(raw.WorkspaceDir, l.FilePath)
+			if image {
+				location = imageLocation(l.FilePath, l.PkgName)
+			}
 			// The remaining licences keep Trivy's upstream severity, mapped
 			// onto the §5 scale unchanged. That severity is a policy category,
 			// not exploit risk: the dashboard surfaces it next to the same
@@ -114,7 +131,7 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 				PackageName:    l.PkgName,
 				PackageVersion: lookupVersion(versions, eco, l.PkgName),
 				Ecosystem:      eco,
-				Location:       findings.NormalizeLocation(raw.WorkspaceDir, l.FilePath),
+				Location:       location,
 				Description:    l.Category,
 				References:     references(l.Link, nil),
 				Scanner:        s.Name(),
@@ -127,6 +144,19 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 	findings.SortFindings(fs)
 	findings.SortPackages(pkgs)
 	return fs, pkgs, nil
+}
+
+// artifactTypeContainerImage is Trivy's ArtifactType for an image scan.
+const artifactTypeContainerImage = "container_image"
+
+// imageLocation is the location of an image finding: the package path inside
+// the image, or its name when the package has no path (OS packages). A layer
+// digest is never used: a rebuild would make unchanged findings look new.
+func imageLocation(pkgPath, pkgName string) string {
+	if pkgPath != "" {
+		return findings.NormalizeLocation("", pkgPath)
+	}
+	return findings.NormalizeLocation("", pkgName)
 }
 
 // causeID returns the misconfiguration's resource or cause identifier. It is
@@ -298,6 +328,7 @@ func directPtr(relationship string) *bool {
 
 type report struct {
 	SchemaVersion int      `json:"SchemaVersion"`
+	ArtifactType  string   `json:"ArtifactType"`
 	Results       []result `json:"Results"`
 }
 
@@ -326,6 +357,7 @@ type vuln struct {
 	VulnerabilityID  string               `json:"VulnerabilityID"`
 	VendorIDs        []string             `json:"VendorIDs"`
 	PkgName          string               `json:"PkgName"`
+	PkgPath          string               `json:"PkgPath"`
 	InstalledVersion string               `json:"InstalledVersion"`
 	FixedVersion     string               `json:"FixedVersion"`
 	Title            string               `json:"Title"`

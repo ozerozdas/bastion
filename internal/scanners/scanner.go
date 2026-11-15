@@ -24,6 +24,9 @@ type Options struct {
 	// scanned workspace root (e.g. "testdata"). Their findings must not appear
 	// in the result. Empty scans everything.
 	SkipDirs []string
+	// DockerHost is the local Docker daemon host image scans read from, in the
+	// form "unix:///var/run/docker.sock". Empty lets the scanner resolve it.
+	DockerHost string
 	// Progress receives the pipeline stage an adapter is waiting on before it
 	// can start scanning, e.g. PhaseWaitingDB while the vulnerability DB is
 	// downloaded. It is called from the scanning goroutine and must not block.

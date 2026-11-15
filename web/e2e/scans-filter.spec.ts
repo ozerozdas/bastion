@@ -46,7 +46,7 @@ test('keeps the Scans project filter in the URL (#54)', async ({
   ).toBeVisible()
   const origin = new URL(page.url()).origin
 
-  await page.goto(`${origin}/projects?tab=scans`)
+  await page.goto(`${origin}/repositories?tab=scans`)
   const filter = page.locator('#scan-asset-filter')
   const rows = page.locator('tbody tr')
   await expect(rows).toHaveCount(2)
@@ -59,7 +59,7 @@ test('keeps the Scans project filter in the URL (#54)', async ({
   // Selecting a project updates the URL.
   await filter.selectOption(String(beta.id))
   await expect(page).toHaveURL(
-    `${origin}/projects?tab=scans&asset=${String(beta.id)}`,
+    `${origin}/repositories?tab=scans&asset=${String(beta.id)}`,
   )
   await expect(rows).toHaveCount(1)
 
@@ -70,12 +70,12 @@ test('keeps the Scans project filter in the URL (#54)', async ({
 
   // All projects clears it.
   await filter.selectOption('')
-  await expect(page).toHaveURL(`${origin}/projects?tab=scans`)
+  await expect(page).toHaveURL(`${origin}/repositories?tab=scans`)
   await expect(rows).toHaveCount(2)
 
   // A removed project's id is dropped rather than showing an empty list.
-  await page.goto(`${origin}/projects?tab=scans&asset=999`)
-  await expect(page).toHaveURL(`${origin}/projects?tab=scans`)
+  await page.goto(`${origin}/repositories?tab=scans&asset=999`)
+  await expect(page).toHaveURL(`${origin}/repositories?tab=scans`)
   await expect(filter).toHaveValue('')
 
   expect(problems).toEqual([])

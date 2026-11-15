@@ -2,6 +2,7 @@ package trivy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -31,9 +32,9 @@ func (*Scanner) Name() string { return "trivy" }
 func (*Scanner) Version() string { return Version }
 
 // Supports reports whether Trivy can scan target kind k. Trivy scans a
-// filesystem workspace, which both local paths and checked-out repos provide.
+// filesystem workspace (local paths and checked-out repos) and local images.
 func (*Scanner) Supports(k sources.TargetKind) bool {
-	return k == sources.KindPath || k == sources.KindRepo
+	return k == sources.KindPath || k == sources.KindRepo || k == sources.KindImage
 }
 
 // Serialized reports that Trivy's library state is process-global, so the job
@@ -42,15 +43,15 @@ func (*Scanner) Supports(k sources.TargetKind) bool {
 // worker while a scan waits for that lock.
 func (*Scanner) Serialized() bool { return true }
 
-// Scan runs the filesystem scan against ws. Trivy's cache (vulnerability DB,
-// misconfiguration checks) lives under opts.CacheDir.
+// Scan runs the filesystem or image scan against ws. Trivy's cache
+// (vulnerability DB, misconfiguration checks) lives under opts.CacheDir.
 func (s *Scanner) Scan(ctx context.Context, ws *sources.Workspace, opts scanners.Options) (*scanners.RawResult, error) {
 	if ws == nil {
 		return nil, errors.New("trivy: workspace is required")
 	}
 	if s.manager != nil {
-		// A scan without the DB makes Trivy download it itself, inside ScanFS,
-		// where nobody can see it happen. Report the wait and share the
+		// A scan without the DB makes Trivy download it itself, inside the
+		// scan, where nobody can see it happen. Report the wait and share the
 		// download with any other caller instead.
 		if s.manager.Status().State != DBReady {
 			if opts.Progress != nil {
@@ -61,7 +62,8 @@ func (s *Scanner) Scan(ctx context.Context, ws *sources.Workspace, opts scanners
 			}
 		}
 	}
-	raw, err := ScanFS(ctx, ws.Dir, opts.CacheDir, opts.SkipDirs)
+
+	raw, err := s.scan(ctx, ws, opts)
 	if err != nil {
 		return nil, fmt.Errorf("trivy: scan: %w", err)
 	}
@@ -71,4 +73,23 @@ func (s *Scanner) Scan(ctx context.Context, ws *sources.Workspace, opts scanners
 		WorkspaceDir: ws.Dir,
 		Raw:          raw,
 	}, nil
+}
+
+// scan dispatches on the workspace: an image has no directory.
+func (s *Scanner) scan(ctx context.Context, ws *sources.Workspace, opts scanners.Options) (json.RawMessage, error) {
+	switch {
+	case ws.Image != "":
+		// The source resolved the daemon when it fetched the image; the
+		// option is only a fallback for callers that built a workspace
+		// themselves.
+		host := ws.DockerHost
+		if host == "" {
+			host = opts.DockerHost
+		}
+		return ScanImage(ctx, ws.Image, opts.CacheDir, host)
+	case ws.Dir != "":
+		return ScanFS(ctx, ws.Dir, opts.CacheDir, opts.SkipDirs)
+	default:
+		return nil, errors.New("workspace has neither a directory nor an image")
+	}
 }

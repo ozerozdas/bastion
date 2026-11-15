@@ -141,7 +141,7 @@ export function DashboardPage() {
                 Connect GitHub
               </Link>
               <Link
-                to="/projects"
+                to="/repositories"
                 className={buttonVariants({ variant: 'outline' })}
               >
                 Add a local path

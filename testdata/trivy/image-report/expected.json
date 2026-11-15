@@ -1,0 +1,62 @@
+{
+  "findings": [
+    {
+      "asset_id": 1,
+      "type": "license",
+      "rule_id": "GPL-3.0-only",
+      "severity": "high",
+      "title": "GPL-3.0-only license",
+      "package_name": "musl",
+      "location": "musl",
+      "description": "restricted",
+      "scanner": "trivy",
+      "scanners": [
+        "trivy"
+      ],
+      "fingerprint": "3fbf7f124130f94e466523fa3b33f01bcfa48642c03fb4b37b7fe3c10a3cf187",
+      "occurrences": 1
+    },
+    {
+      "asset_id": 1,
+      "type": "vulnerability",
+      "rule_id": "CVE-2024-1234",
+      "severity": "high",
+      "title": "musl: buffer overflow",
+      "package_name": "musl",
+      "package_version": "1.2.5-r0",
+      "fixed_version": "1.2.5-r1",
+      "ecosystem": "os-apk",
+      "location": "musl",
+      "cvss": 7.5,
+      "description": "A crafted input overflows a buffer in musl.",
+      "references": [
+        "https://avd.aquasec.com/nvd/cve-2024-1234",
+        "https://nvd.nist.gov/vuln/detail/CVE-2024-1234"
+      ],
+      "scanner": "trivy",
+      "scanners": [
+        "trivy"
+      ],
+      "fingerprint": "70e3109e56f1dbdf95cd40ec7e7c8d8956e42b9cc42201c0763365def2f205ac",
+      "occurrences": 1
+    },
+    {
+      "asset_id": 1,
+      "type": "vulnerability",
+      "rule_id": "CVE-2024-5678",
+      "severity": "medium",
+      "title": "requests: certificate verification bypass",
+      "package_name": "requests",
+      "package_version": "2.31.0",
+      "ecosystem": "pypi",
+      "location": "usr/local/lib/python3.12/site-packages/requests",
+      "scanner": "trivy",
+      "scanners": [
+        "trivy"
+      ],
+      "fingerprint": "ad8f54750df815adfad36713bab861d8aa78c26ebe2a8e49090a5b7b5c3d1ccd",
+      "occurrences": 1
+    }
+  ],
+  "packages": []
+}

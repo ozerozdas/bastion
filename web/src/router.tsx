@@ -15,6 +15,7 @@ import {
   parseScanDiffSearch,
 } from './lib/urls'
 import { ConnectionsPage } from './pages/connections'
+import { ContainersPage } from './pages/containers'
 import { DashboardPage } from './pages/dashboard'
 import { FindingsPage } from './pages/findings'
 import { ProjectsPage } from './pages/projects'
@@ -47,12 +48,29 @@ const connectionsRoute = createRoute({
   component: ConnectionsPage,
 })
 
-const projectsRoute = createRoute({
+const containersRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/projects',
-  // ?tab=scans shows the scan list; without it the project list is shown.
+  path: '/containers',
+  component: ContainersPage,
+})
+
+const repositoriesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/repositories',
+  // ?tab=scans shows the scan list; without it the repository list is shown.
   validateSearch: parseProjectsTabSearch,
   component: ProjectsPage,
+})
+
+// Old links keep working; the query string (Scans tab, asset filter) carries
+// over to the renamed route.
+const legacyProjectsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects',
+  validateSearch: parseProjectsTabSearch,
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: '/repositories', search, replace: true })
+  },
 })
 
 const findingsRoute = createRoute({
@@ -100,14 +118,16 @@ const historyRoute = createRoute({
   path: '/scan-history',
   // Scan History is the Scans tab now (#88); the old URL opens that tab.
   beforeLoad: () => {
-    throw redirect({ to: '/projects', search: { tab: 'scans' }, replace: true })
+    throw redirect({ to: '/repositories', search: { tab: 'scans' }, replace: true })
   },
 })
 
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   connectionsRoute,
-  projectsRoute,
+  containersRoute,
+  repositoriesRoute,
+  legacyProjectsRoute,
   findingsRoute,
   scanDiffRoute,
   legacyReportsRoute,

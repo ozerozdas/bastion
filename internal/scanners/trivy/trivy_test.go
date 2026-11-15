@@ -90,6 +90,34 @@ func TestScanArgs(t *testing.T) {
 	}
 }
 
+// TestImageScanArgs pins the image scan surface: only the docker source is
+// enabled, so a scan can never pull from a registry.
+func TestImageScanArgs(t *testing.T) {
+	args := imageScanArgs("/tmp/cache", "unix:///var/run/docker.sock")
+
+	valueOf := func(name string) (string, bool) {
+		i := slices.Index(args, name)
+		if i < 0 || i+1 >= len(args) {
+			return "", false
+		}
+		return args[i+1], true
+	}
+	if got, ok := valueOf("--image-src"); !ok || got != "docker" {
+		t.Fatalf("--image-src = %q (found %v), want docker", got, ok)
+	}
+	if got, ok := valueOf("--docker-host"); !ok || got != "unix:///var/run/docker.sock" {
+		t.Fatalf("--docker-host = %q (found %v), want the socket", got, ok)
+	}
+	if got, _ := valueOf("--format"); got != "json" {
+		t.Fatalf("--format = %q, want json", got)
+	}
+
+	// An empty host is left to Trivy's own resolution instead of an empty flag.
+	if slices.Contains(imageScanArgs("/tmp/cache", ""), "--docker-host") {
+		t.Fatal("--docker-host must be omitted when the host is empty")
+	}
+}
+
 // TestSkipPatterns pins the semantics of --skip-dirs for Trivy: an entry
 // relative to the scan root becomes an absolute path under that root, which
 // Trivy's walker turns back into the root-relative path it matches on. Passing

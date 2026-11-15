@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ozerozdas/bastion/internal/findings"
@@ -104,6 +105,65 @@ func TestMaxCVSSIsDeterministic(t *testing.T) {
 }
 
 func ptr(v float64) *float64 { return &v }
+
+// TestNormalizeImageUsesPackagePath pins image locations: an OS package has no
+// path and uses its name, a language package uses PkgPath, and neither ever
+// falls back to the image target or a layer digest.
+func TestNormalizeImageUsesPackagePath(t *testing.T) {
+	const layer = "sha256:deadbeef"
+	input := `{
+		"SchemaVersion": 2,
+		"ArtifactType": "container_image",
+		"Results": [
+			{
+				"Target": "alpine:3.20 (alpine 3.20.3)",
+				"Class": "os-pkgs",
+				"Type": "alpine",
+				"Vulnerabilities": [{
+					"VulnerabilityID": "CVE-2024-1234",
+					"PkgName": "musl",
+					"InstalledVersion": "1.2.5-r0",
+					"Severity": "HIGH",
+					"LayerDigest": "` + layer + `"
+				}]
+			},
+			{
+				"Target": "usr/local/lib/python3.12/site-packages",
+				"Class": "lang-pkgs",
+				"Type": "python-pkg",
+				"Vulnerabilities": [{
+					"VulnerabilityID": "CVE-2024-5678",
+					"PkgName": "requests",
+					"PkgPath": "usr/local/lib/python3.12/site-packages/requests",
+					"InstalledVersion": "2.31.0",
+					"Severity": "MEDIUM",
+					"LayerDigest": "` + layer + `"
+				}]
+			}
+		]
+	}`
+
+	fs, _, err := New().Normalize(&scanners.RawResult{Raw: []byte(input)}, findings.Asset{ID: 1})
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	locations := make(map[string]string, len(fs))
+	for _, f := range fs {
+		locations[f.RuleID] = f.Location
+		if f.LayerDigest != "" {
+			t.Errorf("%s layer digest = %q, want empty", f.RuleID, f.LayerDigest)
+		}
+		if f.Location == layer || strings.Contains(f.Location, "sha256:") {
+			t.Errorf("%s location = %q, want a package path or name", f.RuleID, f.Location)
+		}
+	}
+	if got := locations["CVE-2024-1234"]; got != "musl" {
+		t.Errorf("OS package location = %q, want musl", got)
+	}
+	if got := locations["CVE-2024-5678"]; got != "usr/local/lib/python3.12/site-packages/requests" {
+		t.Errorf("language package location = %q, want its PkgPath", got)
+	}
+}
 
 func TestNormalizeLicenseVersionIgnoresTargetPath(t *testing.T) {
 	// The license entry is reported under "LICENSES/npm.txt" while the package

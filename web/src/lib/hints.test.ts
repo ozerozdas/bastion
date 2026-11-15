@@ -29,10 +29,10 @@ describe('suggestFix', () => {
 
   it('falls back to the Scans tab for anything else', () => {
     expect(suggestFix('gitleaks: exit status 1')).toBe(
-      'See the Scans tab under Projects for details.',
+      'See the Scans tab under Repositories for details.',
     )
     expect(suggestFix(undefined)).toBe(
-      'See the Scans tab under Projects for details.',
+      'See the Scans tab under Repositories for details.',
     )
   })
 })

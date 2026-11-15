@@ -207,6 +207,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/docker/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List images on the local Docker daemon.
+         * @description `available` is false when no daemon was found; the response is still
+         *     200 with an empty list, because a machine without Docker is a normal
+         *     state, not an error. Only tagged images are listed: an untagged image
+         *     cannot be addressed by a scan.
+         */
+        get: operations["getDockerImages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assets": {
         parameters: {
             query?: never;
@@ -948,7 +971,7 @@ export interface components {
         };
         /**
          * Asset
-         * @description One tracked repository or path.
+         * @description One tracked repository, path or image.
          */
         Asset: {
             /** Format: int64 */
@@ -962,10 +985,10 @@ export interface components {
             display_name: string;
             /**
              * @description Canonical reference: `owner/repo` for repositories, the absolute
-             *     directory for paths.
+             *     directory for paths, the image reference for images.
              */
             ref: string;
-            /** @description Branch the repository tracks; absent for paths. */
+            /** @description Branch the repository tracks; absent for paths and images. */
             default_branch?: string;
             /** Format: date-time */
             created_at: string;
@@ -987,18 +1010,48 @@ export interface components {
              */
             finished_at?: string;
         };
+        /**
+         * DockerImageList
+         * @description The local daemon's state and its tagged images. `available` is false
+         *     when no daemon was found.
+         */
+        DockerImageList: {
+            available: boolean;
+            /**
+             * @description The daemon host that answered the probe, for example
+             *     `unix:///var/run/docker.sock`. Empty when no daemon was reached.
+             */
+            host: string;
+            images: components["schemas"]["DockerImage"][];
+        };
+        /**
+         * DockerImage
+         * @description One tagged image on the local daemon.
+         */
+        DockerImage: {
+            /** @description The image tag, for example `nginx:latest`. */
+            reference: string;
+            /** @description The image's content-addressable id. */
+            id: string;
+            /** Format: int64 */
+            size_bytes: number;
+            /** Format: date-time */
+            created_at: string;
+        };
         /** CreateAssetRequest */
         CreateAssetRequest: {
             /**
              * @description `repo` takes an `owner/repo` ref; `path` takes an existing absolute
-             *     directory. Images arrive in a later phase.
+             *     directory; `image` takes an image reference the local Docker daemon
+             *     holds.
              * @enum {string}
              */
-            kind: "repo" | "path";
+            kind: "repo" | "path" | "image";
             /**
-             * @description `owner/repo` for repositories, an absolute directory for paths.
+             * @description `owner/repo` for repositories, an absolute directory for paths, an image reference for images.
              * @example octo/hello
              * @example /Users/me/src/hello
+             * @example nginx:latest
              */
             ref: string;
             /**
@@ -1485,6 +1538,30 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getDockerImages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The daemon state and its tagged images. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DockerImageList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
         };
     };
     listAssets: {

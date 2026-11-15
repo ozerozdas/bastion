@@ -81,10 +81,10 @@ export function parseScanDiffSearch(
   return {}
 }
 
-/** ProjectsTab names the two views of the Projects section (#88). */
+/** ProjectsTab names the two views of the Repositories section (#88). */
 export type ProjectsTab = 'projects' | 'scans'
 
-/** ProjectsSearch is the Projects route's search params; the default tab is absent. */
+/** ProjectsSearch is the Repositories route's search params; the default tab is absent. */
 export type ProjectsSearch = {
   tab?: 'scans'
   /** The Scans tab's project filter (#54); only kept on that tab. */
@@ -92,10 +92,11 @@ export type ProjectsSearch = {
 }
 
 /**
- * parseProjectsTabSearch reads ?tab=scans from the Projects route. Every other
- * value, including a missing one, is the Projects tab, so /projects stays
- * canonical and a mistyped tab never hides the project list. ?asset= filters
- * the Scans tab and is dropped on the Projects tab, which has no filter.
+ * parseProjectsTabSearch reads ?tab=scans from the Repositories route. Every
+ * other value, including a missing one, is the Repositories tab, so
+ * /repositories stays canonical and a mistyped tab never hides the list.
+ * ?asset= filters the Scans tab and is dropped on the Repositories tab, which
+ * has no filter.
  */
 export function parseProjectsTabSearch(
   search: Record<string, unknown>,
