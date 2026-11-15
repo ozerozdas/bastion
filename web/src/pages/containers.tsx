@@ -18,6 +18,7 @@ import {
   type EcrRepository,
   type EcrTag,
 } from '../api/ecr'
+import { useScanEvents, type LiveScan } from '../api/events'
 import { useStartScans, type Scan } from '../api/scans'
 import {
   DataTable,
@@ -28,6 +29,7 @@ import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { SeverityCountBadges } from '../components/severity-counts'
+import { isLiveActive, liveDetail } from '../lib/live-scan'
 import { relativeTime } from '../lib/time'
 
 /** statusTone maps a scan status onto the badge colours Repositories uses. */
@@ -54,6 +56,7 @@ export function ContainersPage() {
   const images = useQuery(dockerImagesQuery)
   const assets = useQuery(assetsQuery)
   const connections = useQuery(connectionsQuery)
+  const live = useScanEvents()
   const scanImage = useScanDockerImage()
   const start = useStartScans()
   const archive = useArchiveAsset()
@@ -125,7 +128,12 @@ export function ContainersPage() {
       header: 'Last scan',
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
-      cell: (row) => <ScanCell asset={row.asset} />,
+      cell: (row) => (
+        <ScanCell
+          asset={row.asset}
+          live={row.asset ? live.get(row.asset.id) : undefined}
+        />
+      ),
     },
     {
       id: 'repository',
@@ -153,9 +161,7 @@ export function ContainersPage() {
       cellClassName: 'pl-3 align-top',
       cell: (row) => {
         const asset = row.asset
-        const running =
-          asset?.last_scan?.status === 'queued' ||
-          asset?.last_scan?.status === 'running'
+        const running = asset !== undefined && isRunning(asset, live.get(asset.id))
         return (
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             <Button
@@ -301,7 +307,9 @@ export function ContainersPage() {
         assets={assets.data ?? []}
         connections={connections.data ?? []}
         pending={connections.isPending}
-      />    </>
+        live={live}
+      />
+    </>
   )
 }
 
@@ -314,10 +322,12 @@ function EcrSection({
   assets,
   connections,
   pending,
+  live,
 }: {
   assets: Asset[]
   connections: Connection[]
   pending: boolean
+  live: Map<number, LiveScan>
 }) {
   const aws = connections.filter((connection) => connection.kind === 'aws')
   // Images whose connection was removed before removal archived them: they
@@ -359,6 +369,7 @@ function EcrSection({
           connection={connection}
           assets={assets}
           repos={assets.filter((asset) => asset.kind === 'repo')}
+          live={live}
         />
       ))}
       {orphaned.length > 0 ? <OrphanedImages assets={orphaned} /> : null}
@@ -457,10 +468,12 @@ function EcrConnection({
   connection,
   assets,
   repos,
+  live,
 }: {
   connection: Connection
   assets: Asset[]
   repos: Asset[]
+  live: Map<number, LiveScan>
 }) {
   const discover = useQuery(ecrDiscoverQuery(connection.id))
   const scan = useScanEcrImage(connection.id)
@@ -519,7 +532,12 @@ function EcrConnection({
       header: 'Last scan',
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
-      cell: (row) => <ScanCell asset={row.asset} />,
+      cell: (row) => (
+        <ScanCell
+          asset={row.asset}
+          live={row.asset ? live.get(row.asset.id) : undefined}
+        />
+      ),
     },
     {
       id: 'repository',
@@ -547,9 +565,7 @@ function EcrConnection({
       cellClassName: 'pl-3 align-top',
       cell: (row) => {
         const asset = row.asset
-        const running =
-          asset?.last_scan?.status === 'queued' ||
-          asset?.last_scan?.status === 'running'
+        const running = asset !== undefined && isRunning(asset, live.get(asset.id))
         return (
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             <Button
@@ -803,24 +819,47 @@ function ConfirmRemove({
   )
 }
 
+/** isRunning reports whether a tracked image's scan is still in flight. */
+function isRunning(asset: Asset, live: LiveScan | undefined): boolean {
+  if (isLiveActive(live)) {
+    return true
+  }
+  return (
+    asset.last_scan?.status === 'queued' || asset.last_scan?.status === 'running'
+  )
+}
+
 /** ScanCell shows the tracked asset's last scan, or that it is not tracked. */
-function ScanCell({ asset }: { asset: Asset | undefined }) {
+function ScanCell({
+  asset,
+  live,
+}: {
+  asset: Asset | undefined
+  live: LiveScan | undefined
+}) {
   if (!asset) {
     return <Badge>not tracked</Badge>
   }
-  if (!asset.last_scan) {
+  const lastScan = asset.last_scan
+  // A live event wins over the list row until the finished event refetches it.
+  const active = isLiveActive(live)
+  const status = active && live ? live.status : lastScan?.status
+  if (!status) {
     return <Badge>never scanned</Badge>
   }
   return (
     <span className="inline-flex items-center gap-2">
-      <Badge tone={statusTone[asset.last_scan.status]}>
-        {asset.last_scan.status}
-      </Badge>
+      <Badge tone={statusTone[status]}>{status}</Badge>
       <span className="text-xs text-faint">
-        {asset.last_scan.finished_at
-          ? relativeTime(asset.last_scan.finished_at)
-          : ''}
+        {active
+          ? 'in progress'
+          : lastScan?.finished_at
+            ? relativeTime(lastScan.finished_at)
+            : ''}
       </span>
+      {active && live ? (
+        <span className="text-xs text-muted">{liveDetail(live)}</span>
+      ) : null}
     </span>
   )
 }
