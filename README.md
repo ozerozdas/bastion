@@ -83,6 +83,7 @@ bastion scan    --path DIR | --repo owner/name[@ref] | --image IMAGE
                 [--format json|table|sarif|cyclonedx] [--fail-on critical|high|medium|low]
                 [--skip-dirs DIR]...  [--no-store]
 bastion doctor  [--json]
+bastion update  [--check] [--force]
 bastion version
 ```
 
@@ -137,7 +138,8 @@ it on: Trivy runs with `--disable-telemetry --skip-version-check`, scans query
 | `sts.<region>.amazonaws.com` | Only on user action: test an AWS connection | `GetCallerIdentity`, signed with the credentials of the AWS profile you chose; the account id and ARN come back |
 | `ecr.<region>.amazonaws.com` | Only on user action: discover ECR repositories, or start an ECR image scan | `DescribeRepositories`, `DescribeImages` and `GetAuthorizationToken`, signed with the credentials of the AWS profile you chose; repository names, tag names, digests and push times come back |
 | `<account>.dkr.ecr.<region>.amazonaws.com` | Only during an ECR image scan | Docker Registry HTTP API pull of the pinned digest, authenticated with the short-lived ECR token from `GetAuthorizationToken` (held in memory for the scan, never stored or logged) |
-| `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed and nothing else is parsed |
+| `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI; or on explicit `bastion update` | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed and nothing else is parsed |
+| `github.com/ozerozdas/bastion/releases/download` | Only on explicit `bastion update` | The release archive for your OS/arch and its `checksums.txt` (redirects to GitHub's object storage). Sends your IP and `User-Agent: bastion/<version>`; the SHA-256 is verified before the binary is replaced |
 | `epss.empiricalsecurity.com` | At most once a day, only after you turn EPSS scores on in the UI | The current EPSS feed: a ~2.8 MB gzipped CSV of per-CVE exploit probabilities and percentiles. Sends your IP and `User-Agent: bastion/<version>`; it is cached locally and never re-uploaded |
 
 Bastion also talks to the local Docker daemon over its Unix socket
