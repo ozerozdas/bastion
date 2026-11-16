@@ -80,7 +80,7 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-[13px]">
+      <table className="w-full text-left text-[0.8125rem]">
         <thead className="text-xs text-faint">
           <tr>
             {selection ? (

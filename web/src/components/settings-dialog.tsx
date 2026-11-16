@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useState } from 'react'
 
 import { epssQuery, useSetEPSSEnabled } from '../api/epss'
 import { licencePolicyQuery } from '../api/licence-policy'
@@ -7,19 +7,30 @@ import { outdatedQuery, useSetOutdatedEnabled } from '../api/outdated'
 import { reachabilityQuery, useSetReachabilityEnabled } from '../api/reachability'
 import { sastQuery, useSetSASTEnabled } from '../api/sast'
 import { updateQuery, useSetUpdateConsent } from '../api/update'
+import { AppearanceSettings } from './appearance-settings'
 import { useDrawerFocus } from './drawer-focus'
 import { LicencePolicyEditor } from './licence-policy-card'
-import { Badge } from './ui/badge'
+import { SettingSection } from './setting-section'
 import { Button } from './ui/button'
+import { Tabs, type TabItem } from './ui/tabs'
+
+type ConfigurationTab = 'modules' | 'appearance'
+
+const configurationTabs: TabItem<ConfigurationTab>[] = [
+  { value: 'modules', label: 'Modules' },
+  { value: 'appearance', label: 'Appearance' },
+]
 
 /**
- * SettingsDialog holds the opt-in modules and the global policy that used to be
- * sidebar cards (#139). Each section says what it does and what it downloads
- * before the user turns it on, and separates the state (a badge) from the action
- * (a button).
+ * SettingsDialog is the Configuration modal (#139, #142): the opt-in modules
+ * and the global policy that used to be sidebar cards, plus the appearance
+ * preferences. Each module says what it does and what it downloads before the
+ * user turns it on, and separates the state (a badge) from the action (a
+ * button).
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { panel, onKeyDown } = useDrawerFocus(onClose)
+  const [tab, setTab] = useState<ConfigurationTab>('modules')
 
   return (
     <div className="fixed inset-0 z-40">
@@ -32,18 +43,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         ref={panel}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="settings-title"
+        aria-labelledby="configuration-title"
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="absolute inset-x-4 top-[8vh] mx-auto flex max-h-[84vh] max-w-[560px] flex-col gap-4 overflow-y-auto rounded-xl border border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
+        className="absolute inset-x-4 top-[8vh] mx-auto flex max-h-[84vh] max-w-[640px] flex-col gap-4 overflow-y-auto rounded-xl border border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
       >
         <div className="flex items-start gap-3">
           <div className="flex flex-col gap-0.5">
-            <h2 id="settings-title" className="text-[15px] font-semibold">
-              Settings
+            <h2 id="configuration-title" className="text-[0.9375rem] font-semibold">
+              Configuration
             </h2>
             <p className="text-xs text-muted">
-              Optional modules and policies. Each is off until you turn it on.
+              Modules, policies and appearance. Modules are off until you turn
+              them on.
             </p>
           </div>
           <Button
@@ -57,43 +69,27 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           </Button>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <EPSSToggle />
-          <ReachabilityToggle />
-          <OutdatedToggle />
-          <SASTToggle />
-          <LicencePolicySection />
-          <ReleaseCheckSection />
-        </div>
+        <Tabs
+          label="Configuration sections"
+          items={configurationTabs}
+          value={tab}
+          onChange={setTab}
+        >
+          {tab === 'appearance' ? (
+            <AppearanceSettings />
+          ) : (
+            <div className="flex flex-col gap-3">
+              <EPSSToggle />
+              <ReachabilityToggle />
+              <OutdatedToggle />
+              <SASTToggle />
+              <LicencePolicySection />
+              <ReleaseCheckSection />
+            </div>
+          )}
+        </Tabs>
       </div>
     </div>
-  )
-}
-
-/** SettingSection is one setting: its name, its state and its control. */
-function SettingSection({
-  title,
-  on,
-  children,
-}: {
-  title: string
-  /** On/off state for the badge; omitted when the setting is not a toggle. */
-  on?: boolean
-  children: ReactNode
-}) {
-  return (
-    <section
-      aria-label={title}
-      className="flex flex-col gap-1.5 rounded-md border border-border-subtle bg-bg p-3"
-    >
-      <div className="flex items-center gap-2">
-        <h3 className="text-[13px] font-semibold">{title}</h3>
-        {on === undefined ? null : (
-          <Badge tone={on ? 'ok' : 'neutral'}>{on ? 'On' : 'Off'}</Badge>
-        )}
-      </div>
-      {children}
-    </section>
   )
 }
 
@@ -134,7 +130,7 @@ function EPSSToggle() {
 
   return (
     <SettingSection title="EPSS exploit scores" on={data.enabled}>
-      <p className="text-[11px] leading-relaxed text-muted">
+      <p className="text-[0.6875rem] leading-relaxed text-muted">
         At most once a day, downloads the FIRST.org EPSS feed — a ~2.8 MB gzipped
         CSV from epss.empiricalsecurity.com — to rank findings by how likely each
         CVE is to be exploited. Nothing is uploaded.
@@ -142,19 +138,19 @@ function EPSSToggle() {
       {data.enabled ? (
         data.error ? (
           <>
-            <p className="text-[11px] text-critical">Download failed</p>
+            <p className="text-[0.6875rem] text-critical">Download failed</p>
             <p
-              className="min-w-0 truncate font-mono text-[10px] text-muted"
+              className="min-w-0 truncate font-mono text-[0.625rem] text-muted"
               title={data.error}
             >
               {data.error}
             </p>
-            <p className="text-[11px] text-faint">Retries daily.</p>
+            <p className="text-[0.6875rem] text-faint">Retries daily.</p>
           </>
         ) : data.count === undefined ? (
-          <p className="font-mono text-[11px] text-muted">Downloading scores…</p>
+          <p className="font-mono text-[0.6875rem] text-muted">Downloading scores…</p>
         ) : (
-          <p className="text-[11px] text-muted">
+          <p className="text-[0.6875rem] text-muted">
             <span className="tabular-nums">{data.count.toLocaleString()}</span>{' '}
             CVEs
             {data.score_date ? ` · ${data.score_date.slice(0, 10)}` : ''}
@@ -181,7 +177,7 @@ function ReachabilityToggle() {
 
   return (
     <SettingSection title="Go reachability" on={data.enabled}>
-      <p className="text-[11px] leading-relaxed text-muted">
+      <p className="text-[0.6875rem] leading-relaxed text-muted">
         Runs govulncheck on Go repositories to tell whether vulnerable code is
         actually called, not just present. Uses vuln.go.dev for advisories and
         proxy.golang.org (or your GOPROXY) for module downloads; nothing about
@@ -189,11 +185,11 @@ function ReachabilityToggle() {
       </p>
       {data.enabled ? (
         data.available ? (
-          <p className="text-[11px] text-muted">govulncheck runs on Go scans.</p>
+          <p className="text-[0.6875rem] text-muted">govulncheck runs on Go scans.</p>
         ) : (
           <>
-            <p className="text-[11px] text-critical">No Go toolchain</p>
-            <p className="text-[11px] text-faint">
+            <p className="text-[0.6875rem] text-critical">No Go toolchain</p>
+            <p className="text-[0.6875rem] text-faint">
               Install Go; findings stay unknown until then.
             </p>
           </>
@@ -219,7 +215,7 @@ function OutdatedToggle() {
 
   return (
     <SettingSection title="Outdated packages" on={data.enabled}>
-      <p className="text-[11px] leading-relaxed text-muted">
+      <p className="text-[0.6875rem] leading-relaxed text-muted">
         Looks up the latest version of each package on deps.dev (api.deps.dev)
         during scans. Only ecosystems, package names and versions are sent.
       </p>
@@ -243,32 +239,32 @@ function SASTToggle() {
 
   return (
     <SettingSection title="SAST" on={data.enabled}>
-      <p className="text-[11px] leading-relaxed text-muted">
+      <p className="text-[0.6875rem] leading-relaxed text-muted">
         Downloads Opengrep {data.version} (~47 MB) and the community rules
         (~1.1 MB) from GitHub, then scans repository source locally for code
         issues. Both downloads are checksum-verified.
       </p>
       {data.enabled ? (
         data.installing ? (
-          <p className="font-mono text-[11px] text-muted">
+          <p className="font-mono text-[0.6875rem] text-muted">
             Downloading Opengrep {data.version}…
           </p>
         ) : data.install_error ? (
           <>
-            <p className="text-[11px] text-critical">Download failed</p>
+            <p className="text-[0.6875rem] text-critical">Download failed</p>
             <p
-              className="min-w-0 truncate font-mono text-[10px] text-muted"
+              className="min-w-0 truncate font-mono text-[0.625rem] text-muted"
               title={data.install_error}
             >
               {data.install_error}
             </p>
           </>
         ) : data.state === 'installed' ? (
-          <p className="text-[11px] text-muted">
+          <p className="text-[0.6875rem] text-muted">
             Opengrep {data.version} runs on repository scans.
           </p>
         ) : (
-          <p className="text-[11px] text-muted">
+          <p className="text-[0.6875rem] text-muted">
             Not installed yet; the next scan downloads it.
           </p>
         )
@@ -314,12 +310,12 @@ function ReleaseCheckSection() {
 
   return (
     <SettingSection title="Release check" on={on}>
-      <p className="text-[11px] leading-relaxed text-muted">
+      <p className="text-[0.6875rem] leading-relaxed text-muted">
         At most once a day, asks github.com for the newest bastion release tag.
         Sends your IP and User-Agent; nothing else leaves your machine.
       </p>
       {on && data.update_available && data.latest ? (
-        <p className="text-[11px] text-muted">
+        <p className="text-[0.6875rem] text-muted">
           {data.latest.startsWith('v') ? data.latest : `v${data.latest}`} is
           available; the sidebar shows the upgrade command.
         </p>

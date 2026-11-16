@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, openSettings, test, watch } from './fixtures'
+import { expect, openConfiguration, test, watch } from './fixtures'
 
 type SASTStatus = {
   enabled: boolean
@@ -45,7 +45,7 @@ test('SAST is off by default and explains the download', async ({ page, server }
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
 
-  await openSettings(page)
+  await openConfiguration(page)
 
   const card = page.getByRole('region', { name: 'SAST' })
   await expect(card).toBeVisible()
@@ -72,7 +72,7 @@ test('turning SAST on shows the installed module', async ({ page, server }) => {
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
 
-  await openSettings(page)
+  await openConfiguration(page)
   await page.getByRole('button', { name: 'Turn on SAST' }).click()
 
   const card = page.getByRole('region', { name: 'SAST' })

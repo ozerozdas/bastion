@@ -30,9 +30,9 @@ export type FilterBarProps = {
 }
 
 const stackedInput =
-  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
+  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
 const inlineSelect =
-  'h-8 rounded-md border border-border-strong bg-surface px-2 text-[13px] text-fg'
+  'h-8 rounded-md border border-border-strong bg-surface px-2 text-[0.8125rem] text-fg'
 
 /**
  * FilterBar is the shared filter row. Callers pass only the fields they need,

@@ -14,7 +14,7 @@ import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 
 const inputClass =
-  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
+  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
 
 export type GroupDrawerProps = {
   group: FindingGroup
@@ -83,7 +83,7 @@ export function GroupDrawer({
       >
         <div className="flex items-start gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">
-            <h2 id="group-title" className="text-[15px] font-semibold break-words">
+            <h2 id="group-title" className="text-[0.9375rem] font-semibold break-words">
               {group.title}
             </h2>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -116,7 +116,7 @@ export function GroupDrawer({
         ) : null}
 
         <section className="flex flex-col gap-2">
-          <h3 className="text-[13px] font-semibold">Affected projects</h3>
+          <h3 className="text-[0.8125rem] font-semibold">Affected projects</h3>
           <ul className="flex flex-col gap-1.5">
             {group.findings.map((finding) => {
               const project =
@@ -134,7 +134,7 @@ export function GroupDrawer({
                     onClick={() => onOpenFinding(finding)}
                     className="flex w-full flex-col gap-1 rounded-md border border-border-subtle bg-bg p-2.5 text-left hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
                   >
-                    <span className="flex flex-wrap items-center gap-2 text-[13px]">
+                    <span className="flex flex-wrap items-center gap-2 text-[0.8125rem]">
                       <span className="font-medium">{project}</span>
                       <span className="font-mono text-xs text-muted">
                         {installed ?? 'no package'}
@@ -152,7 +152,7 @@ export function GroupDrawer({
         </section>
 
         <section className="flex flex-col gap-2 rounded-md border border-border-subtle bg-bg p-3">
-          <h3 className="text-[13px] font-semibold">Decision</h3>
+          <h3 className="text-[0.8125rem] font-semibold">Decision</h3>
 
           {ignored.length === group.findings.length ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -223,7 +223,7 @@ export function GroupDrawer({
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
                   placeholder="Why every project can hide this finding, for the next person who reads it."
-                  className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[13px] text-fg placeholder:text-faint"
+                  className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[0.8125rem] text-fg placeholder:text-faint"
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2">

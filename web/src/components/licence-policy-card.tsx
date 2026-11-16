@@ -10,7 +10,7 @@ import { ErrorNote } from './error-note'
 import { Button } from './ui/button'
 
 const textareaClass =
-  'min-h-16 w-full resize-y rounded-md border border-border-strong bg-surface px-2 py-1 font-mono text-[11px] text-fg placeholder:text-faint'
+  'min-h-16 w-full resize-y rounded-md border border-border-strong bg-surface px-2 py-1 font-mono text-[0.6875rem] text-fg placeholder:text-faint'
 
 const defaultDescription = 'Allow hides a licence; deny raises it to high.'
 
@@ -95,7 +95,7 @@ export function LicencePolicyEditor({
   if (editing) {
     return (
       <form onSubmit={submit} className="flex flex-col gap-1.5">
-        <label htmlFor={allowId} className="text-[11px] text-muted">
+        <label htmlFor={allowId} className="text-[0.6875rem] text-muted">
           Allowed licences
         </label>
         <textarea
@@ -106,7 +106,7 @@ export function LicencePolicyEditor({
           placeholder={'MIT\nApache-2.0'}
           className={textareaClass}
         />
-        <label htmlFor={denyId} className="text-[11px] text-muted">
+        <label htmlFor={denyId} className="text-[0.6875rem] text-muted">
           Denied licences
         </label>
         <textarea
@@ -117,7 +117,7 @@ export function LicencePolicyEditor({
           placeholder={'GPL-3.0\nAGPL-3.0'}
           className={textareaClass}
         />
-        <p className="text-[10px] leading-relaxed text-faint">
+        <p className="text-[0.625rem] leading-relaxed text-faint">
           One licence per line. Allow hides it; deny raises it to high.
           Matches exactly as reported, so “MIT OR Apache-2.0” is its own
           entry.
@@ -144,7 +144,7 @@ export function LicencePolicyEditor({
   return (
     <>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] text-muted tabular-nums">
+        <p className="text-[0.6875rem] text-muted tabular-nums">
           {allowed === 0 && denied === 0
             ? assetId === undefined
               ? 'No rules. Licences are reported as scanned.'
@@ -155,12 +155,12 @@ export function LicencePolicyEditor({
           ref={editButton}
           type="button"
           onClick={startEditing}
-          className="text-[11px] text-faint hover:text-fg"
+          className="text-[0.6875rem] text-faint hover:text-fg"
         >
           Edit
         </button>
       </div>
-      <p className="text-[10px] leading-relaxed text-faint">{description}</p>
+      <p className="text-[0.625rem] leading-relaxed text-faint">{description}</p>
     </>
   )
 }

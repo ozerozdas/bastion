@@ -111,7 +111,7 @@ export function DashboardPage() {
   if (dashboard.status === 'error') {
     return (
       <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">Dashboard failed to load</h2>
+        <h2 className="text-[0.8125rem] font-semibold">Dashboard failed to load</h2>
         <ErrorNote error={dashboard.error} />
       </section>
     )
@@ -170,7 +170,7 @@ export function DashboardPage() {
         className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
       >
         <div className="flex flex-wrap items-baseline gap-2.5">
-          <h2 id="severity-heading" className="text-[13px] font-semibold">
+          <h2 id="severity-heading" className="text-[0.8125rem] font-semibold">
             Open findings
           </h2>
           <span className="text-faint">
@@ -203,7 +203,7 @@ export function DashboardPage() {
 
       <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
         <div className="flex flex-col gap-0.5">
-          <h2 className="text-[13px] font-semibold">Open critical and high</h2>
+          <h2 className="text-[0.8125rem] font-semibold">Open critical and high</h2>
           <p className="text-xs text-muted">
             Up to the last ten succeeded scans per project, oldest first.
           </p>
@@ -220,7 +220,7 @@ export function DashboardPage() {
                 <Link
                   to="/findings"
                   search={{ asset: trend.asset_id }}
-                  className="truncate text-[13px] hover:underline"
+                  className="truncate text-[0.8125rem] hover:underline"
                 >
                   {names.get(trend.asset_id) ?? `Asset ${String(trend.asset_id)}`}
                 </Link>
@@ -244,11 +244,11 @@ export function DashboardPage() {
 
       <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
         <div className="flex flex-wrap items-baseline gap-2.5">
-          <h2 className="text-[13px] font-semibold">Last scan per project</h2>
+          <h2 className="text-[0.8125rem] font-semibold">Last scan per project</h2>
           <span className="text-faint">Newest scan of each project, whatever its status</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-[13px]">
+          <table className="w-full text-left text-[0.8125rem]">
             <thead className="text-xs text-faint">
               <tr>
                 <th className="pb-2 font-medium">Project</th>
@@ -313,7 +313,7 @@ function GetStartedCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <h2 id="get-started-heading" className="text-[13px] font-semibold">
+          <h2 id="get-started-heading" className="text-[0.8125rem] font-semibold">
             Get started
           </h2>
           <p className="text-xs text-muted">
@@ -328,12 +328,12 @@ function GetStartedCard({
       <ol className="flex flex-col gap-2.5">
         {state.steps.map((step, index) => {
           const titleClass =
-            'text-[13px] underline underline-offset-2 hover:text-accent'
+            'text-[0.8125rem] underline underline-offset-2 hover:text-accent'
           return (
             <li key={step.id} className="flex items-start gap-2.5">
               <span
                 aria-hidden="true"
-                className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border text-[11px] tabular-nums ${
+                className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border text-[0.6875rem] tabular-nums ${
                   step.done
                     ? 'border-ok/30 bg-ok/10 text-ok'
                     : 'border-border-strong text-muted'
@@ -358,7 +358,7 @@ function GetStartedCard({
                       {step.title}
                     </Link>
                   ) : (
-                    <span className="text-[13px]">{step.title}</span>
+                    <span className="text-[0.8125rem]">{step.title}</span>
                   )}
                   {step.done ? <Badge tone="ok">done</Badge> : null}
                 </div>
@@ -402,7 +402,7 @@ function FindingsByType({ totals }: { totals: TypeTotals }) {
 
   return (
     <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
-      <h2 className="text-[13px] font-semibold">Findings by type</h2>
+      <h2 className="text-[0.8125rem] font-semibold">Findings by type</h2>
       {rows.length === 0 ? (
         <p className="text-xs text-muted">No open findings in the latest succeeded scans.</p>
       ) : (
@@ -410,7 +410,7 @@ function FindingsByType({ totals }: { totals: TypeTotals }) {
           {rows.map((row) => (
             <li key={row.key} className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-3">
-                <span className="flex items-baseline gap-2 text-[13px]">
+                <span className="flex items-baseline gap-2 text-[0.8125rem]">
                   {row.label}
                   {row.key === 'license' ? (
                     <span className="text-xs text-faint">informational</span>
@@ -437,14 +437,14 @@ function RiskiestAssets({ assets }: { assets: AssetRisk[] }) {
   return (
     <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
       <div className="flex flex-wrap items-baseline gap-2.5">
-        <h2 className="text-[13px] font-semibold">Riskiest projects</h2>
+        <h2 className="text-[0.8125rem] font-semibold">Riskiest projects</h2>
         <span className="text-faint">Top 5 by open severity weight</span>
       </div>
       {assets.length === 0 ? (
         <p className="text-xs text-muted">No project has open findings right now.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-[13px]">
+          <table className="w-full text-left text-[0.8125rem]">
             <thead className="text-xs text-faint">
               <tr>
                 <th className="pb-2 font-medium">Project</th>

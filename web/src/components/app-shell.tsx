@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { useEffect, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 import { createPortal } from 'react-dom'
 
 import { HealthChip } from './health-chip'
@@ -11,14 +16,19 @@ import { UpdateNotice } from './update-notice'
 import { assetsQuery } from '../api/assets'
 import { dashboardQuery, openFindingTotal } from '../api/reports'
 import { navBadge, navGroups, navItemFor, type NavCounts } from '../lib/nav'
-import { applyTheme, currentTheme, type Theme } from '../lib/theme'
+import {
+  resolveMode,
+  setMode,
+  storedMode,
+  subscribeAppearance,
+} from '../lib/theme'
 import { cn } from '../lib/utils'
 
 const pageActionsId = 'page-actions'
 
-/** navItemClass is the look every sidebar entry shares, links and Settings alike. */
+/** navItemClass is the look every sidebar entry shares, links and Configuration alike. */
 const navItemClass =
-  'flex h-[34px] items-center gap-2.5 rounded-md px-2.5 text-[13px] text-muted transition-colors hover:bg-hover hover:text-fg'
+  'flex h-[34px] items-center gap-2.5 rounded-md px-2.5 text-[0.8125rem] text-muted transition-colors hover:bg-hover hover:text-fg'
 const navItemActiveClass =
   'bg-active text-fg shadow-[0_0_0_1px_var(--b-border-subtle)]'
 
@@ -39,7 +49,7 @@ export function PageActions({ children }: { children: ReactNode }) {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const current = navItemFor(pathname)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
   const assets = useQuery(assetsQuery)
   const dashboard = useQuery(dashboardQuery)
   const counts: NavCounts = {
@@ -69,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           <SearchIcon />
           <span className="truncate">Search findings, CVEs…</span>
-          <span className="ml-auto rounded border border-border-strong px-1 font-mono text-[11px]">
+          <span className="ml-auto rounded border border-border-strong px-1 font-mono text-[0.6875rem]">
             ⌘K
           </span>
         </button>
@@ -87,7 +97,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               {group.label === null ? null : (
                 <h2
                   id={`nav-${group.section}`}
-                  className="px-2.5 pt-1 pb-1 text-[10px] font-semibold tracking-[0.08em] text-faint uppercase"
+                  className="px-2.5 pt-1 pb-1 text-[0.625rem] font-semibold tracking-[0.08em] text-faint uppercase"
                 >
                   {group.label}
                 </h2>
@@ -111,7 +121,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       // must not be read a second time.
                       <span
                         aria-hidden="true"
-                        className="ml-auto min-w-[18px] rounded-full bg-surface px-1 text-center font-mono text-[11px] leading-[16px] tabular-nums"
+                        className="ml-auto min-w-[18px] rounded-full bg-surface px-1 text-center font-mono text-[0.6875rem] leading-[16px] tabular-nums"
                       >
                         {badge.count}
                       </span>
@@ -119,6 +129,21 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </Link>
                 )
               })}
+              {group.section === 'settings' ? (
+                <button
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-expanded={configOpen}
+                  onClick={() => setConfigOpen(true)}
+                  className={cn(
+                    navItemClass,
+                    configOpen && navItemActiveClass,
+                  )}
+                >
+                  <SettingsIcon />
+                  Configuration
+                </button>
+              ) : null}
             </div>
           ))}
         </nav>
@@ -126,38 +151,36 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="mt-auto flex flex-col gap-2">
           <UpdateNotice />
           <TrivyDBChip />
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            className={navItemClass}
-          >
-            <SettingsIcon />
-            Settings
-          </button>
           <HealthChip action={<ThemeToggle />} />
         </div>
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex min-h-14 flex-wrap items-center gap-3 border-b border-border-subtle px-7 py-2.5">
-          <h1 className="text-[15px] font-semibold">{current.label}</h1>
+          <h1 className="text-[0.9375rem] font-semibold">{current.label}</h1>
           <span className="text-faint">{current.subtitle}</span>
           <div id={pageActionsId} className="ml-auto flex items-center gap-2" />
         </header>
         <div className="flex flex-col gap-4 px-7 py-6">{children}</div>
       </main>
 
-      {settingsOpen ? (
-        <SettingsDialog onClose={() => setSettingsOpen(false)} />
+      {configOpen ? (
+        <SettingsDialog onClose={() => setConfigOpen(false)} />
       ) : null}
     </div>
   )
 }
 
-/** ThemeToggle flips between light and dark and remembers the choice. */
+/**
+ * ThemeToggle flips light and dark inside the current theme family (#142). It
+ * pins the mode, so the OS preference stops deciding until System is chosen
+ * again in Configuration.
+ */
 function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(currentTheme)
-  const next: Theme = theme === 'dark' ? 'light' : 'dark'
+  const mode = useSyncExternalStore(subscribeAppearance, () =>
+    resolveMode(storedMode()),
+  )
+  const next = mode === 'dark' ? 'light' : 'dark'
   const label = `Switch to ${next} theme`
 
   return (
@@ -165,13 +188,10 @@ function ThemeToggle() {
       type="button"
       aria-label={label}
       title={label}
-      onClick={() => {
-        applyTheme(next)
-        setTheme(next)
-      }}
+      onClick={() => setMode(next)}
       className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
     >
-      {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+      {mode === 'dark' ? <SunIcon /> : <MoonIcon />}
     </button>
   )
 }

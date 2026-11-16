@@ -16,7 +16,7 @@ import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 
 const inputClass =
-  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
+  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
 
 export type FindingDrawerProps = {
   finding: Finding
@@ -92,7 +92,7 @@ export function FindingDrawer({
       >
         <div className="flex items-start gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">
-            <h2 id="finding-title" className="text-[15px] font-semibold break-words">
+            <h2 id="finding-title" className="text-[0.9375rem] font-semibold break-words">
               {finding.title}
             </h2>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -133,14 +133,14 @@ export function FindingDrawer({
         </div>
 
         {finding.description ? (
-          <p className="text-[13px] break-words whitespace-pre-wrap text-muted">
+          <p className="text-[0.8125rem] break-words whitespace-pre-wrap text-muted">
             {finding.description}
           </p>
         ) : (
           <p className="text-xs text-faint">No description was reported.</p>
         )}
 
-        <dl className="grid grid-cols-[7rem_1fr] items-baseline gap-x-3 gap-y-1.5 text-[13px]">
+        <dl className="grid grid-cols-[7rem_1fr] items-baseline gap-x-3 gap-y-1.5 text-[0.8125rem]">
           <dt className="text-muted">Scanner</dt>
           <dd className="font-mono text-xs">
             {(finding.scanners?.length ? finding.scanners : [finding.scanner]).join(', ')}
@@ -218,7 +218,7 @@ export function FindingDrawer({
           ) : null}
 
           <dt className="text-muted">Fingerprint</dt>
-          <dd className="font-mono text-[11px] break-all text-muted">
+          <dd className="font-mono text-[0.6875rem] break-all text-muted">
             {finding.fingerprint}
           </dd>
         </dl>
@@ -229,7 +229,7 @@ export function FindingDrawer({
           </p>
         ) : (
           <section className="flex flex-col gap-2 rounded-md border border-border-subtle bg-bg p-3">
-            <h3 className="text-[13px] font-semibold">Decision</h3>
+            <h3 className="text-[0.8125rem] font-semibold">Decision</h3>
 
             {finding.state && !finding.expired ? (
               <>
@@ -340,7 +340,7 @@ export function FindingDrawer({
                     value={reason}
                     onChange={(event) => setReason(event.target.value)}
                     placeholder="Why this finding can be hidden, for the next person who reads it."
-                    className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[13px] text-fg placeholder:text-faint"
+                    className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[0.8125rem] text-fg placeholder:text-faint"
                   />
                 </div>
 
@@ -367,7 +367,7 @@ export function FindingDrawer({
 
         {finding.references.length > 0 ? (
           <section className="flex flex-col gap-1.5">
-            <h3 className="text-[13px] font-semibold">References</h3>
+            <h3 className="text-[0.8125rem] font-semibold">References</h3>
             <ul className="flex flex-col gap-1 text-xs">
               {finding.references.map((reference, index) => (
                 <li key={`${String(index)}-${reference}`} className="break-all">

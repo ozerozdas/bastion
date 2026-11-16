@@ -10,7 +10,7 @@ type EmptyStateProps = {
 export function EmptyState({ title, body, children }: EmptyStateProps) {
   return (
     <section className="flex flex-col items-start gap-3 rounded-card border border-border-subtle bg-surface p-8">
-      <h2 className="text-[15px] font-semibold tracking-[-0.01em]">{title}</h2>
+      <h2 className="text-[0.9375rem] font-semibold tracking-[-0.01em]">{title}</h2>
       <p className="max-w-[52ch] text-muted">{body}</p>
       {children ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">{children}</div>

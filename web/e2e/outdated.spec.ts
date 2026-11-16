@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, openSettings, test, watch } from './fixtures'
+import { expect, openConfiguration, test, watch } from './fixtures'
 
 /**
  * stubOutdated answers /api/outdated from in-page state. `enabled` starts off,
@@ -29,7 +29,7 @@ test('Outdated packages is off by default and toggles on', async ({
   await expect(
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
-  await openSettings(page)
+  await openConfiguration(page)
 
   const card = page.getByRole('region', { name: 'Outdated packages' })
   await expect(card).toBeVisible()

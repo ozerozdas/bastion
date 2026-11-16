@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, openSettings, test, watch } from './fixtures'
+import { expect, openConfiguration, test, watch } from './fixtures'
 
 // The EPSS feed is stubbed: the e2e server must never reach FIRST.org, and the
 // tests need a deterministic score date and count.
@@ -92,11 +92,11 @@ test('EPSS is off by default and renders no scores', async ({ page, server }) =>
   await stubEPSS(page, false)
   await openFindings(page, server.url)
 
-  // The setting lives in the Settings modal, not the sidebar.
+  // The setting lives in the Configuration modal, not the sidebar.
   await expect(
     page.getByRole('region', { name: 'EPSS exploit scores' }),
   ).toHaveCount(0)
-  await openSettings(page)
+  await openConfiguration(page)
 
   const card = page.getByRole('region', { name: 'EPSS exploit scores' })
   await expect(card).toBeVisible()
@@ -124,7 +124,7 @@ test('turning EPSS on shows the feed and the finding score', async ({
   await stubEPSS(page, false, true)
   await openFindings(page, server.url)
 
-  await openSettings(page)
+  await openConfiguration(page)
   await page
     .getByRole('button', { name: 'Turn on EPSS exploit scores' })
     .click()

@@ -31,7 +31,7 @@ import type { ProjectsTab } from '../lib/urls'
 import { ScansPanel } from './history'
 
 const inputClass =
-  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
+  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
 
 /** statusView maps a scan status to its badge text and tone (§7.5). */
 const statusView: Record<
@@ -119,7 +119,7 @@ function ProjectsPanel() {
 
         {assets.isError ? (
           <div className="flex flex-col gap-1">
-            <h3 className="text-[13px] font-semibold">Repositories failed to load</h3>
+            <h3 className="text-[0.8125rem] font-semibold">Repositories failed to load</h3>
             <ErrorNote
               error={assets.error}
               fix="Reload the page; if it persists, check the terminal running bastion."
@@ -531,7 +531,7 @@ function AddProjects({ onDone }: { onDone: () => void }) {
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <h2 id="add-repositories" className="text-[13px] font-semibold">
+          <h2 id="add-repositories" className="text-[0.8125rem] font-semibold">
             Add repositories
           </h2>
           <p className="text-xs text-muted">
@@ -812,7 +812,7 @@ function RepoOption({
     <li className="py-1.5 first:pt-0 last:pb-0">
       <label
         htmlFor={id}
-        className={`flex items-center gap-2 text-[13px] ${
+        className={`flex items-center gap-2 text-[0.8125rem] ${
           repo.already_added ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
         }`}
       >

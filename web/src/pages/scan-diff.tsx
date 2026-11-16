@@ -29,7 +29,7 @@ const diffGroups: { key: DiffGroup; label: string }[] = [
 ]
 
 const selectClass =
-  'h-8 rounded-md border border-border-strong bg-surface px-2 text-[13px] text-fg'
+  'h-8 rounded-md border border-border-strong bg-surface px-2 text-[0.8125rem] text-fg'
 
 /**
  * ScanDiffPage answers "what changed?" after a rescan (#17): the findings new,
@@ -73,7 +73,7 @@ export function ScanDiffPage() {
   if (scanId === undefined) {
     return (
       <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[15px] font-semibold">No such scan</h2>
+        <h2 className="text-[0.9375rem] font-semibold">No such scan</h2>
         <p className="text-xs text-muted">
           A scan comparison needs a scan id in the URL, like{' '}
           <span className="font-mono">/scans/12/diff</span>.
@@ -95,7 +95,7 @@ export function ScanDiffPage() {
   if (scan.isError) {
     return (
       <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[15px] font-semibold">Scan failed to load</h2>
+        <h2 className="text-[0.9375rem] font-semibold">Scan failed to load</h2>
         <ErrorNote error={scan.error} />
         {backToScans}
       </section>
@@ -111,7 +111,7 @@ export function ScanDiffPage() {
         <div className="flex flex-wrap items-baseline gap-2.5">
           <h2
             id="scan-diff-heading"
-            className="text-[15px] font-semibold tracking-[-0.01em]"
+            className="text-[0.9375rem] font-semibold tracking-[-0.01em]"
           >
             Changes in scan #{String(scanId)}
           </h2>
@@ -158,7 +158,7 @@ export function ScanDiffPage() {
 
         {diff.isError ? (
           <div className="flex flex-col gap-1">
-            <h3 className="text-[13px] font-semibold">Changes failed to load</h3>
+            <h3 className="text-[0.8125rem] font-semibold">Changes failed to load</h3>
             <ErrorNote error={diff.error} fix={diffErrorFix(diff.error)} />
           </div>
         ) : null}
@@ -166,7 +166,7 @@ export function ScanDiffPage() {
         {(scan.data?.scanner_runs ?? []).some(
           (run) => run.error || run.warning,
         ) ? (
-          <ul className="flex flex-col gap-1 text-[11px]">
+          <ul className="flex flex-col gap-1 text-[0.6875rem]">
             {(scan.data?.scanner_runs ?? [])
               .filter((run) => run.error || run.warning)
               .map((run) => (
@@ -208,7 +208,7 @@ export function ScanDiffPage() {
                 className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
               >
                 <div className="flex flex-wrap items-baseline gap-2.5">
-                  <h2 id={`diff-${group.key}`} className="text-[13px] font-semibold">
+                  <h2 id={`diff-${group.key}`} className="text-[0.8125rem] font-semibold">
                     {group.label} findings
                   </h2>
                   <span className="text-faint tabular-nums">
@@ -255,7 +255,7 @@ function DiffSummary({
 }) {
   return (
     <section className="flex flex-col gap-2 rounded-card border border-border-subtle bg-surface p-4">
-      <h2 className="text-[13px] font-semibold">{label}</h2>
+      <h2 className="text-[0.8125rem] font-semibold">{label}</h2>
       <SeverityCountBadges counts={counts} />
     </section>
   )
