@@ -241,6 +241,10 @@ func (s *Server) buildHandler() http.Handler {
 	// cannot set Content-Disposition.
 	mux.HandleFunc("GET /api/scans/{id}/sbom", s.handleScanSBOM)
 
+	// The findings export is hand-written for the same reason: it writes CSV,
+	// XLSX or JSON with a Content-Disposition attachment.
+	mux.HandleFunc("GET /api/findings/export", s.handleFindingsExport)
+
 	// Unknown /api/* paths must not fall through to the UI handler.
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusNotFound, "Not Found",

@@ -615,6 +615,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/findings/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the latest findings as CSV, XLSX or JSON.
+         * @description Writes the findings of `GET /api/findings` as one download instead of
+         *     one page: the same filters, the same archived-asset exclusion and the
+         *     same effective status and decision expiry. The full result is written,
+         *     never a page.
+         *
+         *     `view=grouped` folds one row per rule and type across projects, like the
+         *     Findings page: the worst severity, the rule, the title, the packages,
+         *     the affected projects and the finding and open counts. `view=single`
+         *     writes one row per finding. EPSS columns are present only while the feed
+         *     is enabled. CSV is RFC 4180 with a UTF-8 BOM; XLSX is one sheet written
+         *     without a dependency; JSON is an array of objects with stable keys.
+         *     Cells that a spreadsheet could evaluate as a formula are prefixed with
+         *     an apostrophe in CSV and XLSX.
+         *
+         *     This operation is hand-written in `internal/httpapi/findings_export.go`
+         *     and excluded from codegen (api/oapi-codegen.yaml): the generated strict
+         *     server cannot set the `Content-Disposition` header. Like
+         *     `/api/scans/{id}/sbom`, the spec stays the contract.
+         */
+        get: operations["exportFindings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reports/dashboard": {
         parameters: {
             query?: never;
@@ -1710,6 +1747,13 @@ export interface components {
         FindingTypeQuery: components["schemas"]["FindingType"];
         /** @description Only findings with this effective status. */
         FindingStatusQuery: components["schemas"]["FindingStatus"];
+        /** @description The download format. */
+        FindingsExportFormatQuery: "csv" | "xlsx" | "json";
+        /**
+         * @description `grouped` (the default) writes one row per rule and type; `single`
+         *     writes one row per finding.
+         */
+        FindingsViewQuery: "grouped" | "single";
     };
     requestBodies: never;
     headers: never;
@@ -2819,6 +2863,67 @@ export interface operations {
                 };
             };
             /** @description A query parameter is not a valid asset id or enum value. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    exportFindings: {
+        parameters: {
+            query: {
+                /** @description The download format. */
+                format: components["parameters"]["FindingsExportFormatQuery"];
+                /**
+                 * @description `grouped` (the default) writes one row per rule and type; `single`
+                 *     writes one row per finding.
+                 */
+                view?: components["parameters"]["FindingsViewQuery"];
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+                /** @description Only findings with this severity. */
+                severity?: components["parameters"]["SeverityQuery"];
+                /** @description Only findings of this type. */
+                type?: components["parameters"]["FindingTypeQuery"];
+                /** @description Only findings with this effective status. */
+                status?: components["parameters"]["FindingStatusQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The findings as one downloadable file. */
+            200: {
+                headers: {
+                    /**
+                     * @description Attachment with the filename
+                     *     `bastion-findings-<view>-<YYYYMMDD>.<ext>`.
+                     */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /**
+             * @description `format` or `view` is not one of the accepted values, `asset_id` is
+             *     not a positive integer, or a filter is not a valid enum value.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;

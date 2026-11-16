@@ -342,3 +342,62 @@ test('a bulk decision sends one request per project', async ({ page, server }) =
   await expect(page.getByText('5 selected')).toHaveCount(0)
   expect(problems).toEqual([])
 })
+
+test('exports the current view as a download from the page actions', async ({
+  page,
+  server,
+}) => {
+  const problems = watch(page)
+
+  await page.route('**/api/assets', (route) =>
+    route.fulfill({ json: { assets: [alpha, beta] } }),
+  )
+  await page.route('**/api/findings?**', (route) => {
+    const url = new URL(route.request().url())
+    const assetId = url.searchParams.get('asset_id')
+    const rows =
+      assetId === null
+        ? findings
+        : findings.filter((finding) => finding.asset_id === Number(assetId))
+    return route.fulfill({ json: { findings: rows } })
+  })
+
+  await openDashboard(page, server.url)
+  await page.getByRole('link', { name: /^Findings/ }).click()
+
+  // The link carries the current view and filters; the download is the real
+  // endpoint's, so the filename is its own too.
+  await page.getByRole('button', { name: 'Export' }).click()
+  const groupedHref = await page
+    .getByRole('menuitem', { name: 'CSV' })
+    .getAttribute('href')
+  const groupedUrl = new URL(groupedHref ?? '', 'http://localhost')
+  expect(groupedUrl.pathname).toBe('/api/findings/export')
+  expect(groupedUrl.searchParams.get('view')).toBe('grouped')
+  expect(groupedUrl.searchParams.get('status')).toBe('open')
+  expect(groupedUrl.searchParams.get('format')).toBe('csv')
+
+  const groupedDownload = page.waitForEvent('download')
+  await page.getByRole('menuitem', { name: 'CSV' }).click()
+  expect((await groupedDownload).suggestedFilename()).toMatch(
+    /^bastion-findings-grouped-\d{8}\.csv$/,
+  )
+
+  // The menu follows the view: single exports one row per finding.
+  await page.getByRole('button', { name: 'Single' }).click()
+  await page.getByRole('button', { name: 'Export' }).click()
+  const singleHref = await page
+    .getByRole('menuitem', { name: 'CSV' })
+    .getAttribute('href')
+  expect(new URL(singleHref ?? '', 'http://localhost').searchParams.get('view')).toBe(
+    'single',
+  )
+
+  const singleDownload = page.waitForEvent('download')
+  await page.getByRole('menuitem', { name: 'CSV' }).click()
+  expect((await singleDownload).suggestedFilename()).toMatch(
+    /^bastion-findings-single-\d{8}\.csv$/,
+  )
+
+  expect(problems).toEqual([])
+})

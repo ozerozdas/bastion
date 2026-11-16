@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { filterParams, findingStateBatches } from './findings'
+import { exportFindingsUrl, filterParams, findingStateBatches } from './findings'
 
 describe('filterParams', () => {
   it('returns an empty string when nothing is filtered', () => {
@@ -24,6 +24,29 @@ describe('filterParams', () => {
 
   it('skips unset filters', () => {
     expect(filterParams({ severity: 'critical' })).toBe('?severity=critical')
+  })
+})
+
+describe('exportFindingsUrl', () => {
+  it('carries the format and view with no filters', () => {
+    expect(exportFindingsUrl({ format: 'csv', view: 'grouped' })).toBe(
+      '/api/findings/export?format=csv&view=grouped',
+    )
+  })
+
+  it('repeats the list filters before the format and view', () => {
+    expect(
+      exportFindingsUrl({
+        assetId: 7,
+        type: 'secret',
+        severity: 'high',
+        status: 'open',
+        format: 'xlsx',
+        view: 'single',
+      }),
+    ).toBe(
+      '/api/findings/export?asset_id=7&type=secret&severity=high&status=open&format=xlsx&view=single',
+    )
   })
 })
 

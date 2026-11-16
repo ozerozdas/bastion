@@ -5,12 +5,16 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { assetsQuery } from '../api/assets'
 import { epssQuery } from '../api/epss'
 import {
+  exportFindingsUrl,
   latestFindingsQuery,
   useBulkFindingState,
   type Finding,
+  type FindingFilter,
   type FindingState,
   type FindingStatus,
   type FindingType,
+  type FindingsExportFormat,
+  type FindingsExportView,
   type Severity,
 } from '../api/findings'
 import {
@@ -24,6 +28,7 @@ import { ErrorNote } from '../components/error-note'
 import { FilterBar, type FilterField } from '../components/filter-bar'
 import { FindingDrawer } from '../components/finding-drawer'
 import { GroupDrawer } from '../components/group-drawer'
+import { PageActions } from '../components/app-shell'
 import { Tabs, type TabItem } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
@@ -266,6 +271,85 @@ function groupedColumns(
         ),
     },
   ]
+}
+
+/**
+ * exportFormats is the Export menu: the three formats the endpoint writes.
+ */
+const exportFormats: { format: FindingsExportFormat; label: string }[] = [
+  { format: 'csv', label: 'CSV' },
+  { format: 'xlsx', label: 'XLSX' },
+  { format: 'json', label: 'JSON' },
+]
+
+/**
+ * FindingsExportMenu is the Findings page action: it downloads the current
+ * filters and view. The links are plain same-origin anchors, so the session
+ * cookie authenticates the request and the server names the file.
+ */
+function FindingsExportMenu({
+  filter,
+  view,
+}: {
+  filter: FindingFilter
+  view: FindingsExportView
+}) {
+  const [open, setOpen] = useState(false)
+  const menu = useRef<HTMLDivElement>(null)
+
+  // A menu closes on an outside click or Escape, like every other popover.
+  useEffect(() => {
+    if (!open) return
+    function closeOnPointer(event: MouseEvent) {
+      if (menu.current !== null && !menu.current.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    function closeOnKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnPointer)
+    document.addEventListener('keydown', closeOnKey)
+    return () => {
+      document.removeEventListener('mousedown', closeOnPointer)
+      document.removeEventListener('keydown', closeOnKey)
+    }
+  }, [open])
+
+  return (
+    <div ref={menu} className="relative">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        Export
+      </Button>
+      {open ? (
+        <div
+          role="menu"
+          aria-label="Export findings"
+          className="absolute right-0 z-20 mt-1 flex w-28 flex-col rounded-md border border-border-strong bg-surface p-1 shadow-lg"
+        >
+          {exportFormats.map(({ format, label }) => (
+            <a
+              key={format}
+              role="menuitem"
+              href={exportFindingsUrl({ ...filter, format, view })}
+              download
+              onClick={() => setOpen(false)}
+              className="rounded px-2 py-1 text-[13px] text-muted hover:bg-hover hover:text-fg"
+            >
+              {label}
+            </a>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 /**
@@ -592,6 +676,19 @@ export function FindingsPage() {
 
   return (
     <>
+      {tab === 'findings' ? (
+        <PageActions>
+          <FindingsExportMenu
+            filter={{
+              assetId: selected?.id,
+              type: type === '' ? undefined : type,
+              severity: severity === '' ? undefined : severity,
+              status,
+            }}
+            view={grouped ? 'grouped' : 'single'}
+          />
+        </PageActions>
+      ) : null}
       <Tabs
         label="Findings views"
         items={findingsTabs}

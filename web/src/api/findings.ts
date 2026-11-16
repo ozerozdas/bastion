@@ -43,6 +43,30 @@ export function latestFindingsQuery(f: FindingFilter = {}) {
   })
 }
 
+/** FindingsExportFormat is the download format of the findings export. */
+export type FindingsExportFormat = 'csv' | 'xlsx' | 'json'
+
+/** FindingsExportView is one row per rule (grouped) or one row per finding. */
+export type FindingsExportView = 'grouped' | 'single'
+
+/**
+ * exportFindingsUrl is the download URL for the current filters and view. It
+ * carries the same filter params as the list, so the file matches what the page
+ * shows; a plain link downloads it with the session cookie.
+ */
+export function exportFindingsUrl(
+  f: FindingFilter & { format: FindingsExportFormat; view: FindingsExportView },
+): string {
+  const params = new URLSearchParams()
+  if (f.assetId !== undefined) params.set('asset_id', String(f.assetId))
+  if (f.type) params.set('type', f.type)
+  if (f.severity) params.set('severity', f.severity)
+  if (f.status) params.set('status', f.status)
+  params.set('format', f.format)
+  params.set('view', f.view)
+  return `/api/findings/export?${params.toString()}`
+}
+
 /** scanFindingsQuery reads the findings of one scan (asset_id is ignored). */
 export function scanFindingsQuery(scanId: number, f: Omit<FindingFilter, 'assetId'> = {}) {
   return queryOptions({
