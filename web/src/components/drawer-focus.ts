@@ -50,6 +50,20 @@ export function useDrawerFocus(onClose: () => void): {
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
 } {
   const panel = useRef<HTMLDivElement>(null)
+  const close = useRef(onClose)
+  close.current = onClose
+
+  // A control that unmounts (a toggle relabelled, a form closed) drops focus to
+  // <body>, where the panel's own keydown never fires; Escape must still close.
+  useEffect(() => {
+    function onDocumentKey(event: globalThis.KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      if (panel.current?.contains(document.activeElement)) return
+      close.current()
+    }
+    document.addEventListener('keydown', onDocumentKey)
+    return () => document.removeEventListener('keydown', onDocumentKey)
+  }, [])
 
   useEffect(() => {
     const opener =
