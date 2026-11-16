@@ -9,8 +9,10 @@ export type FindingType = components['schemas']['FindingType']
 export type FindingState = components['schemas']['FindingState']
 export type FindingStatus = components['schemas']['FindingStatus']
 export type Severity = components['schemas']['Severity']
+/** FindingGroup is one rule and type folded across projects; the API builds it. */
+export type FindingGroup = components['schemas']['FindingGroup']
 
-type FindingList = components['schemas']['FindingList']
+export type FindingList = components['schemas']['FindingList']
 type SetFindingStateRequest = components['schemas']['SetFindingStateRequest']
 type BulkSetFindingStateRequest = components['schemas']['BulkSetFindingStateRequest']
 
@@ -19,6 +21,14 @@ export type FindingFilter = {
   type?: FindingType
   severity?: Severity
   status?: FindingStatus
+}
+
+/** FindingsQuery is the filter plus the view and the page window. */
+export type FindingsQuery = FindingFilter & {
+  /** single is one row per finding; grouped folds one row per rule and type. */
+  view?: 'single' | 'grouped'
+  limit?: number
+  offset?: number
 }
 
 export const findingsKey = ['findings'] as const
@@ -34,12 +44,37 @@ export function filterParams(f: FindingFilter): string {
   return query ? `?${query}` : ''
 }
 
-/** latestFindingsQuery reads findings of each asset's latest succeeded scan. */
-export function latestFindingsQuery(f: FindingFilter = {}) {
+/** findingsParams renders the filters, view and page window as a query string. */
+function findingsParams(f: FindingsQuery): string {
+  const params = new URLSearchParams(filterParams(f))
+  if (f.view) params.set('view', f.view)
+  if (f.limit !== undefined) params.set('limit', String(f.limit))
+  if (f.offset !== undefined) params.set('offset', String(f.offset))
+  return `?${params.toString()}`
+}
+
+/** latestFindingsQuery reads one page of each asset's latest findings. */
+export function latestFindingsQuery(f: FindingsQuery = {}) {
   return queryOptions({
     queryKey: [...findingsKey, 'latest', f],
-    queryFn: async () =>
-      (await api.get<FindingList>(`/api/findings${filterParams(f)}`)).findings,
+    queryFn: async () => api.get<FindingList>(`/api/findings${findingsParams(f)}`),
+  })
+}
+
+/** allFindingsQuery reads every single-view finding of the filter, page by page. */
+export function allFindingsQuery(f: FindingFilter = {}) {
+  return queryOptions({
+    queryKey: [...findingsKey, 'all', f],
+    queryFn: async () => {
+      const findings: FindingList['findings'] = []
+      for (let offset = 0; ; offset += 500) {
+        const page = await api.get<FindingList>(
+          `/api/findings${findingsParams({ ...f, view: 'single', limit: 500, offset })}`,
+        )
+        findings.push(...page.findings)
+        if (page.findings.length === 0 || findings.length >= page.total) return findings
+      }
+    },
   })
 }
 

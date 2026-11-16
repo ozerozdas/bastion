@@ -119,7 +119,25 @@ ORDER BY
         WHEN 'low' THEN 3
         ELSE 4
     END,
-    f.fingerprint;
+    f.fingerprint
+-- A nil window means no page: SQLite has no NULL LIMIT, so -1 stands in.
+LIMIT CASE WHEN sqlc.narg(limit) IS NULL THEN -1 ELSE sqlc.narg(limit) END
+OFFSET CASE WHEN sqlc.narg(offset) IS NULL THEN 0 ELSE sqlc.narg(offset) END;
+
+-- name: CountFindingsByScanFiltered :one
+-- Number of rows ListFindingsByScan returns for the same filters, ignoring
+-- limit and offset. It is the scan findings list's total.
+SELECT COUNT(*)
+FROM findings f
+LEFT JOIN finding_states fs
+    ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+WHERE f.scan_id = sqlc.arg(scan_id)
+  AND (sqlc.narg(type) IS NULL OR f.type = sqlc.narg(type))
+  AND (sqlc.narg(severity) IS NULL OR f.severity = sqlc.narg(severity))
+  AND (sqlc.narg(status) IS NULL OR CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) = sqlc.narg(status));
 
 -- name: ListLatestFindings :many
 -- Findings of the most recent succeeded scan of every non-archived asset, so
@@ -187,4 +205,31 @@ ORDER BY
         ELSE 4
     END,
     f.asset_id,
-    f.fingerprint;
+    f.fingerprint
+-- A nil window means no page: SQLite has no NULL LIMIT, so -1 stands in.
+LIMIT CASE WHEN sqlc.narg(limit) IS NULL THEN -1 ELSE sqlc.narg(limit) END
+OFFSET CASE WHEN sqlc.narg(offset) IS NULL THEN 0 ELSE sqlc.narg(offset) END;
+
+-- name: CountLatestFindings :one
+-- Number of rows ListLatestFindings returns for the same filters, ignoring
+-- limit and offset. Grouped view counts groups in Go, not here.
+SELECT COUNT(*)
+FROM findings f
+JOIN scans s ON s.id = f.scan_id
+JOIN assets a ON a.id = f.asset_id
+LEFT JOIN finding_states fs
+    ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+WHERE a.archived_at IS NULL
+  AND s.status = 'succeeded'
+  AND s.id = (
+      SELECT MAX(s2.id)
+      FROM scans s2
+      WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
+  )
+  AND (sqlc.narg(asset_id) IS NULL OR f.asset_id = sqlc.narg(asset_id))
+  AND (sqlc.narg(type) IS NULL OR f.type = sqlc.narg(type))
+  AND (sqlc.narg(severity) IS NULL OR f.severity = sqlc.narg(severity))
+  AND (sqlc.narg(status) IS NULL OR CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) = sqlc.narg(status));

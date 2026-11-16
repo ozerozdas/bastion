@@ -116,7 +116,16 @@ test('fix plan groups findings into one package upgrade per asset', async ({
     route.fulfill({ json: plan }),
   )
   await page.route('**/api/findings?**', (route) =>
-    route.fulfill({ json: { findings } }),
+    route.fulfill({
+      json: {
+        findings,
+        groups: [],
+        total: findings.length,
+        total_findings: findings.length,
+        limit: 500,
+        offset: 0,
+      },
+    }),
   )
 
   await openFindings(page, server.url)

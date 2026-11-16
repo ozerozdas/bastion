@@ -3,9 +3,10 @@ import { useState, type FormEvent } from 'react'
 import {
   useBulkFindingState,
   type Finding,
+  type FindingGroup,
   type FindingState,
 } from '../api/findings'
-import type { FindingGroup } from '../lib/group-findings'
+
 import { capitalize, severityTone, typeLabels } from '../lib/finding-labels'
 import { useDrawerFocus } from './drawer-focus'
 import { ErrorNote } from './error-note'
@@ -46,7 +47,9 @@ export function GroupDrawer({
   const [reason, setReason] = useState('')
 
   const projectsLabel =
-    group.projectCount === 1 ? '1 project' : `${String(group.projectCount)} projects`
+    group.project_count === 1
+      ? '1 project'
+      : `${String(group.project_count)} projects`
   const target = group.findings.map((finding) => ({
     assetId: finding.asset_id,
     fingerprint: finding.fingerprint,
@@ -108,8 +111,8 @@ export function GroupDrawer({
           </Button>
         </div>
 
-        {group.ruleId ? (
-          <p className="font-mono text-xs break-all text-muted">{group.ruleId}</p>
+        {group.rule_id ? (
+          <p className="font-mono text-xs break-all text-muted">{group.rule_id}</p>
         ) : null}
 
         <section className="flex flex-col gap-2">

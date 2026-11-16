@@ -96,7 +96,16 @@ SELECT
 FROM scans s
 WHERE (sqlc.narg(asset_id) IS NULL OR s.asset_id = sqlc.narg(asset_id))
 ORDER BY s.id DESC
-LIMIT sqlc.arg(limit);
+-- A nil window means no page: SQLite has no NULL LIMIT, so -1 stands in.
+LIMIT CASE WHEN sqlc.narg(limit) IS NULL THEN -1 ELSE sqlc.narg(limit) END
+OFFSET CASE WHEN sqlc.narg(offset) IS NULL THEN 0 ELSE sqlc.narg(offset) END;
+
+-- name: CountScans :one
+-- Number of scans ListScans returns for the same asset filter, ignoring limit
+-- and offset.
+SELECT COUNT(*)
+FROM scans s
+WHERE (sqlc.narg(asset_id) IS NULL OR s.asset_id = sqlc.narg(asset_id));
 
 -- name: CountFindingsByScan :one
 -- Every finding one scan recorded, per severity: the single-scan read shows

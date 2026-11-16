@@ -161,8 +161,12 @@ func (s *Server) ListScans(ctx context.Context, request gen.ListScansRequestObje
 	if request.Params.Limit != nil {
 		limit = int(*request.Params.Limit)
 	}
+	offset := 0
+	if request.Params.Offset != nil {
+		offset = int(*request.Params.Offset)
+	}
 
-	list, err := s.assets.Scans(ctx, assetID, limit)
+	page, err := s.assets.Scans(ctx, assetID, limit, offset)
 	if err != nil {
 		if errors.Is(err, assets.ErrInvalid) {
 			return gen.ListScans400ApplicationProblemPlusJSONResponse(
@@ -174,11 +178,16 @@ func (s *Server) ListScans(ctx context.Context, request gen.ListScansRequestObje
 			"could not read the scans; see the server log")}, nil
 	}
 
-	out := make([]gen.Scan, 0, len(list))
-	for _, scan := range list {
+	out := make([]gen.Scan, 0, len(page.Scans))
+	for _, scan := range page.Scans {
 		out = append(out, scanResponse(scan, false))
 	}
-	return gen.ListScans200JSONResponse{Scans: out}, nil
+	return gen.ListScans200JSONResponse{
+		Scans:  out,
+		Total:  page.Total,
+		Limit:  limit,
+		Offset: offset,
+	}, nil
 }
 
 // CreateScans implements gen.StrictServerInterface.
@@ -286,7 +295,12 @@ func (s *Server) ListScanFindings(ctx context.Context, request gen.ListScanFindi
 		filter.Status = string(*request.Params.Status)
 	}
 
-	list, err := s.reports.ScanFindings(ctx, int64(request.Id), filter)
+	offset := 0
+	if request.Params.Offset != nil {
+		offset = int(*request.Params.Offset)
+	}
+
+	page, err := s.reports.ScanFindingsPage(ctx, int64(request.Id), filter, offset)
 	if err != nil {
 		if errors.Is(err, reports.ErrInvalid) {
 			return gen.ListScanFindings400ApplicationProblemPlusJSONResponse(
@@ -298,11 +312,18 @@ func (s *Server) ListScanFindings(ctx context.Context, request gen.ListScanFindi
 			"could not read the findings; see the server log")}, nil
 	}
 
-	out := make([]gen.Finding, 0, len(list))
-	for _, finding := range list {
+	out := make([]gen.Finding, 0, len(page.Findings))
+	for _, finding := range page.Findings {
 		out = append(out, findingResponse(finding))
 	}
-	return gen.ListScanFindings200JSONResponse{Findings: out}, nil
+	return gen.ListScanFindings200JSONResponse{
+		Findings:      out,
+		Groups:        make([]gen.FindingGroup, 0),
+		Total:         page.Total,
+		TotalFindings: page.Total,
+		Limit:         0,
+		Offset:        offset,
+	}, nil
 }
 
 // GetScanDiff implements gen.StrictServerInterface. The diff itself belongs to

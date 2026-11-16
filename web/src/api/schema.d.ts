@@ -494,6 +494,9 @@ export interface paths {
          * @description Every finding the scan produced, most severe first, with the effective
          *     status: a `finding_states` decision for the same asset and fingerprint
          *     reports the finding as `ignored` and fills `state` and `reason`.
+         *
+         *     `offset` skips rows; the endpoint has no page size, so `total` counts
+         *     every matching finding and `limit` is `0`.
          */
         get: operations["listScanFindings"];
         put?: never;
@@ -634,6 +637,11 @@ export interface paths {
          *     `finding_states` decision for the same asset and fingerprint reports the
          *     finding as `ignored` and fills `state` and `reason`, without rewriting
          *     the stored row.
+         *
+         *     `view=single` (the default) returns one row per finding; `view=grouped`
+         *     folds one row per rule and type across projects. `limit` and `offset`
+         *     page the chosen view, and `total` counts every row the filters match
+         *     before the window is applied.
          */
         get: operations["listFindings"];
         put?: never;
@@ -1214,8 +1222,60 @@ export interface components {
             epss?: components["schemas"]["EPSSScore"];
             reachability?: components["schemas"]["Reachability"];
         };
-        /** FindingList */
+        /**
+         * FindingList
+         * @description One page of a findings list. `view=single` fills `findings` and leaves
+         *     `groups` empty; `view=grouped` fills `groups` and leaves `findings`
+         *     empty. `total` counts the rows the filters match in the chosen view
+         *     (findings, or groups) before the window; `total_findings` always counts
+         *     the matching findings, which in grouped view is the sum over every
+         *     group, not just this page. `limit` is `0` on endpoints without a page
+         *     size, such as the findings of one scan.
+         */
         FindingList: {
+            /** @description This page's findings, most severe first. Empty in grouped view. */
+            findings: components["schemas"]["Finding"][];
+            /** @description One row per rule and type, worst first. Empty in single view. */
+            groups: components["schemas"]["FindingGroup"][];
+            /**
+             * @description Rows the filters match: findings in single view, groups in grouped
+             *     view.
+             */
+            total: number;
+            /** @description Findings the filters match, across every group in grouped view. */
+            total_findings: number;
+            /** @description The page size the request asked for; `0` when there is none. */
+            limit: number;
+            /** @description How many rows the request skipped. */
+            offset: number;
+        };
+        /**
+         * FindingGroup
+         * @description One rule (or, without a rule id, one fingerprint) and type, folded
+         *     across projects (#90). Members keep the single list's order, and groups
+         *     sort by worst severity, then finding count, then title.
+         */
+        FindingGroup: {
+            /**
+             * @description Stable key of the group (rule id or fingerprint, then type); the UI
+             *     uses it for selection and React keys.
+             */
+            key: string;
+            /** @description Absent when the scanner reported no rule id. */
+            rule_id?: string;
+            title: string;
+            type: components["schemas"]["FindingType"];
+            severity: components["schemas"]["Severity"];
+            /** @description Affected assets, first-seen order. */
+            asset_ids: number[];
+            project_count: number;
+            /** @description Distinct package names, first-seen order. */
+            packages: string[];
+            /** @description Distinct fixed versions, first-seen order. */
+            fixed_versions: string[];
+            /** @description The fixed version when every member agrees on one; absent otherwise. */
+            fixed_version?: string;
+            /** @description Every member finding, in the single list's order. */
             findings: components["schemas"]["Finding"][];
         };
         /**
@@ -1607,10 +1667,16 @@ export interface components {
         };
         /**
          * ScanList
-         * @description Scans, newest first.
+         * @description One page of scans, newest first, with the total count.
          */
         ScanList: {
             scans: components["schemas"]["Scan"][];
+            /** @description Scans the filters match, before the window. */
+            total: number;
+            /** @description The page size the request asked for. */
+            limit: number;
+            /** @description How many scans the request skipped. */
+            offset: number;
         };
         /**
          * Scan
@@ -1809,6 +1875,15 @@ export interface components {
         ScanID: number;
         /** @description Maximum number of scans to return, newest first. */
         ScanLimitQuery: number;
+        /** @description Rows per page. In grouped view a row is one rule and type. */
+        FindingsLimitQuery: number;
+        /** @description Rows to skip before the page. */
+        OffsetQuery: number;
+        /**
+         * @description `single` returns one row per finding; `grouped` folds one row per rule
+         *     and type across projects.
+         */
+        FindingsListViewQuery: "single" | "grouped";
         /** @description Stable finding fingerprint within one asset. */
         Fingerprint: string;
         /** @description Only findings with this severity. */
@@ -2510,6 +2585,8 @@ export interface operations {
                 asset_id?: components["parameters"]["AssetIDQuery"];
                 /** @description Maximum number of scans to return, newest first. */
                 limit?: components["parameters"]["ScanLimitQuery"];
+                /** @description Rows to skip before the page. */
+                offset?: components["parameters"]["OffsetQuery"];
             };
             header?: never;
             path?: never;
@@ -2517,7 +2594,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The scans after the filters. */
+            /** @description One page of scans after the filters, with the total count. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2526,7 +2603,7 @@ export interface operations {
                     "application/json": components["schemas"]["ScanList"];
                 };
             };
-            /** @description The asset id or limit is not usable. */
+            /** @description The asset id, limit or offset is not usable. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2662,6 +2739,8 @@ export interface operations {
                 type?: components["parameters"]["FindingTypeQuery"];
                 /** @description Only findings with this effective status. */
                 status?: components["parameters"]["FindingStatusQuery"];
+                /** @description Rows to skip before the page. */
+                offset?: components["parameters"]["OffsetQuery"];
             };
             header?: never;
             path: {
@@ -2672,7 +2751,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The findings after the filters. */
+            /** @description The findings after the filters, from the offset. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2961,6 +3040,11 @@ export interface operations {
     listFindings: {
         parameters: {
             query?: {
+                /**
+                 * @description `single` returns one row per finding; `grouped` folds one row per rule
+                 *     and type across projects.
+                 */
+                view?: components["parameters"]["FindingsListViewQuery"];
                 /** @description Only findings of this asset. */
                 asset_id?: components["parameters"]["AssetIDQuery"];
                 /** @description Only findings with this severity. */
@@ -2969,6 +3053,10 @@ export interface operations {
                 type?: components["parameters"]["FindingTypeQuery"];
                 /** @description Only findings with this effective status. */
                 status?: components["parameters"]["FindingStatusQuery"];
+                /** @description Rows per page. In grouped view a row is one rule and type. */
+                limit?: components["parameters"]["FindingsLimitQuery"];
+                /** @description Rows to skip before the page. */
+                offset?: components["parameters"]["OffsetQuery"];
             };
             header?: never;
             path?: never;
@@ -2976,7 +3064,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The latest findings, after the filters. */
+            /** @description One page of the latest findings, after the filters. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2985,7 +3073,10 @@ export interface operations {
                     "application/json": components["schemas"]["FindingList"];
                 };
             };
-            /** @description A query parameter is not a valid asset id or enum value. */
+            /**
+             * @description A query parameter is not a valid asset id, enum value, limit or
+             *     offset.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;

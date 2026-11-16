@@ -190,6 +190,127 @@ func TestListFindingsFilters(t *testing.T) {
 	}
 }
 
+// TestListFindingsPagination covers limit/offset/total on the single view: the
+// pages tile the list, and a window outside 1..500 or a negative offset is a
+// problem detail rather than a silent clamp.
+func TestListFindingsPagination(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+	seedFindingsFixture(t, ts)
+
+	read := func(query string) gen.FindingList {
+		t.Helper()
+		resp := ts.do(t, http.MethodGet, "/api/findings"+query, withCookie(cookie))
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /api/findings%s: status = %d, want %d: %s",
+				query, resp.StatusCode, http.StatusOK, readBody(t, resp))
+		}
+		return decodeFindings(t, readBody(t, resp))
+	}
+
+	all := read("")
+	if all.Total != 3 || all.TotalFindings != 3 || all.Limit != 50 || all.Offset != 0 {
+		t.Errorf("default list = total %d, total_findings %d, limit %d, offset %d; want 3, 3, 50, 0",
+			all.Total, all.TotalFindings, all.Limit, all.Offset)
+	}
+	if len(all.Groups) != 0 {
+		t.Errorf("single view groups = %+v, want empty", all.Groups)
+	}
+
+	second := read("?limit=2&offset=1")
+	if second.Total != 3 || second.Limit != 2 || second.Offset != 1 {
+		t.Errorf("page = total %d, limit %d, offset %d; want 3, 2, 1",
+			second.Total, second.Limit, second.Offset)
+	}
+	if len(second.Findings) != 2 {
+		t.Fatalf("page findings = %+v, want 2", second.Findings)
+	}
+	// The pages tile the list in order, with no row repeated or skipped.
+	seen := make([]string, 0, 3)
+	for offset := 0; offset < 3; offset++ {
+		page := read("?limit=1&offset=" + itoa(int64(offset)))
+		if len(page.Findings) != 1 {
+			t.Fatalf("offset %d findings = %+v, want 1", offset, page.Findings)
+		}
+		seen = append(seen, page.Findings[0].Fingerprint)
+	}
+	for i, finding := range all.Findings {
+		if seen[i] != finding.Fingerprint {
+			t.Errorf("page order = %v, want %v", seen, all.Findings)
+			break
+		}
+	}
+
+	for _, query := range []string{"?limit=0", "?limit=501", "?offset=-1"} {
+		resp := ts.do(t, http.MethodGet, "/api/findings"+query, withCookie(cookie))
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want %d", query, resp.StatusCode, http.StatusBadRequest)
+			continue
+		}
+		problem := readProblem(t, resp)
+		if problem.Detail == nil || *problem.Detail == "" {
+			t.Errorf("%s: problem has no detail", query)
+		}
+	}
+}
+
+// TestListFindingsGroupedView covers view=grouped: the server folds rules across
+// projects, pages the groups and reports both totals.
+func TestListFindingsGroupedView(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+	seedFindingsFixture(t, ts)
+
+	read := func(query string) gen.FindingList {
+		t.Helper()
+		resp := ts.do(t, http.MethodGet, "/api/findings"+query, withCookie(cookie))
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /api/findings%s: status = %d, want %d: %s",
+				query, resp.StatusCode, http.StatusOK, readBody(t, resp))
+		}
+		return decodeFindings(t, readBody(t, resp))
+	}
+
+	grouped := read("?view=grouped")
+	if grouped.Total != 3 || grouped.TotalFindings != 3 {
+		t.Errorf("grouped = total %d, total_findings %d; want 3, 3",
+			grouped.Total, grouped.TotalFindings)
+	}
+	if len(grouped.Findings) != 0 {
+		t.Errorf("grouped findings = %+v, want empty", grouped.Findings)
+	}
+	if len(grouped.Groups) != 3 {
+		t.Fatalf("groups = %+v, want 3", grouped.Groups)
+	}
+	// The ignored secret leads: severity orders the groups, not status.
+	secret := grouped.Groups[0]
+	if secret.RuleId == nil || *secret.RuleId != "gitleaks-generic-api-key" {
+		t.Errorf("first group = %+v, want the secret rule", secret)
+	}
+	if secret.Severity != gen.SeverityHigh || secret.ProjectCount != 1 {
+		t.Errorf("first group = %+v, want high severity in one project", secret)
+	}
+	if len(secret.Findings) != 1 || secret.Findings[0].Status != gen.FindingStatusIgnored {
+		t.Errorf("first group findings = %+v, want the ignored member", secret.Findings)
+	}
+
+	// The window cuts groups: offset 1 starts at the medium finding.
+	page := read("?view=grouped&limit=1&offset=1")
+	if page.Total != 3 || page.Limit != 1 || page.Offset != 1 {
+		t.Errorf("grouped page = total %d, limit %d, offset %d; want 3, 1, 1",
+			page.Total, page.Limit, page.Offset)
+	}
+	if len(page.Groups) != 1 || page.Groups[0].RuleId == nil || *page.Groups[0].RuleId != "CVE-2026-0003" {
+		t.Errorf("grouped page = %+v, want the medium finding", page.Groups)
+	}
+
+	single := read("?view=single")
+	if len(single.Findings) != 3 || len(single.Groups) != 0 {
+		t.Errorf("single = %d findings and %d groups, want 3 and 0",
+			len(single.Findings), len(single.Groups))
+	}
+}
+
 // TestListFindingsRejectsBadEnums proves every enum parameter is validated and
 // answered with problem+json, not a 500 or an empty list.
 func TestListFindingsRejectsBadEnums(t *testing.T) {

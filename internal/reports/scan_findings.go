@@ -16,14 +16,53 @@ type ScanFilter struct {
 	Status   string
 }
 
+// ScanFindingPage is one window of a scan's findings. The endpoint has no page
+// size, so Findings runs from Offset to the end; Total counts every matching
+// finding.
+type ScanFindingPage struct {
+	Findings []Finding
+	Total    int
+}
+
 // ScanFindings lists every finding one scan produced, most severe first, with
 // the effective status: a finding_states decision for the same asset and
 // fingerprint reports the finding as ignored and fills State and Reason.
 func (s *Service) ScanFindings(ctx context.Context, scanID int64, filter ScanFilter) ([]Finding, error) {
+	return s.scanFindings(ctx, scanID, filter, allRows, 0)
+}
+
+// ScanFindingsPage lists a scan's findings from offset, with the number of
+// findings the filters match before the offset.
+func (s *Service) ScanFindingsPage(ctx context.Context, scanID int64, filter ScanFilter, offset int) (ScanFindingPage, error) {
+	if offset < 0 {
+		return ScanFindingPage{}, fmt.Errorf("%w: offset must be 0 or greater", ErrInvalid)
+	}
+	if scanID <= 0 {
+		return ScanFindingPage{}, fmt.Errorf("%w: scan id must be positive", ErrInvalid)
+	}
+
+	countParams, err := filter.countParams(scanID, s.expiryNow())
+	if err != nil {
+		return ScanFindingPage{}, err
+	}
+	total, err := sqlcdb.New(s.db).CountFindingsByScanFiltered(ctx, countParams)
+	if err != nil {
+		return ScanFindingPage{}, fmt.Errorf("reports: count findings of scan %d: %w", scanID, err)
+	}
+
+	findings, err := s.scanFindings(ctx, scanID, filter, allRows, int64(offset))
+	if err != nil {
+		return ScanFindingPage{}, err
+	}
+	return ScanFindingPage{Findings: findings, Total: int(total)}, nil
+}
+
+// scanFindings reads one scan's findings with the window limit and offset.
+func (s *Service) scanFindings(ctx context.Context, scanID int64, filter ScanFilter, limit, offset int64) ([]Finding, error) {
 	if scanID <= 0 {
 		return nil, fmt.Errorf("%w: scan id must be positive", ErrInvalid)
 	}
-	params, err := filter.params(scanID, s.expiryNow())
+	params, err := filter.params(scanID, s.expiryNow(), limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -47,9 +86,9 @@ func (s *Service) ScanFindings(ctx context.Context, scanID int64, filter ScanFil
 // params validates the filter and converts it to the query's nullable
 // arguments: a nil interface means "no filter" in ListFindingsByScan. now is
 // the clock the query compares a decision's expiry with.
-func (f ScanFilter) params(scanID int64, now string) (sqlcdb.ListFindingsByScanParams, error) {
-	params := sqlcdb.ListFindingsByScanParams{ScanID: scanID, Now: now}
-	if err := validateEnums(f.Severity, f.Type, f.Status); err != nil {
+func (f ScanFilter) params(scanID int64, now string, limit, offset int64) (sqlcdb.ListFindingsByScanParams, error) {
+	params := sqlcdb.ListFindingsByScanParams{ScanID: scanID, Now: now, Limit: limit, Offset: offset}
+	if err := f.validate(); err != nil {
 		return params, err
 	}
 	if f.Severity != "" {
@@ -62,6 +101,30 @@ func (f ScanFilter) params(scanID int64, now string) (sqlcdb.ListFindingsByScanP
 		params.Status = f.Status
 	}
 	return params, nil
+}
+
+// countParams converts the filter to CountFindingsByScanFiltered's arguments,
+// which mirror ListFindingsByScan's filters without the window.
+func (f ScanFilter) countParams(scanID int64, now string) (sqlcdb.CountFindingsByScanFilteredParams, error) {
+	params := sqlcdb.CountFindingsByScanFilteredParams{ScanID: scanID, Now: now}
+	if err := f.validate(); err != nil {
+		return params, err
+	}
+	if f.Severity != "" {
+		params.Severity = f.Severity
+	}
+	if f.Type != "" {
+		params.Type = f.Type
+	}
+	if f.Status != "" {
+		params.Status = f.Status
+	}
+	return params, nil
+}
+
+// validate rejects an enum value no filter accepts.
+func (f ScanFilter) validate() error {
+	return validateEnums(f.Severity, f.Type, f.Status)
 }
 
 // findingFromScanRow converts one ListFindingsByScan row into the read model.

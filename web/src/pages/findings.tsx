@@ -11,6 +11,7 @@ import {
   useBulkFindingState,
   type Finding,
   type FindingFilter,
+  type FindingGroup,
   type FindingState,
   type FindingStatus,
   type FindingType,
@@ -29,6 +30,7 @@ import { ErrorNote } from '../components/error-note'
 import { FilterBar, type FilterField } from '../components/filter-bar'
 import { FindingDrawer } from '../components/finding-drawer'
 import { GroupDrawer } from '../components/group-drawer'
+import { Pager } from '../components/pager'
 import { PageActions } from '../components/app-shell'
 import { Tabs, type TabItem } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
@@ -36,8 +38,12 @@ import { Button, buttonVariants } from '../components/ui/button'
 import { capitalize, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
 import { expiryDate, expiryValue, type ExpiryChoice } from '../lib/expiry'
 import { epssLabel, ordinal } from '../lib/epss'
-import { groupFindings, type FindingGroup } from '../lib/group-findings'
-import type { FindingsView } from '../lib/urls'
+import {
+  defaultFindingsPageSize,
+  type FindingsPageSize,
+  type FindingsSearch,
+  type FindingsView,
+} from '../lib/urls'
 import { cn } from '../lib/utils'
 import { FixPlanPanel } from './fix-plan'
 
@@ -235,15 +241,16 @@ export function findingColumns(
 
 /**
  * groupedColumns builds the table for one row per rule and type (#90): the
- * worst severity, the rule, how many projects it reaches and the fix.
+ * worst severity, the rule, how many projects it reaches and the fix. The rows
+ * come from the API's grouped view, so grouping is server-side.
  */
 function groupedColumns(
   assetNames: ReadonlyMap<number, string>,
 ): DataTableColumn<FindingGroup>[] {
   const projects = (group: FindingGroup) =>
-    group.projectCount === 1
+    group.project_count === 1
       ? '1 project'
-      : `${String(group.projectCount)} projects`
+      : `${String(group.project_count)} projects`
 
   return [
     {
@@ -266,7 +273,7 @@ function groupedColumns(
         <>
           <span className="block">{group.title}</span>
           <span className="font-mono text-xs text-muted">
-            {group.ruleId ?? `${typeLabels[group.type]} finding`}
+            {group.rule_id ?? `${typeLabels[group.type]} finding`}
           </span>
         </>
       ),
@@ -277,7 +284,7 @@ function groupedColumns(
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 whitespace-nowrap',
       cellTitle: (group) =>
-        group.assetIds
+        group.asset_ids
           .map((id) => assetNames.get(id) ?? `Asset ${String(id)}`)
           .join(', '),
       cell: (group) => <span className="tabular-nums">{projects(group)}</span>,
@@ -288,11 +295,13 @@ function groupedColumns(
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap',
       cellTitle: (group) =>
-        group.fixedVersions.length > 1 ? group.fixedVersions.join(', ') : undefined,
+        group.fixed_versions.length > 1
+          ? group.fixed_versions.join(', ')
+          : undefined,
       cell: (group) =>
-        group.fixedVersion !== undefined ? (
-          group.fixedVersion
-        ) : group.fixedVersions.length > 1 ? (
+        group.fixed_version !== undefined ? (
+          group.fixed_version
+        ) : group.fixed_versions.length > 1 ? (
           <span className="text-muted">varies</span>
         ) : (
           <span className="text-faint">—</span>
@@ -433,12 +442,18 @@ export function FindingsPage() {
     })
   }, [assets.data, navigate, search.asset, search.tab])
 
+  const page = search.page ?? 1
+  const pageSize = search.size ?? defaultFindingsPageSize
+
   const findings = useQuery({
     ...latestFindingsQuery({
       assetId: selected?.id,
       type: type === '' ? undefined : type,
       severity: severity === '' ? undefined : severity,
       status,
+      view: grouped ? 'grouped' : 'single',
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
     }),
     // While the project list loads, a URL with an id may still name a project
     // that exists; asking for all findings first would be the wrong question.
@@ -446,6 +461,12 @@ export function FindingsPage() {
       tab === 'findings' &&
       (search.asset === undefined || assets.isSuccess),
   })
+  const list = findings.data
+  // The API pages server-side, so only the current page's rows are here.
+  const pageFindings = list?.findings
+  const groups = list?.groups
+  const total = list?.total ?? 0
+  const totalFindings = list?.total_findings ?? 0
 
   const assetNames = useMemo(
     () => new Map(assetList.map((asset) => [asset.id, asset.display_name])),
@@ -461,16 +482,12 @@ export function FindingsPage() {
     [assetNames, epss.data?.enabled, reachability.data?.enabled],
   )
   const groupColumns = useMemo(() => groupedColumns(assetNames), [assetNames])
-  const groups = useMemo(
-    () => (findings.data === undefined ? undefined : groupFindings(findings.data)),
-    [findings.data],
-  )
 
   // A decision removes the row that opened the drawer, so the drawer's own
   // focus restore lands on nothing: keep focus in the table once the refreshed
   // list has dropped it (issue #75).
   const rowFocus = useRowRemovalFocus({
-    rows: findings.data,
+    rows: pageFindings,
     rowKey: (finding) => finding.fingerprint,
     fallback: findingsHeading,
     onRemoved: () => setOpenFingerprint(null),
@@ -482,6 +499,21 @@ export function FindingsPage() {
     fallback: findingsHeading,
     onRemoved: () => setOpenGroupKey(null),
   })
+
+  // A live refresh or a decision can empty the page the URL points at; go to
+  // the last page instead of showing an empty table.
+  useEffect(() => {
+    if (list === undefined || list.total === 0 || page <= 1) return
+    const lastPage = Math.max(1, Math.ceil(list.total / pageSize))
+    if (page <= lastPage) return
+    void navigate({
+      to: '/findings',
+      search: pageSearch({ page: lastPage, size: pageSize }),
+      replace: true,
+    })
+    // pageSearch is rebuilt every render; the params it reads are the deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, page, pageSize, navigate, search.asset, search.view, search.size])
 
   if (assets.isPending) {
     return (
@@ -513,9 +545,11 @@ export function FindingsPage() {
     )
   }
 
-  const openFinding = findings.data?.find(
-    (finding) => finding.fingerprint === openFingerprint,
-  )
+  // Grouped rows carry their members, so a member opened from the group drawer
+  // is found there; single view reads the page's own findings.
+  const openFinding = (
+    grouped ? groups?.flatMap((group) => group.findings) : pageFindings
+  )?.find((finding) => finding.fingerprint === openFingerprint)
   const openGroup = groups?.find((group) => group.key === openGroupKey)
   const filtered = type !== '' || severity !== ''
   // Grouped mode selects groups; a group stands for every member finding, so
@@ -523,18 +557,26 @@ export function FindingsPage() {
   const checkedGroupRows = (groups ?? []).filter((group) =>
     checkedGroups.has(group.key),
   )
-  // Only rows still on screen count, so a filter change never acts on hidden findings.
+  // Only rows on the current page count, so select-all never acts on a hidden
+  // page and a filter change never acts on hidden findings.
   const checkedFindings = grouped
     ? checkedGroupRows.flatMap((group) => group.findings)
-    : (findings.data ?? []).filter((finding) => checked.has(finding.fingerprint))
+    : (pageFindings ?? []).filter((finding) => checked.has(finding.fingerprint))
   const allChecked =
-    findings.data !== undefined &&
-    findings.data.length > 0 &&
-    checkedFindings.length === findings.data.length
+    pageFindings !== undefined &&
+    pageFindings.length > 0 &&
+    checkedFindings.length === pageFindings.length
   const allGroupsChecked =
     groups !== undefined &&
     groups.length > 0 &&
     checkedGroupRows.length === groups.length
+
+  function clearSelection() {
+    setOpenFingerprint(null)
+    setOpenGroupKey(null)
+    setChecked(new Set())
+    setCheckedGroups(new Set())
+  }
 
   function toggleChecked(fingerprint: string) {
     setChecked((current) => {
@@ -552,16 +594,64 @@ export function FindingsPage() {
     })
   }
 
+  // pageSearch keeps the view, project and page size while the page itself is
+  // replaced; page 1 and the default size stay out of the URL.
+  function pageSearch(next: {
+    page?: number
+    size?: FindingsPageSize
+  }): FindingsSearch {
+    const size = next.size ?? search.size
+    return {
+      ...(search.view === undefined ? {} : { view: search.view }),
+      ...(search.asset === undefined ? {} : { asset: search.asset }),
+      ...(size === undefined || size === defaultFindingsPageSize
+        ? {}
+        : { size }),
+      ...(next.page === undefined || next.page <= 1
+        ? {}
+        : { page: next.page }),
+    }
+  }
+
+  function changePage(next: number) {
+    void navigate({
+      to: '/findings',
+      search: pageSearch({ page: next, size: pageSize }),
+      replace: true,
+    })
+    clearSelection()
+  }
+
+  function changePageSize(size: FindingsPageSize) {
+    void navigate({
+      to: '/findings',
+      search: pageSearch({ size }),
+      replace: true,
+    })
+    clearSelection()
+  }
+
+  // A filter change goes back to page 1, so the list never opens on a page the
+  // new result set does not have.
+  function resetPage() {
+    if (search.page === undefined) return
+    void navigate({
+      to: '/findings',
+      search: pageSearch({ size: pageSize }),
+      replace: true,
+    })
+  }
+
   function setView(next: FindingsView) {
     void navigate({
       to: '/findings',
-      search: next === 'single' ? { view: 'single' } : {},
+      search: {
+        ...(next === 'single' ? { view: 'single' as const } : {}),
+        ...(search.size === undefined ? {} : { size: search.size }),
+      },
       replace: true,
     })
-    setOpenFingerprint(null)
-    setOpenGroupKey(null)
-    setChecked(new Set())
-    setCheckedGroups(new Set())
+    clearSelection()
   }
 
   // The URL owns the tab, so a reload or a copied link lands on it; switching
@@ -575,15 +665,13 @@ export function FindingsPage() {
               tab: 'fix-plan',
               ...(search.asset === undefined ? {} : { asset: search.asset }),
             }
-          : search.asset === undefined
-            ? {}
-            : { asset: search.asset },
+          : {
+              ...(search.asset === undefined ? {} : { asset: search.asset }),
+              ...(search.size === undefined ? {} : { size: search.size }),
+            },
       replace: true,
     })
-    setOpenFingerprint(null)
-    setOpenGroupKey(null)
-    setChecked(new Set())
-    setCheckedGroups(new Set())
+    clearSelection()
   }
 
   const filters: FilterField[] = [
@@ -603,13 +691,13 @@ export function FindingsPage() {
         // A project filter forces single, so the view leaves the URL with it.
         void navigate({
           to: '/findings',
-          search: value === '' ? {} : { asset: Number(value) },
+          search: {
+            ...(value === '' ? {} : { asset: Number(value) }),
+            ...(search.size === undefined ? {} : { size: search.size }),
+          },
           replace: true,
         })
-        setOpenFingerprint(null)
-        setOpenGroupKey(null)
-        setChecked(new Set())
-        setCheckedGroups(new Set())
+        clearSelection()
       },
     },
     {
@@ -623,8 +711,11 @@ export function FindingsPage() {
       ],
       onChange: (value) => {
         setType(value as FindingType | '')
+        resetPage()
         setOpenFingerprint(null)
         setOpenGroupKey(null)
+        setChecked(new Set())
+        setCheckedGroups(new Set())
       },
     },
     {
@@ -641,8 +732,11 @@ export function FindingsPage() {
       ],
       onChange: (value) => {
         setSeverity(value as Severity | '')
+        resetPage()
         setOpenFingerprint(null)
         setOpenGroupKey(null)
+        setChecked(new Set())
+        setCheckedGroups(new Set())
       },
     },
     {
@@ -656,8 +750,11 @@ export function FindingsPage() {
       ],
       onChange: (value) => {
         setStatus(value as FindingStatus)
+        resetPage()
         setOpenFingerprint(null)
         setOpenGroupKey(null)
+        setChecked(new Set())
+        setCheckedGroups(new Set())
       },
     },
   ]
@@ -670,7 +767,7 @@ export function FindingsPage() {
         setChecked(
           allChecked
             ? new Set()
-            : new Set((findings.data ?? []).map((finding) => finding.fingerprint)),
+            : new Set((pageFindings ?? []).map((finding) => finding.fingerprint)),
         ),
       label: 'Select all findings',
       checkboxClassName: 'cursor-pointer align-middle',
@@ -783,7 +880,7 @@ export function FindingsPage() {
         </section>
       ) : null}
 
-      {findings.isSuccess && findings.data.length === 0 ? (
+      {list !== undefined && total === 0 ? (
         <section className="rounded-card border border-border-subtle bg-surface p-8">
           <h2
             ref={findingsHeading}
@@ -806,7 +903,7 @@ export function FindingsPage() {
         </section>
       ) : null}
 
-      {findings.isSuccess && findings.data.length > 0 ? (
+      {list !== undefined && total > 0 ? (
         <section
           aria-labelledby="findings-heading"
           className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
@@ -822,8 +919,8 @@ export function FindingsPage() {
             </h2>
             <span className="text-faint">
               {grouped
-                ? `${String(groups?.length ?? 0)} grouped rules from ${String(findings.data.length)} findings`
-                : `${String(findings.data.length)} ${
+                ? `${String(total)} grouped rules from ${String(totalFindings)} findings`
+                : `${String(total)} ${
                     selected === undefined
                       ? 'across all projects'
                       : 'in the latest succeeded scan'
@@ -855,7 +952,7 @@ export function FindingsPage() {
             />
           ) : (
             <DataTable
-              rows={findings.data}
+              rows={pageFindings ?? []}
               columns={columns}
               rowKey={(finding) => finding.fingerprint}
               selection={selection}
@@ -866,6 +963,13 @@ export function FindingsPage() {
               bodyRef={rowFocus.bodyRef}
             />
           )}
+          <Pager
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={changePage}
+            onPageSizeChange={changePageSize}
+          />
         </section>
       ) : null}
 

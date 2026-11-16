@@ -39,6 +39,8 @@ func (s *Service) FixPlan(ctx context.Context, assetID int64) (fixplan.Plan, err
 		Type:    string(findings.TypeVulnerability),
 		Status:  FindingStatusOpen,
 		Now:     s.expiryNow(),
+		Limit:   allRows,
+		Offset:  0,
 	})
 	if err != nil {
 		return fixplan.Plan{}, fmt.Errorf("reports: list findings for fix plan: %w", err)

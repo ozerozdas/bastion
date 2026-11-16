@@ -763,15 +763,16 @@ paths:
       parameters:
         - $ref: "#/components/parameters/AssetIDQuery"
         - $ref: "#/components/parameters/ScanLimitQuery"
+        - $ref: "#/components/parameters/OffsetQuery"
       responses:
         "200":
-          description: The scans after the filters.
+          description: One page of scans after the filters, with the total count.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScanList"
         "400":
-          description: The asset id or limit is not usable.
+          description: The asset id, limit or offset is not usable.
           content:
             application/problem+json:
               schema:
@@ -894,15 +895,19 @@ paths:
         Every finding the scan produced, most severe first, with the effective
         status: a `finding_states` decision for the same asset and fingerprint
         reports the finding as `ignored` and fills `state` and `reason`.
+
+        `offset` skips rows; the endpoint has no page size, so `total` counts
+        every matching finding and `limit` is `0`.
       tags: [findings]
       parameters:
         - $ref: "#/components/parameters/ScanID"
         - $ref: "#/components/parameters/SeverityQuery"
         - $ref: "#/components/parameters/FindingTypeQuery"
         - $ref: "#/components/parameters/FindingStatusQuery"
+        - $ref: "#/components/parameters/OffsetQuery"
       responses:
         "200":
-          description: The findings after the filters.
+          description: The findings after the filters, from the offset.
           content:
             application/json:
               schema:
@@ -1180,21 +1185,31 @@ paths:
         `finding_states` decision for the same asset and fingerprint reports the
         finding as `ignored` and fills `state` and `reason`, without rewriting
         the stored row.
+
+        `view=single` (the default) returns one row per finding; `view=grouped`
+        folds one row per rule and type across projects. `limit` and `offset`
+        page the chosen view, and `total` counts every row the filters match
+        before the window is applied.
       tags: [findings]
       parameters:
+        - $ref: "#/components/parameters/FindingsListViewQuery"
         - $ref: "#/components/parameters/AssetIDQuery"
         - $ref: "#/components/parameters/SeverityQuery"
         - $ref: "#/components/parameters/FindingTypeQuery"
         - $ref: "#/components/parameters/FindingStatusQuery"
+        - $ref: "#/components/parameters/FindingsLimitQuery"
+        - $ref: "#/components/parameters/OffsetQuery"
       responses:
         "200":
-          description: The latest findings, after the filters.
+          description: One page of the latest findings, after the filters.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/FindingList"
         "400":
-          description: A query parameter is not a valid asset id or enum value.
+          description: |
+            A query parameter is not a valid asset id, enum value, limit or
+            offset.
           content:
             application/problem+json:
               schema:
@@ -1404,6 +1419,37 @@ components:
         minimum: 1
         maximum: 200
         default: 50
+    FindingsLimitQuery:
+      name: limit
+      in: query
+      required: false
+      description: |
+        Rows per page. In grouped view a row is one rule and type.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 50
+    OffsetQuery:
+      name: offset
+      in: query
+      required: false
+      description: Rows to skip before the page.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    FindingsListViewQuery:
+      name: view
+      in: query
+      required: false
+      description: |
+        `single` returns one row per finding; `grouped` folds one row per rule
+        and type across projects.
+      schema:
+        type: string
+        enum: [single, grouped]
+        default: single
     Fingerprint:
       name: fingerprint
       in: path
@@ -2032,11 +2078,92 @@ components:
     FindingList:
       type: object
       title: FindingList
+      description: |
+        One page of a findings list. `view=single` fills `findings` and leaves
+        `groups` empty; `view=grouped` fills `groups` and leaves `findings`
+        empty. `total` counts the rows the filters match in the chosen view
+        (findings, or groups) before the window; `total_findings` always counts
+        the matching findings, which in grouped view is the sum over every
+        group, not just this page. `limit` is `0` on endpoints without a page
+        size, such as the findings of one scan.
       additionalProperties: false
-      required: [findings]
+      required: [findings, groups, total, total_findings, limit, offset]
       properties:
         findings:
           type: array
+          description: This page's findings, most severe first. Empty in grouped view.
+          items:
+            $ref: "#/components/schemas/Finding"
+        groups:
+          type: array
+          description: |
+            One row per rule and type, worst first. Empty in single view.
+          items:
+            $ref: "#/components/schemas/FindingGroup"
+        total:
+          type: integer
+          description: |
+            Rows the filters match: findings in single view, groups in grouped
+            view.
+        total_findings:
+          type: integer
+          description: Findings the filters match, across every group in grouped view.
+        limit:
+          type: integer
+          description: The page size the request asked for; `0` when there is none.
+        offset:
+          type: integer
+          description: How many rows the request skipped.
+    FindingGroup:
+      type: object
+      title: FindingGroup
+      description: |
+        One rule (or, without a rule id, one fingerprint) and type, folded
+        across projects (#90). Members keep the single list's order, and groups
+        sort by worst severity, then finding count, then title.
+      additionalProperties: false
+      required: [key, title, type, severity, asset_ids, project_count, packages, fixed_versions, findings]
+      properties:
+        key:
+          type: string
+          description: |
+            Stable key of the group (rule id or fingerprint, then type); the UI
+            uses it for selection and React keys.
+        rule_id:
+          type: string
+          description: Absent when the scanner reported no rule id.
+        title:
+          type: string
+        type:
+          $ref: "#/components/schemas/FindingType"
+        severity:
+          $ref: "#/components/schemas/Severity"
+        asset_ids:
+          type: array
+          description: Affected assets, first-seen order.
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+        project_count:
+          type: integer
+        packages:
+          type: array
+          description: Distinct package names, first-seen order.
+          items:
+            type: string
+        fixed_versions:
+          type: array
+          description: Distinct fixed versions, first-seen order.
+          items:
+            type: string
+        fixed_version:
+          type: string
+          description: |
+            The fixed version when every member agrees on one; absent otherwise.
+        findings:
+          type: array
+          description: Every member finding, in the single list's order.
           items:
             $ref: "#/components/schemas/Finding"
     FixPlan:
@@ -2593,14 +2720,23 @@ components:
     ScanList:
       type: object
       title: ScanList
-      description: Scans, newest first.
+      description: One page of scans, newest first, with the total count.
       additionalProperties: false
-      required: [scans]
+      required: [scans, total, limit, offset]
       properties:
         scans:
           type: array
           items:
             $ref: "#/components/schemas/Scan"
+        total:
+          type: integer
+          description: Scans the filters match, before the window.
+        limit:
+          type: integer
+          description: The page size the request asked for.
+        offset:
+          type: integer
+          description: How many scans the request skipped.
     Scan:
       type: object
       title: Scan

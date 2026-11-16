@@ -19,7 +19,9 @@ import (
 // built without one.
 const reportsUnavailable = "reports are not configured; start bastion with its database"
 
-// ListFindings implements gen.StrictServerInterface.
+// ListFindings implements gen.StrictServerInterface. The single view pages in
+// SQL; the grouped view folds the whole filtered list in reports and then cuts
+// the page, because a group spans projects.
 func (s *Server) ListFindings(ctx context.Context, request gen.ListFindingsRequestObject) (gen.ListFindingsResponseObject, error) {
 	if s.reports == nil {
 		return gen.ListFindings500ApplicationProblemPlusJSONResponse{
@@ -41,25 +43,96 @@ func (s *Server) ListFindings(ctx context.Context, request gen.ListFindingsReque
 		filter.Status = string(*request.Params.Status)
 	}
 
-	list, err := s.reports.Findings(ctx, filter)
-	if err != nil {
-		if errors.Is(err, reports.ErrInvalid) {
-			return gen.ListFindings400ApplicationProblemPlusJSONResponse(
-				newProblem(http.StatusBadRequest, "Bad Request", err.Error()),
-			), nil
-		}
-		s.log.Error("list findings", "error", err)
-		return gen.ListFindings500ApplicationProblemPlusJSONResponse{
-			Body: newProblem(http.StatusInternalServerError, "Internal Server Error",
-				"could not read the findings; see the server log"),
-		}, nil
+	view := gen.FindingsListViewQuerySingle
+	if request.Params.View != nil {
+		view = gen.FindingsListViewQuery(*request.Params.View)
+	}
+	limit := reports.DefaultFindingLimit
+	if request.Params.Limit != nil {
+		limit = int(*request.Params.Limit)
+	}
+	offset := 0
+	if request.Params.Offset != nil {
+		offset = int(*request.Params.Offset)
+	}
+	page := reports.Page{Limit: limit, Offset: offset}
+
+	out := gen.FindingList{
+		Findings:      make([]gen.Finding, 0),
+		Groups:        make([]gen.FindingGroup, 0),
+		Limit:         limit,
+		Offset:        offset,
+		Total:         0,
+		TotalFindings: 0,
 	}
 
-	out := make([]gen.Finding, 0, len(list))
-	for _, finding := range list {
-		out = append(out, findingResponse(finding))
+	switch view {
+	case gen.FindingsListViewQueryGrouped:
+		grouped, err := s.reports.GroupedFindings(ctx, filter, page)
+		if err != nil {
+			return listFindingsProblem(s, err)
+		}
+		out.Groups = make([]gen.FindingGroup, 0, len(grouped.Groups))
+		for _, group := range grouped.Groups {
+			out.Groups = append(out.Groups, findingGroupResponse(group))
+		}
+		out.Total = grouped.Total
+		out.TotalFindings = grouped.TotalFindings
+	default:
+		list, total, err := s.reports.FindingsPage(ctx, filter, page)
+		if err != nil {
+			return listFindingsProblem(s, err)
+		}
+		out.Findings = make([]gen.Finding, 0, len(list))
+		for _, finding := range list {
+			out.Findings = append(out.Findings, findingResponse(finding))
+		}
+		out.Total = total
+		out.TotalFindings = total
 	}
-	return gen.ListFindings200JSONResponse{Findings: out}, nil
+
+	return gen.ListFindings200JSONResponse(out), nil
+}
+
+// listFindingsProblem maps a reports error onto the list's problem responses.
+func listFindingsProblem(s *Server, err error) (gen.ListFindingsResponseObject, error) {
+	if errors.Is(err, reports.ErrInvalid) {
+		return gen.ListFindings400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", err.Error()),
+		), nil
+	}
+	s.log.Error("list findings", "error", err)
+	return gen.ListFindings500ApplicationProblemPlusJSONResponse{
+		Body: newProblem(http.StatusInternalServerError, "Internal Server Error",
+			"could not read the findings; see the server log"),
+	}, nil
+}
+
+// findingGroupResponse maps one folded group onto the generated type.
+func findingGroupResponse(group reports.FindingGroup) gen.FindingGroup {
+	out := gen.FindingGroup{
+		Key:           group.Key,
+		Title:         group.Title,
+		Type:          gen.FindingType(group.Type),
+		Severity:      gen.Severity(group.Severity),
+		AssetIds:      group.AssetIDs,
+		ProjectCount:  group.ProjectCount,
+		Packages:      group.Packages,
+		FixedVersions: group.FixedVersions,
+		Findings:      make([]gen.Finding, 0, len(group.Findings)),
+	}
+	if group.RuleID != "" {
+		ruleID := group.RuleID
+		out.RuleId = &ruleID
+	}
+	if group.FixedVersion != "" {
+		fixedVersion := group.FixedVersion
+		out.FixedVersion = &fixedVersion
+	}
+	for _, finding := range group.Findings {
+		out.Findings = append(out.Findings, findingResponse(finding))
+	}
+	return out
 }
 
 // GetAssetFixPlan implements gen.StrictServerInterface.
