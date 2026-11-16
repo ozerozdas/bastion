@@ -30,7 +30,7 @@ export function HealthChip({ action }: { action?: ReactNode }) {
           className={cn('size-1.5 shrink-0 rounded-full', dot)}
           title={isError ? 'The local API is not answering' : 'Connected'}
         />
-        <span className="font-mono text-[11px] text-muted">{label}</span>
+        <span className="font-mono text-[0.6875rem] text-muted">{label}</span>
       </div>
       {action ? <div className="ml-auto shrink-0">{action}</div> : null}
     </div>

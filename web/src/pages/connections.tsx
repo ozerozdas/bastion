@@ -19,7 +19,7 @@ import { Tabs, type TabItem } from '../components/ui/tabs'
 import type { ConnectionsTab } from '../lib/urls'
 
 const inputClass =
-  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
+  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
 
 const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
@@ -84,7 +84,7 @@ function RepositoryPanel() {
 
       {connections.isError ? (
         <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-          <h2 className="text-[13px] font-semibold">Connections failed to load</h2>
+          <h2 className="text-[0.8125rem] font-semibold">Connections failed to load</h2>
           <ErrorNote
             error={connections.error}
             fix="Restart bastion from the terminal and reload this page."
@@ -114,7 +114,7 @@ function RepositoryPanel() {
       {github.length > 0 ? (
         <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
           <div className="flex flex-wrap items-baseline gap-2.5">
-            <h2 className="text-[13px] font-semibold">GitHub</h2>
+            <h2 className="text-[0.8125rem] font-semibold">GitHub</h2>
             <span className="text-faint">Repositories bastion can read</span>
           </div>
           <ul className="flex flex-col divide-y divide-border-subtle">
@@ -153,7 +153,7 @@ function AWSPanel() {
   return (
     <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
       <div className="flex flex-wrap items-baseline gap-2.5">
-        <h2 className="text-[13px] font-semibold">AWS</h2>
+        <h2 className="text-[0.8125rem] font-semibold">AWS</h2>
         <span className="text-faint">
           ECR through your default credential chain
         </span>
@@ -165,7 +165,7 @@ function AWSPanel() {
 
       {connections.isError ? (
         <div className="flex flex-col gap-1">
-          <h3 className="text-[13px] font-semibold">Connections failed to load</h3>
+          <h3 className="text-[0.8125rem] font-semibold">Connections failed to load</h3>
           <ErrorNote
             error={connections.error}
             fix="Restart bastion from the terminal and reload this page."
@@ -351,7 +351,7 @@ function AddAWSForm() {
       className="flex flex-col gap-3 rounded-md border border-border-subtle bg-bg p-3"
     >
       <div className="flex flex-col gap-0.5">
-        <h3 className="text-[13px] font-semibold">Add a connection</h3>
+        <h3 className="text-[0.8125rem] font-semibold">Add a connection</h3>
         <p className="text-xs text-muted">
           The profile is the one you signed in with, for example{' '}
           <span className="font-mono">aws sso login --profile work</span>. No AWS
@@ -443,7 +443,7 @@ function DockerPanel() {
   return (
     <section className="flex flex-col gap-2 rounded-card border border-border-subtle bg-surface p-4">
       <div className="flex flex-wrap items-baseline gap-2.5">
-        <h2 className="text-[13px] font-semibold">Docker</h2>
+        <h2 className="text-[0.8125rem] font-semibold">Docker</h2>
         <Badge tone="ok">available</Badge>
         <span className="text-faint">
           {count} {count === 1 ? 'image' : 'images'}
@@ -598,7 +598,7 @@ function AddGitHubForm() {
       className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
     >
       <div className="flex flex-col gap-0.5">
-        <h2 className="text-[13px] font-semibold">Add GitHub connection</h2>
+        <h2 className="text-[0.8125rem] font-semibold">Add GitHub connection</h2>
         <p className="text-xs text-muted">
           A read-only token is enough. It is stored in the OS keychain and never
           shown again.

@@ -123,6 +123,17 @@ test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => 
   // Scan History is a tab now, not a sidebar entry.
   await expect(aside.getByRole('link', { name: /Scan History/ })).toHaveCount(0)
 
+  // Configuration is the SETTINGS action, next to Connections (#142); the old
+  // standalone button above the Local · version footer is gone.
+  await expect(
+    aside
+      .getByRole('group', { name: 'SETTINGS' })
+      .getByRole('button', { name: 'Configuration' }),
+  ).toBeVisible()
+  await expect(
+    aside.getByRole('button', { name: 'Settings', exact: true }),
+  ).toHaveCount(0)
+
   expect(problems).toEqual([])
 })
 

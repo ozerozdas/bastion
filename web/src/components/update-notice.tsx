@@ -80,13 +80,13 @@ function UpdateAvailableCard({
           <span aria-hidden="true">×</span>
         </button>
       </div>
-      <p className="text-[11px] text-muted">
+      <p className="text-[0.6875rem] text-muted">
         You have {status.current.startsWith('v') ? status.current : `v${status.current}`}.
       </p>
 
       {command ? (
         <div className="flex min-w-0 items-center gap-1.5">
-          <code className="min-w-0 flex-1 overflow-x-auto rounded-md border border-border-strong bg-bg px-2 py-1 font-mono text-[10px] whitespace-nowrap">
+          <code className="min-w-0 flex-1 overflow-x-auto rounded-md border border-border-strong bg-bg px-2 py-1 font-mono text-[0.625rem] whitespace-nowrap">
             {command}
           </code>
           <Button
@@ -106,7 +106,7 @@ function UpdateAvailableCard({
           href={status.release_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="self-start text-[11px] text-muted underline underline-offset-2 hover:text-fg"
+          className="self-start text-[0.6875rem] text-muted underline underline-offset-2 hover:text-fg"
         >
           Release notes
         </a>

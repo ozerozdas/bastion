@@ -3,38 +3,325 @@
 /*
  * The palette follows concept-design.html: warm-neutral greys, one accent, and
  * severity colours that appear only on badges and small marks (§7).
- * Each value is light-dark(light, dark): the OS preference picks by default,
- * and the sidebar toggle pins one through data-theme (see lib/theme.ts).
+ *
+ * Every theme is a variable set keyed on [data-theme][data-mode] (#142). The
+ * block below is Classic light, which is also the no-JS fallback; lib/theme.ts
+ * sets the attributes from localStorage before the first render.
  */
 :root {
   color-scheme: light dark;
 
-  --b-bg: light-dark(#fafafa, #0b0b0d);
-  --b-sidebar: light-dark(#f4f4f5, #0e0e11);
-  --b-surface: light-dark(#ffffff, #111114);
-  --b-border-subtle: light-dark(#e4e4e7, #1f1f24);
-  --b-border-strong: light-dark(#d4d4d8, #2a2a30);
-  --b-fg: light-dark(#18181b, #ededf0);
-  --b-muted: light-dark(#52525b, #a1a1aa);
-  --b-faint: light-dark(#6b6b75, #84848e);
-  --b-hover: light-dark(#ebebed, #16161a);
-  --b-active: light-dark(#ffffff, #1a1a1f);
-  --b-accent: light-dark(#18181b, #ededf0);
-  --b-accent-fg: light-dark(#ffffff, #0b0b0d);
+  --b-bg: #fafafa;
+  --b-sidebar: #f4f4f5;
+  --b-surface: #ffffff;
+  --b-border-subtle: #e4e4e7;
+  --b-border-strong: #d4d4d8;
+  --b-fg: #18181b;
+  --b-muted: #52525b;
+  --b-faint: #6b6b75;
+  --b-hover: #ebebed;
+  --b-active: #ffffff;
+  --b-accent: #18181b;
+  --b-accent-fg: #ffffff;
 
-  --b-critical: light-dark(#c81e1e, #ff6b6b);
-  --b-high: light-dark(#b9410c, #ff9f43);
-  --b-medium: light-dark(#946006, #f5c451);
-  --b-low: light-dark(#2155d6, #7aa7ff);
-  --b-ok: light-dark(#15803d, #4ade80);
+  --b-critical: #c81e1e;
+  --b-high: #b9410c;
+  --b-medium: #946006;
+  --b-low: #2155d6;
+  --b-ok: #146c34;
+
+  --b-font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --b-font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
 }
 
-:root[data-theme="light"] {
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mode]) {
+    color-scheme: dark;
+
+    --b-bg: #0b0b0d;
+    --b-sidebar: #0e0e11;
+    --b-surface: #111114;
+    --b-border-subtle: #1f1f24;
+    --b-border-strong: #2a2a30;
+    --b-fg: #ededf0;
+    --b-muted: #a1a1aa;
+    --b-faint: #84848e;
+    --b-hover: #16161a;
+    --b-active: #1a1a1f;
+    --b-accent: #ededf0;
+    --b-accent-fg: #0b0b0d;
+
+    --b-critical: #ff6b6b;
+    --b-high: #ff9f43;
+    --b-medium: #f5c451;
+    --b-low: #7aa7ff;
+    --b-ok: #4ade80;
+  }
+}
+
+/* Classic: the palette the app has always used. */
+:root[data-theme="classic"][data-mode="light"] {
   color-scheme: light;
+
+  --b-bg: #fafafa;
+  --b-sidebar: #f4f4f5;
+  --b-surface: #ffffff;
+  --b-border-subtle: #e4e4e7;
+  --b-border-strong: #d4d4d8;
+  --b-fg: #18181b;
+  --b-muted: #52525b;
+  --b-faint: #6b6b75;
+  --b-hover: #ebebed;
+  --b-active: #ffffff;
+  --b-accent: #18181b;
+  --b-accent-fg: #ffffff;
+
+  --b-critical: #c81e1e;
+  --b-high: #b9410c;
+  --b-medium: #946006;
+  --b-low: #2155d6;
+  --b-ok: #146c34;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="classic"][data-mode="dark"] {
   color-scheme: dark;
+
+  --b-bg: #0b0b0d;
+  --b-sidebar: #0e0e11;
+  --b-surface: #111114;
+  --b-border-subtle: #1f1f24;
+  --b-border-strong: #2a2a30;
+  --b-fg: #ededf0;
+  --b-muted: #a1a1aa;
+  --b-faint: #84848e;
+  --b-hover: #16161a;
+  --b-active: #1a1a1f;
+  --b-accent: #ededf0;
+  --b-accent-fg: #0b0b0d;
+
+  --b-critical: #ff6b6b;
+  --b-high: #ff9f43;
+  --b-medium: #f5c451;
+  --b-low: #7aa7ff;
+  --b-ok: #4ade80;
+}
+
+/* Claude: warm cream paper, terracotta accent. */
+:root[data-theme="claude"][data-mode="light"] {
+  color-scheme: light;
+
+  --b-bg: #faf9f5;
+  --b-sidebar: #f4f1e8;
+  --b-surface: #fffdf8;
+  --b-border-subtle: #e7e1d3;
+  --b-border-strong: #d5cdba;
+  --b-fg: #26241f;
+  --b-muted: #615c50;
+  --b-faint: #726c5e;
+  --b-hover: #f1ece0;
+  --b-active: #fffdf8;
+  --b-accent: #b8502c;
+  --b-accent-fg: #ffffff;
+
+  --b-critical: #b42318;
+  --b-high: #a8480a;
+  --b-medium: #7d5400;
+  --b-low: #1f5aa8;
+  --b-ok: #2c7047;
+}
+
+:root[data-theme="claude"][data-mode="dark"] {
+  color-scheme: dark;
+
+  --b-bg: #1b1916;
+  --b-sidebar: #201d19;
+  --b-surface: #26221d;
+  --b-border-subtle: #39332a;
+  --b-border-strong: #4d4538;
+  --b-fg: #f3efe6;
+  --b-muted: #b9b1a2;
+  --b-faint: #a29a8b;
+  --b-hover: #2b2721;
+  --b-active: #332e27;
+  --b-accent: #e0825c;
+  --b-accent-fg: #1b1916;
+
+  --b-critical: #ff8a7a;
+  --b-high: #ffab63;
+  --b-medium: #f0c75e;
+  --b-low: #8ab6ff;
+  --b-ok: #6fd394;
+}
+
+/* High contrast: AAA-ish text on plain backgrounds, strong borders. */
+:root[data-theme="contrast"][data-mode="light"] {
+  color-scheme: light;
+
+  --b-bg: #ffffff;
+  --b-sidebar: #ffffff;
+  --b-surface: #ffffff;
+  --b-border-subtle: #8c8c8c;
+  --b-border-strong: #595959;
+  --b-fg: #000000;
+  --b-muted: #2e2e2e;
+  --b-faint: #404040;
+  --b-hover: #e8e8e8;
+  --b-active: #ffffff;
+  --b-accent: #0033cc;
+  --b-accent-fg: #ffffff;
+
+  --b-critical: #a30000;
+  --b-high: #8a3b00;
+  --b-medium: #6b4d00;
+  --b-low: #00338f;
+  --b-ok: #005a2b;
+}
+
+:root[data-theme="contrast"][data-mode="dark"] {
+  color-scheme: dark;
+
+  --b-bg: #000000;
+  --b-sidebar: #000000;
+  --b-surface: #0a0a0a;
+  --b-border-subtle: #8c8c8c;
+  --b-border-strong: #b8b8b8;
+  --b-fg: #ffffff;
+  --b-muted: #e0e0e0;
+  --b-faint: #cfcfcf;
+  --b-hover: #1f1f1f;
+  --b-active: #2a2a2a;
+  --b-accent: #8ec5ff;
+  --b-accent-fg: #000000;
+
+  --b-critical: #ff9b9b;
+  --b-high: #ffc08a;
+  --b-medium: #ffe07a;
+  --b-low: #9ecbff;
+  --b-ok: #8ff0b0;
+}
+
+/* Nord-style: cool blue-grey, Snow Storm light and Polar Night dark. */
+:root[data-theme="nord"][data-mode="light"] {
+  color-scheme: light;
+
+  --b-bg: #eceff4;
+  --b-sidebar: #e5e9f0;
+  --b-surface: #ffffff;
+  --b-border-subtle: #d5dce8;
+  --b-border-strong: #b9c3d4;
+  --b-fg: #2e3440;
+  --b-muted: #46536b;
+  --b-faint: #5a677f;
+  --b-hover: #dfe5ee;
+  --b-active: #ffffff;
+  --b-accent: #4c6f99;
+  --b-accent-fg: #ffffff;
+
+  --b-critical: #a5343d;
+  --b-high: #9a4a1f;
+  --b-medium: #7a5b00;
+  --b-low: #3a62a0;
+  --b-ok: #2c6a45;
+}
+
+:root[data-theme="nord"][data-mode="dark"] {
+  color-scheme: dark;
+
+  --b-bg: #2e3440;
+  --b-sidebar: #2b303b;
+  --b-surface: #3b4252;
+  --b-border-subtle: #454f61;
+  --b-border-strong: #5a667b;
+  --b-fg: #eceff4;
+  --b-muted: #c6cedd;
+  --b-faint: #b3bdcf;
+  --b-hover: #3b4252;
+  --b-active: #454f61;
+  --b-accent: #8fbcbb;
+  --b-accent-fg: #2e3440;
+
+  --b-critical: #ffb0b6;
+  --b-high: #f2b28a;
+  --b-medium: #f0d28a;
+  --b-low: #aecdf6;
+  --b-ok: #a8d5a2;
+}
+
+/* Solarized-style: warm paper light and deep teal dark. */
+:root[data-theme="solarized"][data-mode="light"] {
+  color-scheme: light;
+
+  --b-bg: #fdf6e3;
+  --b-sidebar: #eee8d5;
+  --b-surface: #fffaf0;
+  --b-border-subtle: #e0d9c2;
+  --b-border-strong: #cfc6ab;
+  --b-fg: #073642;
+  --b-muted: #4e646d;
+  --b-faint: #5a707a;
+  --b-hover: #eee8d5;
+  --b-active: #fffaf0;
+  --b-accent: #1f6fa8;
+  --b-accent-fg: #ffffff;
+
+  --b-critical: #b3261e;
+  --b-high: #a33d0f;
+  --b-medium: #7a5c00;
+  --b-low: #1f6fa8;
+  --b-ok: #4a6d00;
+}
+
+:root[data-theme="solarized"][data-mode="dark"] {
+  color-scheme: dark;
+
+  --b-bg: #002b36;
+  --b-sidebar: #073642;
+  --b-surface: #073642;
+  --b-border-subtle: #134c5c;
+  --b-border-strong: #1f6579;
+  --b-fg: #eee8d5;
+  --b-muted: #a7b6b5;
+  --b-faint: #93a4a3;
+  --b-hover: #0b3d4a;
+  --b-active: #10505f;
+  --b-accent: #5fc4b8;
+  --b-accent-fg: #002b36;
+
+  --b-critical: #ff8f86;
+  --b-high: #f0a269;
+  --b-medium: #e8cd5e;
+  --b-low: #87c3f0;
+  --b-ok: #b5d65a;
+}
+
+/* Font family: only stacks that ship with the OS, so nothing is downloaded. */
+:root[data-font="humanist"] {
+  --b-font-sans: "Segoe UI", "Helvetica Neue", "Noto Sans", Arial, sans-serif;
+}
+
+:root[data-font="serif"] {
+  --b-font-sans: Georgia, "Times New Roman", serif;
+}
+
+:root[data-font="mono"] {
+  --b-font-sans: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Font size: the UI is sized in rem, so this scales all of it. */
+:root {
+  font-size: 16px;
+}
+
+:root[data-font-size="small"] {
+  font-size: 14px;
+}
+
+:root[data-font-size="large"] {
+  font-size: 18px;
+}
+
+:root[data-font-size="xlarge"] {
+  font-size: 20px;
 }
 
 @theme inline {
@@ -57,8 +344,8 @@
   --color-low: var(--b-low);
   --color-ok: var(--b-ok);
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+  --font-sans: var(--b-font-sans);
+  --font-mono: var(--b-font-mono);
 
   --radius-card: 10px;
 }
@@ -74,7 +361,7 @@ body {
   background: var(--b-bg);
   color: var(--b-fg);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
@@ -82,4 +369,79 @@ body {
 :focus-visible {
   outline: 2px solid var(--b-muted);
   outline-offset: 2px;
+}
+
+/*
+ * Theme swatches in the Appearance tab: each card previews the palette's light
+ * and dark halves. The colours are literals on purpose, so the preview does not
+ * depend on the theme that is currently active.
+ */
+.theme-swatch {
+  display: flex;
+  height: 34px;
+  overflow: hidden;
+  border: 1px solid var(--b-border-subtle);
+  border-radius: 6px;
+}
+
+.theme-swatch-half {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 4px;
+  background: var(--sw-bg);
+}
+
+.theme-swatch-half::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--sw-accent);
+}
+
+.theme-swatch-half[data-swatch-mode="light"] {
+  --sw-bg: var(--sw-light-bg);
+  --sw-accent: var(--sw-light-accent);
+}
+
+.theme-swatch-half[data-swatch-mode="dark"] {
+  --sw-bg: var(--sw-dark-bg);
+  --sw-accent: var(--sw-dark-accent);
+}
+
+[data-theme-preview="classic"] {
+  --sw-light-bg: #fafafa;
+  --sw-light-accent: #18181b;
+  --sw-dark-bg: #0b0b0d;
+  --sw-dark-accent: #ededf0;
+}
+
+[data-theme-preview="claude"] {
+  --sw-light-bg: #faf9f5;
+  --sw-light-accent: #b8502c;
+  --sw-dark-bg: #1b1916;
+  --sw-dark-accent: #e0825c;
+}
+
+[data-theme-preview="contrast"] {
+  --sw-light-bg: #ffffff;
+  --sw-light-accent: #0033cc;
+  --sw-dark-bg: #000000;
+  --sw-dark-accent: #8ec5ff;
+}
+
+[data-theme-preview="nord"] {
+  --sw-light-bg: #eceff4;
+  --sw-light-accent: #4c6f99;
+  --sw-dark-bg: #2e3440;
+  --sw-dark-accent: #8fbcbb;
+}
+
+[data-theme-preview="solarized"] {
+  --sw-light-bg: #fdf6e3;
+  --sw-light-accent: #1f6fa8;
+  --sw-dark-bg: #002b36;
+  --sw-dark-accent: #5fc4b8;
 }

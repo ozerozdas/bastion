@@ -230,7 +230,7 @@ function DockerPanel({
           >
             {row.image.reference}
           </span>
-          <span className="block truncate font-mono text-[11px] text-faint">
+          <span className="block truncate font-mono text-[0.6875rem] text-faint">
             {shortID(row.image.id)}
           </span>
         </div>
@@ -461,7 +461,7 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
           >
             {asset.display_name}
           </span>
-          <span className="block truncate font-mono text-[11px] text-faint">
+          <span className="block truncate font-mono text-[0.6875rem] text-faint">
             {asset.ref}
           </span>
         </div>
@@ -572,7 +572,7 @@ function EcrConnection({
             >
               {row.repository.name}:{primary}
             </span>
-            <span className="block truncate font-mono text-[11px] text-faint">
+            <span className="block truncate font-mono text-[0.6875rem] text-faint">
               {shortID(row.tag.digest)}
               {row.tag.tags.length > 1
                 ? ` · ${row.tag.tags.slice(1).join(' · ')}`
@@ -671,10 +671,10 @@ function EcrConnection({
 
   return (
     <section className="space-y-2">
-      <h2 className="text-[13px] font-semibold">
+      <h2 className="text-[0.8125rem] font-semibold">
         {connection.name}
         {connection.region ? (
-          <span className="ml-2 font-mono text-[11px] font-normal text-faint">
+          <span className="ml-2 font-mono text-[0.6875rem] font-normal text-faint">
             {connection.region}
           </span>
         ) : null}
@@ -789,7 +789,7 @@ function LinkCell({ asset, repos }: { asset: Asset | undefined; repos: Asset[] }
           </Badge>
           {asset.linked_repo.revision ? (
             <span
-              className="font-mono text-[11px] text-faint"
+              className="font-mono text-[0.6875rem] text-faint"
               title={`revision ${asset.linked_repo.revision}`}
             >
               {asset.linked_repo.revision.slice(0, 7)}
@@ -811,7 +811,7 @@ function LinkCell({ asset, repos }: { asset: Asset | undefined; repos: Asset[] }
             aria-label={`Link ${asset.display_name} to a repository`}
             value={choice}
             onChange={(event) => setChoice(event.target.value)}
-            className="h-7 max-w-[18ch] rounded-md border border-border-strong bg-surface px-1.5 text-[12px] text-fg"
+            className="h-7 max-w-[18ch] rounded-md border border-border-strong bg-surface px-1.5 text-[0.75rem] text-fg"
           >
             <option value="">Link to…</option>
             {repos.map((repo) => (
@@ -837,7 +837,7 @@ function LinkCell({ asset, repos }: { asset: Asset | undefined; repos: Asset[] }
         </div>
       )}
       {error ? (
-        <span role="alert" className="text-[11px] text-critical">
+        <span role="alert" className="text-[0.6875rem] text-critical">
           {error instanceof ApiError ? error.message : 'the link request failed'}
         </span>
       ) : null}

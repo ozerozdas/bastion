@@ -96,7 +96,7 @@ export function ScansPanel() {
         className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
       >
         <div className="flex flex-wrap items-baseline gap-2.5">
-          <h2 id="scans-heading" className="text-[13px] font-semibold">
+          <h2 id="scans-heading" className="text-[0.8125rem] font-semibold">
             Scans
           </h2>
           <span className="text-faint">
@@ -110,7 +110,7 @@ export function ScansPanel() {
 
         {scans.isError ? (
           <div className="flex flex-col gap-1">
-            <h3 className="text-[13px] font-semibold">Scans failed to load</h3>
+            <h3 className="text-[0.8125rem] font-semibold">Scans failed to load</h3>
             <ErrorNote error={scans.error} />
           </div>
         ) : null}

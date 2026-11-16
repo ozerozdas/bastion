@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, openSettings, test, watch } from './fixtures'
+import { expect, openConfiguration, test, watch } from './fixtures'
 
 /** openSession exchanges the startup token and waits for the shell. */
 async function openSession(page: Page, url: string) {
@@ -48,7 +48,7 @@ test('does not offer the release check when it is disabled', async ({
   const status = (await (await answered).json()) as { disabled: boolean }
   expect(status.disabled).toBe(true)
 
-  await openSettings(page)
+  await openConfiguration(page)
   await expect(
     page.getByRole('region', { name: 'Release check' }),
   ).toHaveCount(0)
@@ -56,7 +56,7 @@ test('does not offer the release check when it is disabled', async ({
   expect(problems).toEqual([])
 })
 
-test('turns the release check on in Settings and remembers it', async ({
+test('turns the release check on in Configuration and remembers it', async ({
   page,
   server,
 }) => {
@@ -64,7 +64,7 @@ test('turns the release check on in Settings and remembers it', async ({
   await fakeUpdateApi(page)
   await openSession(page, server.url)
 
-  await openSettings(page)
+  await openConfiguration(page)
   const section = page.getByRole('region', { name: 'Release check' })
   await expect(section.getByText('Off', { exact: true })).toBeVisible()
   await section.getByRole('button', { name: 'Turn on release check' }).click()
@@ -75,7 +75,7 @@ test('turns the release check on in Settings and remembers it', async ({
   await expect(
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
-  await openSettings(page)
+  await openConfiguration(page)
   await expect(
     page.getByRole('region', { name: 'Release check' }).getByText('On', {
       exact: true,

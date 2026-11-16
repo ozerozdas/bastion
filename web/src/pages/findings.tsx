@@ -49,7 +49,7 @@ import { cn } from '../lib/utils'
 import { FixPlanPanel } from './fix-plan'
 
 const inputClass =
-  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-faint'
+  'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
 
 const typeOptions: FindingType[] = [
   'vulnerability',
@@ -101,7 +101,7 @@ export function findingColumns(
             header: 'EPSS',
             headerClassName: 'pl-3',
             cellClassName:
-              'py-2 pl-3 whitespace-nowrap tabular-nums text-[13px]',
+              'py-2 pl-3 whitespace-nowrap tabular-nums text-[0.8125rem]',
             cell: (finding: Finding) =>
               finding.epss ? (
                 <span title={epssLabel(finding.epss)}>
@@ -383,7 +383,7 @@ function FindingsExportMenu({
               href={exportFindingsUrl({ ...filter, format, view })}
               download
               onClick={() => setOpen(false)}
-              className="rounded px-2 py-1 text-[13px] text-muted hover:bg-hover hover:text-fg"
+              className="rounded px-2 py-1 text-[0.8125rem] text-muted hover:bg-hover hover:text-fg"
             >
               {label}
             </a>
@@ -531,7 +531,7 @@ export function FindingsPage() {
   if (assets.isError) {
     return (
       <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[13px] font-semibold">Repositories failed to load</h2>
+        <h2 className="text-[0.8125rem] font-semibold">Repositories failed to load</h2>
         <ErrorNote error={assets.error} />
       </section>
     )
@@ -859,7 +859,7 @@ export function FindingsPage() {
                   aria-pressed={active}
                   onClick={() => setView(option)}
                   className={cn(
-                    'rounded px-2.5 py-1 text-[13px] transition-colors',
+                    'rounded px-2.5 py-1 text-[0.8125rem] transition-colors',
                     active
                       ? 'bg-surface text-fg shadow-sm'
                       : 'text-muted hover:text-fg',
@@ -886,7 +886,7 @@ export function FindingsPage() {
 
       {findings.isError ? (
         <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-          <h2 className="text-[13px] font-semibold">Findings failed to load</h2>
+          <h2 className="text-[0.8125rem] font-semibold">Findings failed to load</h2>
           <ErrorNote error={findings.error} />
         </section>
       ) : null}
@@ -896,7 +896,7 @@ export function FindingsPage() {
           <h2
             ref={findingsHeading}
             tabIndex={-1}
-            className="text-[15px] font-semibold tracking-[-0.01em]"
+            className="text-[0.9375rem] font-semibold tracking-[-0.01em]"
           >
             {status === 'open' && !filtered
               ? `No open findings in the latest ${selected ? 'scan' : 'scans'}`
@@ -924,7 +924,7 @@ export function FindingsPage() {
               ref={findingsHeading}
               id="findings-heading"
               tabIndex={-1}
-              className="text-[13px] font-semibold"
+              className="text-[0.8125rem] font-semibold"
             >
               Findings
             </h2>

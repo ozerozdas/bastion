@@ -96,7 +96,7 @@ export function Tabs<T extends string>({
               onClick={() => onChange(item.value)}
               onKeyDown={(event) => moveFocus(event, index)}
               className={cn(
-                '-mb-px border-b-2 px-2.5 py-2 text-[13px] transition-colors',
+                '-mb-px border-b-2 px-2.5 py-2 text-[0.8125rem] transition-colors',
                 active
                   ? 'border-accent text-fg'
                   : 'border-transparent text-muted hover:text-fg',

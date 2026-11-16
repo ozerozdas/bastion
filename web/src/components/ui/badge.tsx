@@ -8,7 +8,7 @@ import { cn } from '../../lib/utils'
  * only, never large surfaces (§7).
  */
 export const badgeVariants = cva(
-  'inline-flex h-5 items-center gap-1 rounded-[5px] border px-1.5 text-[11px] font-medium whitespace-nowrap',
+  'inline-flex h-5 items-center gap-1 rounded-[5px] border px-1.5 text-[0.6875rem] font-medium whitespace-nowrap',
   {
     variants: {
       tone: {

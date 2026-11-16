@@ -48,7 +48,7 @@ export function TrivyDBChip() {
             aria-hidden="true"
             className="size-3 shrink-0 rounded-full border-2 border-border-strong border-t-accent motion-safe:animate-spin"
           />
-          <span className="min-w-0 font-mono text-[11px] text-muted">
+          <span className="min-w-0 font-mono text-[0.6875rem] text-muted">
             Downloading vulnerability DB…
             {view.fromScan ? ' · started by a scan' : ''}
           </span>
@@ -66,7 +66,7 @@ export function TrivyDBChip() {
           </p>
           {view.error ? (
             <p
-              className="min-w-0 truncate font-mono text-[10px] text-muted"
+              className="min-w-0 truncate font-mono text-[0.625rem] text-muted"
               title={view.error}
             >
               {view.error}

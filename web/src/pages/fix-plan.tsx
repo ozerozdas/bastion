@@ -115,7 +115,7 @@ export function FixPlanPanel({
 
       {selected !== undefined && plan.isError ? (
         <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-          <h2 className="text-[13px] font-semibold">Fix plan failed to load</h2>
+          <h2 className="text-[0.8125rem] font-semibold">Fix plan failed to load</h2>
           <ErrorNote error={plan.error} />
         </section>
       ) : null}
@@ -124,7 +124,7 @@ export function FixPlanPanel({
       plan.data.steps.length === 0 &&
       plan.data.no_fix.length === 0 ? (
         <section className="rounded-card border border-border-subtle bg-surface p-8">
-          <h2 className="text-[15px] font-semibold tracking-[-0.01em]">
+          <h2 className="text-[0.9375rem] font-semibold tracking-[-0.01em]">
             No open vulnerabilities
           </h2>
           <p className="mt-2 max-w-[52ch] text-muted">
@@ -141,7 +141,7 @@ export function FixPlanPanel({
           className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
         >
           <div className="flex flex-wrap items-baseline gap-2.5">
-            <h2 id="fix-plan-heading" className="text-[13px] font-semibold">
+            <h2 id="fix-plan-heading" className="text-[0.8125rem] font-semibold">
               Fix plan
             </h2>
             <span className="text-faint">
@@ -179,7 +179,7 @@ export function FixPlanPanel({
           <div className="flex flex-wrap items-baseline gap-2.5">
             <h2
               id="fix-plan-no-fix-heading"
-              className="text-[13px] font-semibold"
+              className="text-[0.8125rem] font-semibold"
             >
               No fix available
             </h2>
@@ -237,10 +237,10 @@ function stepColumns(
       cellClassName: 'py-2 pl-3 align-top whitespace-nowrap',
       cell: (step) => (
         <span className="flex flex-col gap-0.5">
-          <span className="text-[13px] font-medium tabular-nums">
+          <span className="text-[0.8125rem] font-medium tabular-nums">
             {Math.round(step.score)}
           </span>
-          <span className="text-[11px] text-faint" title={scoreTitle(step)}>
+          <span className="text-[0.6875rem] text-faint" title={scoreTitle(step)}>
             {scoreFactors(step.factors)}
           </span>
         </span>
@@ -252,7 +252,7 @@ function stepColumns(
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
       cell: (step) => (
-        <span className="text-[13px]">
+        <span className="text-[0.8125rem]">
           Upgrade <span className="font-mono">{step.package}</span>{' '}
           <span className="font-mono text-muted">{installed(step)}</span>{' '}
           <span aria-hidden="true">→</span>{' '}
@@ -281,7 +281,7 @@ function stepColumns(
             id: 'epss',
             header: 'Max EPSS',
             headerClassName: 'pl-3',
-            cellClassName: 'py-2 pl-3 whitespace-nowrap text-[13px] tabular-nums',
+            cellClassName: 'py-2 pl-3 whitespace-nowrap text-[0.8125rem] tabular-nums',
             cell: (step: FixPlanStep) =>
               step.max_epss ? (
                 <span title={epssLabel(step.max_epss)}>
@@ -300,7 +300,7 @@ function stepColumns(
       cellClassName: 'py-2 pl-3',
       cell: (step) => (
         <span className="flex items-center gap-2">
-          <span className="text-[13px] tabular-nums">
+          <span className="text-[0.8125rem] tabular-nums">
             {step.finding_count}{' '}
             {step.finding_count === 1 ? 'finding' : 'findings'}
           </span>
@@ -333,7 +333,7 @@ function noFixColumns(
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
       cell: (group) => (
-        <span className="text-[13px]">
+        <span className="text-[0.8125rem]">
           <span className="font-mono">{group.package || '—'}</span>{' '}
           <span className="font-mono text-xs text-muted">
             {group.ecosystem}
@@ -348,7 +348,7 @@ function noFixColumns(
       cellClassName: 'py-2 pl-3',
       cell: (group) => (
         <span className="flex items-center gap-2">
-          <span className="text-[13px] tabular-nums">
+          <span className="text-[0.8125rem] tabular-nums">
             {group.finding_count}{' '}
             {group.finding_count === 1 ? 'finding' : 'findings'}
           </span>
@@ -507,7 +507,7 @@ function FindingList({
             <span className="font-mono text-xs whitespace-nowrap text-muted">
               {finding.rule_id ?? '—'}
             </span>
-            <span className="truncate text-[13px]">{finding.title}</span>
+            <span className="truncate text-[0.8125rem]">{finding.title}</span>
           </button>
         </li>
       ))}
