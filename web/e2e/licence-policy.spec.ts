@@ -1,8 +1,8 @@
-import { expect, test, watch } from './fixtures'
+import { expect, openSettings, test, watch } from './fixtures'
 
-// The global licence policy (#39) lives in the sidebar. This test edits it
-// through the real server, so the PUT, the normalization and the reloaded GET
-// are all exercised.
+// The global licence policy (#39) lives in the settings modal (#139). This test
+// edits it through the real server, so the PUT, the normalization and the
+// reloaded GET are all exercised.
 test('edits the global licence policy', async ({ page, server }) => {
   const problems = watch(page)
 
@@ -10,6 +10,8 @@ test('edits the global licence policy', async ({ page, server }) => {
   await expect(
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
+
+  await openSettings(page)
 
   const card = page.getByRole('region', { name: 'Licence policy' })
   await expect(card).toBeVisible()
@@ -24,8 +26,12 @@ test('edits the global licence policy', async ({ page, server }) => {
 
   await expect(card.getByText('2 allowed · 1 denied')).toBeVisible()
 
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
   // The policy is stored, not just local state.
   await page.reload()
+  await openSettings(page)
   const reloaded = page.getByRole('region', { name: 'Licence policy' })
   await expect(reloaded.getByText('2 allowed · 1 denied')).toBeVisible()
 

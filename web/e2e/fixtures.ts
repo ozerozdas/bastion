@@ -176,4 +176,13 @@ export async function stubLicencePolicy(page: Page): Promise<void> {
   )
 }
 
+/**
+ * openSettings opens the sidebar's Settings modal (#139), where the opt-in
+ * modules and the global licence policy live.
+ */
+export async function openSettings(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+}
+
 export { expect }

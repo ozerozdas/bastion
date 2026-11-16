@@ -1,8 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, test, watch } from './fixtures'
-
-const consentQuestion = 'Check for new releases?'
+import { expect, openSettings, test, watch } from './fixtures'
 
 /** openSession exchanges the startup token and waits for the shell. */
 async function openSession(page: Page, url: string) {
@@ -37,51 +35,55 @@ async function fakeUpdateApi(page: Page) {
   )
 }
 
-test('does not ask when the release check is disabled', async ({
+test('does not offer the release check when it is disabled', async ({
   page,
   server,
 }) => {
   const problems = watch(page)
-  // Wait for the real answer before asserting that nothing is rendered.
+  // Wait for the real answer before asserting that nothing is offered.
   const answered = page.waitForResponse(
     (response) => new URL(response.url()).pathname === '/api/update',
   )
   await openSession(page, server.url)
   const status = (await (await answered).json()) as { disabled: boolean }
   expect(status.disabled).toBe(true)
-  await expect(page.getByText(consentQuestion, { exact: true })).toHaveCount(0)
+
+  await openSettings(page)
+  await expect(
+    page.getByRole('region', { name: 'Release check' }),
+  ).toHaveCount(0)
 
   expect(problems).toEqual([])
 })
 
-for (const [answer, label] of [
-  ['no thanks', 'No thanks'],
-  ['an accepted check', 'Turn on'],
-] as const) {
-  test(`asks for the release check once and remembers ${answer}`, async ({
-    page,
-    server,
-  }) => {
-    const problems = watch(page)
-    await fakeUpdateApi(page)
-    await openSession(page, server.url)
+test('turns the release check on in Settings and remembers it', async ({
+  page,
+  server,
+}) => {
+  const problems = watch(page)
+  await fakeUpdateApi(page)
+  await openSession(page, server.url)
 
-    await expect(page.getByText(consentQuestion, { exact: true })).toBeVisible()
-    await page
-      .getByRole('region', { name: 'Release check' })
-      .getByRole('button', { name: label })
-      .click()
-    await expect(page.getByText(consentQuestion, { exact: true })).toHaveCount(0)
+  await openSettings(page)
+  const section = page.getByRole('region', { name: 'Release check' })
+  await expect(section.getByText('Off', { exact: true })).toBeVisible()
+  await section.getByRole('button', { name: 'Turn on release check' }).click()
+  await expect(section.getByText('On', { exact: true })).toBeVisible()
 
-    await page.reload()
-    await expect(
-      page.getByRole('heading', { level: 1, name: 'Dashboard' }),
-    ).toBeVisible()
-    await expect(page.getByText(consentQuestion, { exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await page.reload()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Dashboard' }),
+  ).toBeVisible()
+  await openSettings(page)
+  await expect(
+    page.getByRole('region', { name: 'Release check' }).getByText('On', {
+      exact: true,
+    }),
+  ).toBeVisible()
 
-    expect(problems).toEqual([])
-  })
-}
+  expect(problems).toEqual([])
+})
 
 test('shows the update command, release notes and a per-version dismiss', async ({
   page,

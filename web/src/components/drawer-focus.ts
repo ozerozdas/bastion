@@ -40,15 +40,30 @@ function trapTab(event: KeyboardEvent<HTMLElement>, container: HTMLElement) {
 }
 
 /**
- * useDrawerFocus is the focus behaviour every side drawer shares (#90): focus
- * moves into the panel on open so Escape and Tab work at once, Tab is trapped,
- * and closing without a decision gives focus back to the row that opened it.
+ * useDrawerFocus is the focus behaviour every overlay shares (#90): the side
+ * drawers and the settings modal. Focus moves into the panel on open so Escape
+ * and Tab work at once, Tab is trapped, and closing gives focus back to the
+ * element that opened it.
  */
 export function useDrawerFocus(onClose: () => void): {
   panel: RefObject<HTMLDivElement | null>
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
 } {
   const panel = useRef<HTMLDivElement>(null)
+  const close = useRef(onClose)
+  close.current = onClose
+
+  // A control that unmounts (a toggle relabelled, a form closed) drops focus to
+  // <body>, where the panel's own keydown never fires; Escape must still close.
+  useEffect(() => {
+    function onDocumentKey(event: globalThis.KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      if (panel.current?.contains(document.activeElement)) return
+      close.current()
+    }
+    document.addEventListener('keydown', onDocumentKey)
+    return () => document.removeEventListener('keydown', onDocumentKey)
+  }, [])
 
   useEffect(() => {
     const opener =
