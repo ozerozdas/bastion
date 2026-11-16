@@ -18,6 +18,7 @@ INSERT INTO findings (
     references_json,
     scanner,
     scanners,
+    reachability,
     first_seen_scan_id,
     created_at
 )
@@ -40,6 +41,7 @@ VALUES (
     sqlc.arg(references_json),
     sqlc.arg(scanner),
     sqlc.arg(scanners),
+    sqlc.narg(reachability),
     sqlc.arg(first_seen_scan_id),
     sqlc.arg(created_at)
 );
@@ -88,6 +90,7 @@ SELECT
     f.references_json,
     f.scanner,
     f.scanners,
+    f.reachability,
     f.first_seen_scan_id,
     CAST(CASE
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status
@@ -145,6 +148,7 @@ SELECT
     f.references_json,
     f.scanner,
     f.scanners,
+    f.reachability,
     f.first_seen_scan_id,
     CAST(CASE
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status

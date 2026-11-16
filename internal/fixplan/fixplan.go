@@ -67,6 +67,11 @@ type Step struct {
 	// when the feed is off or scores none of them. It is filled by the caller
 	// that has the feed, not by Build.
 	MaxEPSS *epss.Score
+	// Reachability folds the step's findings into one state (#37): any
+	// reachable finding makes the step reachable. Empty when no finding of the
+	// step carries an answer. Filled by the caller that has the scan's
+	// findings, not by Build.
+	Reachability findings.Reachability
 	// Score is the prioritization score (#29): the severity weight sum times
 	// the EPSS and latest-image multipliers. Zero until the caller that has the
 	// feed and the link context assigns it with Score.

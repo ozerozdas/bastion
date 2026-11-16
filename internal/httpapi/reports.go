@@ -148,6 +148,10 @@ func findingResponse(finding reports.Finding) gen.Finding {
 			Percentile: finding.EPSS.Percentile,
 		}
 	}
+	if finding.Reachability != "" {
+		reachability := gen.Reachability(finding.Reachability)
+		out.Reachability = &reachability
+	}
 	if out.References == nil {
 		out.References = []string{}
 	}

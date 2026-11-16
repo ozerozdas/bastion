@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { assetsQuery } from '../api/assets'
 import { epssQuery } from '../api/epss'
+import { reachabilityQuery } from '../api/reachability'
 import {
   exportFindingsUrl,
   latestFindingsQuery,
@@ -69,6 +70,7 @@ const findingsTabs: TabItem<'findings' | 'fix-plan'>[] = [
 export function findingColumns(
   assetNames: ReadonlyMap<number, string>,
   showEPSS = false,
+  showReachability = false,
 ): DataTableColumn<Finding>[] {
   const projectName = (finding: Finding) =>
     assetNames.get(finding.asset_id) ?? `Asset ${String(finding.asset_id)}`
@@ -101,6 +103,32 @@ export function findingColumns(
                     {ordinal(finding.epss.percentile * 100)}
                   </span>
                 </span>
+              ) : (
+                <span className="text-faint">—</span>
+              ),
+          } satisfies DataTableColumn<Finding>,
+        ]
+      : []),
+    ...(showReachability
+      ? [
+          {
+            id: 'reachability',
+            header: 'Reach',
+            headerClassName: 'pl-3',
+            cellClassName: 'py-2 pl-3 whitespace-nowrap',
+            cell: (finding: Finding) =>
+              finding.reachability ? (
+                <Badge
+                  tone={
+                    finding.reachability === 'reachable'
+                      ? 'critical'
+                      : finding.reachability === 'unreachable'
+                        ? 'ok'
+                        : 'neutral'
+                  }
+                >
+                  {finding.reachability}
+                </Badge>
               ) : (
                 <span className="text-faint">—</span>
               ),
@@ -363,6 +391,7 @@ export function FindingsPage() {
   const navigate = useNavigate()
   const assets = useQuery(assetsQuery)
   const epss = useQuery(epssQuery)
+  const reachability = useQuery(reachabilityQuery)
   const tab = search.tab ?? 'findings'
 
   // Grouped is the default (#106); a project filter forces single, because
@@ -423,8 +452,13 @@ export function FindingsPage() {
     [assetList],
   )
   const columns = useMemo(
-    () => findingColumns(assetNames, epss.data?.enabled === true),
-    [assetNames, epss.data?.enabled],
+    () =>
+      findingColumns(
+        assetNames,
+        epss.data?.enabled === true,
+        reachability.data?.enabled === true,
+      ),
+    [assetNames, epss.data?.enabled, reachability.data?.enabled],
   )
   const groupColumns = useMemo(() => groupedColumns(assetNames), [assetNames])
   const groups = useMemo(

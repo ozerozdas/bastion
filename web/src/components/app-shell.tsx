@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { EPSSCard } from './epss-card'
+import { ReachabilityCard } from './reachability-card'
 import { HealthChip } from './health-chip'
 import { MoonIcon, SunIcon } from './icons'
 import { TrivyDBChip } from './trivy-db-chip'
@@ -123,6 +124,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="mt-auto flex flex-col gap-2">
           <UpdateNotice />
           <EPSSCard />
+          <ReachabilityCard />
           <TrivyDBChip />
           <HealthChip action={<ThemeToggle />} />
         </div>

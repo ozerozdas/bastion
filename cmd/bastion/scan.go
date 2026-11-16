@@ -34,6 +34,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/sbom"
 	"github.com/ozerozdas/bastion/internal/scanners"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
+	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/osv"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
@@ -684,14 +685,15 @@ func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, ass
 
 	waiter := newFinishWaiter(progress)
 	manager, err := newScanManager(pipelineConfig{
-		DB:          db,
-		ScannerList: scannerList,
-		Sources:     srcs,
-		Options:     scanOpts,
-		Advisories:  deps.advisoryMatcher(),
-		Concurrency: 1,
-		Events:      waiter,
-		Resolve:     resolve,
+		DB:           db,
+		ScannerList:  scannerList,
+		Sources:      srcs,
+		Options:      scanOpts,
+		Advisories:   deps.advisoryMatcher(),
+		Reachability: govulncheck.New(govulncheck.Config{DataDir: deps.paths.DataDir}),
+		Concurrency:  1,
+		Events:       waiter,
+		Resolve:      resolve,
 	})
 	if err != nil {
 		return scanOutput{}, err

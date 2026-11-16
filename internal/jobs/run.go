@@ -184,9 +184,49 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 	// One finding per fingerprint per scan (PROJECT_SPEC.md §5), in a stable
 	// order so persistence and golden output do not depend on scanner order.
 	res.Findings = findings.Merge(res.Findings)
+	// Reachability is a property of the merged finding, so it is classified
+	// after the merge: the surviving finding carries one answer.
+	m.enrichReachability(ctx, job, ws, res)
 	findings.SortFindings(res.Findings)
 	findings.SortPackages(res.Packages)
 	return failures
+}
+
+// enrichReachability marks the scan's Go vulnerabilities reachable,
+// unreachable or unknown (#37). Like the advisory lookup it is an enrichment:
+// a failure is recorded in scanner_runs and logged, never added to failures.
+// A workspace without a Go module adds no scanner run at all.
+func (m *Manager) enrichReachability(ctx context.Context, job *scanJob, ws *sources.Workspace, res *store.ScanResult) {
+	if m.reachability == nil || !m.reachability.Enabled() || ctx.Err() != nil {
+		return
+	}
+	if ws == nil || ws.Dir == "" {
+		return
+	}
+
+	m.progress(job, StageScan, m.reachability.Name())
+	run := store.ScannerRun{
+		Scanner:        m.reachability.Name(),
+		ScannerVersion: m.reachability.Version(),
+		Status:         "succeeded",
+	}
+	start := time.Now()
+	ran, err := m.reachability.Enrich(ctx, ws.Dir, res.Findings)
+	duration := time.Since(start).Milliseconds()
+	run.DurationMS = &duration
+	if !ran {
+		return
+	}
+	switch {
+	case err != nil && ctx.Err() != nil:
+		run.Status = "canceled"
+		run.Error = err.Error()
+	case err != nil:
+		slog.Warn("jobs: Go reachability failed", "scan_id", job.scanID, "error", err)
+		run.Status = "failed"
+		run.Error = err.Error()
+	}
+	res.ScannerRuns = append(res.ScannerRuns, run)
 }
 
 // runScanner scans one workspace and normalizes the raw output. An adapter that

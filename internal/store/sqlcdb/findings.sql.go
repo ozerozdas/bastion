@@ -59,6 +59,7 @@ INSERT INTO findings (
     references_json,
     scanner,
     scanners,
+    reachability,
     first_seen_scan_id,
     created_at
 )
@@ -82,7 +83,8 @@ VALUES (
     ?17,
     ?18,
     ?19,
-    ?20
+    ?20,
+    ?21
 )
 `
 
@@ -105,6 +107,7 @@ type InsertFindingParams struct {
 	ReferencesJSON  string
 	Scanner         string
 	Scanners        string
+	Reachability    sql.NullString
 	FirstSeenScanID sql.NullInt64
 	CreatedAt       string
 }
@@ -129,6 +132,7 @@ func (q *Queries) InsertFinding(ctx context.Context, arg InsertFindingParams) er
 		arg.ReferencesJSON,
 		arg.Scanner,
 		arg.Scanners,
+		arg.Reachability,
 		arg.FirstSeenScanID,
 		arg.CreatedAt,
 	)
@@ -157,6 +161,7 @@ SELECT
     f.references_json,
     f.scanner,
     f.scanners,
+    f.reachability,
     f.first_seen_scan_id,
     CAST(CASE
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT) THEN f.status
@@ -217,6 +222,7 @@ type ListFindingsByScanRow struct {
 	ReferencesJSON  string
 	Scanner         string
 	Scanners        string
+	Reachability    sql.NullString
 	FirstSeenScanID sql.NullInt64
 	Status          string
 	State           sql.NullString
@@ -268,6 +274,7 @@ func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScan
 			&i.ReferencesJSON,
 			&i.Scanner,
 			&i.Scanners,
+			&i.Reachability,
 			&i.FirstSeenScanID,
 			&i.Status,
 			&i.State,
@@ -311,6 +318,7 @@ SELECT
     f.references_json,
     f.scanner,
     f.scanners,
+    f.reachability,
     f.first_seen_scan_id,
     CAST(CASE
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT) THEN f.status
@@ -381,6 +389,7 @@ type ListLatestFindingsRow struct {
 	ReferencesJSON  string
 	Scanner         string
 	Scanners        string
+	Reachability    sql.NullString
 	FirstSeenScanID sql.NullInt64
 	Status          string
 	State           sql.NullString
@@ -431,6 +440,7 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 			&i.ReferencesJSON,
 			&i.Scanner,
 			&i.Scanners,
+			&i.Reachability,
 			&i.FirstSeenScanID,
 			&i.Status,
 			&i.State,

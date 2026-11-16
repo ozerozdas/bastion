@@ -46,6 +46,8 @@ type pipelineConfig struct {
 	// Advisories enriches the merged package inventory with external
 	// advisories; nil disables the lookup.
 	Advisories jobs.AdvisoryMatcher
+	// Reachability classifies Go vulnerabilities; nil disables the enrichment.
+	Reachability jobs.ReachabilityEnricher
 	// Concurrency is the worker count; zero means jobs.DefaultConcurrency.
 	Concurrency int
 	// Events receives scan lifecycle events; nil means none.
@@ -65,15 +67,16 @@ func newScanManager(cfg pipelineConfig) (*jobs.Manager, error) {
 		}
 	}
 	manager, err := jobs.New(jobs.Config{
-		DB:          cfg.DB,
-		Sources:     cfg.Sources,
-		Scanners:    cfg.ScannerList,
-		Normalizers: normalizers,
-		Advisories:  cfg.Advisories,
-		Options:     func() scanners.Options { return cfg.Options },
-		Concurrency: cfg.Concurrency,
-		Events:      cfg.Events,
-		Resolve:     cfg.Resolve,
+		DB:           cfg.DB,
+		Sources:      cfg.Sources,
+		Scanners:     cfg.ScannerList,
+		Normalizers:  normalizers,
+		Advisories:   cfg.Advisories,
+		Reachability: cfg.Reachability,
+		Options:      func() scanners.Options { return cfg.Options },
+		Concurrency:  cfg.Concurrency,
+		Events:       cfg.Events,
+		Resolve:      cfg.Resolve,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("scan pipeline: %w", err)
@@ -270,7 +273,7 @@ const serverScanShutdownGrace = 10 * time.Second
 // scan can never stay queued forever. bus receives the lifecycle events the
 // SSE endpoint streams. trivyDB is the vulnerability DB manager the scans and
 // the /api/trivy-db endpoints share.
-func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager) (*jobs.Manager, error) {
+func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager, reachability jobs.ReachabilityEnricher) (*jobs.Manager, error) {
 	hmacKey, err := secrets.LocalKey(secretStore)
 	if err != nil {
 		// Only secret fingerprints need the key; everything else still works,
@@ -296,10 +299,11 @@ func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, t
 			CacheDir: opts.paths.TrivyCacheDir(),
 			HMACKey:  hmacKey,
 		},
-		Advisories:  osv.New(version),
-		Concurrency: opts.concurrency,
-		Events:      bus,
-		Resolve:     newRepoResolver(db, tokens, version),
+		Advisories:   osv.New(version),
+		Reachability: reachability,
+		Concurrency:  opts.concurrency,
+		Events:       bus,
+		Resolve:      newRepoResolver(db, tokens, version),
 	})
 	if err != nil {
 		return nil, err

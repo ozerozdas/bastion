@@ -147,6 +147,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reachability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the Go reachability enrichment state.
+         * @description Returns the stored opt-in setting and whether a Go toolchain was found
+         *     on PATH. With the setting off no govulncheck process runs and findings
+         *     carry no reachability. The check reads the filesystem only; no request
+         *     is made.
+         */
+        get: operations["getReachabilityStatus"];
+        /**
+         * Store the Go reachability opt-in choice.
+         * @description Only the UI calls this. `enabled: false` stops future scans from running
+         *     govulncheck and leaves findings without a reachability. Turning it on
+         *     affects the next scan; the response is the updated status.
+         */
+        put: operations["setReachabilityEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/connections": {
         parameters: {
             query?: never;
@@ -833,6 +862,45 @@ export interface components {
             enabled: boolean;
         };
         /**
+         * Reachability
+         * @description Whether a Go vulnerability's vulnerable function is called, as
+         *     govulncheck reported it for the scan that produced the finding.
+         *     `reachable` carries a call trace, `unreachable` means the advisory was
+         *     found only at package or module level, and `unknown` means no answer
+         *     (govulncheck did not run, failed, or does not know the advisory).
+         * @enum {string}
+         */
+        Reachability: "reachable" | "unreachable" | "unknown";
+        /**
+         * ReachabilityStatus
+         * @description The Go reachability enrichment as the UI and the CLI see it. The
+         *     setting is opt-in and off by default; govulncheck also needs a Go
+         *     toolchain and network access to the vulnerability database.
+         */
+        ReachabilityStatus: {
+            /**
+             * @description The stored opt-in setting. False means no govulncheck process runs
+             *     and findings carry no reachability.
+             */
+            enabled: boolean;
+            /**
+             * @description Whether a `go` executable was found on PATH. False with `enabled`
+             *     true means scans still succeed, but Go findings are `unknown` and
+             *     `bastion doctor` suggests installing Go.
+             */
+            available: boolean;
+            /** @description Why the toolchain probe failed, when it did. */
+            error?: string;
+        };
+        /** SetReachabilityEnabledRequest */
+        SetReachabilityEnabledRequest: {
+            /**
+             * @description True runs govulncheck on future scans of Go modules; false turns the
+             *     enrichment off and stops every future run.
+             */
+            enabled: boolean;
+        };
+        /**
          * TrivyDBState
          * @description State of the Trivy vulnerability DB. `missing` and `failed` both mean a
          *     scan downloads it first; only `ready` means scans run straight away.
@@ -1144,6 +1212,7 @@ export interface components {
             /** @description Advisory or rule references; `[]` when there are none. */
             references: string[];
             epss?: components["schemas"]["EPSSScore"];
+            reachability?: components["schemas"]["Reachability"];
         };
         /** FindingList */
         FindingList: {
@@ -1211,11 +1280,11 @@ export interface components {
          */
         FixPlanFactor: {
             /**
-             * @description `severity` is the weight sum; `epss` and `latest_image` are
-             *     multipliers, 1 when the factor does not apply.
+             * @description `severity` is the weight sum; `epss`, `latest_image` and
+             *     `reachability` are multipliers, 1 when the factor does not apply.
              * @enum {string}
              */
-            name: "severity" | "epss" | "latest_image";
+            name: "severity" | "epss" | "latest_image" | "reachability";
             /**
              * Format: double
              * @description The term's value: a weight sum for severity, a multiplier otherwise.
@@ -1229,6 +1298,7 @@ export interface components {
              * @example 1 critical + 2 high
              * @example EPSS 0.42
              * @example in latest image
+             * @example reachable
              */
             detail: string;
         };
@@ -1930,6 +2000,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EPSSStatus"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getReachabilityStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current reachability enrichment state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReachabilityStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setReachabilityEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetReachabilityEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The choice was stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReachabilityStatus"];
                 };
             };
             400: components["responses"]["Problem"];

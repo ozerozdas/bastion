@@ -211,9 +211,10 @@ func (e FindingType) Valid() bool {
 
 // Defines values for FixPlanFactorName.
 const (
-	FixPlanFactorEPSS        FixPlanFactorName = "epss"
-	FixPlanFactorLatestImage FixPlanFactorName = "latest_image"
-	FixPlanFactorSeverity    FixPlanFactorName = "severity"
+	FixPlanFactorEPSS         FixPlanFactorName = "epss"
+	FixPlanFactorLatestImage  FixPlanFactorName = "latest_image"
+	FixPlanFactorReachability FixPlanFactorName = "reachability"
+	FixPlanFactorSeverity     FixPlanFactorName = "severity"
 )
 
 // Valid indicates whether the value is a known member of the FixPlanFactorName enum.
@@ -222,6 +223,8 @@ func (e FixPlanFactorName) Valid() bool {
 	case FixPlanFactorEPSS:
 		return true
 	case FixPlanFactorLatestImage:
+		return true
+	case FixPlanFactorReachability:
 		return true
 	case FixPlanFactorSeverity:
 		return true
@@ -239,6 +242,27 @@ const (
 func (e HealthStatus) Valid() bool {
 	switch e {
 	case HealthStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for Reachability.
+const (
+	ReachabilityReachable   Reachability = "reachable"
+	ReachabilityUnknown     Reachability = "unknown"
+	ReachabilityUnreachable Reachability = "unreachable"
+)
+
+// Valid indicates whether the value is a known member of the Reachability enum.
+func (e Reachability) Valid() bool {
+	switch e {
+	case ReachabilityReachable:
+		return true
+	case ReachabilityUnknown:
+		return true
+	case ReachabilityUnreachable:
 		return true
 	default:
 		return false
@@ -905,6 +929,13 @@ type Finding struct {
 	PackageName    *string `json:"package_name,omitempty"`
 	PackageVersion *string `json:"package_version,omitempty"`
 
+	// Reachability Whether a Go vulnerability's vulnerable function is called, as
+	// govulncheck reported it for the scan that produced the finding.
+	// `reachable` carries a call trace, `unreachable` means the advisory was
+	// found only at package or module level, and `unknown` means no answer
+	// (govulncheck did not run, failed, or does not know the advisory).
+	Reachability *Reachability `json:"reachability,omitempty"`
+
 	// Reason The user's reason for the decision in `state`.
 	Reason *string `json:"reason,omitempty"`
 
@@ -970,11 +1001,11 @@ type FixPlan struct {
 type FixPlanFactor struct {
 	// Detail Why the term has this value, in words the UI can show.
 	//
-	// Examples: 1 critical + 2 high, EPSS 0.42, in latest image
+	// Examples: 1 critical + 2 high, EPSS 0.42, in latest image, reachable
 	Detail string `json:"detail"`
 
-	// Name `severity` is the weight sum; `epss` and `latest_image` are
-	// multipliers, 1 when the factor does not apply.
+	// Name `severity` is the weight sum; `epss`, `latest_image` and
+	// `reachability` are multipliers, 1 when the factor does not apply.
 	Name FixPlanFactorName `json:"name"`
 
 	// Value The term's value: a weight sum for severity, a multiplier otherwise.
@@ -983,8 +1014,8 @@ type FixPlanFactor struct {
 	Value float64 `json:"value"`
 }
 
-// FixPlanFactorName `severity` is the weight sum; `epss` and `latest_image` are
-// multipliers, 1 when the factor does not apply.
+// FixPlanFactorName `severity` is the weight sum; `epss`, `latest_image` and
+// `reachability` are multipliers, 1 when the factor does not apply.
 type FixPlanFactorName string
 
 // FixPlanNoFix A package whose open findings no upgrade closes.
@@ -1105,6 +1136,30 @@ type Problem struct {
 type QueuedScan struct {
 	AssetId int64 `json:"asset_id"`
 	ScanId  int64 `json:"scan_id"`
+}
+
+// Reachability Whether a Go vulnerability's vulnerable function is called, as
+// govulncheck reported it for the scan that produced the finding.
+// `reachable` carries a call trace, `unreachable` means the advisory was
+// found only at package or module level, and `unknown` means no answer
+// (govulncheck did not run, failed, or does not know the advisory).
+type Reachability string
+
+// ReachabilityStatus The Go reachability enrichment as the UI and the CLI see it. The
+// setting is opt-in and off by default; govulncheck also needs a Go
+// toolchain and network access to the vulnerability database.
+type ReachabilityStatus struct {
+	// Available Whether a `go` executable was found on PATH. False with `enabled`
+	// true means scans still succeed, but Go findings are `unknown` and
+	// `bastion doctor` suggests installing Go.
+	Available bool `json:"available"`
+
+	// Enabled The stored opt-in setting. False means no govulncheck process runs
+	// and findings carry no reachability.
+	Enabled bool `json:"enabled"`
+
+	// Error Why the toolchain probe failed, when it did.
+	Error *string `json:"error,omitempty"`
 }
 
 // Scan One scan of one asset. `counts` are every finding this scan recorded,
@@ -1262,6 +1317,13 @@ type SetFindingStateRequest struct {
 
 	// State The user decision that hides a finding across scans.
 	State FindingState `json:"state"`
+}
+
+// SetReachabilityEnabledRequest defines model for SetReachabilityEnabledRequest.
+type SetReachabilityEnabledRequest struct {
+	// Enabled True runs govulncheck on future scans of Go modules; false turns the
+	// enrichment off and stops every future run.
+	Enabled bool `json:"enabled"`
 }
 
 // SetUpdateConsentRequest defines model for SetUpdateConsentRequest.
@@ -1468,6 +1530,9 @@ type SetFindingStatesJSONRequestBody = BulkSetFindingStateRequest
 // SetFindingStateJSONRequestBody defines body for SetFindingState for application/json ContentType.
 type SetFindingStateJSONRequestBody = SetFindingStateRequest
 
+// SetReachabilityEnabledJSONRequestBody defines body for SetReachabilityEnabled for application/json ContentType.
+type SetReachabilityEnabledJSONRequestBody = SetReachabilityEnabledRequest
+
 // CreateScansJSONRequestBody defines body for CreateScans for application/json ContentType.
 type CreateScansJSONRequestBody = CreateScansRequest
 
@@ -1670,6 +1735,12 @@ type ServerInterface interface {
 	// GetHealth Liveness and version probe.
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// GetReachabilityStatus Report the Go reachability enrichment state.
+	// (GET /api/reachability)
+	GetReachabilityStatus(w http.ResponseWriter, r *http.Request)
+	// SetReachabilityEnabled Store the Go reachability opt-in choice.
+	// (PUT /api/reachability)
+	SetReachabilityEnabled(w http.ResponseWriter, r *http.Request)
 	// GetDashboard Dashboard aggregates across non-archived assets.
 	// (GET /api/reports/dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
@@ -2162,6 +2233,34 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetReachabilityStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetReachabilityStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReachabilityStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetReachabilityEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetReachabilityEnabled(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetReachabilityEnabled(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetDashboard operation middleware
 func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.Request) {
 
@@ -2581,6 +2680,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/trivy-db/download", wrapper.DownloadTrivyDB)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/epss", wrapper.GetEPSSStatus)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/epss", wrapper.SetEPSSEnabled)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reachability", wrapper.GetReachabilityStatus)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/reachability", wrapper.SetReachabilityEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections", wrapper.ListConnections)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections", wrapper.CreateConnection)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/connections/{id}", wrapper.DeleteConnection)
@@ -5218,6 +5319,255 @@ func (response GetHealth500ApplicationProblemPlusJSONResponse) VisitGetHealthRes
 	return err
 }
 
+type GetReachabilityStatusRequestObject struct {
+}
+
+type GetReachabilityStatusResponseObject interface {
+	VisitGetReachabilityStatusResponse(w http.ResponseWriter) error
+}
+
+type GetReachabilityStatus200JSONResponse ReachabilityStatus
+
+func (response GetReachabilityStatus200JSONResponse) VisitGetReachabilityStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReachabilityStatus401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetReachabilityStatus401ApplicationProblemPlusJSONResponse) VisitGetReachabilityStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReachabilityStatus403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReachabilityStatus403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReachabilityStatus403ResponseHeaders
+}
+
+func (response GetReachabilityStatus403ApplicationProblemPlusJSONResponse) VisitGetReachabilityStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReachabilityStatus421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReachabilityStatus421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReachabilityStatus421ResponseHeaders
+}
+
+func (response GetReachabilityStatus421ApplicationProblemPlusJSONResponse) VisitGetReachabilityStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReachabilityStatus500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReachabilityStatus500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReachabilityStatus500ResponseHeaders
+}
+
+func (response GetReachabilityStatus500ApplicationProblemPlusJSONResponse) VisitGetReachabilityStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetReachabilityEnabledRequestObject struct {
+	Body *SetReachabilityEnabledJSONRequestBody
+}
+
+type SetReachabilityEnabledResponseObject interface {
+	VisitSetReachabilityEnabledResponse(w http.ResponseWriter) error
+}
+
+type SetReachabilityEnabled200JSONResponse ReachabilityStatus
+
+func (response SetReachabilityEnabled200JSONResponse) VisitSetReachabilityEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetReachabilityEnabled400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetReachabilityEnabled400ApplicationProblemPlusJSONResponse) VisitSetReachabilityEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetReachabilityEnabled401ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetReachabilityEnabled401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetReachabilityEnabled401ResponseHeaders
+}
+
+func (response SetReachabilityEnabled401ApplicationProblemPlusJSONResponse) VisitSetReachabilityEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetReachabilityEnabled403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetReachabilityEnabled403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetReachabilityEnabled403ResponseHeaders
+}
+
+func (response SetReachabilityEnabled403ApplicationProblemPlusJSONResponse) VisitSetReachabilityEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetReachabilityEnabled421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetReachabilityEnabled421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetReachabilityEnabled421ResponseHeaders
+}
+
+func (response SetReachabilityEnabled421ApplicationProblemPlusJSONResponse) VisitSetReachabilityEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetReachabilityEnabled500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetReachabilityEnabled500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetReachabilityEnabled500ResponseHeaders
+}
+
+func (response SetReachabilityEnabled500ApplicationProblemPlusJSONResponse) VisitSetReachabilityEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetDashboardRequestObject struct {
 }
 
@@ -6750,6 +7100,12 @@ type StrictServerInterface interface {
 	// GetHealth Liveness and version probe.
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+	// GetReachabilityStatus Report the Go reachability enrichment state.
+	// (GET /api/reachability)
+	GetReachabilityStatus(ctx context.Context, request GetReachabilityStatusRequestObject) (GetReachabilityStatusResponseObject, error)
+	// SetReachabilityEnabled Store the Go reachability opt-in choice.
+	// (PUT /api/reachability)
+	SetReachabilityEnabled(ctx context.Context, request SetReachabilityEnabledRequestObject) (SetReachabilityEnabledResponseObject, error)
 	// GetDashboard Dashboard aggregates across non-archived assets.
 	// (GET /api/reports/dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
@@ -7336,6 +7692,61 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetReachabilityStatus operation middleware
+func (sh *strictHandler) GetReachabilityStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetReachabilityStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReachabilityStatus(ctx, request.(GetReachabilityStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReachabilityStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReachabilityStatusResponseObject); ok {
+		if err := validResponse.VisitGetReachabilityStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetReachabilityEnabled operation middleware
+func (sh *strictHandler) SetReachabilityEnabled(w http.ResponseWriter, r *http.Request) {
+	var request SetReachabilityEnabledRequestObject
+
+	var body SetReachabilityEnabledJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetReachabilityEnabled(ctx, request.(SetReachabilityEnabledRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetReachabilityEnabled")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetReachabilityEnabledResponseObject); ok {
+		if err := validResponse.VisitSetReachabilityEnabledResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -46,6 +46,14 @@ tags:
       made. When on, the gzipped CSV is cached and refreshed at most daily, and
       findings carry its score at read time. `GET /api/epss` never blocks on
       the network.
+  - name: reachability
+    description: |
+      The opt-in Go reachability enrichment (#37). When on, a scan of a Go
+      module runs govulncheck and marks each Go vulnerability finding
+      `reachable`, `unreachable` or `unknown`. Off by default; with the setting
+      off nothing runs and findings carry no reachability. A scan that cannot
+      run govulncheck (no `go` on PATH, network failure) still succeeds and
+      reports `unknown`.
   - name: connections
     description: |
       Credentialed integrations used to discover and fetch sources. Tokens live
@@ -252,6 +260,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EPSSStatus"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/reachability:
+    get:
+      operationId: getReachabilityStatus
+      summary: Report the Go reachability enrichment state.
+      description: |
+        Returns the stored opt-in setting and whether a Go toolchain was found
+        on PATH. With the setting off no govulncheck process runs and findings
+        carry no reachability. The check reads the filesystem only; no request
+        is made.
+      tags: [reachability]
+      responses:
+        "200":
+          description: The current reachability enrichment state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReachabilityStatus"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setReachabilityEnabled
+      summary: Store the Go reachability opt-in choice.
+      description: |
+        Only the UI calls this. `enabled: false` stops future scans from running
+        govulncheck and leaves findings without a reachability. Turning it on
+        affects the next scan; the response is the updated status.
+      tags: [reachability]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetReachabilityEnabledRequest"
+      responses:
+        "200":
+          description: The choice was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReachabilityStatus"
         "400":
           $ref: "#/components/responses/Problem"
         "401":
@@ -1540,6 +1604,51 @@ components:
           description: |
             True opts in to the daily FIRST.org download; false turns it off and
             stops every future request.
+    Reachability:
+      type: string
+      title: Reachability
+      description: |
+        Whether a Go vulnerability's vulnerable function is called, as
+        govulncheck reported it for the scan that produced the finding.
+        `reachable` carries a call trace, `unreachable` means the advisory was
+        found only at package or module level, and `unknown` means no answer
+        (govulncheck did not run, failed, or does not know the advisory).
+      enum: [reachable, unreachable, unknown]
+    ReachabilityStatus:
+      type: object
+      title: ReachabilityStatus
+      description: |
+        The Go reachability enrichment as the UI and the CLI see it. The
+        setting is opt-in and off by default; govulncheck also needs a Go
+        toolchain and network access to the vulnerability database.
+      additionalProperties: false
+      required: [enabled, available]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            The stored opt-in setting. False means no govulncheck process runs
+            and findings carry no reachability.
+        available:
+          type: boolean
+          description: |
+            Whether a `go` executable was found on PATH. False with `enabled`
+            true means scans still succeed, but Go findings are `unknown` and
+            `bastion doctor` suggests installing Go.
+        error:
+          type: string
+          description: Why the toolchain probe failed, when it did.
+    SetReachabilityEnabledRequest:
+      type: object
+      title: SetReachabilityEnabledRequest
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            True runs govulncheck on future scans of Go modules; false turns the
+            enrichment off and stops every future run.
     TrivyDBState:
       type: string
       title: TrivyDBState
@@ -1918,6 +2027,8 @@ components:
             type: string
         epss:
           $ref: "#/components/schemas/EPSSScore"
+        reachability:
+          $ref: "#/components/schemas/Reachability"
     FindingList:
       type: object
       title: FindingList
@@ -2018,12 +2129,12 @@ components:
         name:
           type: string
           description: |
-            `severity` is the weight sum; `epss` and `latest_image` are
-            multipliers, 1 when the factor does not apply.
-          enum: [severity, epss, latest_image]
+            `severity` is the weight sum; `epss`, `latest_image` and
+            `reachability` are multipliers, 1 when the factor does not apply.
+          enum: [severity, epss, latest_image, reachability]
           # Explicit Go names: the default "severity" would generate a
           # Severity constant and clash with the Severity type.
-          x-enum-varnames: [FixPlanFactorSeverity, FixPlanFactorEPSS, FixPlanFactorLatestImage]
+          x-enum-varnames: [FixPlanFactorSeverity, FixPlanFactorEPSS, FixPlanFactorLatestImage, FixPlanFactorReachability]
         value:
           type: number
           format: double
@@ -2032,7 +2143,7 @@ components:
         detail:
           type: string
           description: Why the term has this value, in words the UI can show.
-          examples: ["1 critical + 2 high", "EPSS 0.42", "in latest image"]
+          examples: ["1 critical + 2 high", "EPSS 0.42", "in latest image", "reachable"]
     FixPlanNoFix:
       type: object
       title: FixPlanNoFix

@@ -323,6 +323,9 @@ func newFindingParams(scanID, assetID, firstSeen int64, f findings.Finding, crea
 		FirstSeenScanID: sql.NullInt64{Int64: firstSeen, Valid: true},
 		CreatedAt:       createdAt,
 	}
+	if f.Reachability != "" {
+		params.Reachability = nullString(string(f.Reachability))
+	}
 	if f.CVSS != nil {
 		params.CVSS = sql.NullFloat64{Float64: *f.CVSS, Valid: true}
 	}

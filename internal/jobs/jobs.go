@@ -113,6 +113,23 @@ type AdvisoryMatcher interface {
 	Match(ctx context.Context, packages []findings.Package, asset findings.Asset) ([]findings.Finding, error)
 }
 
+// ReachabilityEnricher classifies Go vulnerability findings as reachable,
+// unreachable or unknown (#37). It reads the workspace rather than the package
+// inventory, so it runs once after the scanners finish. A failure is recorded
+// and logged but never fails the scan.
+type ReachabilityEnricher interface {
+	// Name is the stable scanner id stored in scanner_runs.
+	Name() string
+	// Version identifies the analyzer's release.
+	Version() string
+	// Enabled reports the stored opt-in setting.
+	Enabled() bool
+	// Enrich marks the Go vulnerability findings of the workspace in place.
+	// ran is false when nothing was attempted: the setting is off or the
+	// workspace holds no Go module.
+	Enrich(ctx context.Context, dir string, findings []findings.Finding) (ran bool, err error)
+}
+
 // Asset is the target a scan was enqueued for, copied from the store at
 // enqueue time so a worker does not depend on the asset row still existing.
 type Asset struct {
@@ -145,6 +162,9 @@ type Config struct {
 	// Advisories enriches the merged package inventory with external
 	// advisories. Nil disables the lookup; a failure never fails the scan.
 	Advisories AdvisoryMatcher
+	// Reachability classifies Go vulnerabilities as reachable, unreachable or
+	// unknown. Nil disables the enrichment; a failure never fails the scan.
+	Reachability ReachabilityEnricher
 	// Options is called once at construction; the result is passed to every
 	// scanner (cache dir, HMAC key).
 	Options func() scanners.Options
@@ -160,15 +180,16 @@ type Config struct {
 // Manager is the scan queue and its worker pool. It is safe for concurrent
 // use. Call Shutdown (or Close) once; Enqueue rejects work afterwards.
 type Manager struct {
-	db          *sql.DB
-	queries     *sqlcdb.Queries
-	sources     map[sources.TargetKind]sources.Source
-	scanners    []scanners.Scanner
-	normalizers map[string]findings.Normalizer
-	options     scanners.Options
-	events      Publisher
-	resolve     ResolveFunc
-	advisories  AdvisoryMatcher
+	db           *sql.DB
+	queries      *sqlcdb.Queries
+	sources      map[sources.TargetKind]sources.Source
+	scanners     []scanners.Scanner
+	normalizers  map[string]findings.Normalizer
+	options      scanners.Options
+	events       Publisher
+	resolve      ResolveFunc
+	advisories   AdvisoryMatcher
+	reachability ReachabilityEnricher
 
 	runCtx  context.Context
 	cancel  context.CancelFunc
@@ -225,20 +246,21 @@ func New(cfg Config) (*Manager, error) {
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	m := &Manager{
-		db:          cfg.DB,
-		queries:     sqlcdb.New(cfg.DB),
-		sources:     cfg.Sources,
-		scanners:    cfg.Scanners,
-		normalizers: cfg.Normalizers,
-		options:     options,
-		events:      events,
-		resolve:     resolve,
-		advisories:  cfg.Advisories,
-		runCtx:      runCtx,
-		cancel:      cancel,
-		done:        make(chan struct{}),
-		jobs:        make(map[int64]*scanJob),
-		serial:      make(map[string]chan struct{}),
+		db:           cfg.DB,
+		queries:      sqlcdb.New(cfg.DB),
+		sources:      cfg.Sources,
+		scanners:     cfg.Scanners,
+		normalizers:  cfg.Normalizers,
+		options:      options,
+		events:       events,
+		resolve:      resolve,
+		advisories:   cfg.Advisories,
+		reachability: cfg.Reachability,
+		runCtx:       runCtx,
+		cancel:       cancel,
+		done:         make(chan struct{}),
+		jobs:         make(map[int64]*scanJob),
+		serial:       make(map[string]chan struct{}),
 	}
 	m.cond = sync.NewCond(&m.mu)
 

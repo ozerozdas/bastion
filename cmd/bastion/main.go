@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ozerozdas/bastion/internal/app"
+	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -88,6 +89,8 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newScanCmd(opts))
 	root.AddCommand(newDoctorCmd(opts))
 	root.AddCommand(newUpdateCmd())
+	// The hidden child the reachability enrichment re-execs itself with.
+	root.AddCommand(newInternalGovulncheckCmd())
 	return root
 }
 
@@ -95,6 +98,13 @@ func newRootCmd() *cobra.Command {
 // subcommand does work. The logger install is load-bearing: Trivy's slog
 // hijack (ADR-001) would otherwise swallow every bastion log line.
 func (o *rootOptions) persistentPreRunE(cmd *cobra.Command, _ []string) error {
+	// The internal analyzer child runs before any user configuration exists:
+	// it needs neither paths nor logging, and must not fail because the data
+	// directory is unavailable.
+	if cmd.Name() == govulncheck.InternalCommand {
+		return nil
+	}
+
 	paths, err := app.Resolve(app.Flags{DataDir: o.dataDir, CacheDir: o.cacheDir})
 	if err != nil {
 		return err

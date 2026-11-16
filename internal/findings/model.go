@@ -50,6 +50,24 @@ const (
 	AssetKindPath  AssetKind = "path"
 )
 
+// Reachability says whether a Go vulnerability's vulnerable function is
+// actually called (PROJECT_SPEC.md §1.6). It is set by the opt-in govulncheck
+// enrichment, which runs per scan, so it describes this scan's workspace rather
+// than the asset. It is empty for findings the enrichment does not cover.
+type Reachability string
+
+// Reachability states reported by govulncheck.
+const (
+	// ReachabilityReachable means a call trace reaches a vulnerable function.
+	ReachabilityReachable Reachability = "reachable"
+	// ReachabilityUnreachable means govulncheck analyzed the module and found
+	// the advisory only at package or module level.
+	ReachabilityUnreachable Reachability = "unreachable"
+	// ReachabilityUnknown means no answer: govulncheck could not run, did not
+	// know the advisory, or did not finish for this module.
+	ReachabilityUnknown Reachability = "unknown"
+)
+
 // Asset is the scanned artifact a finding belongs to.
 type Asset struct {
 	ID          int64     `json:"id"`
@@ -101,6 +119,10 @@ type Finding struct {
 	// LayerDigest records which image layer produced an image finding. It is
 	// provenance only and is deliberately excluded from Fingerprint.
 	LayerDigest string `json:"layer_digest,omitempty"`
+	// Reachability is whether the vulnerable Go function is called, as the
+	// opt-in govulncheck enrichment saw it for this scan. Empty when the
+	// enrichment did not run or the finding is not Go.
+	Reachability Reachability `json:"reachability,omitempty"`
 
 	Fingerprint string `json:"fingerprint"`
 	// Occurrences counts the raw findings inside one scan that share this

@@ -19,6 +19,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/docker"
 	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
+	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
@@ -51,6 +52,9 @@ type doctorDeps struct {
 	updateStatus func() update.Status
 	// epssStatus is a read-only snapshot of the EPSS feed, same contract.
 	epssStatus func() epss.Status
+	// reachabilityStatus is a read-only snapshot of the Go reachability
+	// enrichment, same contract.
+	reachabilityStatus func() govulncheck.Status
 	// dockerStatus probes the local Docker daemon with a short timeout.
 	dockerStatus func(ctx context.Context) docker.DaemonStatus
 }
@@ -58,22 +62,23 @@ type doctorDeps struct {
 // doctorReport is the printed result. No field holds a credential: the HMAC key
 // is reported only as a source, never as a value (PROJECT_SPEC.md §4.3).
 type doctorReport struct {
-	BastionVersion  string           `json:"bastion_version"`
-	GoVersion       string           `json:"go_version"`
-	OS              string           `json:"os"`
-	Arch            string           `json:"arch"`
-	DataDir         string           `json:"data_dir"`
-	CacheDir        string           `json:"cache_dir"`
-	Database        doctorDatabase   `json:"database"`
-	TrivyVersion    string           `json:"trivy_version"`
-	TrivyCache      doctorTrivyCache `json:"trivy_cache"`
-	GitleaksVersion string           `json:"gitleaks_version"`
-	Docker          doctorDocker     `json:"docker"`
-	Keyring         doctorStatus     `json:"keyring"`
-	HMACKey         doctorStatus     `json:"hmac_key"`
-	Update          doctorUpdate     `json:"update"`
-	EPSS            doctorEPSS       `json:"epss"`
-	Warnings        []string         `json:"warnings,omitempty"`
+	BastionVersion  string             `json:"bastion_version"`
+	GoVersion       string             `json:"go_version"`
+	OS              string             `json:"os"`
+	Arch            string             `json:"arch"`
+	DataDir         string             `json:"data_dir"`
+	CacheDir        string             `json:"cache_dir"`
+	Database        doctorDatabase     `json:"database"`
+	TrivyVersion    string             `json:"trivy_version"`
+	TrivyCache      doctorTrivyCache   `json:"trivy_cache"`
+	GitleaksVersion string             `json:"gitleaks_version"`
+	Docker          doctorDocker       `json:"docker"`
+	Keyring         doctorStatus       `json:"keyring"`
+	HMACKey         doctorStatus       `json:"hmac_key"`
+	Update          doctorUpdate       `json:"update"`
+	EPSS            doctorEPSS         `json:"epss"`
+	Reachability    doctorReachability `json:"reachability"`
+	Warnings        []string           `json:"warnings,omitempty"`
 }
 
 // doctorDatabase reports the SQLite file and its schema version.
@@ -157,7 +162,10 @@ func newDoctorDeps(opts *rootOptions) doctorDeps {
 		getenv:           os.Getenv,
 		updateStatus:     newUpdateChecker(opts.paths).Snapshot,
 		epssStatus:       func() epss.Status { return newEPSSService(opts.paths).Snapshot() },
-		dockerStatus:     docker.Status,
+		reachabilityStatus: func() govulncheck.Status {
+			return govulncheck.New(govulncheck.Config{DataDir: opts.paths.DataDir}).Snapshot()
+		},
+		dockerStatus: docker.Status,
 	}
 }
 
@@ -209,6 +217,14 @@ func runDoctor(ctx context.Context, deps doctorDeps) (doctorReport, error) {
 	report.EPSS = doctorEPSS{State: "off"}
 	if deps.epssStatus != nil {
 		report.EPSS = doctorEPSSFromStatus(deps.epssStatus())
+	}
+
+	report.Reachability = doctorReachability{State: "off"}
+	if deps.reachabilityStatus != nil {
+		report.Reachability = doctorReachabilityFromStatus(deps.reachabilityStatus())
+	}
+	if warning := report.Reachability.warning(); warning != "" {
+		report.Warnings = append(report.Warnings, warning)
 	}
 
 	if deps.dockerStatus != nil {
@@ -326,6 +342,7 @@ func writeDoctorText(w io.Writer, report doctorReport) error {
 		{"hmac key", report.HMACKey.summary()},
 		{"update", report.Update.summary()},
 		{"epss", report.EPSS.summary()},
+		{"reachability", report.Reachability.summary()},
 	}
 
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)

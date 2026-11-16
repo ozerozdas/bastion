@@ -3,6 +3,8 @@ package fixplan
 import (
 	"fmt"
 	"strings"
+
+	"github.com/ozerozdas/bastion/internal/findings"
 )
 
 // Severity weights are CVSS-like and only rank steps (#29): a step's severity
@@ -26,11 +28,20 @@ const (
 	latestImageBoost = 1.5
 )
 
+// Reachability multipliers (#37). A vulnerable function govulncheck reaches is
+// the finding a fix actually removes, so it ranks above a module-level report;
+// a finding govulncheck proves uncalled ranks well below it but never vanishes.
+const (
+	reachableBoost = 1.5
+	unreachableCut = 0.3
+)
+
 // Factor names. The API exposes these verbatim; the UI labels them.
 const (
-	FactorSeverity    = "severity"
-	FactorEPSS        = "epss"
-	FactorLatestImage = "latest_image"
+	FactorSeverity     = "severity"
+	FactorEPSS         = "epss"
+	FactorLatestImage  = "latest_image"
+	FactorReachability = "reachability"
 )
 
 // Factor is one term of a step's score, kept so the ordering is explainable:
@@ -117,9 +128,55 @@ func Score(step Step, opts ScoreOptions) Scored {
 	}
 	factors = append(factors, Factor{Name: FactorLatestImage, Value: imageMultiplier, Detail: imageDetail})
 
+	reachabilityMultiplier := 1.0
+	reachabilityDetail := "no Go findings"
+	switch step.Reachability {
+	case findings.ReachabilityReachable:
+		reachabilityMultiplier = reachableBoost
+		reachabilityDetail = "reachable"
+	case findings.ReachabilityUnreachable:
+		reachabilityMultiplier = unreachableCut
+		reachabilityDetail = "unreachable"
+	case findings.ReachabilityUnknown:
+		reachabilityDetail = "reachability unknown"
+	}
+	factors = append(factors, Factor{
+		Name:   FactorReachability,
+		Value:  reachabilityMultiplier,
+		Detail: reachabilityDetail,
+	})
+
 	return Scored{
-		Score:   severity * epssMultiplier * imageMultiplier,
+		Score:   severity * epssMultiplier * imageMultiplier * reachabilityMultiplier,
 		Factors: factors,
+	}
+}
+
+// AggregateReachability folds one step's findings into a single state (#37).
+// Any reachable finding wins: the step removes a call path that is actually
+// used. Otherwise an unknown finding makes the step unknown, because part of it
+// is undecided; only all-unreachable is unreachable. No answer at all stays
+// empty, so the score can say "no Go findings" instead of guessing.
+func AggregateReachability(states []findings.Reachability) findings.Reachability {
+	unknown := false
+	unreachable := false
+	for _, state := range states {
+		switch state {
+		case findings.ReachabilityReachable:
+			return findings.ReachabilityReachable
+		case findings.ReachabilityUnknown:
+			unknown = true
+		case findings.ReachabilityUnreachable:
+			unreachable = true
+		}
+	}
+	switch {
+	case unknown:
+		return findings.ReachabilityUnknown
+	case unreachable:
+		return findings.ReachabilityUnreachable
+	default:
+		return ""
 	}
 }
 

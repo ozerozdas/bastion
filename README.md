@@ -141,6 +141,8 @@ it on: Trivy runs with `--disable-telemetry --skip-version-check`, scans query
 | `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI; or on explicit `bastion update` | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed and nothing else is parsed |
 | `github.com/ozerozdas/bastion/releases/download` | Only on explicit `bastion update` | The release archive for your OS/arch and its `checksums.txt` (redirects to GitHub's object storage). Sends your IP and `User-Agent: bastion/<version>`; the SHA-256 is verified before the binary is replaced |
 | `epss.empiricalsecurity.com` | At most once a day, only after you turn EPSS scores on in the UI | The current EPSS feed: a ~2.8 MB gzipped CSV of per-CVE exploit probabilities and percentiles. Sends your IP and `User-Agent: bastion/<version>`; it is cached locally and never re-uploaded |
+| `vuln.go.dev` | Only on a scan of a Go module, after you turn Go reachability on in the UI | govulncheck's vulnerability database: which advisories exist and which functions they affect. Sends your IP; the database is cached by the Go toolchain |
+| `proxy.golang.org` (or your `GOPROXY`) | Same scans, through the `go` toolchain govulncheck drives | Module downloads and checksums the analysis needs, exactly as `go build` would fetch them. Nothing about your scan is uploaded |
 
 Bastion also talks to the local Docker daemon over its Unix socket
 (`DOCKER_HOST`, or the usual Docker Desktop, OrbStack, Colima and Rancher Desktop

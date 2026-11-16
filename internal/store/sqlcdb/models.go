@@ -64,6 +64,7 @@ type Finding struct {
 	Status          string
 	CreatedAt       string
 	Scanners        string
+	Reachability    sql.NullString
 }
 
 type FindingState struct {

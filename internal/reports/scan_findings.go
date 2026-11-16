@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ozerozdas/bastion/internal/findings"
 	"github.com/ozerozdas/bastion/internal/store/sqlcdb"
 )
 
@@ -98,6 +99,7 @@ func (s *Service) findingFromScanRow(row sqlcdb.ListFindingsByScanRow) (Finding,
 		Expired:        row.Expired != 0,
 		Description:    row.Description.String,
 		References:     references,
+		Reachability:   findings.Reachability(row.Reachability.String),
 	}
 	if row.FirstSeenScanID.Valid {
 		firstSeen := row.FirstSeenScanID.Int64
