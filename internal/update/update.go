@@ -50,6 +50,7 @@ const (
 	consentFileName = "update-consent.json"
 	cacheFileName   = "update-check.json"
 
+	defaultBaseURL     = "https://github.com"
 	releasesLatestPath = "/ozerozdas/bastion/releases/latest"
 	releasesTagBase    = "https://github.com/ozerozdas/bastion/releases/tag/"
 )
@@ -141,7 +142,7 @@ func New(cfg Config) *Checker {
 
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
-		baseURL = "https://github.com"
+		baseURL = defaultBaseURL
 	}
 	now := cfg.Now
 	if now == nil {
@@ -297,16 +298,23 @@ func (c *Checker) CheckNow(ctx context.Context) Status {
 // fetchLatest asks github.com for the latest release and reads the tag from the
 // redirect's Location header. The response body is never read.
 func (c *Checker) fetchLatest(ctx context.Context) (string, error) {
+	return fetchLatestTag(ctx, c.client, c.baseURL, c.current)
+}
+
+// fetchLatestTag is the shared release lookup: the opt-in check and
+// `bastion update` both follow /releases/latest and read the tag from the
+// redirect. client must not follow redirects.
+func fetchLatestTag(ctx context.Context, client *http.Client, baseURL, currentVersion string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+releasesLatestPath, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+releasesLatestPath, nil)
 	if err != nil {
 		return "", fmt.Errorf("build release request: %w", err)
 	}
-	req.Header.Set("User-Agent", "bastion/"+c.current)
+	req.Header.Set("User-Agent", "bastion/"+currentVersion)
 
-	resp, err := c.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("request latest release: %w", err)
 	}

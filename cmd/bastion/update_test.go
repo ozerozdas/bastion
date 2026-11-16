@@ -18,6 +18,34 @@ import (
 	"github.com/ozerozdas/bastion/internal/update"
 )
 
+func TestRunUpdateWiring(t *testing.T) {
+	previous := version
+	version = "v0.2.0"
+	t.Cleanup(func() { version = previous })
+
+	var got update.SelfUpdateConfig
+	deps := updateDeps{
+		selfUpdate: func(_ context.Context, cfg update.SelfUpdateConfig) error {
+			got = cfg
+			return nil
+		},
+	}
+
+	var out bytes.Buffer
+	if err := runUpdate(context.Background(), &out, updateFlags{check: true, force: true}, deps); err != nil {
+		t.Fatalf("runUpdate: %v", err)
+	}
+	if got.CurrentVersion != "v0.2.0" {
+		t.Errorf("current version = %q, want v0.2.0", got.CurrentVersion)
+	}
+	if !got.Check || !got.Force {
+		t.Errorf("flags = check:%v force:%v, want both true", got.Check, got.Force)
+	}
+	if got.Out != &out {
+		t.Error("Out is not the command's stdout")
+	}
+}
+
 func TestWriteUpdateNotice(t *testing.T) {
 	const (
 		command = "brew upgrade ozerozdas/tap/bastion"
