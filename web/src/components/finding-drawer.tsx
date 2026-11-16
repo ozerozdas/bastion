@@ -104,7 +104,9 @@ export function FindingDrawer({
               <Badge>{typeLabels[finding.type]}</Badge>
               {finding.type === 'license' ? (
                 <span className="text-xs text-faint">
-                  informational, no action needed
+                  {finding.licence_policy === 'deny'
+                    ? 'denied by licence policy; severity raised'
+                    : 'informational, no action needed'}
                 </span>
               ) : null}
               {finding.state ? (

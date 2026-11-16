@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, test, watch } from './fixtures'
+import { expect, stubLicencePolicy, test, watch } from './fixtures'
 
 // The dashboard aggregates every project; these tests stub that payload so the
 // project links are present without a real scan (#108).
@@ -80,6 +80,7 @@ test('dashboard project names link to their filtered findings', async ({
   page,
   server,
 }) => {
+  await stubLicencePolicy(page)
   const problems = watch(page)
 
   await page.route('**/api/reports/dashboard', (route) =>

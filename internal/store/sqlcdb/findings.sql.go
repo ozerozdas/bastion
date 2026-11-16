@@ -15,13 +15,23 @@ SELECT COUNT(*)
 FROM findings f
 LEFT JOIN finding_states fs
     ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+LEFT JOIN licence_policy lpa
+    ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
+LEFT JOIN licence_policy lpg
+    ON lpg.asset_id IS NULL AND lpg.licence = lower(f.rule_id)
 WHERE f.scan_id = ?1
   AND (?2 IS NULL OR f.type = ?2)
-  AND (?3 IS NULL OR f.severity = ?3)
+  AND (?3 IS NULL OR CAST(CASE
+        WHEN f.type = 'license'
+             AND COALESCE(lpa.action, lpg.action) = 'deny'
+             AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+        ELSE f.severity
+    END AS TEXT) = ?3)
   AND (?4 IS NULL OR CAST(CASE
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(?5 AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = ?4)
+  AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 `
 
 type CountFindingsByScanFilteredParams struct {
@@ -54,6 +64,10 @@ JOIN scans s ON s.id = f.scan_id
 JOIN assets a ON a.id = f.asset_id
 LEFT JOIN finding_states fs
     ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+LEFT JOIN licence_policy lpa
+    ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
+LEFT JOIN licence_policy lpg
+    ON lpg.asset_id IS NULL AND lpg.licence = lower(f.rule_id)
 WHERE a.archived_at IS NULL
   AND s.status = 'succeeded'
   AND s.id = (
@@ -63,11 +77,17 @@ WHERE a.archived_at IS NULL
   )
   AND (?1 IS NULL OR f.asset_id = ?1)
   AND (?2 IS NULL OR f.type = ?2)
-  AND (?3 IS NULL OR f.severity = ?3)
+  AND (?3 IS NULL OR CAST(CASE
+        WHEN f.type = 'license'
+             AND COALESCE(lpa.action, lpg.action) = 'deny'
+             AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+        ELSE f.severity
+    END AS TEXT) = ?3)
   AND (?4 IS NULL OR CAST(CASE
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(?5 AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = ?4)
+  AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 `
 
 type CountLatestFindingsParams struct {
@@ -230,7 +250,15 @@ SELECT
     f.type,
     f.fingerprint,
     f.occurrences,
-    f.severity,
+    CAST(CASE
+        WHEN f.type = 'license'
+             AND COALESCE(lpa.action, lpg.action) = 'deny'
+             AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+        ELSE f.severity
+    END AS TEXT) AS severity,
+    COALESCE(CAST(CASE
+        WHEN f.type = 'license' THEN COALESCE(lpa.action, lpg.action)
+    END AS TEXT), '') AS licence_policy,
     f.title,
     f.rule_id,
     f.package_name,
@@ -258,19 +286,32 @@ SELECT
 FROM findings f
 LEFT JOIN finding_states fs
     ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+LEFT JOIN licence_policy lpa
+    ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
+LEFT JOIN licence_policy lpg
+    ON lpg.asset_id IS NULL AND lpg.licence = lower(f.rule_id)
 WHERE f.scan_id = ?2
   AND (?3 IS NULL OR f.type = ?3)
-  AND (?4 IS NULL OR f.severity = ?4)
+  AND (?4 IS NULL OR CAST(CASE
+        WHEN f.type = 'license'
+             AND COALESCE(lpa.action, lpg.action) = 'deny'
+             AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+        ELSE f.severity
+    END AS TEXT) = ?4)
   AND (?5 IS NULL OR CAST(CASE
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = ?5)
+  AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 ORDER BY
-    CASE f.severity
-        WHEN 'critical' THEN 0
-        WHEN 'high' THEN 1
-        WHEN 'medium' THEN 2
-        WHEN 'low' THEN 3
+    CASE
+        WHEN f.type = 'license'
+             AND COALESCE(lpa.action, lpg.action) = 'deny'
+             AND f.severity IN ('low', 'medium', 'unknown') THEN 1
+        WHEN f.severity = 'critical' THEN 0
+        WHEN f.severity = 'high' THEN 1
+        WHEN f.severity = 'medium' THEN 2
+        WHEN f.severity = 'low' THEN 3
         ELSE 4
     END,
     f.fingerprint
@@ -296,6 +337,7 @@ type ListFindingsByScanRow struct {
 	Fingerprint     string
 	Occurrences     int64
 	Severity        string
+	LicencePolicy   interface{}
 	Title           string
 	RuleID          sql.NullString
 	PackageName     sql.NullString
@@ -351,6 +393,7 @@ func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScan
 			&i.Fingerprint,
 			&i.Occurrences,
 			&i.Severity,
+			&i.LicencePolicy,
 			&i.Title,
 			&i.RuleID,
 			&i.PackageName,
@@ -394,7 +437,15 @@ SELECT
     f.type,
     f.fingerprint,
     f.occurrences,
-    f.severity,
+    CAST(CASE
+        WHEN f.type = 'license'
+             AND COALESCE(lpa.action, lpg.action) = 'deny'
+             AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+        ELSE f.severity
+    END AS TEXT) AS severity,
+    COALESCE(CAST(CASE
+        WHEN f.type = 'license' THEN COALESCE(lpa.action, lpg.action)
+    END AS TEXT), '') AS licence_policy,
     f.title,
     f.rule_id,
     f.package_name,
@@ -424,6 +475,10 @@ JOIN scans s ON s.id = f.scan_id
 JOIN assets a ON a.id = f.asset_id
 LEFT JOIN finding_states fs
     ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+LEFT JOIN licence_policy lpa
+    ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
+LEFT JOIN licence_policy lpg
+    ON lpg.asset_id IS NULL AND lpg.licence = lower(f.rule_id)
 WHERE a.archived_at IS NULL
   AND s.status = 'succeeded'
   AND s.id = (
@@ -433,17 +488,26 @@ WHERE a.archived_at IS NULL
   )
   AND (?2 IS NULL OR f.asset_id = ?2)
   AND (?3 IS NULL OR f.type = ?3)
-  AND (?4 IS NULL OR f.severity = ?4)
+  AND (?4 IS NULL OR CAST(CASE
+        WHEN f.type = 'license'
+             AND COALESCE(lpa.action, lpg.action) = 'deny'
+             AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+        ELSE f.severity
+    END AS TEXT) = ?4)
   AND (?5 IS NULL OR CAST(CASE
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = ?5)
+  AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 ORDER BY
-    CASE f.severity
-        WHEN 'critical' THEN 0
-        WHEN 'high' THEN 1
-        WHEN 'medium' THEN 2
-        WHEN 'low' THEN 3
+    CASE
+        WHEN f.type = 'license'
+             AND COALESCE(lpa.action, lpg.action) = 'deny'
+             AND f.severity IN ('low', 'medium', 'unknown') THEN 1
+        WHEN f.severity = 'critical' THEN 0
+        WHEN f.severity = 'high' THEN 1
+        WHEN f.severity = 'medium' THEN 2
+        WHEN f.severity = 'low' THEN 3
         ELSE 4
     END,
     f.asset_id,
@@ -470,6 +534,7 @@ type ListLatestFindingsRow struct {
 	Fingerprint     string
 	Occurrences     int64
 	Severity        string
+	LicencePolicy   interface{}
 	Title           string
 	RuleID          sql.NullString
 	PackageName     sql.NullString
@@ -524,6 +589,7 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 			&i.Fingerprint,
 			&i.Occurrences,
 			&i.Severity,
+			&i.LicencePolicy,
 			&i.Title,
 			&i.RuleID,
 			&i.PackageName,

@@ -689,6 +689,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/licence-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the licence allow/deny policy.
+         * @description Returns the global policy when `asset_id` is omitted, otherwise that
+         *     asset's policy. A licence without a rule is absent from both lists. The
+         *     lists are normalized to lower case and sorted.
+         */
+        get: operations["getLicencePolicy"];
+        /**
+         * Replace the licence allow/deny policy.
+         * @description Replaces both lists of one scope in a single transaction. Licences are
+         *     trimmed, lower-cased, de-duplicated and sorted; a licence may not be in
+         *     both lists. The response is the stored policy.
+         */
+        put: operations["setLicencePolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reports/dashboard": {
         parameters: {
             query?: never;
@@ -879,6 +907,31 @@ export interface components {
          * @enum {string}
          */
         Reachability: "reachable" | "unreachable" | "unknown";
+        /**
+         * LicencePolicyAction
+         * @description The effective rule that matched a licence finding (#39). `allow`
+         *     findings are hidden, so only `deny` is normally visible: the finding
+         *     stays in the list with a severity of at least `high`. Absent when no
+         *     rule applies.
+         * @enum {string}
+         */
+        LicencePolicyAction: "allow" | "deny";
+        /**
+         * LicencePolicy
+         * @description One scope's licence rules. The lists are normalized to lower case and
+         *     sorted, hold at most 500 entries together, and a licence may not appear
+         *     in both. Matching is exact on the whole licence string as reported, so
+         *     `MIT OR Apache-2.0` is a separate entry from `MIT`.
+         */
+        LicencePolicy: {
+            /** @description Licence ids whose findings are hidden. */
+            allow: string[];
+            /**
+             * @description Licence ids whose findings stay visible with a severity of at least
+             *     `high`.
+             */
+            deny: string[];
+        };
         /**
          * ReachabilityStatus
          * @description The Go reachability enrichment as the UI and the CLI see it. The
@@ -1221,6 +1274,7 @@ export interface components {
             references: string[];
             epss?: components["schemas"]["EPSSScore"];
             reachability?: components["schemas"]["Reachability"];
+            licence_policy?: components["schemas"]["LicencePolicyAction"];
         };
         /**
          * FindingList
@@ -1867,6 +1921,8 @@ export interface components {
         ConnectionID: number;
         /** @description Only findings of this asset. */
         AssetIDQuery: number;
+        /** @description The asset whose policy is read or replaced. Omit for the global policy. */
+        LicencePolicyAssetIDQuery: number;
         /** @description The asset the decision belongs to. */
         AssetIDRequiredQuery: number;
         /** @description Asset id. */
@@ -3148,6 +3204,104 @@ export interface operations {
             };
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getLicencePolicy: {
+        parameters: {
+            query?: {
+                /** @description The asset whose policy is read or replaced. Omit for the global policy. */
+                asset_id?: components["parameters"]["LicencePolicyAssetIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The policy of the requested scope. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicencePolicy"];
+                };
+            };
+            /** @description `asset_id` is not a positive integer. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description No asset has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setLicencePolicy: {
+        parameters: {
+            query?: {
+                /** @description The asset whose policy is read or replaced. Omit for the global policy. */
+                asset_id?: components["parameters"]["LicencePolicyAssetIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LicencePolicy"];
+            };
+        };
+        responses: {
+            /** @description The policy was stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicencePolicy"];
+                };
+            };
+            /**
+             * @description The body is missing, an entry is empty, longer than 128 printable
+             *     ASCII characters, appears in both lists, or the policy has more
+             *     than 500 entries.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description No asset has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };

@@ -163,6 +163,7 @@ func (s *Service) findingFromScanRow(row sqlcdb.ListFindingsByScanRow) (Finding,
 		Description:    row.Description.String,
 		References:     references,
 		Reachability:   findings.Reachability(row.Reachability.String),
+		LicencePolicy:  licencePolicyValue(row.LicencePolicy),
 	}
 	if row.FirstSeenScanID.Valid {
 		firstSeen := row.FirstSeenScanID.Int64

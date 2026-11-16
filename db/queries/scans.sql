@@ -78,22 +78,59 @@ VALUES (
 -- name: ListScans :many
 -- Newest first, optionally narrowed to one asset. Ids increase with time, so
 -- ordering by id is stable even when two scans share a started_at. The counts
--- are every finding the scan recorded, per severity, in one statement; the
--- correlated subqueries read only the findings of the listed scans (see
--- idx_findings_scan).
+-- are the findings the scan recorded after the licence policy (#39): an
+-- allow-listed licence is hidden and a deny-listed one counts as high. They
+-- come from one grouped read over the listed scans (see idx_findings_scan).
+WITH scan_counts AS (
+    SELECT
+        f.scan_id,
+        CAST(SUM(CASE WHEN CASE
+                 WHEN f.type = 'license'
+                      AND COALESCE(lpa.action, lpg.action, '') = 'deny'
+                      AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+                 ELSE f.severity
+             END = 'critical' THEN 1 ELSE 0 END) AS INTEGER) AS critical_count,
+        CAST(SUM(CASE WHEN CASE
+                 WHEN f.type = 'license'
+                      AND COALESCE(lpa.action, lpg.action, '') = 'deny'
+                      AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+                 ELSE f.severity
+             END = 'high' THEN 1 ELSE 0 END) AS INTEGER) AS high_count,
+        CAST(SUM(CASE WHEN CASE
+                 WHEN f.type = 'license'
+                      AND COALESCE(lpa.action, lpg.action, '') = 'deny'
+                      AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+                 ELSE f.severity
+             END = 'medium' THEN 1 ELSE 0 END) AS INTEGER) AS medium_count,
+        CAST(SUM(CASE WHEN CASE
+                 WHEN f.type = 'license'
+                      AND COALESCE(lpa.action, lpg.action, '') = 'deny'
+                      AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+                 ELSE f.severity
+             END = 'low' THEN 1 ELSE 0 END) AS INTEGER) AS low_count,
+        CAST(SUM(CASE WHEN CASE
+                 WHEN f.type = 'license'
+                      AND COALESCE(lpa.action, lpg.action, '') = 'deny'
+                      AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+                 ELSE f.severity
+             END = 'unknown' THEN 1 ELSE 0 END) AS INTEGER) AS unknown_count
+    FROM findings f
+    LEFT JOIN licence_policy lpa
+        ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
+    LEFT JOIN licence_policy lpg
+        ON lpg.asset_id IS NULL AND lpg.licence = lower(f.rule_id)
+    WHERE NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
+    GROUP BY f.scan_id
+)
 SELECT
     sqlc.embed(s),
-    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'critical' THEN 1 ELSE 0 END)
-                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS critical_count,
-    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'high' THEN 1 ELSE 0 END)
-                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS high_count,
-    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'medium' THEN 1 ELSE 0 END)
-                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS medium_count,
-    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'low' THEN 1 ELSE 0 END)
-                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS low_count,
-    CAST(COALESCE((SELECT SUM(CASE WHEN f.severity = 'unknown' THEN 1 ELSE 0 END)
-                   FROM findings f WHERE f.scan_id = s.id), 0) AS INTEGER) AS unknown_count
+    CAST(COALESCE(sc.critical_count, 0) AS INTEGER) AS critical_count,
+    CAST(COALESCE(sc.high_count, 0) AS INTEGER) AS high_count,
+    CAST(COALESCE(sc.medium_count, 0) AS INTEGER) AS medium_count,
+    CAST(COALESCE(sc.low_count, 0) AS INTEGER) AS low_count,
+    CAST(COALESCE(sc.unknown_count, 0) AS INTEGER) AS unknown_count
 FROM scans s
+LEFT JOIN scan_counts sc ON sc.scan_id = s.id
 WHERE (sqlc.narg(asset_id) IS NULL OR s.asset_id = sqlc.narg(asset_id))
 ORDER BY s.id DESC
 -- A nil window means no page: SQLite has no NULL LIMIT, so -1 stands in.
@@ -108,13 +145,44 @@ FROM scans s
 WHERE (sqlc.narg(asset_id) IS NULL OR s.asset_id = sqlc.narg(asset_id));
 
 -- name: CountFindingsByScan :one
--- Every finding one scan recorded, per severity: the single-scan read shows
--- the same counts as the scan list. A scan that recorded nothing is all zeros.
+-- Every finding one scan recorded, per severity, after the licence policy
+-- (#39): the single-scan read shows the same counts as the scan list. A scan
+-- that recorded nothing is all zeros.
 SELECT
-    CAST(COALESCE(SUM(CASE WHEN f.severity = 'critical' THEN 1 ELSE 0 END), 0) AS INTEGER) AS critical_count,
-    CAST(COALESCE(SUM(CASE WHEN f.severity = 'high' THEN 1 ELSE 0 END), 0) AS INTEGER) AS high_count,
-    CAST(COALESCE(SUM(CASE WHEN f.severity = 'medium' THEN 1 ELSE 0 END), 0) AS INTEGER) AS medium_count,
-    CAST(COALESCE(SUM(CASE WHEN f.severity = 'low' THEN 1 ELSE 0 END), 0) AS INTEGER) AS low_count,
-    CAST(COALESCE(SUM(CASE WHEN f.severity = 'unknown' THEN 1 ELSE 0 END), 0) AS INTEGER) AS unknown_count
+    CAST(COALESCE(SUM(CASE WHEN CASE
+             WHEN f.type = 'license'
+                  AND COALESCE(lpa.action, lpg.action, '') = 'deny'
+                  AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+             ELSE f.severity
+         END = 'critical' THEN 1 ELSE 0 END), 0) AS INTEGER) AS critical_count,
+    CAST(COALESCE(SUM(CASE WHEN CASE
+             WHEN f.type = 'license'
+                  AND COALESCE(lpa.action, lpg.action, '') = 'deny'
+                  AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+             ELSE f.severity
+         END = 'high' THEN 1 ELSE 0 END), 0) AS INTEGER) AS high_count,
+    CAST(COALESCE(SUM(CASE WHEN CASE
+             WHEN f.type = 'license'
+                  AND COALESCE(lpa.action, lpg.action, '') = 'deny'
+                  AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+             ELSE f.severity
+         END = 'medium' THEN 1 ELSE 0 END), 0) AS INTEGER) AS medium_count,
+    CAST(COALESCE(SUM(CASE WHEN CASE
+             WHEN f.type = 'license'
+                  AND COALESCE(lpa.action, lpg.action, '') = 'deny'
+                  AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+             ELSE f.severity
+         END = 'low' THEN 1 ELSE 0 END), 0) AS INTEGER) AS low_count,
+    CAST(COALESCE(SUM(CASE WHEN CASE
+             WHEN f.type = 'license'
+                  AND COALESCE(lpa.action, lpg.action, '') = 'deny'
+                  AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+             ELSE f.severity
+         END = 'unknown' THEN 1 ELSE 0 END), 0) AS INTEGER) AS unknown_count
 FROM findings f
-WHERE f.scan_id = sqlc.arg(scan_id);
+LEFT JOIN licence_policy lpa
+    ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
+LEFT JOIN licence_policy lpg
+    ON lpg.asset_id IS NULL AND lpg.licence = lower(f.rule_id)
+WHERE f.scan_id = sqlc.arg(scan_id)
+  AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow');

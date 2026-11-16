@@ -77,6 +77,14 @@ type FindingState struct {
 	ExpiresAt   sql.NullString
 }
 
+type LicencePolicy struct {
+	ID        int64
+	AssetID   sql.NullInt64
+	Licence   string
+	Action    string
+	CreatedAt string
+}
+
 type Package struct {
 	ID        int64
 	ScanID    int64

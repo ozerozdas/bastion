@@ -225,6 +225,10 @@ func findingResponse(finding reports.Finding) gen.Finding {
 		reachability := gen.Reachability(finding.Reachability)
 		out.Reachability = &reachability
 	}
+	if finding.LicencePolicy != "" {
+		action := gen.LicencePolicyAction(finding.LicencePolicy)
+		out.LicencePolicy = &action
+	}
 	if out.References == nil {
 		out.References = []string{}
 	}

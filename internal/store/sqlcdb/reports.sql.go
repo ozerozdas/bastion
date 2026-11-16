@@ -67,11 +67,36 @@ SELECT
     f.asset_id,
     a.display_name,
     a.kind,
-    CAST(SUM(CASE WHEN f.severity = 'critical' THEN 1 ELSE 0 END) AS INTEGER) AS critical,
-    CAST(SUM(CASE WHEN f.severity = 'high' THEN 1 ELSE 0 END) AS INTEGER) AS high,
-    CAST(SUM(CASE WHEN f.severity = 'medium' THEN 1 ELSE 0 END) AS INTEGER) AS medium,
-    CAST(SUM(CASE WHEN f.severity = 'low' THEN 1 ELSE 0 END) AS INTEGER) AS low,
-    CAST(SUM(CASE f.severity
+    CAST(SUM(CASE WHEN CASE
+             WHEN f.type = 'license'
+                  AND COALESCE(lpa.action, lpg.action) = 'deny'
+                  AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+             ELSE f.severity
+         END = 'critical' THEN 1 ELSE 0 END) AS INTEGER) AS critical,
+    CAST(SUM(CASE WHEN CASE
+             WHEN f.type = 'license'
+                  AND COALESCE(lpa.action, lpg.action) = 'deny'
+                  AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+             ELSE f.severity
+         END = 'high' THEN 1 ELSE 0 END) AS INTEGER) AS high,
+    CAST(SUM(CASE WHEN CASE
+             WHEN f.type = 'license'
+                  AND COALESCE(lpa.action, lpg.action) = 'deny'
+                  AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+             ELSE f.severity
+         END = 'medium' THEN 1 ELSE 0 END) AS INTEGER) AS medium,
+    CAST(SUM(CASE WHEN CASE
+             WHEN f.type = 'license'
+                  AND COALESCE(lpa.action, lpg.action) = 'deny'
+                  AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+             ELSE f.severity
+         END = 'low' THEN 1 ELSE 0 END) AS INTEGER) AS low,
+    CAST(SUM(CASE CASE
+                 WHEN f.type = 'license'
+                      AND COALESCE(lpa.action, lpg.action) = 'deny'
+                      AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+                 ELSE f.severity
+             END
                  WHEN 'critical' THEN 1000
                  WHEN 'high' THEN 100
                  WHEN 'medium' THEN 10
@@ -83,6 +108,10 @@ JOIN scans s ON s.id = f.scan_id
 JOIN assets a ON a.id = f.asset_id
 LEFT JOIN finding_states fs
     ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+LEFT JOIN licence_policy lpa
+    ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
+LEFT JOIN licence_policy lpg
+    ON lpg.asset_id IS NULL AND lpg.licence = lower(f.rule_id)
 WHERE a.archived_at IS NULL
   AND s.status = 'succeeded'
   AND s.id = (
@@ -92,6 +121,7 @@ WHERE a.archived_at IS NULL
   )
   AND f.status = 'open'
   AND (fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT))
+  AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 GROUP BY f.asset_id
 HAVING score > 0
 ORDER BY score DESC, a.display_name, f.asset_id
@@ -146,12 +176,23 @@ func (q *Queries) ReportTopAssets(ctx context.Context, now string) ([]ReportTopA
 
 const reportTotalsBySeverity = `-- name: ReportTotalsBySeverity :many
 
-SELECT f.severity, COUNT(*) AS finding_count
+SELECT
+    CAST(CASE
+        WHEN f.type = 'license'
+             AND COALESCE(lpa.action, lpg.action) = 'deny'
+             AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+        ELSE f.severity
+    END AS TEXT) AS severity,
+    COUNT(*) AS finding_count
 FROM findings f
 JOIN scans s ON s.id = f.scan_id
 JOIN assets a ON a.id = f.asset_id
 LEFT JOIN finding_states fs
     ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+LEFT JOIN licence_policy lpa
+    ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
+LEFT JOIN licence_policy lpg
+    ON lpg.asset_id IS NULL AND lpg.licence = lower(f.rule_id)
 WHERE a.archived_at IS NULL
   AND s.status = 'succeeded'
   AND s.id = (
@@ -161,8 +202,14 @@ WHERE a.archived_at IS NULL
   )
   AND f.status = 'open'
   AND (fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT))
-GROUP BY f.severity
-ORDER BY f.severity
+  AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
+GROUP BY CAST(CASE
+        WHEN f.type = 'license'
+             AND COALESCE(lpa.action, lpg.action) = 'deny'
+             AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+        ELSE f.severity
+    END AS TEXT)
+ORDER BY severity
 `
 
 type ReportTotalsBySeverityRow struct {
@@ -209,6 +256,10 @@ JOIN scans s ON s.id = f.scan_id
 JOIN assets a ON a.id = f.asset_id
 LEFT JOIN finding_states fs
     ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+LEFT JOIN licence_policy lpa
+    ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
+LEFT JOIN licence_policy lpg
+    ON lpg.asset_id IS NULL AND lpg.licence = lower(f.rule_id)
 WHERE a.archived_at IS NULL
   AND s.status = 'succeeded'
   AND s.id = (
@@ -218,6 +269,7 @@ WHERE a.archived_at IS NULL
   )
   AND f.status = 'open'
   AND (fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT))
+  AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 GROUP BY f.type
 ORDER BY f.type
 `
@@ -269,10 +321,31 @@ SELECT
     r.finished_at,
     COUNT(f.id) AS critical_high_open
 FROM ranked r
-LEFT JOIN findings f
+LEFT JOIN (
+    SELECT
+        f.id,
+        f.scan_id,
+        f.asset_id,
+        f.fingerprint,
+        f.type,
+        f.status,
+        COALESCE(lpa.action, lpg.action, '') AS licence_action,
+        CASE
+            WHEN f.type = 'license'
+                 AND COALESCE(lpa.action, lpg.action) = 'deny'
+                 AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+            ELSE f.severity
+        END AS effective_severity
+    FROM findings f
+    LEFT JOIN licence_policy lpa
+        ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
+    LEFT JOIN licence_policy lpg
+        ON lpg.asset_id IS NULL AND lpg.licence = lower(f.rule_id)
+) f
     ON f.scan_id = r.scan_id
    AND f.status = 'open'
-   AND f.severity IN ('critical', 'high')
+   AND f.effective_severity IN ('critical', 'high')
+   AND NOT (f.type = 'license' AND f.licence_action = 'allow')
    AND NOT EXISTS (
        SELECT 1
        FROM finding_states fs

@@ -19,7 +19,8 @@ Nothing leaves the machine except the calls listed under [Network calls](#networ
 the OS keyring), repo discovery and tarball fetch, scan jobs with live progress, Trivy
 (vulnerabilities, licences, IaC), Gitleaks (working-tree secrets) and an OSV
 malicious-package matcher over the package inventory, ignore with
-reason, Findings, and `bastion scan` with JSON, table and SARIF output. Container
+reason, a licence allow/deny policy (global or per project), Findings, and
+`bastion scan` with JSON, table and SARIF output. Container
 images, fix plans, SAST and MCP are later phases: see the [roadmap](docs/wiki/Roadmap.md).
 
 ## Install

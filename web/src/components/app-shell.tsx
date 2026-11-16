@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { EPSSCard } from './epss-card'
+import { LicencePolicyCard } from './licence-policy-card'
 import { ReachabilityCard } from './reachability-card'
 import { HealthChip } from './health-chip'
 import { MoonIcon, SunIcon } from './icons'
@@ -125,6 +126,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <UpdateNotice />
           <EPSSCard />
           <ReachabilityCard />
+          <LicencePolicyCard />
           <TrivyDBChip />
           <HealthChip action={<ThemeToggle />} />
         </div>
