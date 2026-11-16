@@ -8,6 +8,7 @@ package sqlcdb
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const deleteFindingState = `-- name: DeleteFindingState :exec
@@ -76,6 +77,55 @@ func (q *Queries) ListFindingStatesByAsset(ctx context.Context, assetID int64) (
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listKnownFingerprints = `-- name: ListKnownFingerprints :many
+SELECT DISTINCT fingerprint FROM findings
+WHERE asset_id = ?1
+  AND fingerprint IN (/*SLICE:fingerprints*/?)
+ORDER BY fingerprint
+`
+
+type ListKnownFingerprintsParams struct {
+	AssetID      int64
+	Fingerprints []string
+}
+
+// Fingerprints of the asset that already appear in its findings, across every
+// scan. A bulk decision may only name findings the asset actually has, so the
+// store checks the whole list before it writes anything.
+func (q *Queries) ListKnownFingerprints(ctx context.Context, arg ListKnownFingerprintsParams) ([]string, error) {
+	query := listKnownFingerprints
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.AssetID)
+	if len(arg.Fingerprints) > 0 {
+		for _, v := range arg.Fingerprints {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:fingerprints*/?", strings.Repeat(",?", len(arg.Fingerprints))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:fingerprints*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var fingerprint string
+		if err := rows.Scan(&fingerprint); err != nil {
+			return nil, err
+		}
+		items = append(items, fingerprint)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

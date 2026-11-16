@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -264,6 +265,174 @@ func TestSetFindingStateValidatesInput(t *testing.T) {
 			err := store.SetFindingState(ctx, db, asset.ID, tc.fingerprint, tc.state, tc.reason)
 			if err == nil {
 				t.Fatalf("SetFindingState(%q, %q, %q) succeeded, want an error", tc.fingerprint, tc.state, tc.reason)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %q, want it to contain %q", err, tc.want)
+			}
+		})
+	}
+
+	states, err := queries.ListFindingStatesByAsset(ctx, asset.ID)
+	if err != nil {
+		t.Fatalf("ListFindingStatesByAsset: %v", err)
+	}
+	if len(states) != 0 {
+		t.Fatalf("states = %+v, want none after rejected input", states)
+	}
+}
+
+func TestSetFindingStatesIsAllOrNothing(t *testing.T) {
+	ctx := context.Background()
+	db, _ := openTestDB(t)
+	queries := sqlcdb.New(db)
+
+	asset := createAssetAt(ctx, t, queries, "/tmp/alpha")
+	other := createAssetAt(ctx, t, queries, "/tmp/beta")
+
+	first := testFinding(asset.ID, findings.TypeVulnerability, "CVE-2026-0001", findings.SeverityHigh)
+	second := testFinding(asset.ID, findings.TypeSecret, "aws-key", findings.SeverityMedium)
+	elsewhere := testFinding(other.ID, findings.TypeVulnerability, "CVE-2026-0002", findings.SeverityLow)
+
+	// The two findings live in different scans: a decision may name any
+	// finding the asset has, not only the ones of its latest scan.
+	firstScan := createTestScan(ctx, t, queries, asset.ID)
+	if err := store.SaveScanResult(ctx, db, firstScan.ID, store.ScanResult{
+		Status:   store.ScanStatusSucceeded,
+		Findings: []findings.Finding{first},
+	}); err != nil {
+		t.Fatalf("SaveScanResult(first): %v", err)
+	}
+	secondScan := createTestScan(ctx, t, queries, asset.ID)
+	if err := store.SaveScanResult(ctx, db, secondScan.ID, store.ScanResult{
+		Status:   store.ScanStatusSucceeded,
+		Findings: []findings.Finding{second},
+	}); err != nil {
+		t.Fatalf("SaveScanResult(second): %v", err)
+	}
+	otherScan := createTestScan(ctx, t, queries, other.ID)
+	if err := store.SaveScanResult(ctx, db, otherScan.ID, store.ScanResult{
+		Status:   store.ScanStatusSucceeded,
+		Findings: []findings.Finding{elsewhere},
+	}); err != nil {
+		t.Fatalf("SaveScanResult(other): %v", err)
+	}
+
+	// A fingerprint that belongs to another asset is unknown for this one, so
+	// the whole batch is rejected and the known fingerprint is not written.
+	err := store.SetFindingStates(ctx, db, asset.ID,
+		[]string{first.Fingerprint, elsewhere.Fingerprint}, store.FindingStateIgnored, "accepted upstream")
+	var unknown *store.UnknownFingerprintsError
+	if !errors.As(err, &unknown) {
+		t.Fatalf("SetFindingStates with an unknown fingerprint = %v, want *UnknownFingerprintsError", err)
+	}
+	if unknown.AssetID != asset.ID {
+		t.Errorf("unknown error asset = %d, want %d", unknown.AssetID, asset.ID)
+	}
+	if len(unknown.Fingerprints) != 1 || unknown.Fingerprints[0] != elsewhere.Fingerprint {
+		t.Errorf("unknown fingerprints = %v, want only %q", unknown.Fingerprints, elsewhere.Fingerprint)
+	}
+	states, err := queries.ListFindingStatesByAsset(ctx, asset.ID)
+	if err != nil {
+		t.Fatalf("ListFindingStatesByAsset: %v", err)
+	}
+	if len(states) != 0 {
+		t.Fatalf("states = %+v, want none after the rejected batch", states)
+	}
+
+	// The valid batch lands as one decision, deduplicated, with a trimmed
+	// shared reason.
+	if err := store.SetFindingStates(ctx, db, asset.ID,
+		[]string{first.Fingerprint, second.Fingerprint, first.Fingerprint},
+		store.FindingStateAcceptedRisk, "  shared reason  "); err != nil {
+		t.Fatalf("SetFindingStates: %v", err)
+	}
+	states, err = queries.ListFindingStatesByAsset(ctx, asset.ID)
+	if err != nil {
+		t.Fatalf("ListFindingStatesByAsset: %v", err)
+	}
+	if len(states) != 2 {
+		t.Fatalf("states = %+v, want one per fingerprint", states)
+	}
+	for _, state := range states {
+		if state.State != store.FindingStateAcceptedRisk {
+			t.Errorf("state of %q = %q, want accepted_risk", state.Fingerprint, state.State)
+		}
+		if !state.Reason.Valid || state.Reason.String != "shared reason" {
+			t.Errorf("reason of %q = %+v, want the trimmed reason", state.Fingerprint, state.Reason)
+		}
+	}
+
+	// The other asset's finding is still open: a batch never leaks across
+	// assets.
+	otherStates, err := queries.ListFindingStatesByAsset(ctx, other.ID)
+	if err != nil {
+		t.Fatalf("ListFindingStatesByAsset(other): %v", err)
+	}
+	if len(otherStates) != 0 {
+		t.Fatalf("other asset states = %+v, want none", otherStates)
+	}
+}
+
+func TestSetFindingStatesValidatesInput(t *testing.T) {
+	ctx := context.Background()
+	db, _ := openTestDB(t)
+	queries := sqlcdb.New(db)
+
+	asset := createAssetAt(ctx, t, queries, "/tmp/alpha")
+
+	tooMany := make([]string, store.MaxFindingStateBatch+1)
+	for i := range tooMany {
+		tooMany[i] = "fp-" + strconv.Itoa(i)
+	}
+
+	cases := []struct {
+		name         string
+		fingerprints []string
+		state        string
+		reason       string
+		want         string
+	}{
+		{
+			name:         "no fingerprints",
+			fingerprints: nil,
+			state:        store.FindingStateIgnored,
+			reason:       "looks noisy",
+			want:         "at least one fingerprint",
+		},
+		{
+			name:         "over the cap",
+			fingerprints: tooMany,
+			state:        store.FindingStateIgnored,
+			reason:       "looks noisy",
+			want:         "at most 5000",
+		},
+		{
+			name:         "blank fingerprint",
+			fingerprints: []string{"abc123", "   "},
+			state:        store.FindingStateIgnored,
+			reason:       "looks noisy",
+			want:         "fingerprint is required",
+		},
+		{
+			name:         "unknown state",
+			fingerprints: []string{"abc123"},
+			state:        "muted",
+			reason:       "looks noisy",
+			want:         `state "muted" is not one of`,
+		},
+		{
+			name:         "blank reason",
+			fingerprints: []string{"abc123"},
+			state:        store.FindingStateIgnored,
+			reason:       "  ",
+			want:         "a reason is required",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := store.SetFindingStates(ctx, db, asset.ID, tc.fingerprints, tc.state, tc.reason)
+			if err == nil {
+				t.Fatalf("SetFindingStates(%d fingerprints, %q) succeeded, want an error", len(tc.fingerprints), tc.state)
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %q, want it to contain %q", err, tc.want)

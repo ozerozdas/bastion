@@ -537,6 +537,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/findings/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record one decision for many findings of one asset.
+         * @description One decision (state and reason) applies to every named fingerprint of
+         *     the asset, in a single transaction. If any fingerprint is not a finding
+         *     of the asset, nothing is written and `fingerprints` names the unknown
+         *     ones. At most 5000 fingerprints per request. Decisions are keyed on
+         *     (asset_id, fingerprint), exactly as with the single-finding endpoint.
+         */
+        post: operations["setFindingStates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/findings/{fingerprint}/state": {
         parameters: {
             query?: never;
@@ -1539,6 +1563,22 @@ export interface components {
             /** Format: int64 */
             asset_id: number;
         };
+        /** BulkSetFindingStateRequest */
+        BulkSetFindingStateRequest: {
+            /**
+             * Format: int64
+             * @description The asset every fingerprint belongs to; decisions are per asset.
+             */
+            asset_id: number;
+            /**
+             * @description Findings of the asset to decide on. One unknown fingerprint
+             *     rejects the whole batch.
+             */
+            fingerprints: string[];
+            state: components["schemas"]["FindingState"];
+            /** @description Why the findings are hidden; shared by the whole batch. */
+            reason: string;
+        };
         /** SetFindingStateRequest */
         SetFindingStateRequest: {
             /**
@@ -1574,6 +1614,11 @@ export interface components {
              * @description URI reference identifying this specific occurrence.
              */
             instance?: string;
+            /**
+             * @description Fingerprints a bulk decision named that the asset has no finding
+             *     for. Present only on that 404; nothing was written.
+             */
+            fingerprints?: string[];
         } & {
             [key: string]: unknown;
         };
@@ -2572,6 +2617,57 @@ export interface operations {
             };
             /** @description The scan did not succeed, so it has no complete package inventory. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setFindingStates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkSetFindingStateRequest"];
+            };
+        };
+        responses: {
+            /** @description The decision is stored for every fingerprint. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description The state is unknown, the reason is blank, the list is empty or
+             *     longer than 5000, or a fingerprint is blank.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /**
+             * @description The asset id does not exist, or a fingerprint is not a finding of
+             *     it. Nothing was written; the problem's `fingerprints` extension
+             *     member lists the unknown fingerprints.
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

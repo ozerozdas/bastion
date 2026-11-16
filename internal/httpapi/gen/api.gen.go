@@ -535,6 +535,22 @@ type AssetTrend struct {
 	Scans []TrendScan `json:"scans"`
 }
 
+// BulkSetFindingStateRequest defines model for BulkSetFindingStateRequest.
+type BulkSetFindingStateRequest struct {
+	// AssetId The asset every fingerprint belongs to; decisions are per asset.
+	AssetId int64 `json:"asset_id"`
+
+	// Fingerprints Findings of the asset to decide on. One unknown fingerprint
+	// rejects the whole batch.
+	Fingerprints []string `json:"fingerprints"`
+
+	// Reason Why the findings are hidden; shared by the whole batch.
+	Reason string `json:"reason"`
+
+	// State The user decision that hides a finding across scans.
+	State FindingState `json:"state"`
+}
+
 // Connection A configured integration. A credential is never part of this shape: a
 // GitHub token lives in the OS keyring under `secret_ref`, and an AWS
 // connection keeps no credential at all. Neither the token nor the keyring
@@ -1013,6 +1029,10 @@ type Problem struct {
 	// Detail Human-readable explanation specific to this occurrence.
 	Detail *string `json:"detail,omitempty"`
 
+	// Fingerprints Fingerprints a bulk decision named that the asset has no finding
+	// for. Present only on that 404; nothing was written.
+	Fingerprints *[]string `json:"fingerprints,omitempty"`
+
 	// Instance URI reference identifying this specific occurrence.
 	Instance *string `json:"instance,omitempty"`
 
@@ -1378,6 +1398,9 @@ type CreateConnectionJSONRequestBody = CreateConnectionRequest
 // SetEPSSEnabledJSONRequestBody defines body for SetEPSSEnabled for application/json ContentType.
 type SetEPSSEnabledJSONRequestBody = SetEPSSEnabledRequest
 
+// SetFindingStatesJSONRequestBody defines body for SetFindingStates for application/json ContentType.
+type SetFindingStatesJSONRequestBody = BulkSetFindingStateRequest
+
 // SetFindingStateJSONRequestBody defines body for SetFindingState for application/json ContentType.
 type SetFindingStateJSONRequestBody = SetFindingStateRequest
 
@@ -1418,6 +1441,14 @@ func (a *Problem) UnmarshalJSON(b []byte) error {
 			return fmt.Errorf("error reading 'detail': %w", err)
 		}
 		delete(object, "detail")
+	}
+
+	if raw, found := object["fingerprints"]; found {
+		err = json.Unmarshal(raw, &a.Fingerprints)
+		if err != nil {
+			return fmt.Errorf("error reading 'fingerprints': %w", err)
+		}
+		delete(object, "fingerprints")
 	}
 
 	if raw, found := object["instance"]; found {
@@ -1475,6 +1506,13 @@ func (a Problem) MarshalJSON() ([]byte, error) {
 		object["detail"], err = json.Marshal(a.Detail)
 		if err != nil {
 			return nil, fmt.Errorf("error marshaling 'detail': %w", err)
+		}
+	}
+
+	if a.Fingerprints != nil {
+		object["fingerprints"], err = json.Marshal(a.Fingerprints)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'fingerprints': %w", err)
 		}
 	}
 
@@ -1556,6 +1594,9 @@ type ServerInterface interface {
 	// ListFindings Latest findings across assets.
 	// (GET /api/findings)
 	ListFindings(w http.ResponseWriter, r *http.Request, params ListFindingsParams)
+	// SetFindingStates Record one decision for many findings of one asset.
+	// (POST /api/findings/state)
+	SetFindingStates(w http.ResponseWriter, r *http.Request)
 	// ClearFindingState Clear the decision for one finding.
 	// (DELETE /api/findings/{fingerprint}/state)
 	ClearFindingState(w http.ResponseWriter, r *http.Request, fingerprint Fingerprint, params ClearFindingStateParams)
@@ -1952,6 +1993,20 @@ func (siw *ServerInterfaceWrapper) ListFindings(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListFindings(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetFindingStates operation middleware
+func (siw *ServerInterfaceWrapper) SetFindingStates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetFindingStates(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2480,6 +2535,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans/{id}/cancel", wrapper.CancelScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/{id}/findings", wrapper.ListScanFindings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/{id}/diff", wrapper.GetScanDiff)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/findings/state", wrapper.SetFindingStates)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/findings/{fingerprint}/state", wrapper.ClearFindingState)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/findings/{fingerprint}/state", wrapper.SetFindingState)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/findings", wrapper.ListFindings)
@@ -4569,6 +4625,141 @@ func (response ListFindings500ApplicationProblemPlusJSONResponse) VisitListFindi
 	return err
 }
 
+type SetFindingStatesRequestObject struct {
+	Body *SetFindingStatesJSONRequestBody
+}
+
+type SetFindingStatesResponseObject interface {
+	VisitSetFindingStatesResponse(w http.ResponseWriter) error
+}
+
+type SetFindingStates204Response struct {
+}
+
+func (response SetFindingStates204Response) VisitSetFindingStatesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetFindingStates400ApplicationProblemPlusJSONResponse Problem
+
+func (response SetFindingStates400ApplicationProblemPlusJSONResponse) VisitSetFindingStatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFindingStates401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetFindingStates401ApplicationProblemPlusJSONResponse) VisitSetFindingStatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFindingStates403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetFindingStates403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetFindingStates403ResponseHeaders
+}
+
+func (response SetFindingStates403ApplicationProblemPlusJSONResponse) VisitSetFindingStatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFindingStates404ApplicationProblemPlusJSONResponse Problem
+
+func (response SetFindingStates404ApplicationProblemPlusJSONResponse) VisitSetFindingStatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFindingStates421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetFindingStates421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetFindingStates421ResponseHeaders
+}
+
+func (response SetFindingStates421ApplicationProblemPlusJSONResponse) VisitSetFindingStatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetFindingStates500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetFindingStates500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetFindingStates500ResponseHeaders
+}
+
+func (response SetFindingStates500ApplicationProblemPlusJSONResponse) VisitSetFindingStatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ClearFindingStateRequestObject struct {
 	Fingerprint Fingerprint `json:"fingerprint"`
 	Params      ClearFindingStateParams
@@ -6483,6 +6674,9 @@ type StrictServerInterface interface {
 	// ListFindings Latest findings across assets.
 	// (GET /api/findings)
 	ListFindings(ctx context.Context, request ListFindingsRequestObject) (ListFindingsResponseObject, error)
+	// SetFindingStates Record one decision for many findings of one asset.
+	// (POST /api/findings/state)
+	SetFindingStates(ctx context.Context, request SetFindingStatesRequestObject) (SetFindingStatesResponseObject, error)
 	// ClearFindingState Clear the decision for one finding.
 	// (DELETE /api/findings/{fingerprint}/state)
 	ClearFindingState(ctx context.Context, request ClearFindingStateRequestObject) (ClearFindingStateResponseObject, error)
@@ -6963,6 +7157,37 @@ func (sh *strictHandler) ListFindings(w http.ResponseWriter, r *http.Request, pa
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListFindingsResponseObject); ok {
 		if err := validResponse.VisitListFindingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetFindingStates operation middleware
+func (sh *strictHandler) SetFindingStates(w http.ResponseWriter, r *http.Request) {
+	var request SetFindingStatesRequestObject
+
+	var body SetFindingStatesJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetFindingStates(ctx, request.(SetFindingStatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetFindingStates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetFindingStatesResponseObject); ok {
+		if err := validResponse.VisitSetFindingStatesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

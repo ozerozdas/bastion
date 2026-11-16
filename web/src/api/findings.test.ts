@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { filterParams } from './findings'
+import { filterParams, findingStateBatches } from './findings'
 
 describe('filterParams', () => {
   it('returns an empty string when nothing is filtered', () => {
@@ -24,5 +24,33 @@ describe('filterParams', () => {
 
   it('skips unset filters', () => {
     expect(filterParams({ severity: 'critical' })).toBe('?severity=critical')
+  })
+})
+
+describe('findingStateBatches', () => {
+  it('returns nothing for an empty selection', () => {
+    expect(findingStateBatches([])).toEqual([])
+  })
+
+  it('puts a single asset selection in one batch', () => {
+    expect(
+      findingStateBatches([
+        { assetId: 7, fingerprint: 'fp-1' },
+        { assetId: 7, fingerprint: 'fp-2' },
+      ]),
+    ).toEqual([{ assetId: 7, fingerprints: ['fp-1', 'fp-2'] }])
+  })
+
+  it('groups a cross-project selection by asset, in selection order', () => {
+    expect(
+      findingStateBatches([
+        { assetId: 2, fingerprint: 'fp-beta' },
+        { assetId: 1, fingerprint: 'fp-alpha' },
+        { assetId: 2, fingerprint: 'fp-beta-2' },
+      ]),
+    ).toEqual([
+      { assetId: 2, fingerprints: ['fp-beta', 'fp-beta-2'] },
+      { assetId: 1, fingerprints: ['fp-alpha'] },
+    ])
   })
 })

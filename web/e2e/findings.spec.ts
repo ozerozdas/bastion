@@ -287,3 +287,58 @@ test('redirects old report URLs to the findings list', async ({ page, server }) 
 
   expect(problems).toEqual([])
 })
+
+test('a bulk decision sends one request per project', async ({ page, server }) => {
+  const problems = watch(page)
+  const requests: {
+    asset_id: number
+    fingerprints: string[]
+    state: string
+    reason: string
+  }[] = []
+
+  await page.route('**/api/assets', (route) =>
+    route.fulfill({ json: { assets: [alpha, beta] } }),
+  )
+  await page.route('**/api/findings?**', (route) =>
+    route.fulfill({ json: { findings } }),
+  )
+  // The bulk endpoint takes one asset per request; a per-finding POST would
+  // match neither this route nor the list stub and fail the test.
+  await page.route('**/api/findings/state', (route) => {
+    requests.push(route.request().postDataJSON() as (typeof requests)[number])
+    return route.fulfill({ status: 204 })
+  })
+
+  await openDashboard(page, server.url)
+  await page.getByRole('link', { name: /^Findings/ }).click()
+
+  // Grouped is the default, and a group stands for every member finding, so
+  // selecting all groups covers findings in both projects.
+  await page.getByLabel('Select all grouped findings').check()
+  await expect(page.getByText('5 selected')).toBeVisible()
+
+  await page.getByRole('textbox', { name: 'Reason' }).fill('shared reason')
+  await page.getByRole('button', { name: 'Hide 5' }).click()
+
+  await expect.poll(() => requests.length).toBe(2)
+  const byAsset = new Map(requests.map((body) => [body.asset_id, body]))
+  expect(byAsset.size).toBe(2)
+
+  const betaBody = byAsset.get(beta.id)
+  expect(betaBody?.state).toBe('ignored')
+  expect(betaBody?.reason).toBe('shared reason')
+  expect(betaBody?.fingerprints.toSorted()).toEqual(
+    ['fp-beta-critical', 'fp-beta-medium', 'fp-beta-shared'].toSorted(),
+  )
+
+  const alphaBody = byAsset.get(alpha.id)
+  expect(alphaBody?.state).toBe('ignored')
+  expect(alphaBody?.fingerprints.toSorted()).toEqual(
+    ['fp-alpha-high', 'fp-alpha-shared'].toSorted(),
+  )
+
+  // The selection clears once the decision is stored.
+  await expect(page.getByText('5 selected')).toHaveCount(0)
+  expect(problems).toEqual([])
+})

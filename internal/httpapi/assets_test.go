@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/ozerozdas/bastion/internal/findings"
@@ -500,6 +502,130 @@ func TestScanFindingsFiltersAndState(t *testing.T) {
 	}
 }
 
+// TestBulkFindingStateAllOrNothing covers POST /api/findings/state: one
+// decision for many fingerprints of one asset, and a batch with an unknown
+// fingerprint that writes nothing.
+func TestBulkFindingStateAllOrNothing(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+	asset := pathAsset(t, ts, cookie)
+
+	high := findings.Finding{
+		Fingerprint: "fp-high",
+		Type:        findings.TypeSecret,
+		Severity:    findings.SeverityHigh,
+		Title:       "AWS key in config",
+		Scanner:     "gitleaks",
+		Occurrences: 1,
+	}
+	low := findings.Finding{
+		Fingerprint: "fp-low",
+		Type:        findings.TypeVulnerability,
+		Severity:    findings.SeverityLow,
+		Title:       "Outdated dependency",
+		Scanner:     "trivy",
+		Occurrences: 1,
+	}
+	scanID := seedSucceededScan(t, ts, asset.Id, high, low)
+
+	read := func(query string) gen.FindingList {
+		t.Helper()
+		resp := ts.do(t, http.MethodGet, "/api/scans/"+itoa(scanID)+"/findings"+query, withCookie(cookie))
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET findings%s: status = %d, want %d: %s",
+				query, resp.StatusCode, http.StatusOK, readBody(t, resp))
+		}
+		return decodeFindings(t, readBody(t, resp))
+	}
+
+	// One request decides both findings.
+	resp := doJSON(t, ts, http.MethodPost, "/api/findings/state", gen.BulkSetFindingStateRequest{
+		AssetId:      asset.Id,
+		Fingerprints: []string{high.Fingerprint, low.Fingerprint},
+		State:        gen.FindingStateIgnored,
+		Reason:       "shared reason",
+	}, withBastion(cookie))
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("bulk state: status = %d, want %d: %s", resp.StatusCode, http.StatusNoContent, readBody(t, resp))
+	}
+	ignored := read("?status=ignored")
+	if len(ignored.Findings) != 2 {
+		t.Fatalf("ignored findings = %+v, want both", ignored.Findings)
+	}
+	for _, finding := range ignored.Findings {
+		if finding.State == nil || *finding.State != gen.FindingStateIgnored {
+			t.Errorf("state of %q = %v, want ignored", finding.Fingerprint, finding.State)
+		}
+		if finding.Reason == nil || *finding.Reason != "shared reason" {
+			t.Errorf("reason of %q = %v, want the shared reason", finding.Fingerprint, finding.Reason)
+		}
+	}
+
+	// An unknown fingerprint rejects the whole batch: the known one keeps its
+	// previous decision instead of moving to accepted_risk.
+	resp = doJSON(t, ts, http.MethodPost, "/api/findings/state", gen.BulkSetFindingStateRequest{
+		AssetId:      asset.Id,
+		Fingerprints: []string{high.Fingerprint, "fp-missing"},
+		State:        gen.FindingStateAcceptedRisk,
+		Reason:       "must not land",
+	}, withBastion(cookie))
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("bulk state with unknown fingerprint: status = %d, want %d: %s",
+			resp.StatusCode, http.StatusNotFound, readBody(t, resp))
+	}
+	problem := readProblem(t, resp)
+	if problem.Detail == nil || !strings.Contains(*problem.Detail, "nothing was written") {
+		t.Errorf("problem detail = %v, want it to say nothing was written", problem.Detail)
+	}
+	bad := problem.Fingerprints
+	if bad == nil {
+		t.Fatal("problem has no fingerprints member")
+	}
+	if want := []string{"fp-missing"}; !reflect.DeepEqual(*bad, want) {
+		t.Errorf("problem fingerprints = %v, want %v", *bad, want)
+	}
+	for _, finding := range read("?status=ignored").Findings {
+		if finding.State == nil || *finding.State != gen.FindingStateIgnored {
+			t.Errorf("state of %q after the rejected batch = %v, want ignored", finding.Fingerprint, finding.State)
+		}
+	}
+
+	// Validation and the cap are 400s; an unknown asset is a 404.
+	resp = doJSON(t, ts, http.MethodPost, "/api/findings/state", gen.BulkSetFindingStateRequest{
+		AssetId:      asset.Id,
+		Fingerprints: []string{"fp-high", "  "},
+		State:        gen.FindingStateIgnored,
+		Reason:       "r",
+	}, withBastion(cookie))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("blank fingerprint: status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+
+	overCap := make([]string, store.MaxFindingStateBatch+1)
+	for i := range overCap {
+		overCap[i] = "fp-" + itoa(int64(i))
+	}
+	resp = doJSON(t, ts, http.MethodPost, "/api/findings/state", gen.BulkSetFindingStateRequest{
+		AssetId:      asset.Id,
+		Fingerprints: overCap,
+		State:        gen.FindingStateIgnored,
+		Reason:       "r",
+	}, withBastion(cookie))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("over the cap: status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+
+	resp = doJSON(t, ts, http.MethodPost, "/api/findings/state", gen.BulkSetFindingStateRequest{
+		AssetId:      9999,
+		Fingerprints: []string{"fp-high"},
+		State:        gen.FindingStateIgnored,
+		Reason:       "r",
+	}, withBastion(cookie))
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("bulk state for unknown asset: status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
 // TestMutationsRequireCSRF: the X-Bastion CSRF guard also covers the new
 // endpoints.
 func TestMutationsRequireCSRF(t *testing.T) {
@@ -522,6 +648,8 @@ func TestMutationsRequireCSRF(t *testing.T) {
 		{name: "cancel scan", method: http.MethodPost, path: "/api/scans/" + itoa(scanID) + "/cancel"},
 		{name: "set state", method: http.MethodPost, path: "/api/findings/fp/state",
 			body: gen.SetFindingStateRequest{AssetId: asset.Id, State: gen.FindingStateIgnored, Reason: "r"}},
+		{name: "set states", method: http.MethodPost, path: "/api/findings/state",
+			body: gen.BulkSetFindingStateRequest{AssetId: asset.Id, Fingerprints: []string{"fp"}, State: gen.FindingStateIgnored, Reason: "r"}},
 		{name: "clear state", method: http.MethodDelete,
 			path: "/api/findings/fp/state?asset_id=" + itoa(asset.Id)},
 	}

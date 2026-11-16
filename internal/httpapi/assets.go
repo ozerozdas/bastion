@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/ozerozdas/bastion/internal/assets"
@@ -342,6 +343,48 @@ func (s *Server) GetScanDiff(ctx context.Context, request gen.GetScanDiffRequest
 		}
 	}
 	return gen.GetScanDiff200JSONResponse(scanDiffResponse(diff)), nil
+}
+
+// SetFindingStates implements gen.StrictServerInterface. One decision applies
+// to many fingerprints of one asset; an unknown fingerprint rejects the whole
+// batch, and the problem names the culprits in its `fingerprints` member.
+func (s *Server) SetFindingStates(ctx context.Context, request gen.SetFindingStatesRequestObject) (gen.SetFindingStatesResponseObject, error) {
+	if s.assets == nil {
+		return gen.SetFindingStates500ApplicationProblemPlusJSONResponse{Body: unconfigured(assetsUnavailable)}, nil
+	}
+	if request.Body == nil {
+		return gen.SetFindingStates400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "the request body is required"),
+		), nil
+	}
+
+	err := s.assets.SetFindingStates(ctx, assets.BulkFindingStateInput{
+		AssetID:      request.Body.AssetId,
+		Fingerprints: request.Body.Fingerprints,
+		State:        string(request.Body.State),
+		Reason:       request.Body.Reason,
+	})
+	if err != nil {
+		s.log.Error("set finding states", "asset", request.Body.AssetId, "error", err)
+		var unknown *assets.UnknownFingerprintsError
+		if errors.As(err, &unknown) {
+			problem := newProblem(http.StatusNotFound, "Not Found", fmt.Sprintf(
+				"asset %d has no finding for %d of the fingerprints; nothing was written",
+				unknown.AssetID, len(unknown.Fingerprints)))
+			problem.Fingerprints = &unknown.Fingerprints
+			return gen.SetFindingStates404ApplicationProblemPlusJSONResponse(problem), nil
+		}
+		status, problem := assetProblem(err)
+		switch status {
+		case http.StatusBadRequest:
+			return gen.SetFindingStates400ApplicationProblemPlusJSONResponse(problem), nil
+		case http.StatusNotFound:
+			return gen.SetFindingStates404ApplicationProblemPlusJSONResponse(problem), nil
+		default:
+			return gen.SetFindingStates500ApplicationProblemPlusJSONResponse{Body: problem}, nil
+		}
+	}
+	return gen.SetFindingStates204Response{}, nil
 }
 
 // SetFindingState implements gen.StrictServerInterface.

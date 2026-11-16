@@ -12,6 +12,7 @@ export type Severity = components['schemas']['Severity']
 
 type FindingList = components['schemas']['FindingList']
 type SetFindingStateRequest = components['schemas']['SetFindingStateRequest']
+type BulkSetFindingStateRequest = components['schemas']['BulkSetFindingStateRequest']
 
 export type FindingFilter = {
   assetId?: number
@@ -68,16 +69,35 @@ export type FindingRef = {
   fingerprint: string
 }
 
+/** FindingStateBatch is one asset's share of a selection: the unit of a bulk request. */
+export type FindingStateBatch = {
+  assetId: number
+  fingerprints: string[]
+}
+
+/**
+ * findingStateBatches groups a selection by asset, because a decision is keyed
+ * on (asset_id, fingerprint) and the bulk endpoint takes one asset per request.
+ */
+export function findingStateBatches(findings: FindingRef[]): FindingStateBatch[] {
+  const byAsset = new Map<number, string[]>()
+  for (const { assetId, fingerprint } of findings) {
+    const fingerprints = byAsset.get(assetId)
+    if (fingerprints) fingerprints.push(fingerprint)
+    else byAsset.set(assetId, [fingerprint])
+  }
+  return [...byAsset].map(([assetId, fingerprints]) => ({ assetId, fingerprints }))
+}
+
 /**
  * useBulkFindingState records one decision for many findings, across projects,
- * or reopens them all when state is omitted. It stops at the first failure; the
- * findings before it keep their new state and the list refreshes either way.
+ * or reopens them all when state is omitted. A selection is grouped by asset,
+ * so one asset is one request: a decision is all-or-nothing per asset, and
+ * assets before a failed one keep their new state.
  */
 export function useBulkFindingState() {
   const queryClient = useQueryClient()
   return useMutation({
-    // ponytail: one request per finding over the existing endpoints, sequential to spare the
-    // single-writer store; add a batch endpoint if selections grow to hundreds.
     mutationFn: async ({
       findings,
       decision,
@@ -85,12 +105,21 @@ export function useBulkFindingState() {
       findings: FindingRef[]
       decision?: Omit<SetFindingStateRequest, 'asset_id'>
     }) => {
-      for (const { assetId, fingerprint } of findings) {
-        const path = `/api/findings/${encodeURIComponent(fingerprint)}/state`
+      for (const { assetId, fingerprints } of findingStateBatches(findings)) {
         if (decision) {
-          await api.post<void>(path, { asset_id: assetId, ...decision })
-        } else {
-          await api.remove<void>(`${path}?asset_id=${assetId}`)
+          const body: BulkSetFindingStateRequest = {
+            asset_id: assetId,
+            fingerprints,
+            ...decision,
+          }
+          await api.post<void>('/api/findings/state', body)
+          continue
+        }
+        // Reopening has no batch endpoint: a decision is cleared per finding.
+        for (const fingerprint of fingerprints) {
+          await api.remove<void>(
+            `/api/findings/${encodeURIComponent(fingerprint)}/state?asset_id=${assetId}`,
+          )
         }
       }
     },

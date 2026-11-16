@@ -27,3 +27,12 @@ WHERE asset_id = sqlc.arg(asset_id) AND fingerprint = sqlc.arg(fingerprint);
 SELECT * FROM finding_states
 WHERE asset_id = sqlc.arg(asset_id)
 ORDER BY fingerprint;
+
+-- name: ListKnownFingerprints :many
+-- Fingerprints of the asset that already appear in its findings, across every
+-- scan. A bulk decision may only name findings the asset actually has, so the
+-- store checks the whole list before it writes anything.
+SELECT DISTINCT fingerprint FROM findings
+WHERE asset_id = sqlc.arg(asset_id)
+  AND fingerprint IN (sqlc.slice('fingerprints'))
+ORDER BY fingerprint;

@@ -54,6 +54,122 @@ func SetFindingState(ctx context.Context, db *sql.DB, assetID int64, fingerprint
 	return nil
 }
 
+// MaxFindingStateBatch caps one bulk decision. The API rejects larger lists
+// before they reach the store; the store refuses them too, so a direct caller
+// cannot build an unbounded SQL statement.
+const MaxFindingStateBatch = 5000
+
+// UnknownFingerprintsError reports fingerprints a bulk decision named that the
+// asset has no finding for. Nothing was written.
+type UnknownFingerprintsError struct {
+	AssetID      int64
+	Fingerprints []string
+}
+
+func (e *UnknownFingerprintsError) Error() string {
+	return fmt.Sprintf("store: set finding states: asset %d has no finding for %s",
+		e.AssetID, fingerprintSample(e.Fingerprints))
+}
+
+// SetFindingStates records one decision for many fingerprints of one asset in
+// a single transaction. Every fingerprint must already be a finding of the
+// asset: one unknown fingerprint aborts the batch before any row is written,
+// so the caller never has to undo a partial decision.
+func SetFindingStates(ctx context.Context, db *sql.DB, assetID int64, fingerprints []string, state, reason string) error {
+	if db == nil {
+		return errors.New("store: set finding states: database is required")
+	}
+	if assetID <= 0 {
+		return errors.New("store: set finding states: asset_id must be positive")
+	}
+	if len(fingerprints) == 0 {
+		return errors.New("store: set finding states: at least one fingerprint is required")
+	}
+	if len(fingerprints) > MaxFindingStateBatch {
+		return fmt.Errorf("store: set finding states: at most %d fingerprints per request", MaxFindingStateBatch)
+	}
+	if !validFindingState(state) {
+		return fmt.Errorf("store: set finding states: state %q is not one of %s, %s, %s",
+			state, FindingStateIgnored, FindingStateAcceptedRisk, FindingStateFalsePositive)
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errors.New("store: set finding states: a reason is required")
+	}
+
+	// Duplicates would only repeat the same upsert; the decision is per
+	// fingerprint, so the batch is deduplicated once here.
+	unique := make([]string, 0, len(fingerprints))
+	seen := make(map[string]struct{}, len(fingerprints))
+	for _, fingerprint := range fingerprints {
+		fingerprint = strings.TrimSpace(fingerprint)
+		if fingerprint == "" {
+			return errors.New("store: set finding states: fingerprint is required")
+		}
+		if _, ok := seen[fingerprint]; ok {
+			continue
+		}
+		seen[fingerprint] = struct{}{}
+		unique = append(unique, fingerprint)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: set finding states for asset %d: begin transaction: %w", assetID, err)
+	}
+	// A rollback after a successful commit is a no-op; the error is not
+	// actionable either way.
+	defer func() { _ = tx.Rollback() }()
+
+	queries := sqlcdb.New(tx)
+	known, err := queries.ListKnownFingerprints(ctx, sqlcdb.ListKnownFingerprintsParams{
+		AssetID:      assetID,
+		Fingerprints: unique,
+	})
+	if err != nil {
+		return fmt.Errorf("store: set finding states for asset %d: check fingerprints: %w", assetID, err)
+	}
+	knownSet := make(map[string]struct{}, len(known))
+	for _, fingerprint := range known {
+		knownSet[fingerprint] = struct{}{}
+	}
+	unknown := make([]string, 0)
+	for _, fingerprint := range unique {
+		if _, ok := knownSet[fingerprint]; !ok {
+			unknown = append(unknown, fingerprint)
+		}
+	}
+	if len(unknown) > 0 {
+		return &UnknownFingerprintsError{AssetID: assetID, Fingerprints: unknown}
+	}
+
+	for _, fingerprint := range unique {
+		if err := queries.UpsertFindingState(ctx, sqlcdb.UpsertFindingStateParams{
+			AssetID:     assetID,
+			Fingerprint: fingerprint,
+			State:       state,
+			Reason:      nullString(reason),
+		}); err != nil {
+			return fmt.Errorf("store: set finding states for asset %d: fingerprint %q: %w", assetID, fingerprint, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: set finding states for asset %d: commit: %w", assetID, err)
+	}
+	return nil
+}
+
+// fingerprintSample keeps an error message readable when a batch names many
+// unknown fingerprints; the full list stays in the typed error.
+func fingerprintSample(fingerprints []string) string {
+	const shown = 5
+	if len(fingerprints) <= shown {
+		return strings.Join(fingerprints, ", ")
+	}
+	return fmt.Sprintf("%s (and %d more)", strings.Join(fingerprints[:shown], ", "), len(fingerprints)-shown)
+}
+
 // ClearFindingState removes the decision for one fingerprint, so later scans of
 // the asset report the finding as open again. Clearing a state that does not
 // exist is not an error: the outcome is the same.
