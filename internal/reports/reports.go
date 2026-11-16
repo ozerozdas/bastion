@@ -19,6 +19,7 @@ import (
 
 	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/findings"
+	"github.com/ozerozdas/bastion/internal/store"
 	"github.com/ozerozdas/bastion/internal/store/sqlcdb"
 )
 
@@ -29,6 +30,9 @@ type Service struct {
 	// epss enriches findings at read time, so a refreshed feed applies to
 	// stored findings without rewriting the database. Nil means no EPSS.
 	epss EPSSLookup
+	// now decides whether a finding_states decision has expired (#32). Tests
+	// pin it; the queries receive its value, never the database clock.
+	now func() time.Time
 }
 
 // EPSSLookup resolves a CVE to its EPSS prediction. *epss.Service implements
@@ -54,16 +58,32 @@ func WithEPSS(lookup EPSSLookup) Option {
 	return func(s *Service) { s.epss = lookup }
 }
 
+// WithClock replaces the clock that decides when a decision expires. Tests pin
+// it; a nil clock keeps time.Now.
+func WithClock(now func() time.Time) Option {
+	return func(s *Service) {
+		if now != nil {
+			s.now = now
+		}
+	}
+}
+
 // NewService validates its dependencies and returns a Service.
 func NewService(db *sql.DB, opts ...Option) (*Service, error) {
 	if db == nil {
 		return nil, errors.New("reports: database is required")
 	}
-	service := &Service{db: db}
+	service := &Service{db: db, now: time.Now}
 	for _, opt := range opts {
 		opt(service)
 	}
 	return service, nil
+}
+
+// expiryNow is the clock value the queries compare finding_states.expires_at
+// with, in the canonical form the store writes.
+func (s *Service) expiryNow() string {
+	return store.FormatTimestamp(s.now())
 }
 
 // SeverityTotals is the open finding count per severity.
@@ -136,20 +156,21 @@ type Dashboard struct {
 // than mixing stale and fresh numbers.
 func (s *Service) Dashboard(ctx context.Context) (Dashboard, error) {
 	queries := sqlcdb.New(s.db)
+	now := s.expiryNow()
 
-	severities, err := queries.ReportTotalsBySeverity(ctx)
+	severities, err := queries.ReportTotalsBySeverity(ctx, now)
 	if err != nil {
 		return Dashboard{}, fmt.Errorf("reports: totals by severity: %w", err)
 	}
-	types, err := queries.ReportTotalsByType(ctx)
+	types, err := queries.ReportTotalsByType(ctx, now)
 	if err != nil {
 		return Dashboard{}, fmt.Errorf("reports: totals by type: %w", err)
 	}
-	topAssets, err := queries.ReportTopAssets(ctx)
+	topAssets, err := queries.ReportTopAssets(ctx, now)
 	if err != nil {
 		return Dashboard{}, fmt.Errorf("reports: top assets: %w", err)
 	}
-	trendRows, err := queries.ReportTrendScans(ctx)
+	trendRows, err := queries.ReportTrendScans(ctx, now)
 	if err != nil {
 		return Dashboard{}, fmt.Errorf("reports: trend: %w", err)
 	}

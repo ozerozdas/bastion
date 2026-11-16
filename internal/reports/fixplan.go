@@ -14,8 +14,9 @@ import (
 
 // FixPlan groups one asset's open vulnerability findings into package upgrades
 // (PROJECT_SPEC.md §7.2, §8 Phase 3). It reuses the findings list's "open"
-// semantics: the asset's most recent succeeded scan, with any finding_states
-// decision excluded. An unknown asset is ErrNotFound.
+// semantics: the asset's most recent succeeded scan, with any live
+// finding_states decision excluded (an expired one no longer hides, #32). An
+// unknown asset is ErrNotFound.
 //
 // Steps carry the prioritization score of #29 and are ordered by it: severity
 // weight sum times the EPSS and latest-image multipliers.
@@ -37,6 +38,7 @@ func (s *Service) FixPlan(ctx context.Context, assetID int64) (fixplan.Plan, err
 		AssetID: assetID,
 		Type:    string(findings.TypeVulnerability),
 		Status:  FindingStatusOpen,
+		Now:     s.expiryNow(),
 	})
 	if err != nil {
 		return fixplan.Plan{}, fmt.Errorf("reports: list findings for fix plan: %w", err)

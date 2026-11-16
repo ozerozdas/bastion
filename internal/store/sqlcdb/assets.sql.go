@@ -355,7 +355,8 @@ open_severity AS (
     JOIN last_succeeded ls ON ls.scan_id = f.scan_id
     LEFT JOIN finding_states fs
         ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
-    WHERE f.status = 'open' AND fs.id IS NULL
+    WHERE f.status = 'open'
+      AND (fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT))
     GROUP BY f.asset_id
 )
 SELECT
@@ -402,11 +403,11 @@ type ListAssetSummariesRow struct {
 }
 
 // Every non-archived asset with its newest scan and the open severity counts of
-// its newest succeeded scan. The counts use the dashboard scope: a decision in
-// finding_states hides its finding, and a failed or running newest scan does
-// not shadow the last complete report.
-func (q *Queries) ListAssetSummaries(ctx context.Context) ([]ListAssetSummariesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAssetSummaries)
+// its newest succeeded scan. The counts use the dashboard scope: a live
+// decision in finding_states hides its finding, an expired one does not (#32),
+// and a failed or running newest scan does not shadow the last complete report.
+func (q *Queries) ListAssetSummaries(ctx context.Context, now string) ([]ListAssetSummariesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAssetSummaries, now)
 	if err != nil {
 		return nil, err
 	}

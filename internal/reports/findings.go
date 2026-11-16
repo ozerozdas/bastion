@@ -33,25 +33,30 @@ type Filter struct {
 // Finding is one normalized finding of an asset's latest succeeded scan. Unset
 // optional fields stay empty strings, so the API can omit them.
 type Finding struct {
-	ID              int64
-	AssetID         int64
-	ScanID          int64
-	Fingerprint     string
-	Type            string
-	Severity        string
-	Title           string
-	RuleID          string
-	PackageName     string
-	PackageVersion  string
-	FixedVersion    string
-	Ecosystem       string
-	Location        string
-	Occurrences     int
-	Scanner         string
-	Scanners        []string
-	Status          string
-	State           string
-	Reason          string
+	ID             int64
+	AssetID        int64
+	ScanID         int64
+	Fingerprint    string
+	Type           string
+	Severity       string
+	Title          string
+	RuleID         string
+	PackageName    string
+	PackageVersion string
+	FixedVersion   string
+	Ecosystem      string
+	Location       string
+	Occurrences    int
+	Scanner        string
+	Scanners       []string
+	Status         string
+	State          string
+	Reason         string
+	// ExpiresAt is the canonical expiry of the decision, empty when it has
+	// none. Expired is true when the decision exists but its expiry passed:
+	// Status is open again, while State keeps the stale decision for the UI.
+	ExpiresAt       string
+	Expired         bool
 	FirstSeenScanID *int64
 	Description     string
 	References      []string
@@ -66,7 +71,7 @@ type Finding struct {
 // finding_states decision for the same asset and fingerprint reports the
 // finding as ignored and fills State and Reason.
 func (s *Service) Findings(ctx context.Context, filter Filter) ([]Finding, error) {
-	params, err := filter.params()
+	params, err := filter.params(s.expiryNow())
 	if err != nil {
 		return nil, err
 	}
@@ -106,6 +111,8 @@ func (s *Service) Findings(ctx context.Context, filter Filter) ([]Finding, error
 			Status:         row.Status,
 			State:          row.State.String,
 			Reason:         row.Reason.String,
+			ExpiresAt:      row.ExpiresAt.String,
+			Expired:        row.Expired != 0,
 			Description:    row.Description.String,
 			References:     references,
 		}
@@ -131,9 +138,10 @@ func (s *Service) enrich(finding *Finding) {
 }
 
 // params validates the filter and converts it to the query's nullable
-// arguments: a nil interface means "no filter" in ListLatestFindings.
-func (f Filter) params() (sqlcdb.ListLatestFindingsParams, error) {
-	var params sqlcdb.ListLatestFindingsParams
+// arguments: a nil interface means "no filter" in ListLatestFindings. now is
+// the clock the query compares a decision's expiry with.
+func (f Filter) params(now string) (sqlcdb.ListLatestFindingsParams, error) {
+	params := sqlcdb.ListLatestFindingsParams{Now: now}
 
 	if f.AssetID < 0 {
 		return params, fmt.Errorf("%w: asset_id must be positive", ErrInvalid)

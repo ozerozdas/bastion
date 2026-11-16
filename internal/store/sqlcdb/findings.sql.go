@@ -158,17 +158,25 @@ SELECT
     f.scanner,
     f.scanners,
     f.first_seen_scan_id,
-    CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) AS status,
+    CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) AS status,
     fs.state AS state,
     fs.reason AS reason,
+    fs.expires_at AS expires_at,
+    CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(?1 AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at
 FROM findings f
 LEFT JOIN finding_states fs
     ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
-WHERE f.scan_id = ?1
-  AND (?2 IS NULL OR f.type = ?2)
-  AND (?3 IS NULL OR f.severity = ?3)
-  AND (?4 IS NULL OR CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) = ?4)
+WHERE f.scan_id = ?2
+  AND (?3 IS NULL OR f.type = ?3)
+  AND (?4 IS NULL OR f.severity = ?4)
+  AND (?5 IS NULL OR CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) = ?5)
 ORDER BY
     CASE f.severity
         WHEN 'critical' THEN 0
@@ -181,6 +189,7 @@ ORDER BY
 `
 
 type ListFindingsByScanParams struct {
+	Now      string
 	ScanID   int64
 	Type     interface{}
 	Severity interface{}
@@ -212,15 +221,20 @@ type ListFindingsByScanRow struct {
 	Status          string
 	State           sql.NullString
 	Reason          sql.NullString
+	ExpiresAt       sql.NullString
+	Expired         int64
 	CreatedAt       string
 }
 
 // Findings of one scan, most severe first, with optional type/severity/status
 // filters. status is the effective status: a finding_states row for the same
 // (asset_id, fingerprint) reports the finding as 'ignored' without rewriting
-// the stored row, and state/reason carry the decision for the UI.
+// the stored row, and state/reason carry the decision for the UI. A decision
+// whose expires_at is at or before the passed-in now counts as expired: the
+// finding is open again, and the expired flag keeps the stale decision visible.
 func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScanParams) ([]ListFindingsByScanRow, error) {
 	rows, err := q.db.QueryContext(ctx, listFindingsByScan,
+		arg.Now,
 		arg.ScanID,
 		arg.Type,
 		arg.Severity,
@@ -258,6 +272,8 @@ func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScan
 			&i.Status,
 			&i.State,
 			&i.Reason,
+			&i.ExpiresAt,
+			&i.Expired,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -296,9 +312,14 @@ SELECT
     f.scanner,
     f.scanners,
     f.first_seen_scan_id,
-    CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) AS status,
+    CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) AS status,
     fs.state AS state,
     fs.reason AS reason,
+    fs.expires_at AS expires_at,
+    CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(?1 AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at
 FROM findings f
 JOIN scans s ON s.id = f.scan_id
@@ -312,10 +333,13 @@ WHERE a.archived_at IS NULL
       FROM scans s2
       WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
   )
-  AND (?1 IS NULL OR f.asset_id = ?1)
-  AND (?2 IS NULL OR f.type = ?2)
-  AND (?3 IS NULL OR f.severity = ?3)
-  AND (?4 IS NULL OR CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) = ?4)
+  AND (?2 IS NULL OR f.asset_id = ?2)
+  AND (?3 IS NULL OR f.type = ?3)
+  AND (?4 IS NULL OR f.severity = ?4)
+  AND (?5 IS NULL OR CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) = ?5)
 ORDER BY
     CASE f.severity
         WHEN 'critical' THEN 0
@@ -329,6 +353,7 @@ ORDER BY
 `
 
 type ListLatestFindingsParams struct {
+	Now      string
 	AssetID  interface{}
 	Type     interface{}
 	Severity interface{}
@@ -360,6 +385,8 @@ type ListLatestFindingsRow struct {
 	Status          string
 	State           sql.NullString
 	Reason          sql.NullString
+	ExpiresAt       sql.NullString
+	Expired         int64
 	CreatedAt       string
 }
 
@@ -370,6 +397,7 @@ type ListLatestFindingsRow struct {
 // ListFindingsByScan.
 func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindingsParams) ([]ListLatestFindingsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listLatestFindings,
+		arg.Now,
 		arg.AssetID,
 		arg.Type,
 		arg.Severity,
@@ -407,6 +435,8 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 			&i.Status,
 			&i.State,
 			&i.Reason,
+			&i.ExpiresAt,
+			&i.Expired,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

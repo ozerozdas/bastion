@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ozerozdas/bastion/internal/findings"
 	"github.com/ozerozdas/bastion/internal/store"
@@ -49,7 +50,7 @@ func TestFindingStateHidesOnlyItsOwnAsset(t *testing.T) {
 		t.Fatalf("SaveScanResult(first scan): %v", err)
 	}
 
-	if err := store.SetFindingState(ctx, db, asset.ID, finding.Fingerprint, store.FindingStateIgnored, "  accepted upstream  "); err != nil {
+	if err := store.SetFindingState(ctx, db, asset.ID, finding.Fingerprint, store.FindingStateIgnored, "  accepted upstream  ", nil); err != nil {
 		t.Fatalf("SetFindingState: %v", err)
 	}
 
@@ -168,10 +169,10 @@ func TestSetFindingStateReplacesDecision(t *testing.T) {
 		t.Fatalf("SaveScanResult: %v", err)
 	}
 
-	if err := store.SetFindingState(ctx, db, asset.ID, finding.Fingerprint, store.FindingStateIgnored, "first"); err != nil {
+	if err := store.SetFindingState(ctx, db, asset.ID, finding.Fingerprint, store.FindingStateIgnored, "first", nil); err != nil {
 		t.Fatalf("SetFindingState(ignored): %v", err)
 	}
-	if err := store.SetFindingState(ctx, db, asset.ID, finding.Fingerprint, store.FindingStateFalsePositive, "scanner false match"); err != nil {
+	if err := store.SetFindingState(ctx, db, asset.ID, finding.Fingerprint, store.FindingStateFalsePositive, "scanner false match", nil); err != nil {
 		t.Fatalf("SetFindingState(false_positive): %v", err)
 	}
 
@@ -262,7 +263,7 @@ func TestSetFindingStateValidatesInput(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := store.SetFindingState(ctx, db, asset.ID, tc.fingerprint, tc.state, tc.reason)
+			err := store.SetFindingState(ctx, db, asset.ID, tc.fingerprint, tc.state, tc.reason, nil)
 			if err == nil {
 				t.Fatalf("SetFindingState(%q, %q, %q) succeeded, want an error", tc.fingerprint, tc.state, tc.reason)
 			}
@@ -320,7 +321,7 @@ func TestSetFindingStatesIsAllOrNothing(t *testing.T) {
 	// A fingerprint that belongs to another asset is unknown for this one, so
 	// the whole batch is rejected and the known fingerprint is not written.
 	err := store.SetFindingStates(ctx, db, asset.ID,
-		[]string{first.Fingerprint, elsewhere.Fingerprint}, store.FindingStateIgnored, "accepted upstream")
+		[]string{first.Fingerprint, elsewhere.Fingerprint}, store.FindingStateIgnored, "accepted upstream", nil)
 	var unknown *store.UnknownFingerprintsError
 	if !errors.As(err, &unknown) {
 		t.Fatalf("SetFindingStates with an unknown fingerprint = %v, want *UnknownFingerprintsError", err)
@@ -343,7 +344,7 @@ func TestSetFindingStatesIsAllOrNothing(t *testing.T) {
 	// shared reason.
 	if err := store.SetFindingStates(ctx, db, asset.ID,
 		[]string{first.Fingerprint, second.Fingerprint, first.Fingerprint},
-		store.FindingStateAcceptedRisk, "  shared reason  "); err != nil {
+		store.FindingStateAcceptedRisk, "  shared reason  ", nil); err != nil {
 		t.Fatalf("SetFindingStates: %v", err)
 	}
 	states, err = queries.ListFindingStatesByAsset(ctx, asset.ID)
@@ -430,7 +431,7 @@ func TestSetFindingStatesValidatesInput(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := store.SetFindingStates(ctx, db, asset.ID, tc.fingerprints, tc.state, tc.reason)
+			err := store.SetFindingStates(ctx, db, asset.ID, tc.fingerprints, tc.state, tc.reason, nil)
 			if err == nil {
 				t.Fatalf("SetFindingStates(%d fingerprints, %q) succeeded, want an error", len(tc.fingerprints), tc.state)
 			}
@@ -554,7 +555,7 @@ func TestClearFindingStateReopens(t *testing.T) {
 		t.Fatalf("SaveScanResult: %v", err)
 	}
 
-	if err := store.SetFindingState(ctx, db, asset.ID, finding.Fingerprint, store.FindingStateIgnored, "accepted upstream"); err != nil {
+	if err := store.SetFindingState(ctx, db, asset.ID, finding.Fingerprint, store.FindingStateIgnored, "accepted upstream", nil); err != nil {
 		t.Fatalf("SetFindingState: %v", err)
 	}
 	before, err := queries.ListFindingsByScan(ctx, sqlcdb.ListFindingsByScanParams{ScanID: scan.ID})
@@ -594,5 +595,56 @@ func TestClearFindingStateReopens(t *testing.T) {
 
 	if err := store.ClearFindingState(ctx, db, asset.ID, "  "); err == nil {
 		t.Fatal("ClearFindingState with a blank fingerprint succeeded, want an error")
+	}
+}
+
+// TestFindingStateExpiryReopensFinding pins the clock: the same decision is
+// ignored before its expiry and open again from it on (#32). The read queries
+// take now as an argument, so no wall clock is involved.
+func TestFindingStateExpiryReopensFinding(t *testing.T) {
+	ctx := context.Background()
+	db, _ := openTestDB(t)
+	queries := sqlcdb.New(db)
+
+	asset := createAssetAt(ctx, t, queries, "/tmp/expiry")
+	finding := testFinding(asset.ID, findings.TypeVulnerability, "CVE-2026-0003", findings.SeverityHigh)
+
+	scan := createTestScan(ctx, t, queries, asset.ID)
+	if err := store.SaveScanResult(ctx, db, scan.ID, store.ScanResult{
+		Status:   store.ScanStatusSucceeded,
+		Findings: []findings.Finding{finding},
+	}); err != nil {
+		t.Fatalf("SaveScanResult: %v", err)
+	}
+
+	expiresAt := time.Date(2026, 12, 1, 23, 59, 59, 0, time.UTC)
+	if err := store.SetFindingState(ctx, db, asset.ID, finding.Fingerprint,
+		store.FindingStateAcceptedRisk, "temporary acceptance", &expiresAt); err != nil {
+		t.Fatalf("SetFindingState: %v", err)
+	}
+
+	statusAt := func(now time.Time) (string, int64) {
+		t.Helper()
+		rows, err := queries.ListFindingsByScan(ctx, sqlcdb.ListFindingsByScanParams{
+			ScanID: scan.ID,
+			Now:    store.FormatTimestamp(now),
+		})
+		if err != nil {
+			t.Fatalf("ListFindingsByScan(now %s): %v", now, err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("findings at %s = %d, want 1", now, len(rows))
+		}
+		return rows[0].Status, rows[0].Expired
+	}
+
+	if status, expired := statusAt(expiresAt.Add(-time.Hour)); status != "ignored" || expired != 0 {
+		t.Fatalf("before expiry: status = %q, expired = %d; want ignored, 0", status, expired)
+	}
+	if status, expired := statusAt(expiresAt); status != "open" || expired != 1 {
+		t.Fatalf("at expiry: status = %q, expired = %d; want open, 1", status, expired)
+	}
+	if status, expired := statusAt(expiresAt.Add(time.Hour)); status != "open" || expired != 1 {
+		t.Fatalf("after expiry: status = %q, expired = %d; want open, 1", status, expired)
 	}
 }

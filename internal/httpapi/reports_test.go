@@ -101,7 +101,7 @@ func seedFindingsFixture(t *testing.T, ts *testServer) (alpha, beta findings.Ass
 		newReportFinding(alpha.ID, findings.TypeLicense, "MIT", findings.SeverityLow))
 
 	if err := store.SetFindingState(t.Context(), ts.db, alpha.ID, secret.Fingerprint,
-		store.FindingStateIgnored, "accepted upstream"); err != nil {
+		store.FindingStateIgnored, "accepted upstream", nil); err != nil {
 		t.Fatalf("SetFindingState: %v", err)
 	}
 

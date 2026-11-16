@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ozerozdas/bastion/internal/store/sqlcdb"
 )
@@ -18,15 +19,38 @@ const (
 	FindingStateFalsePositive = "false_positive"
 )
 
+// expiryLayout is the canonical UTC form of finding_states.expires_at. The
+// read queries compare it as text with a passed-in now, so both sides must use
+// it; a lexicographic comparison then orders correctly.
+const expiryLayout = "2006-01-02T15:04:05.000Z"
+
+// FormatTimestamp renders t in the canonical UTC form the finding-state
+// queries compare. A caller passes a clock-derived now through it too, so a
+// decision expires in the same instant for every reader and a test can pin the
+// clock.
+func FormatTimestamp(t time.Time) string {
+	return t.UTC().Format(expiryLayout)
+}
+
+// expiryValue converts an optional expiry to the stored column value. A nil
+// expiry keeps the decision until it is cleared.
+func expiryValue(expiresAt *time.Time) sql.NullString {
+	if expiresAt == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: FormatTimestamp(*expiresAt), Valid: true}
+}
+
 // SetFindingState records a user decision for one fingerprint of one asset.
 // The decision is keyed on (asset_id, fingerprint), so it applies again when a
 // later scan rediscovers the same finding; the findings rows themselves are
-// never rewritten. Re-deciding replaces the previous state and reason.
+// never rewritten. Re-deciding replaces the previous state, reason and expiry.
 //
 // A non-blank reason is required: "why was this hidden" is what keeps an
 // ignore list reviewable. An unknown state is rejected before the database
-// sees it, so the caller gets a message that names the culprit.
-func SetFindingState(ctx context.Context, db *sql.DB, assetID int64, fingerprint, state, reason string) error {
+// sees it, so the caller gets a message that names the culprit. An expiry is
+// optional: once it passes, the finding counts as open again.
+func SetFindingState(ctx context.Context, db *sql.DB, assetID int64, fingerprint, state, reason string, expiresAt *time.Time) error {
 	if db == nil {
 		return errors.New("store: set finding state: database is required")
 	}
@@ -47,6 +71,7 @@ func SetFindingState(ctx context.Context, db *sql.DB, assetID int64, fingerprint
 		Fingerprint: fingerprint,
 		State:       state,
 		Reason:      nullString(reason),
+		ExpiresAt:   expiryValue(expiresAt),
 	})
 	if err != nil {
 		return fmt.Errorf("store: set finding state %q for asset %d: %w", state, assetID, err)
@@ -74,8 +99,9 @@ func (e *UnknownFingerprintsError) Error() string {
 // SetFindingStates records one decision for many fingerprints of one asset in
 // a single transaction. Every fingerprint must already be a finding of the
 // asset: one unknown fingerprint aborts the batch before any row is written,
-// so the caller never has to undo a partial decision.
-func SetFindingStates(ctx context.Context, db *sql.DB, assetID int64, fingerprints []string, state, reason string) error {
+// so the caller never has to undo a partial decision. The optional expiry is
+// shared by the whole batch.
+func SetFindingStates(ctx context.Context, db *sql.DB, assetID int64, fingerprints []string, state, reason string, expiresAt *time.Time) error {
 	if db == nil {
 		return errors.New("store: set finding states: database is required")
 	}
@@ -149,6 +175,7 @@ func SetFindingStates(ctx context.Context, db *sql.DB, assetID int64, fingerprin
 			Fingerprint: fingerprint,
 			State:       state,
 			Reason:      nullString(reason),
+			ExpiresAt:   expiryValue(expiresAt),
 		}); err != nil {
 			return fmt.Errorf("store: set finding states for asset %d: fingerprint %q: %w", assetID, fingerprint, err)
 		}
