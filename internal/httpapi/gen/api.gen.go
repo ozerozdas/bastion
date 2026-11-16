@@ -431,6 +431,45 @@ func (e UpdateConsent) Valid() bool {
 	}
 }
 
+// Defines values for FindingsExportFormatQuery.
+const (
+	Csv  FindingsExportFormatQuery = "csv"
+	Json FindingsExportFormatQuery = "json"
+	Xlsx FindingsExportFormatQuery = "xlsx"
+)
+
+// Valid indicates whether the value is a known member of the FindingsExportFormatQuery enum.
+func (e FindingsExportFormatQuery) Valid() bool {
+	switch e {
+	case Csv:
+		return true
+	case Json:
+		return true
+	case Xlsx:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingsViewQuery.
+const (
+	Grouped FindingsViewQuery = "grouped"
+	Single  FindingsViewQuery = "single"
+)
+
+// Valid indicates whether the value is a known member of the FindingsViewQuery enum.
+func (e FindingsViewQuery) Valid() bool {
+	switch e {
+	case Grouped:
+		return true
+	case Single:
+		return true
+	default:
+		return false
+	}
+}
+
 // Asset One tracked repository, path or image.
 type Asset struct {
 	// ConnectionId The connection repo scans authenticate with.
@@ -1343,6 +1382,12 @@ type FindingStatusQuery = FindingStatus
 
 // FindingTypeQuery Kind of finding (PROJECT_SPEC.md §5).
 type FindingTypeQuery = FindingType
+
+// FindingsExportFormatQuery defines model for FindingsExportFormatQuery.
+type FindingsExportFormatQuery string
+
+// FindingsViewQuery defines model for FindingsViewQuery.
+type FindingsViewQuery string
 
 // Fingerprint defines model for Fingerprint.
 type Fingerprint = string

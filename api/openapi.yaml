@@ -1143,6 +1143,77 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/findings/export:
+    get:
+      operationId: exportFindings
+      summary: Download the latest findings as CSV, XLSX or JSON.
+      description: |
+        Writes the findings of `GET /api/findings` as one download instead of
+        one page: the same filters, the same archived-asset exclusion and the
+        same effective status and decision expiry. The full result is written,
+        never a page.
+
+        `view=grouped` folds one row per rule and type across projects, like the
+        Findings page: the worst severity, the rule, the title, the packages,
+        the affected projects and the finding and open counts. `view=single`
+        writes one row per finding. EPSS columns are present only while the feed
+        is enabled. CSV is RFC 4180 with a UTF-8 BOM; XLSX is one sheet written
+        without a dependency; JSON is an array of objects with stable keys.
+        Cells that a spreadsheet could evaluate as a formula are prefixed with
+        an apostrophe in CSV and XLSX.
+
+        This operation is hand-written in `internal/httpapi/findings_export.go`
+        and excluded from codegen (api/oapi-codegen.yaml): the generated strict
+        server cannot set the `Content-Disposition` header. Like
+        `/api/scans/{id}/sbom`, the spec stays the contract.
+      tags: [findings]
+      parameters:
+        - $ref: "#/components/parameters/FindingsExportFormatQuery"
+        - $ref: "#/components/parameters/FindingsViewQuery"
+        - $ref: "#/components/parameters/AssetIDQuery"
+        - $ref: "#/components/parameters/SeverityQuery"
+        - $ref: "#/components/parameters/FindingTypeQuery"
+        - $ref: "#/components/parameters/FindingStatusQuery"
+      responses:
+        "200":
+          description: The findings as one downloadable file.
+          headers:
+            Content-Disposition:
+              description: |
+                Attachment with the filename
+                `bastion-findings-<view>-<YYYYMMDD>.<ext>`.
+              schema:
+                type: string
+          content:
+            text/csv:
+              schema:
+                type: string
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        "400":
+          description: |
+            `format` or `view` is not one of the accepted values, `asset_id` is
+            not a positive integer, or a filter is not a valid enum value.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/reports/dashboard:
     get:
       operationId: getDashboard
@@ -1298,6 +1369,25 @@ components:
       description: Only findings with this effective status.
       schema:
         $ref: "#/components/schemas/FindingStatus"
+    FindingsExportFormatQuery:
+      name: format
+      in: query
+      required: true
+      description: The download format.
+      schema:
+        type: string
+        enum: [csv, xlsx, json]
+    FindingsViewQuery:
+      name: view
+      in: query
+      required: false
+      description: |
+        `grouped` (the default) writes one row per rule and type; `single`
+        writes one row per finding.
+      schema:
+        type: string
+        enum: [grouped, single]
+        default: grouped
   responses:
     Problem:
       description: |
