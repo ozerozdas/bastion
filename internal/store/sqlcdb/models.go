@@ -117,4 +117,5 @@ type ScannerRun struct {
 	DurationMS     sql.NullInt64
 	Error          sql.NullString
 	RawPath        sql.NullString
+	Warning        sql.NullString
 }

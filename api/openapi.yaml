@@ -54,6 +54,14 @@ tags:
       off nothing runs and findings carry no reachability. A scan that cannot
       run govulncheck (no `go` on PATH, network failure) still succeeds and
       reports `unknown`.
+  - name: sast
+    description: |
+      The opt-in SAST module (#33): a pinned Opengrep binary and rule set,
+      downloaded from GitHub only after the user turns it on. Off by default;
+      with the setting off no download happens and repository scans are
+      unchanged. Turning it on starts one background download and later
+      repository scans include `sast` findings; image scans never do.
+      `GET /api/sast` never blocks on the network.
   - name: connections
     description: |
       Credentialed integrations used to discover and fetch sources. Tokens live
@@ -325,6 +333,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReachabilityStatus"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/sast:
+    get:
+      operationId: getSASTStatus
+      summary: Report the SAST module state.
+      description: |
+        Returns the stored opt-in setting, the installed state of the pinned
+        Opengrep module and whether a download is running. The handler reads
+        the filesystem only; no request is made.
+      tags: [sast]
+      responses:
+        "200":
+          description: The current SAST module state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SASTStatus"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setSASTEnabled
+      summary: Store the SAST opt-in choice.
+      description: |
+        Only the UI calls this. `enabled: true` stores the choice and starts the
+        one-time download of the pinned binary and rule set in the background;
+        the response reports `installing`. `enabled: false` stops future
+        repository scans from running SAST and never cancels a download that is
+        already running.
+      tags: [sast]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetSASTEnabledRequest"
+      responses:
+        "200":
+          description: The choice was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SASTStatus"
         "400":
           $ref: "#/components/responses/Problem"
         "401":
@@ -1837,6 +1902,58 @@ components:
           description: |
             True runs govulncheck on future scans of Go modules; false turns the
             enrichment off and stops every future run.
+    SASTState:
+      type: string
+      title: SASTState
+      description: |
+        State of the downloaded Opengrep module. `not_installed` is normal
+        before the first download; `checksum_bad` means the file on disk does
+        not match the pinned digest and will not run.
+      enum: [not_installed, installed, checksum_bad]
+    SASTStatus:
+      type: object
+      title: SASTStatus
+      description: |
+        The opt-in SAST module as the UI and the CLI see it. The download is
+        pinned to Opengrep v1.33.1 plus its community rule set and happens only
+        after `enabled` is true.
+      additionalProperties: false
+      required: [enabled, state, version, installing]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            The stored opt-in setting. False means no download happens and
+            repository scans carry no `sast` findings.
+        state:
+          $ref: "#/components/schemas/SASTState"
+        version:
+          type: string
+          description: The pinned Opengrep release.
+          examples: ["v1.33.1"]
+        installing:
+          type: boolean
+          description: True while a download is running.
+        error:
+          type: string
+          description: Why the installed module cannot be used, when it cannot.
+        install_error:
+          type: string
+          description: |
+            Why the last download failed. It clears when a later download
+            succeeds.
+    SetSASTEnabledRequest:
+      type: object
+      title: SetSASTEnabledRequest
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            True downloads the pinned module once and runs SAST on future
+            repository scans; false turns it off without canceling a running
+            download.
     TrivyDBState:
       type: string
       title: TrivyDBState
@@ -2950,6 +3067,12 @@ components:
         error:
           type: string
           description: Why this scanner failed; absent otherwise.
+        warning:
+          type: string
+          description: |
+            Partial-coverage note from a scanner that still succeeded, such as
+            output cut off by a timeout or results outside the workspace.
+            Absent when the scanner covered everything.
     CreateScansRequest:
       type: object
       title: CreateScansRequest

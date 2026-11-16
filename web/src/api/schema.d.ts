@@ -176,6 +176,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the SAST module state.
+         * @description Returns the stored opt-in setting, the installed state of the pinned
+         *     Opengrep module and whether a download is running. The handler reads
+         *     the filesystem only; no request is made.
+         */
+        get: operations["getSASTStatus"];
+        /**
+         * Store the SAST opt-in choice.
+         * @description Only the UI calls this. `enabled: true` stores the choice and starts the
+         *     one-time download of the pinned binary and rule set in the background;
+         *     the response reports `installing`. `enabled: false` stops future
+         *     repository scans from running SAST and never cancels a download that is
+         *     already running.
+         */
+        put: operations["setSASTEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/connections": {
         parameters: {
             query?: never;
@@ -958,6 +988,51 @@ export interface components {
             /**
              * @description True runs govulncheck on future scans of Go modules; false turns the
              *     enrichment off and stops every future run.
+             */
+            enabled: boolean;
+        };
+        /**
+         * SASTState
+         * @description State of the downloaded Opengrep module. `not_installed` is normal
+         *     before the first download; `checksum_bad` means the file on disk does
+         *     not match the pinned digest and will not run.
+         * @enum {string}
+         */
+        SASTState: "not_installed" | "installed" | "checksum_bad";
+        /**
+         * SASTStatus
+         * @description The opt-in SAST module as the UI and the CLI see it. The download is
+         *     pinned to Opengrep v1.33.1 plus its community rule set and happens only
+         *     after `enabled` is true.
+         */
+        SASTStatus: {
+            /**
+             * @description The stored opt-in setting. False means no download happens and
+             *     repository scans carry no `sast` findings.
+             */
+            enabled: boolean;
+            state: components["schemas"]["SASTState"];
+            /**
+             * @description The pinned Opengrep release.
+             * @example v1.33.1
+             */
+            version: string;
+            /** @description True while a download is running. */
+            installing: boolean;
+            /** @description Why the installed module cannot be used, when it cannot. */
+            error?: string;
+            /**
+             * @description Why the last download failed. It clears when a later download
+             *     succeeds.
+             */
+            install_error?: string;
+        };
+        /** SetSASTEnabledRequest */
+        SetSASTEnabledRequest: {
+            /**
+             * @description True downloads the pinned module once and runs SAST on future
+             *     repository scans; false turns it off without canceling a running
+             *     download.
              */
             enabled: boolean;
         };
@@ -1782,6 +1857,12 @@ export interface components {
             duration_ms?: number;
             /** @description Why this scanner failed; absent otherwise. */
             error?: string;
+            /**
+             * @description Partial-coverage note from a scanner that still succeeded, such as
+             *     output cut off by a timeout or results outside the workspace.
+             *     Absent when the scanner covered everything.
+             */
+            warning?: string;
         };
         /** CreateScansRequest */
         CreateScansRequest: {
@@ -2184,6 +2265,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReachabilityStatus"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getSASTStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current SAST module state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SASTStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setSASTEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetSASTEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The choice was stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SASTStatus"];
                 };
             };
             400: components["responses"]["Problem"];

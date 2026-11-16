@@ -81,7 +81,11 @@ func (p *scanProgress) runs(list []scannerRun) {
 	for _, run := range list {
 		switch run.Status {
 		case "succeeded":
-			p.line(fmt.Sprintf("%s: succeeded (%s)", run.Scanner, progressDuration(run.DurationMS)))
+			line := fmt.Sprintf("%s: succeeded (%s)", run.Scanner, progressDuration(run.DurationMS))
+			if run.Warning != "" {
+				line += " — warning: " + strings.Join(strings.Fields(run.Warning), " ")
+			}
+			p.line(line)
 		case "failed":
 			p.line(fmt.Sprintf("%s: failed: %s", run.Scanner, strings.Join(strings.Fields(run.Error), " ")))
 		default:

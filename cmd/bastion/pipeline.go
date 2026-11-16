@@ -19,6 +19,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/scanners"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
+	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/scanners/osv"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
@@ -273,7 +274,7 @@ const serverScanShutdownGrace = 10 * time.Second
 // scan can never stay queued forever. bus receives the lifecycle events the
 // SSE endpoint streams. trivyDB is the vulnerability DB manager the scans and
 // the /api/trivy-db endpoints share.
-func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager, reachability jobs.ReachabilityEnricher) (*jobs.Manager, error) {
+func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager, reachability jobs.ReachabilityEnricher, sast *opengrep.Service) (*jobs.Manager, error) {
 	hmacKey, err := secrets.LocalKey(secretStore)
 	if err != nil {
 		// Only secret fingerprints need the key; everything else still works,
@@ -288,8 +289,10 @@ func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, t
 	manager, err := newScanManager(pipelineConfig{
 		DB: db,
 		// Trivy serializes itself (ADR-001); running adapters one after
-		// another also keeps Gitleaks independent of that lock.
-		ScannerList: []scanners.Scanner{trivy.NewWithManager(trivyDB), gitleaks.New()},
+		// another also keeps Gitleaks independent of that lock. Opengrep is
+		// always in the list: Supports is false while SAST is off, so a
+		// disabled module changes nothing.
+		ScannerList: []scanners.Scanner{trivy.NewWithManager(trivyDB), gitleaks.New(), opengrep.NewScanner(sast)},
 		Sources: map[sources.TargetKind]sources.Source{
 			sources.KindPath:  localpath.New(),
 			sources.KindRepo:  repoSource,

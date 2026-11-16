@@ -24,6 +24,7 @@ const (
 	trivyCacheDirName = "trivy"
 	epssDirName       = "epss"
 	workspacesDirName = "workspaces"
+	modulesDirName    = "modules"
 )
 
 // Flags are the raw path values from the CLI. An empty string means "not set",
@@ -93,6 +94,13 @@ func (p Paths) EPSSDir() string {
 // the data directory next to the database.
 func (p Paths) WorkspacesDir() string {
 	return filepath.Join(p.CacheDir, workspacesDirName)
+}
+
+// ModulesDir is where opt-in downloaded scanner modules live, inside the cache
+// directory (ADR-002). Each module owns a versioned directory below it, so a
+// pinned upgrade downloads beside the old module rather than over it.
+func (p Paths) ModulesDir() string {
+	return filepath.Join(p.CacheDir, modulesDirName)
 }
 
 // firstSet returns the first non-empty value.

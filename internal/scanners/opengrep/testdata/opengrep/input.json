@@ -1,0 +1,58 @@
+{
+  "version": "1.33.1",
+  "results": [
+    {
+      "check_id": "rules.python.lang.security.audit.eval-detected",
+      "path": "/repo/app.py",
+      "start": { "line": 4, "col": 12, "offset": 34 },
+      "end": { "line": 4, "col": 19, "offset": 41 },
+      "extra": {
+        "message": "Detected the use of eval(). eval() can be dangerous if used to evaluate dynamic content.",
+        "severity": "WARNING",
+        "lines": "    return eval(x)",
+        "metadata": { "category": "security" }
+      }
+    },
+    {
+      "check_id": "rules.go.lang.security.audit.weak-random",
+      "path": "/repo/internal/rand.go",
+      "start": { "line": 12 },
+      "extra": {
+        "message": "math/rand is not cryptographically secure",
+        "severity": "ERROR",
+        "lines": "n := rand.Intn(100)"
+      }
+    },
+    {
+      "check_id": "rules.javascript.lang.security.audit.console-log",
+      "path": "/repo/web/app.js",
+      "start": { "line": 7 },
+      "extra": {
+        "message": "Console log may leak data",
+        "severity": "INFO",
+        "lines": "console.log(token)"
+      }
+    },
+    {
+      "check_id": "rules.python.lang.security.audit.unknown-severity",
+      "path": "/repo/other.py",
+      "start": { "line": 1 },
+      "extra": {
+        "message": "Severity the pinned rule set does not use",
+        "severity": "CRITICAL",
+        "lines": "pass"
+      }
+    },
+    {
+      "check_id": "rules.python.lang.security.audit.eval-detected",
+      "path": "/etc/passwd",
+      "start": { "line": 1 },
+      "extra": {
+        "message": "Outside the workspace",
+        "severity": "ERROR",
+        "lines": "root:x:0:0"
+      }
+    }
+  ],
+  "errors": []
+}

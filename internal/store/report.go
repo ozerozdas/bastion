@@ -108,6 +108,7 @@ func LoadScanReport(ctx context.Context, db *sql.DB, scanID int64) (ScanReport, 
 			Status:         run.Status,
 			DurationMS:     nullInt64Ptr(run.DurationMS),
 			Error:          run.Error.String,
+			Warning:        run.Warning.String,
 			RawPath:        run.RawPath.String,
 		})
 	}

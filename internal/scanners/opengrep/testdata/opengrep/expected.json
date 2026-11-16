@@ -1,0 +1,49 @@
+{
+  "findings": [
+    {
+      "asset_id": 1,
+      "type": "sast",
+      "rule_id": "go.lang.security.audit.weak-random",
+      "severity": "high",
+      "title": "math/rand is not cryptographically secure",
+      "location": "internal/rand.go:12",
+      "scanner": "opengrep",
+      "fingerprint": "c9625160975c6b7b9860e3afedd7a2ebee6df23807a4c527e7b9997de9058611",
+      "occurrences": 0
+    },
+    {
+      "asset_id": 1,
+      "type": "sast",
+      "rule_id": "javascript.lang.security.audit.console-log",
+      "severity": "low",
+      "title": "Console log may leak data",
+      "location": "web/app.js:7",
+      "scanner": "opengrep",
+      "fingerprint": "fbcf2db4c14228cac2ab8b81299f51966f72575db7e3e840f3e7f886a12236ec",
+      "occurrences": 0
+    },
+    {
+      "asset_id": 1,
+      "type": "sast",
+      "rule_id": "python.lang.security.audit.eval-detected",
+      "severity": "medium",
+      "title": "Detected the use of eval(). eval() can be dangerous if used to evaluate dynamic content.",
+      "location": "app.py:4",
+      "scanner": "opengrep",
+      "fingerprint": "2bc771f04334456d0dd1913e1b8d25aeec7338b3306e2280ead58badcf7c8db0",
+      "occurrences": 0
+    },
+    {
+      "asset_id": 1,
+      "type": "sast",
+      "rule_id": "python.lang.security.audit.unknown-severity",
+      "severity": "unknown",
+      "title": "Severity the pinned rule set does not use",
+      "location": "other.py:1",
+      "scanner": "opengrep",
+      "fingerprint": "835dcf5f09339af8f881418221127d7ba0b84ccf54856f3cc1cd5c87493748fa",
+      "occurrences": 0
+    }
+  ],
+  "packages": null
+}

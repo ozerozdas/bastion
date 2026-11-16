@@ -63,7 +63,7 @@ WHERE scan_id = sqlc.arg(scan_id)
 ORDER BY id;
 
 -- name: InsertScannerRun :exec
-INSERT INTO scanner_runs (scan_id, scanner, scanner_version, db_version, status, duration_ms, error, raw_path)
+INSERT INTO scanner_runs (scan_id, scanner, scanner_version, db_version, status, duration_ms, error, warning, raw_path)
 VALUES (
     sqlc.arg(scan_id),
     sqlc.arg(scanner),
@@ -72,6 +72,7 @@ VALUES (
     sqlc.arg(status),
     sqlc.narg(duration_ms),
     sqlc.narg(error),
+    sqlc.narg(warning),
     sqlc.narg(raw_path)
 );
 

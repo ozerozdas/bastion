@@ -602,6 +602,7 @@ func scanResponse(scan assets.Scan, withRuns bool) gen.Scan {
 				Status:         gen.ScanStatus(run.Status),
 				DurationMs:     run.DurationMS,
 				Error:          stringPointer(run.Error),
+				Warning:        stringPointer(run.Warning),
 			})
 		}
 		out.ScannerRuns = &runs

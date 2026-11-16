@@ -208,6 +208,7 @@ type ScannerRun struct {
 	Status         string
 	DurationMS     *int64
 	Error          string
+	Warning        string
 }
 
 // QueuedScan ties an enqueued scan id back to the asset it scans.
@@ -789,6 +790,7 @@ func (s *Service) Scan(ctx context.Context, id int64) (Scan, error) {
 			DBVersion:      run.DBVersion.String,
 			Status:         run.Status,
 			Error:          run.Error.String,
+			Warning:        run.Warning.String,
 		}
 		if run.DurationMS.Valid {
 			duration := run.DurationMS.Int64

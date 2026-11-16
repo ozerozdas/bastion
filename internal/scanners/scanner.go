@@ -53,6 +53,11 @@ type RawResult struct {
 	// Data is an optional typed payload for scanners whose native output is
 	// already free of library types. At least one of Raw and Data is set.
 	Data any
+	// Warnings report partial coverage: the scanner produced findings but
+	// could not cover everything (output was cut off, a result was outside the
+	// workspace, and so on). They never fail a scan; callers surface them
+	// beside the scanner run.
+	Warnings []string
 }
 
 // Scanner scans one workspace.
