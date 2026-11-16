@@ -248,6 +248,24 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for LicencePolicyAction.
+const (
+	Allow LicencePolicyAction = "allow"
+	Deny  LicencePolicyAction = "deny"
+)
+
+// Valid indicates whether the value is a known member of the LicencePolicyAction enum.
+func (e LicencePolicyAction) Valid() bool {
+	switch e {
+	case Allow:
+		return true
+	case Deny:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Reachability.
 const (
 	ReachabilityReachable   Reachability = "reachable"
@@ -956,6 +974,12 @@ type Finding struct {
 	FixedVersion *string `json:"fixed_version,omitempty"`
 	Id           int64   `json:"id"`
 
+	// LicencePolicy The effective rule that matched a licence finding (#39). `allow`
+	// findings are hidden, so only `deny` is normally visible: the finding
+	// stays in the list with a severity of at least `high`. Absent when no
+	// rule applies.
+	LicencePolicy *LicencePolicyAction `json:"licence_policy,omitempty"`
+
 	// Location Display location: `file:line` (line is display only), file plus
 	// cause for misconfigurations, or the package path inside an image.
 	Location *string `json:"location,omitempty"`
@@ -1200,6 +1224,25 @@ type LastScan struct {
 	// Status Lifecycle state of a scan.
 	Status ScanStatus `json:"status"`
 }
+
+// LicencePolicy One scope's licence rules. The lists are normalized to lower case and
+// sorted, hold at most 500 entries together, and a licence may not appear
+// in both. Matching is exact on the whole licence string as reported, so
+// `MIT OR Apache-2.0` is a separate entry from `MIT`.
+type LicencePolicy struct {
+	// Allow Licence ids whose findings are hidden.
+	Allow []string `json:"allow"`
+
+	// Deny Licence ids whose findings stay visible with a severity of at least
+	// `high`.
+	Deny []string `json:"deny"`
+}
+
+// LicencePolicyAction The effective rule that matched a licence finding (#39). `allow`
+// findings are hidden, so only `deny` is normally visible: the finding
+// stays in the list with a severity of at least `high`. Absent when no
+// rule applies.
+type LicencePolicyAction string
 
 // Problem RFC 9457 problem details. Extension members are allowed and may be
 // added later without a breaking change.
@@ -1562,6 +1605,9 @@ type FindingsViewQuery string
 // Fingerprint defines model for Fingerprint.
 type Fingerprint = string
 
+// LicencePolicyAssetIDQuery defines model for LicencePolicyAssetIDQuery.
+type LicencePolicyAssetIDQuery = int64
+
 // OffsetQuery defines model for OffsetQuery.
 type OffsetQuery = int
 
@@ -1606,6 +1652,18 @@ type ListFindingsParamsView string
 type ClearFindingStateParams struct {
 	// AssetId The asset the decision belongs to.
 	AssetId AssetIDRequiredQuery `form:"asset_id" json:"asset_id"`
+}
+
+// GetLicencePolicyParams defines parameters for GetLicencePolicy.
+type GetLicencePolicyParams struct {
+	// AssetId The asset whose policy is read or replaced. Omit for the global policy.
+	AssetId *LicencePolicyAssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+}
+
+// SetLicencePolicyParams defines parameters for SetLicencePolicy.
+type SetLicencePolicyParams struct {
+	// AssetId The asset whose policy is read or replaced. Omit for the global policy.
+	AssetId *LicencePolicyAssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
 }
 
 // ListScansParams defines parameters for ListScans.
@@ -1659,6 +1717,9 @@ type SetFindingStatesJSONRequestBody = BulkSetFindingStateRequest
 
 // SetFindingStateJSONRequestBody defines body for SetFindingState for application/json ContentType.
 type SetFindingStateJSONRequestBody = SetFindingStateRequest
+
+// SetLicencePolicyJSONRequestBody defines body for SetLicencePolicy for application/json ContentType.
+type SetLicencePolicyJSONRequestBody = LicencePolicy
 
 // SetReachabilityEnabledJSONRequestBody defines body for SetReachabilityEnabled for application/json ContentType.
 type SetReachabilityEnabledJSONRequestBody = SetReachabilityEnabledRequest
@@ -1865,6 +1926,12 @@ type ServerInterface interface {
 	// GetHealth Liveness and version probe.
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// GetLicencePolicy Read the licence allow/deny policy.
+	// (GET /api/licence-policy)
+	GetLicencePolicy(w http.ResponseWriter, r *http.Request, params GetLicencePolicyParams)
+	// SetLicencePolicy Replace the licence allow/deny policy.
+	// (PUT /api/licence-policy)
+	SetLicencePolicy(w http.ResponseWriter, r *http.Request, params SetLicencePolicyParams)
 	// GetReachabilityStatus Report the Go reachability enrichment state.
 	// (GET /api/reachability)
 	GetReachabilityStatus(w http.ResponseWriter, r *http.Request)
@@ -2402,6 +2469,72 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetLicencePolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetLicencePolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetLicencePolicyParams
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLicencePolicy(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetLicencePolicy operation middleware
+func (siw *ServerInterfaceWrapper) SetLicencePolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SetLicencePolicyParams
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetLicencePolicy(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetReachabilityStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetReachabilityStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -2899,6 +3032,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/findings/{fingerprint}/state", wrapper.ClearFindingState)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/findings/{fingerprint}/state", wrapper.SetFindingState)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/findings", wrapper.ListFindings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/licence-policy", wrapper.GetLicencePolicy)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/licence-policy", wrapper.SetLicencePolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/dashboard", wrapper.GetDashboard)
 
 	return m
@@ -5514,6 +5649,289 @@ func (response GetHealth500ApplicationProblemPlusJSONResponse) VisitGetHealthRes
 	return err
 }
 
+type GetLicencePolicyRequestObject struct {
+	Params GetLicencePolicyParams
+}
+
+type GetLicencePolicyResponseObject interface {
+	VisitGetLicencePolicyResponse(w http.ResponseWriter) error
+}
+
+type GetLicencePolicy200JSONResponse LicencePolicy
+
+func (response GetLicencePolicy200JSONResponse) VisitGetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLicencePolicy400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetLicencePolicy400ApplicationProblemPlusJSONResponse) VisitGetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLicencePolicy401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetLicencePolicy401ApplicationProblemPlusJSONResponse) VisitGetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLicencePolicy403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetLicencePolicy403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetLicencePolicy403ResponseHeaders
+}
+
+func (response GetLicencePolicy403ApplicationProblemPlusJSONResponse) VisitGetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLicencePolicy404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetLicencePolicy404ApplicationProblemPlusJSONResponse) VisitGetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLicencePolicy421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetLicencePolicy421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetLicencePolicy421ResponseHeaders
+}
+
+func (response GetLicencePolicy421ApplicationProblemPlusJSONResponse) VisitGetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLicencePolicy500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetLicencePolicy500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetLicencePolicy500ResponseHeaders
+}
+
+func (response GetLicencePolicy500ApplicationProblemPlusJSONResponse) VisitGetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLicencePolicyRequestObject struct {
+	Params SetLicencePolicyParams
+	Body   *SetLicencePolicyJSONRequestBody
+}
+
+type SetLicencePolicyResponseObject interface {
+	VisitSetLicencePolicyResponse(w http.ResponseWriter) error
+}
+
+type SetLicencePolicy200JSONResponse LicencePolicy
+
+func (response SetLicencePolicy200JSONResponse) VisitSetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLicencePolicy400ApplicationProblemPlusJSONResponse Problem
+
+func (response SetLicencePolicy400ApplicationProblemPlusJSONResponse) VisitSetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLicencePolicy401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetLicencePolicy401ApplicationProblemPlusJSONResponse) VisitSetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLicencePolicy403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetLicencePolicy403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetLicencePolicy403ResponseHeaders
+}
+
+func (response SetLicencePolicy403ApplicationProblemPlusJSONResponse) VisitSetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLicencePolicy404ApplicationProblemPlusJSONResponse Problem
+
+func (response SetLicencePolicy404ApplicationProblemPlusJSONResponse) VisitSetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLicencePolicy421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetLicencePolicy421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetLicencePolicy421ResponseHeaders
+}
+
+func (response SetLicencePolicy421ApplicationProblemPlusJSONResponse) VisitSetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLicencePolicy500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetLicencePolicy500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetLicencePolicy500ResponseHeaders
+}
+
+func (response SetLicencePolicy500ApplicationProblemPlusJSONResponse) VisitSetLicencePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetReachabilityStatusRequestObject struct {
 }
 
@@ -7295,6 +7713,12 @@ type StrictServerInterface interface {
 	// GetHealth Liveness and version probe.
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+	// GetLicencePolicy Read the licence allow/deny policy.
+	// (GET /api/licence-policy)
+	GetLicencePolicy(ctx context.Context, request GetLicencePolicyRequestObject) (GetLicencePolicyResponseObject, error)
+	// SetLicencePolicy Replace the licence allow/deny policy.
+	// (PUT /api/licence-policy)
+	SetLicencePolicy(ctx context.Context, request SetLicencePolicyRequestObject) (SetLicencePolicyResponseObject, error)
 	// GetReachabilityStatus Report the Go reachability enrichment state.
 	// (GET /api/reachability)
 	GetReachabilityStatus(ctx context.Context, request GetReachabilityStatusRequestObject) (GetReachabilityStatusResponseObject, error)
@@ -7887,6 +8311,65 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetLicencePolicy operation middleware
+func (sh *strictHandler) GetLicencePolicy(w http.ResponseWriter, r *http.Request, params GetLicencePolicyParams) {
+	var request GetLicencePolicyRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLicencePolicy(ctx, request.(GetLicencePolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLicencePolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetLicencePolicyResponseObject); ok {
+		if err := validResponse.VisitGetLicencePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetLicencePolicy operation middleware
+func (sh *strictHandler) SetLicencePolicy(w http.ResponseWriter, r *http.Request, params SetLicencePolicyParams) {
+	var request SetLicencePolicyRequestObject
+
+	request.Params = params
+
+	var body SetLicencePolicyJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetLicencePolicy(ctx, request.(SetLicencePolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetLicencePolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetLicencePolicyResponseObject); ok {
+		if err := validResponse.VisitSetLicencePolicyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

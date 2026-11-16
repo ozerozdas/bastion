@@ -30,6 +30,7 @@ import { ErrorNote } from '../components/error-note'
 import { FilterBar, type FilterField } from '../components/filter-bar'
 import { FindingDrawer } from '../components/finding-drawer'
 import { GroupDrawer } from '../components/group-drawer'
+import { LicencePolicyCard } from '../components/licence-policy-card'
 import { Pager } from '../components/pager'
 import { PageActions } from '../components/app-shell'
 import { Tabs, type TabItem } from '../components/ui/tabs'
@@ -160,7 +161,11 @@ export function findingColumns(
         <>
           {typeLabels[finding.type]}
           {finding.type === 'license' ? (
-            <span className="ml-1.5 text-xs text-faint">informational</span>
+            <span className="ml-1.5 text-xs text-faint">
+              {finding.licence_policy === 'deny'
+                ? 'denied by policy'
+                : 'informational'}
+            </span>
           ) : null}
           {finding.expired ? (
             <span className="ml-1.5 text-xs text-faint">decision expired</span>
@@ -830,6 +835,12 @@ export function FindingsPage() {
           <FixPlanPanel assetList={assetList} selected={selected} />
         ) : (
           <>
+      {selected === undefined ? null : (
+        <LicencePolicyCard
+          assetId={selected.id}
+          title={`Licence policy for ${selected.display_name}`}
+        />
+      )}
       <FilterBar label="Finding filters" fields={filters}>
         {/* Grouping folds a rule across projects, so it is only offered while
             every project is in the list (#106). */}

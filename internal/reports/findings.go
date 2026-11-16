@@ -68,6 +68,11 @@ type Finding struct {
 	// reachable, unreachable or unknown. Empty when the opt-in enrichment was
 	// off for the scan that produced the finding.
 	Reachability findings.Reachability
+	// LicencePolicy is the effective allow/deny rule that matched a licence
+	// finding (#39): "allow", "deny", or empty when no rule applies. Allow
+	// findings are hidden before they reach this read model; deny findings are
+	// shown with a raised severity.
+	LicencePolicy string
 }
 
 // Page bounds one page of the latest-findings list. In grouped view a row is
@@ -220,6 +225,7 @@ func (s *Service) listFindings(ctx context.Context, filter Filter, limit, offset
 			Description:    row.Description.String,
 			References:     references,
 			Reachability:   findings.Reachability(row.Reachability.String),
+			LicencePolicy:  licencePolicyValue(row.LicencePolicy),
 		}
 		if row.FirstSeenScanID.Valid {
 			firstSeen := row.FirstSeenScanID.Int64
@@ -366,4 +372,11 @@ func decodeScanners(raw string) ([]string, error) {
 		scanners = make([]string, 0)
 	}
 	return scanners, nil
+}
+
+// licencePolicyValue reads the generated query's licence_policy column. sqlc
+// types a CASE expression as any; an absent or non-string value is no rule.
+func licencePolicyValue(value any) string {
+	action, _ := value.(string)
+	return action
 }

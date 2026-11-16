@@ -75,6 +75,15 @@ tags:
       Normalized findings across assets. The list endpoints report each asset's
       most recent succeeded scan; `status` is the effective status, so a
       finding_states decision shows up as `ignored`.
+  - name: licence-policy
+    description: |
+      The licence allow/deny policy (#39). A rule is global when `asset_id` is
+      omitted, or belongs to one asset. An allow rule hides a matching licence
+      finding from the findings list, grouped view, counts and export; a deny
+      rule keeps it and raises its severity to at least `high`. A per-asset rule
+      overrides a global one for the same licence. Matching is exact on the
+      licence string as the scanner reports it: `MIT OR Apache-2.0` is its own
+      entry, not two rules.
   - name: reports
     description: |
       Aggregates for the Dashboard (PROJECT_SPEC.md §7.1). Every number counts
@@ -1293,6 +1302,91 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/licence-policy:
+    get:
+      operationId: getLicencePolicy
+      summary: Read the licence allow/deny policy.
+      description: |
+        Returns the global policy when `asset_id` is omitted, otherwise that
+        asset's policy. A licence without a rule is absent from both lists. The
+        lists are normalized to lower case and sorted.
+      tags: [licence-policy]
+      parameters:
+        - $ref: "#/components/parameters/LicencePolicyAssetIDQuery"
+      responses:
+        "200":
+          description: The policy of the requested scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LicencePolicy"
+        "400":
+          description: |
+            `asset_id` is not a positive integer.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: No asset has that id.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setLicencePolicy
+      summary: Replace the licence allow/deny policy.
+      description: |
+        Replaces both lists of one scope in a single transaction. Licences are
+        trimmed, lower-cased, de-duplicated and sorted; a licence may not be in
+        both lists. The response is the stored policy.
+      tags: [licence-policy]
+      parameters:
+        - $ref: "#/components/parameters/LicencePolicyAssetIDQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LicencePolicy"
+      responses:
+        "200":
+          description: The policy was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LicencePolicy"
+        "400":
+          description: |
+            The body is missing, an entry is empty, longer than 128 printable
+            ASCII characters, appears in both lists, or the policy has more
+            than 500 entries.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: No asset has that id.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/reports/dashboard:
     get:
       operationId: getDashboard
@@ -1378,6 +1472,16 @@ components:
       in: query
       required: false
       description: Only findings of this asset.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    LicencePolicyAssetIDQuery:
+      name: asset_id
+      in: query
+      required: false
+      description: |
+        The asset whose policy is read or replaced. Omit for the global policy.
       schema:
         type: integer
         format: int64
@@ -1660,6 +1764,44 @@ components:
         found only at package or module level, and `unknown` means no answer
         (govulncheck did not run, failed, or does not know the advisory).
       enum: [reachable, unreachable, unknown]
+    LicencePolicyAction:
+      type: string
+      title: LicencePolicyAction
+      description: |
+        The effective rule that matched a licence finding (#39). `allow`
+        findings are hidden, so only `deny` is normally visible: the finding
+        stays in the list with a severity of at least `high`. Absent when no
+        rule applies.
+      enum: [allow, deny]
+    LicencePolicy:
+      type: object
+      title: LicencePolicy
+      description: |
+        One scope's licence rules. The lists are normalized to lower case and
+        sorted, hold at most 500 entries together, and a licence may not appear
+        in both. Matching is exact on the whole licence string as reported, so
+        `MIT OR Apache-2.0` is a separate entry from `MIT`.
+      additionalProperties: false
+      required: [allow, deny]
+      properties:
+        allow:
+          type: array
+          description: Licence ids whose findings are hidden.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+          maxItems: 500
+        deny:
+          type: array
+          description: |
+            Licence ids whose findings stay visible with a severity of at least
+            `high`.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+          maxItems: 500
     ReachabilityStatus:
       type: object
       title: ReachabilityStatus
@@ -2075,6 +2217,8 @@ components:
           $ref: "#/components/schemas/EPSSScore"
         reachability:
           $ref: "#/components/schemas/Reachability"
+        licence_policy:
+          $ref: "#/components/schemas/LicencePolicyAction"
     FindingList:
       type: object
       title: FindingList

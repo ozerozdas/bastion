@@ -22,6 +22,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi"
 	"github.com/ozerozdas/bastion/internal/jobs"
+	"github.com/ozerozdas/bastion/internal/licencepolicy"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
@@ -170,6 +171,12 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		return errors.Join(fmt.Errorf("create reports service: %w", err), ln.Close())
 	}
 
+	// The licence policy is stored in SQLite and applied at read time (#39).
+	licencePolicyService, err := licencepolicy.NewService(db)
+	if err != nil {
+		return errors.Join(fmt.Errorf("create licence policy service: %w", err), ln.Close())
+	}
+
 	// One broker feeds both the scan workers (publish) and /api/events
 	// (subscribe), so the UI sees every lifecycle event of the scans it starts.
 	bus := events.NewBroker()
@@ -200,16 +207,17 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 
 	updateChecker := deps.newUpdateChecker(opts.paths)
 	srv, err := deps.newServer(httpapi.Config{
-		Version:      version,
-		Port:         port,
-		Connections:  service,
-		Reports:      reportService,
-		Assets:       assetService,
-		Events:       bus,
-		Update:       updateChecker,
-		TrivyDB:      trivyDB,
-		EPSS:         epssService,
-		Reachability: reachabilityService,
+		Version:       version,
+		Port:          port,
+		Connections:   service,
+		Reports:       reportService,
+		Assets:        assetService,
+		Events:        bus,
+		Update:        updateChecker,
+		TrivyDB:       trivyDB,
+		EPSS:          epssService,
+		Reachability:  reachabilityService,
+		LicencePolicy: licencePolicyService,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())

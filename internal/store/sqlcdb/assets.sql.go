@@ -346,17 +346,47 @@ last_succeeded AS (
 open_severity AS (
     SELECT
         f.asset_id,
-        SUM(CASE WHEN f.severity = 'critical' THEN 1 ELSE 0 END) AS open_critical,
-        SUM(CASE WHEN f.severity = 'high' THEN 1 ELSE 0 END) AS open_high,
-        SUM(CASE WHEN f.severity = 'medium' THEN 1 ELSE 0 END) AS open_medium,
-        SUM(CASE WHEN f.severity = 'low' THEN 1 ELSE 0 END) AS open_low,
-        SUM(CASE WHEN f.severity = 'unknown' THEN 1 ELSE 0 END) AS open_unknown
+        SUM(CASE WHEN CASE
+                 WHEN f.type = 'license'
+                      AND COALESCE(lpa.action, lpg.action) = 'deny'
+                      AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+                 ELSE f.severity
+             END = 'critical' THEN 1 ELSE 0 END) AS open_critical,
+        SUM(CASE WHEN CASE
+                 WHEN f.type = 'license'
+                      AND COALESCE(lpa.action, lpg.action) = 'deny'
+                      AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+                 ELSE f.severity
+             END = 'high' THEN 1 ELSE 0 END) AS open_high,
+        SUM(CASE WHEN CASE
+                 WHEN f.type = 'license'
+                      AND COALESCE(lpa.action, lpg.action) = 'deny'
+                      AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+                 ELSE f.severity
+             END = 'medium' THEN 1 ELSE 0 END) AS open_medium,
+        SUM(CASE WHEN CASE
+                 WHEN f.type = 'license'
+                      AND COALESCE(lpa.action, lpg.action) = 'deny'
+                      AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+                 ELSE f.severity
+             END = 'low' THEN 1 ELSE 0 END) AS open_low,
+        SUM(CASE WHEN CASE
+                 WHEN f.type = 'license'
+                      AND COALESCE(lpa.action, lpg.action) = 'deny'
+                      AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
+                 ELSE f.severity
+             END = 'unknown' THEN 1 ELSE 0 END) AS open_unknown
     FROM findings f
     JOIN last_succeeded ls ON ls.scan_id = f.scan_id
     LEFT JOIN finding_states fs
         ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+    LEFT JOIN licence_policy lpa
+        ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
+    LEFT JOIN licence_policy lpg
+        ON lpg.asset_id IS NULL AND lpg.licence = lower(f.rule_id)
     WHERE f.status = 'open'
       AND (fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT))
+      AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
     GROUP BY f.asset_id
 )
 SELECT

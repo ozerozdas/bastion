@@ -319,6 +319,40 @@ func TestQueueScanAppears(t *testing.T) {
 	}
 }
 
+// TestScanCountsHonourLicencePolicy proves the scan list and the single-scan
+// read apply the same allow/deny policy as the findings list (#39): an
+// allow-listed licence leaves the counts and a deny-listed one counts as high.
+func TestScanCountsHonourLicencePolicy(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+	asset := pathAsset(t, ts, cookie)
+
+	scanID := seedSucceededScan(t, ts, asset.Id,
+		newReportFinding(asset.Id, findings.TypeLicense, "GPL-3.0", findings.SeverityLow),
+		newReportFinding(asset.Id, findings.TypeLicense, "MIT", findings.SeverityLow),
+		newReportFinding(asset.Id, findings.TypeLicense, "Apache-2.0", findings.SeverityMedium),
+	)
+
+	resp := putLicencePolicy(t, ts, cookie, "", `{"allow":["MIT"],"deny":["GPL-3.0"]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("PUT status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	want := gen.SeverityTotals{High: 1, Medium: 1}
+	list := scanList(t, ts, cookie, "?asset_id="+itoa(asset.Id))
+	if len(list.Scans) != 1 {
+		t.Fatalf("scans = %+v, want 1", list.Scans)
+	}
+	if list.Scans[0].Counts != want {
+		t.Errorf("scan list counts = %+v, want %+v", list.Scans[0].Counts, want)
+	}
+
+	read := decodeScan(t, ts.do(t, http.MethodGet, "/api/scans/"+itoa(scanID), withCookie(cookie)))
+	if read.Counts != want {
+		t.Errorf("single scan counts = %+v, want %+v", read.Counts, want)
+	}
+}
+
 // TestScanListSeverityCounts covers #25: each scan carries the counts of every
 // finding it recorded, and a scan with no findings is all zeros.
 func TestScanListSeverityCounts(t *testing.T) {

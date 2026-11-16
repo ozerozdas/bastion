@@ -166,4 +166,14 @@ export function watch(page: Page): string[] {
   return problems
 }
 
+/**
+ * stubLicencePolicy answers the per-asset licence policy read for specs whose
+ * assets are stubbed and so do not exist on the real server.
+ */
+export async function stubLicencePolicy(page: Page): Promise<void> {
+  await page.route('**/api/licence-policy?asset_id=*', (route) =>
+    route.fulfill({ json: { allow: [], deny: [] } }),
+  )
+}
+
 export { expect }

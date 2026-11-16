@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, test, watch } from './fixtures'
+import { expect, stubLicencePolicy, test, watch } from './fixtures'
 
 // These tests stub the API so the cross-project list has findings without a
 // real scan, and so a redirect test can rely on one project existing.
@@ -247,6 +247,7 @@ test('lists findings across projects with no filter, critical first', async ({
   page,
   server,
 }) => {
+  await stubLicencePolicy(page)
   const problems = watch(page)
   const requested: URL[] = []
 
@@ -395,6 +396,7 @@ test('groups one CVE across projects and keeps the view in the URL', async ({
 })
 
 test('redirects old report URLs to the findings list', async ({ page, server }) => {
+  await stubLicencePolicy(page)
   const problems = watch(page)
   const asset = { ...alpha, id: 42, display_name: 'forty-two' }
 

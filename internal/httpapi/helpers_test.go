@@ -26,6 +26,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/jobs"
+	"github.com/ozerozdas/bastion/internal/licencepolicy"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
@@ -261,6 +262,10 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 	if err != nil {
 		t.Fatalf("reports.NewService: %v", err)
 	}
+	licencePolicyService, err := licencepolicy.NewService(db)
+	if err != nil {
+		t.Fatalf("licencepolicy.NewService: %v", err)
+	}
 
 	// No sources or scanners: a queued scan fails its pipeline quickly, which
 	// is all the API tests need (the endpoint contract, not scanning).
@@ -292,16 +297,17 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 		})
 	}
 	srv, err := New(Config{
-		Version:     "test-version",
-		Port:        port,
-		Logger:      slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
-		Connections: service,
-		Reports:     reportService,
-		Assets:      assetService,
-		Events:      bus,
-		Update:      checker,
-		TrivyDB:     manager,
-		EPSS:        feed,
+		Version:       "test-version",
+		Port:          port,
+		Logger:        slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Connections:   service,
+		Reports:       reportService,
+		Assets:        assetService,
+		Events:        bus,
+		Update:        checker,
+		TrivyDB:       manager,
+		EPSS:          feed,
+		LicencePolicy: licencePolicyService,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
