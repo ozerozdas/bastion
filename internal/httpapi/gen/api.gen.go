@@ -1265,6 +1265,15 @@ type LicencePolicy struct {
 // rule applies.
 type LicencePolicyAction string
 
+// OutdatedStatus The opt-in outdated-package lookup as the UI and the CLI see it. The
+// setting is off by default; with it off no request reaches deps.dev and
+// findings carry no latest version.
+type OutdatedStatus struct {
+	// Enabled The stored opt-in setting. False means no request is ever made and
+	// findings carry no latest version.
+	Enabled bool `json:"enabled"`
+}
+
 // Problem RFC 9457 problem details. Extension members are allowed and may be
 // added later without a breaking change.
 type Problem struct {
@@ -1522,6 +1531,13 @@ type SetFindingStateRequest struct {
 
 	// State The user decision that hides a finding across scans.
 	State FindingState `json:"state"`
+}
+
+// SetOutdatedEnabledRequest defines model for SetOutdatedEnabledRequest.
+type SetOutdatedEnabledRequest struct {
+	// Enabled True opts in to the deps.dev lookup during scans; false turns it off
+	// and stops every future request.
+	Enabled bool `json:"enabled"`
 }
 
 // SetReachabilityEnabledRequest defines model for SetReachabilityEnabledRequest.
@@ -1789,6 +1805,9 @@ type SetFindingStateJSONRequestBody = SetFindingStateRequest
 // SetLicencePolicyJSONRequestBody defines body for SetLicencePolicy for application/json ContentType.
 type SetLicencePolicyJSONRequestBody = LicencePolicy
 
+// SetOutdatedEnabledJSONRequestBody defines body for SetOutdatedEnabled for application/json ContentType.
+type SetOutdatedEnabledJSONRequestBody = SetOutdatedEnabledRequest
+
 // SetReachabilityEnabledJSONRequestBody defines body for SetReachabilityEnabled for application/json ContentType.
 type SetReachabilityEnabledJSONRequestBody = SetReachabilityEnabledRequest
 
@@ -2003,6 +2022,12 @@ type ServerInterface interface {
 	// SetLicencePolicy Replace the licence allow/deny policy.
 	// (PUT /api/licence-policy)
 	SetLicencePolicy(w http.ResponseWriter, r *http.Request, params SetLicencePolicyParams)
+	// GetOutdatedStatus Report the outdated-package lookup state.
+	// (GET /api/outdated)
+	GetOutdatedStatus(w http.ResponseWriter, r *http.Request)
+	// SetOutdatedEnabled Store the outdated-package opt-in choice.
+	// (PUT /api/outdated)
+	SetOutdatedEnabled(w http.ResponseWriter, r *http.Request)
 	// GetReachabilityStatus Report the Go reachability enrichment state.
 	// (GET /api/reachability)
 	GetReachabilityStatus(w http.ResponseWriter, r *http.Request)
@@ -2612,6 +2637,34 @@ func (siw *ServerInterfaceWrapper) SetLicencePolicy(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetOutdatedStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetOutdatedStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOutdatedStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetOutdatedEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetOutdatedEnabled(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetOutdatedEnabled(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetReachabilityStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetReachabilityStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -3113,6 +3166,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/trivy-db/download", wrapper.DownloadTrivyDB)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/epss", wrapper.GetEPSSStatus)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/epss", wrapper.SetEPSSEnabled)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/outdated", wrapper.GetOutdatedStatus)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/outdated", wrapper.SetOutdatedEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reachability", wrapper.GetReachabilityStatus)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/reachability", wrapper.SetReachabilityEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/sast", wrapper.GetSASTStatus)
@@ -6039,6 +6094,255 @@ func (response SetLicencePolicy500ApplicationProblemPlusJSONResponse) VisitSetLi
 	return err
 }
 
+type GetOutdatedStatusRequestObject struct {
+}
+
+type GetOutdatedStatusResponseObject interface {
+	VisitGetOutdatedStatusResponse(w http.ResponseWriter) error
+}
+
+type GetOutdatedStatus200JSONResponse OutdatedStatus
+
+func (response GetOutdatedStatus200JSONResponse) VisitGetOutdatedStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOutdatedStatus401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetOutdatedStatus401ApplicationProblemPlusJSONResponse) VisitGetOutdatedStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOutdatedStatus403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetOutdatedStatus403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetOutdatedStatus403ResponseHeaders
+}
+
+func (response GetOutdatedStatus403ApplicationProblemPlusJSONResponse) VisitGetOutdatedStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOutdatedStatus421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetOutdatedStatus421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetOutdatedStatus421ResponseHeaders
+}
+
+func (response GetOutdatedStatus421ApplicationProblemPlusJSONResponse) VisitGetOutdatedStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOutdatedStatus500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetOutdatedStatus500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetOutdatedStatus500ResponseHeaders
+}
+
+func (response GetOutdatedStatus500ApplicationProblemPlusJSONResponse) VisitGetOutdatedStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOutdatedEnabledRequestObject struct {
+	Body *SetOutdatedEnabledJSONRequestBody
+}
+
+type SetOutdatedEnabledResponseObject interface {
+	VisitSetOutdatedEnabledResponse(w http.ResponseWriter) error
+}
+
+type SetOutdatedEnabled200JSONResponse OutdatedStatus
+
+func (response SetOutdatedEnabled200JSONResponse) VisitSetOutdatedEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOutdatedEnabled400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetOutdatedEnabled400ApplicationProblemPlusJSONResponse) VisitSetOutdatedEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOutdatedEnabled401ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetOutdatedEnabled401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetOutdatedEnabled401ResponseHeaders
+}
+
+func (response SetOutdatedEnabled401ApplicationProblemPlusJSONResponse) VisitSetOutdatedEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOutdatedEnabled403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetOutdatedEnabled403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetOutdatedEnabled403ResponseHeaders
+}
+
+func (response SetOutdatedEnabled403ApplicationProblemPlusJSONResponse) VisitSetOutdatedEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOutdatedEnabled421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetOutdatedEnabled421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetOutdatedEnabled421ResponseHeaders
+}
+
+func (response SetOutdatedEnabled421ApplicationProblemPlusJSONResponse) VisitSetOutdatedEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOutdatedEnabled500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetOutdatedEnabled500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetOutdatedEnabled500ResponseHeaders
+}
+
+func (response SetOutdatedEnabled500ApplicationProblemPlusJSONResponse) VisitSetOutdatedEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetReachabilityStatusRequestObject struct {
 }
 
@@ -8075,6 +8379,12 @@ type StrictServerInterface interface {
 	// SetLicencePolicy Replace the licence allow/deny policy.
 	// (PUT /api/licence-policy)
 	SetLicencePolicy(ctx context.Context, request SetLicencePolicyRequestObject) (SetLicencePolicyResponseObject, error)
+	// GetOutdatedStatus Report the outdated-package lookup state.
+	// (GET /api/outdated)
+	GetOutdatedStatus(ctx context.Context, request GetOutdatedStatusRequestObject) (GetOutdatedStatusResponseObject, error)
+	// SetOutdatedEnabled Store the outdated-package opt-in choice.
+	// (PUT /api/outdated)
+	SetOutdatedEnabled(ctx context.Context, request SetOutdatedEnabledRequestObject) (SetOutdatedEnabledResponseObject, error)
 	// GetReachabilityStatus Report the Go reachability enrichment state.
 	// (GET /api/reachability)
 	GetReachabilityStatus(ctx context.Context, request GetReachabilityStatusRequestObject) (GetReachabilityStatusResponseObject, error)
@@ -8732,6 +9042,61 @@ func (sh *strictHandler) SetLicencePolicy(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetLicencePolicyResponseObject); ok {
 		if err := validResponse.VisitSetLicencePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOutdatedStatus operation middleware
+func (sh *strictHandler) GetOutdatedStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetOutdatedStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOutdatedStatus(ctx, request.(GetOutdatedStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOutdatedStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOutdatedStatusResponseObject); ok {
+		if err := validResponse.VisitGetOutdatedStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetOutdatedEnabled operation middleware
+func (sh *strictHandler) SetOutdatedEnabled(w http.ResponseWriter, r *http.Request) {
+	var request SetOutdatedEnabledRequestObject
+
+	var body SetOutdatedEnabledJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetOutdatedEnabled(ctx, request.(SetOutdatedEnabledRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetOutdatedEnabled")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetOutdatedEnabledResponseObject); ok {
+		if err := validResponse.VisitSetOutdatedEnabledResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -113,6 +113,23 @@ type AdvisoryMatcher interface {
 	Match(ctx context.Context, packages []findings.Package, asset findings.Asset) ([]findings.Finding, error)
 }
 
+// OutdatedMatcher enriches a scan's package inventory with latest-version
+// findings from deps.dev (#38). Like an AdvisoryMatcher it reads the packages
+// other scanners produced rather than the workspace. It is opt-in: Enabled is
+// false by default and then no request is made.
+type OutdatedMatcher interface {
+	// Name is the stable scanner id stored in scanner_runs.
+	Name() string
+	// Version identifies the API surface the lookup speaks.
+	Version() string
+	// Enabled reports the stored opt-in setting.
+	Enabled() bool
+	// Match returns outdated findings for the inventory and warnings for
+	// partial coverage. An error means the lookup could not run (for example
+	// the scan was canceled); it never fails the scan.
+	Match(ctx context.Context, packages []findings.Package, asset findings.Asset) ([]findings.Finding, []string, error)
+}
+
 // ReachabilityEnricher classifies Go vulnerability findings as reachable,
 // unreachable or unknown (#37). It reads the workspace rather than the package
 // inventory, so it runs once after the scanners finish. A failure is recorded
@@ -162,6 +179,9 @@ type Config struct {
 	// Advisories enriches the merged package inventory with external
 	// advisories. Nil disables the lookup; a failure never fails the scan.
 	Advisories AdvisoryMatcher
+	// Outdated enriches the merged package inventory with latest-version
+	// findings. Nil disables the lookup; a failure never fails the scan.
+	Outdated OutdatedMatcher
 	// Reachability classifies Go vulnerabilities as reachable, unreachable or
 	// unknown. Nil disables the enrichment; a failure never fails the scan.
 	Reachability ReachabilityEnricher
@@ -189,6 +209,7 @@ type Manager struct {
 	events       Publisher
 	resolve      ResolveFunc
 	advisories   AdvisoryMatcher
+	outdated     OutdatedMatcher
 	reachability ReachabilityEnricher
 
 	runCtx  context.Context
@@ -255,6 +276,7 @@ func New(cfg Config) (*Manager, error) {
 		events:       events,
 		resolve:      resolve,
 		advisories:   cfg.Advisories,
+		outdated:     cfg.Outdated,
 		reachability: cfg.Reachability,
 		runCtx:       runCtx,
 		cancel:       cancel,

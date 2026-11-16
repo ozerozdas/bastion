@@ -47,6 +47,9 @@ type pipelineConfig struct {
 	// Advisories enriches the merged package inventory with external
 	// advisories; nil disables the lookup.
 	Advisories jobs.AdvisoryMatcher
+	// Outdated enriches the package inventory with latest-version findings;
+	// nil disables the lookup.
+	Outdated jobs.OutdatedMatcher
 	// Reachability classifies Go vulnerabilities; nil disables the enrichment.
 	Reachability jobs.ReachabilityEnricher
 	// Concurrency is the worker count; zero means jobs.DefaultConcurrency.
@@ -73,6 +76,7 @@ func newScanManager(cfg pipelineConfig) (*jobs.Manager, error) {
 		Scanners:     cfg.ScannerList,
 		Normalizers:  normalizers,
 		Advisories:   cfg.Advisories,
+		Outdated:     cfg.Outdated,
 		Reachability: cfg.Reachability,
 		Options:      func() scanners.Options { return cfg.Options },
 		Concurrency:  cfg.Concurrency,
@@ -274,7 +278,7 @@ const serverScanShutdownGrace = 10 * time.Second
 // scan can never stay queued forever. bus receives the lifecycle events the
 // SSE endpoint streams. trivyDB is the vulnerability DB manager the scans and
 // the /api/trivy-db endpoints share.
-func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager, reachability jobs.ReachabilityEnricher, sast *opengrep.Service) (*jobs.Manager, error) {
+func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager, outdated jobs.OutdatedMatcher, reachability jobs.ReachabilityEnricher, sast *opengrep.Service) (*jobs.Manager, error) {
 	hmacKey, err := secrets.LocalKey(secretStore)
 	if err != nil {
 		// Only secret fingerprints need the key; everything else still works,
@@ -303,6 +307,7 @@ func newServerScanManager(ctx context.Context, db *sql.DB, opts *serveOptions, t
 			HMACKey:  hmacKey,
 		},
 		Advisories:   osv.New(version),
+		Outdated:     outdated,
 		Reachability: reachability,
 		Concurrency:  opts.concurrency,
 		Events:       bus,

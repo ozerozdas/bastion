@@ -28,6 +28,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/scanners/depsdev"
 	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
@@ -201,14 +202,22 @@ func newTestServerWithGitHub(t *testing.T, fake *fakeGitHub) *testServer {
 // so no test accidentally reads or writes the user's data.
 func newTestServerWithUpdate(t *testing.T, fake *fakeGitHub, checker *update.Checker) *testServer {
 	t.Helper()
-	return newTestServerWithConfig(t, fake, checker, nil, nil)
+	return newTestServerWithConfig(t, fake, checker, nil, nil, nil)
 }
 
 // newTestServerWithEPSS is newTestServer with a caller-controlled EPSS feed,
 // so handler tests observe real enrichment without reaching FIRST.org.
 func newTestServerWithEPSS(t *testing.T, feed *epss.Service) *testServer {
 	t.Helper()
-	return newTestServerWithConfig(t, nil, nil, nil, feed)
+	return newTestServerWithConfig(t, nil, nil, nil, feed, nil)
+}
+
+// newTestServerWithOutdated is newTestServer with a caller-controlled
+// outdated-package lookup, so handler tests observe the stored setting without
+// reaching deps.dev.
+func newTestServerWithOutdated(t *testing.T, service *depsdev.Service) *testServer {
+	t.Helper()
+	return newTestServerWithConfig(t, nil, nil, nil, nil, service)
 }
 
 // newTestServerWithTrivyDB is newTestServer with a caller-controlled
@@ -216,12 +225,12 @@ func newTestServerWithEPSS(t *testing.T, feed *epss.Service) *testServer {
 // without ever reaching the network.
 func newTestServerWithTrivyDB(t *testing.T, manager *trivy.Manager) *testServer {
 	t.Helper()
-	return newTestServerWithConfig(t, nil, nil, manager, nil)
+	return newTestServerWithConfig(t, nil, nil, manager, nil, nil)
 }
 
 // newTestServerWithConfig builds the test server with every optional service a
 // caller wants to control. Nil values get the defaults described above.
-func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Checker, manager *trivy.Manager, feed *epss.Service, sast ...*opengrep.Service) *testServer {
+func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Checker, manager *trivy.Manager, feed *epss.Service, outdated *depsdev.Service, sast ...*opengrep.Service) *testServer {
 	t.Helper()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -312,6 +321,7 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 		Update:        checker,
 		TrivyDB:       manager,
 		EPSS:          feed,
+		Outdated:      outdated,
 		SAST:          sastService,
 		LicencePolicy: licencePolicyService,
 	})
