@@ -49,6 +49,11 @@ func fingerprintFields(assetID int64, f Finding) []string {
 		// HMAC(secret) (PROJECT_SPEC.md §5). The rule also appears above;
 		// repeating it keeps the §5 rule self-contained in the material.
 		return append(fields, stripLine(loc), f.RuleID, f.SecretHMAC)
+	case TypeSAST:
+		// A SAST finding keeps its identity when lines shift: file + rule +
+		// the matched snippet's digest. The rule also appears above; repeating
+		// it keeps the material self-contained.
+		return append(fields, stripLine(loc), f.RuleID, f.SnippetHash)
 	default:
 		// Image locations are package paths inside the image and misconfig
 		// locations are file + resource/cause identifier. LayerDigest is not

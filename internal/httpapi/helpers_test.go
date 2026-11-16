@@ -28,6 +28,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
@@ -220,7 +221,7 @@ func newTestServerWithTrivyDB(t *testing.T, manager *trivy.Manager) *testServer 
 
 // newTestServerWithConfig builds the test server with every optional service a
 // caller wants to control. Nil values get the defaults described above.
-func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Checker, manager *trivy.Manager, feed *epss.Service) *testServer {
+func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Checker, manager *trivy.Manager, feed *epss.Service, sast ...*opengrep.Service) *testServer {
 	t.Helper()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -296,6 +297,10 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 			Getenv:         func(string) string { return "" },
 		})
 	}
+	sastService := opengrep.New(opengrep.Config{DataDir: t.TempDir(), ModulesDir: t.TempDir()})
+	if len(sast) > 0 && sast[0] != nil {
+		sastService = sast[0]
+	}
 	srv, err := New(Config{
 		Version:       "test-version",
 		Port:          port,
@@ -307,6 +312,7 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 		Update:        checker,
 		TrivyDB:       manager,
 		EPSS:          feed,
+		SAST:          sastService,
 		LicencePolicy: licencePolicyService,
 	})
 	if err != nil {

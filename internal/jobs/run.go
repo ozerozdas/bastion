@@ -124,7 +124,7 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 		scanOpts.Progress = func(stage string) {
 			m.progress(job, stage, sc.Name())
 		}
-		fs, pkgs, imageSource, scanErr := m.runScanner(ctx, job, sc, ws, scanOpts, asset)
+		fs, pkgs, imageSource, warnings, scanErr := m.runScanner(ctx, job, sc, ws, scanOpts, asset)
 		duration := time.Since(start).Milliseconds()
 		run.DurationMS = &duration
 		release()
@@ -140,6 +140,9 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 		default:
 			res.Findings = append(res.Findings, fs...)
 			res.Packages = append(res.Packages, pkgs...)
+			// Partial coverage is a warning, not a failure: the scanner's
+			// findings are real, it just could not cover everything.
+			run.Warning = strings.Join(warnings, "; ")
 			if imageSource.URL != "" {
 				// The image declares its source repository; persistence links
 				// it unless a manual link already exists.
@@ -232,26 +235,26 @@ func (m *Manager) enrichReachability(ctx context.Context, job *scanJob, ws *sour
 // runScanner scans one workspace and normalizes the raw output. An adapter that
 // can read the image's OCI source labels returns them too; scanners without the
 // concept return the zero value.
-func (m *Manager) runScanner(ctx context.Context, job *scanJob, sc scanners.Scanner, ws *sources.Workspace, opts scanners.Options, asset findings.Asset) ([]findings.Finding, []findings.Package, scanners.ImageSource, error) {
+func (m *Manager) runScanner(ctx context.Context, job *scanJob, sc scanners.Scanner, ws *sources.Workspace, opts scanners.Options, asset findings.Asset) ([]findings.Finding, []findings.Package, scanners.ImageSource, []string, error) {
 	norm := m.normalizers[sc.Name()]
 	if norm == nil {
-		return nil, nil, scanners.ImageSource{}, fmt.Errorf("%s: no normalizer configured", sc.Name())
+		return nil, nil, scanners.ImageSource{}, nil, fmt.Errorf("%s: no normalizer configured", sc.Name())
 	}
 
 	raw, err := sc.Scan(ctx, ws, opts)
 	if err != nil {
-		return nil, nil, scanners.ImageSource{}, fmt.Errorf("%s: %w", sc.Name(), err)
+		return nil, nil, scanners.ImageSource{}, nil, fmt.Errorf("%s: %w", sc.Name(), err)
 	}
 	m.progress(job, StageNormalize, sc.Name())
 	fs, pkgs, err := norm.Normalize(raw, asset)
 	if err != nil {
-		return nil, nil, scanners.ImageSource{}, fmt.Errorf("normalize %s: %w", sc.Name(), err)
+		return nil, nil, scanners.ImageSource{}, nil, fmt.Errorf("normalize %s: %w", sc.Name(), err)
 	}
 	var imageSource scanners.ImageSource
 	if reader, ok := sc.(scanners.ImageSourceReader); ok {
 		imageSource = reader.ImageSource(raw)
 	}
-	return fs, pkgs, imageSource, nil
+	return fs, pkgs, imageSource, raw.Warnings, nil
 }
 
 // finishAfterError records a failed stage, or canceled when the context ended

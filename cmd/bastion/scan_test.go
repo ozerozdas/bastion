@@ -433,6 +433,11 @@ func TestScanOptionsValidate(t *testing.T) {
 			want: "unsupported --fail-on",
 		},
 		{
+			name: "sast with image",
+			opts: scanOptions{image: "nginx:latest", format: scanFormatJSON, sast: true},
+			want: "--sast applies to --path and --repo",
+		},
+		{
 			name: "absolute skip dir",
 			opts: scanOptions{path: "/tmp", format: scanFormatJSON, skipDirs: []string{"/tmp/testdata"}},
 			want: "relative to the scan root",
@@ -933,6 +938,65 @@ func TestRunScanStoredProgressOnStderr(t *testing.T) {
 	for _, want := range []string{"fetching target…\n", "fake: running…\n", "fake: succeeded ("} {
 		if !strings.Contains(lines, want) {
 			t.Errorf("progress %q does not contain %q", lines, want)
+		}
+	}
+}
+
+func TestScanSASTFlagIncludesStubFindings(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app.py"), []byte("eval(x)\n"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	deps := testScanDeps(t, t.TempDir())
+	deps.newSAST = func(context.Context) (scanners.Scanner, error) {
+		return &fakeScanner{
+			name: "opengrep",
+			normalize: func(_ *scanners.RawResult, asset findings.Asset) ([]findings.Finding, []findings.Package, error) {
+				f := findings.Finding{
+					AssetID:  asset.ID,
+					Type:     findings.TypeSAST,
+					RuleID:   "python.lang.security.audit.eval-detected",
+					Severity: findings.SeverityMedium,
+					Title:    "eval",
+					Location: "app.py:1",
+					Scanner:  "opengrep",
+				}
+				f.Fingerprint = findings.Fingerprint(asset.ID, f)
+				return []findings.Finding{f}, nil, nil
+			},
+		}, nil
+	}
+
+	run := func(sast bool) scanOutput {
+		t.Helper()
+		var out bytes.Buffer
+		opts := &scanOptions{path: dir, format: scanFormatJSON, noStore: true, quiet: true, sast: sast}
+		if err := runScan(context.Background(), &out, opts, deps); err != nil {
+			t.Fatalf("runScan(sast=%v): %v", sast, err)
+		}
+		var doc scanOutput
+		if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+			t.Fatalf("decode scan output: %v", err)
+		}
+		return doc
+	}
+
+	withSAST := run(true)
+	found := false
+	for _, f := range withSAST.Findings {
+		if f.Type == findings.TypeSAST {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("findings = %+v, want a sast finding with --sast", withSAST.Findings)
+	}
+
+	withoutSAST := run(false)
+	for _, f := range withoutSAST.Findings {
+		if f.Type == findings.TypeSAST {
+			t.Fatalf("findings = %+v, want no sast finding without --sast", withoutSAST.Findings)
 		}
 	}
 }

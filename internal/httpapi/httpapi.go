@@ -29,6 +29,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
+	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/update"
 	"github.com/ozerozdas/bastion/web"
@@ -93,6 +94,9 @@ type Config struct {
 	// Reachability serves GET and PUT /api/reachability. serve wires the
 	// opt-in govulncheck enrichment; nil answers those endpoints with 500.
 	Reachability *govulncheck.Service
+	// SAST serves GET and PUT /api/sast. serve wires the opt-in Opengrep
+	// module; nil answers those endpoints with 500.
+	SAST *opengrep.Service
 	// LicencePolicy serves GET and PUT /api/licence-policy (#39). serve wires
 	// the SQLite-backed service; nil answers those endpoints with 500.
 	LicencePolicy *licencepolicy.Service
@@ -137,6 +141,10 @@ type Server struct {
 	// reachability backs GET and PUT /api/reachability, with the same
 	// nil-means-unavailable contract.
 	reachability *govulncheck.Service
+
+	// sast backs GET and PUT /api/sast, with the same nil-means-unavailable
+	// contract.
+	sast *opengrep.Service
 
 	// licencePolicy backs GET and PUT /api/licence-policy (#39), with the same
 	// nil-means-unavailable contract.
@@ -183,6 +191,7 @@ func New(cfg Config) (*Server, error) {
 		trivyDB:       cfg.TrivyDB,
 		epss:          cfg.EPSS,
 		reachability:  cfg.Reachability,
+		sast:          cfg.SAST,
 		licencePolicy: cfg.LicencePolicy,
 		token:         token,
 		session:       session,

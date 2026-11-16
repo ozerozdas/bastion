@@ -116,6 +116,10 @@ type Finding struct {
 	// SecretHMAC is hex(HMAC-SHA256(local_key, secret)) for secret findings.
 	// It identifies a secret across scans without persisting it.
 	SecretHMAC string `json:"secret_hmac,omitempty"`
+	// SnippetHash is a SAST finding's digest of the normalized matched snippet.
+	// It contributes to Fingerprint instead of the line number, so shifting
+	// lines do not make an unchanged finding look new. It is never stored.
+	SnippetHash string `json:"-"`
 	// LayerDigest records which image layer produced an image finding. It is
 	// provenance only and is deliberately excluded from Fingerprint.
 	LayerDigest string `json:"layer_digest,omitempty"`

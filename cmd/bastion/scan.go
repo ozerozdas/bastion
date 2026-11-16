@@ -35,6 +35,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/scanners"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
+	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/scanners/osv"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
@@ -76,6 +77,7 @@ type scanOptions struct {
 	failOn   string
 	noStore  bool
 	quiet    bool
+	sast     bool
 	skipDirs []string
 }
 
@@ -99,6 +101,7 @@ type scannerRun struct {
 	Status         string `json:"status"`
 	DurationMS     int64  `json:"duration_ms"`
 	Error          string `json:"error,omitempty"`
+	Warning        string `json:"warning,omitempty"`
 }
 
 // gitHubClient is the part of internal/connections/github a repo scan uses.
@@ -142,6 +145,9 @@ type scanDeps struct {
 	// newECR builds the ECR client that pins a tag to its digest. Tests inject
 	// a fake so no call reaches AWS.
 	newECR func(profile, region string) (ecrClient, error)
+	// newSAST installs the pinned Opengrep module when needed and returns the
+	// scanner for one --sast run. Tests inject a stub so no download happens.
+	newSAST func(ctx context.Context) (scanners.Scanner, error)
 	// version is the bastion build version reported in SARIF.
 	version string
 	// progress receives the scan's progress lines (stderr in production).
@@ -173,6 +179,8 @@ func newScanCmd(root *rootOptions) *cobra.Command {
 		"output format: "+scanFormatJSON+", "+scanFormatTable+", "+scanFormatSARIF+" or "+scanFormatCycloneDX)
 	cmd.Flags().BoolVar(&opts.noStore, "no-store", false, "print findings without writing to the database")
 	cmd.Flags().BoolVar(&opts.quiet, "quiet", false, "do not print scan progress on stderr")
+	cmd.Flags().BoolVar(&opts.sast, "sast", false,
+		"run SAST with the pinned Opengrep module, downloading it first if needed (repository and path scans only)")
 	cmd.Flags().StringArrayVar(&opts.skipDirs, "skip-dirs", nil,
 		"directory to leave out of the scan, relative to the scan root (e.g. testdata); repeat for more")
 	cmd.Flags().StringVar(&opts.failOn, "fail-on", "",
@@ -216,6 +224,13 @@ func newScanDeps(root *rootOptions) scanDeps {
 		newECR: func(profile, region string) (ecrClient, error) {
 			return aws.New(aws.Config{Profile: profile, Region: region, Version: version})
 		},
+		newSAST: func(ctx context.Context) (scanners.Scanner, error) {
+			module := newOpengrepModule(root.paths)
+			if err := module.EnsureInstalled(ctx); err != nil {
+				return nil, err
+			}
+			return opengrep.NewScannerForced(module), nil
+		},
 		version: version,
 	}
 }
@@ -234,6 +249,9 @@ func (o *scanOptions) validate() error {
 		return errors.New("scan: one of --path, --repo or --image is required")
 	case targets > 1:
 		return errors.New("scan: --path, --repo and --image are mutually exclusive")
+	}
+	if o.sast && o.image != "" {
+		return errors.New("scan: --sast applies to --path and --repo scans; an image has no source tree")
 	}
 	switch o.format {
 	case scanFormatJSON, scanFormatTable, scanFormatSARIF, scanFormatCycloneDX:
@@ -350,10 +368,24 @@ func runScan(ctx context.Context, out io.Writer, opts *scanOptions, deps scanDep
 		scanErr error
 	)
 	progress := newScanProgress(deps.progress)
+
+	// SAST is opt-in for this run: --sast installs the pinned module when it
+	// is missing and adds the scanner only to this scan. The stored setting is
+	// untouched.
+	scannerList := deps.newScanners()
+	if opts.sast {
+		progress.line("opengrep: downloading module if needed…")
+		sastScanner, err := deps.newSAST(ctx)
+		if err != nil {
+			return fmt.Errorf("scan: SAST module: %w", err)
+		}
+		scannerList = append(scannerList, sastScanner)
+	}
+
 	if !opts.noStore {
-		result, scanErr = runStoredScan(ctx, db, kind, asset, repo, image, scanOpts, progress, deps)
+		result, scanErr = runStoredScan(ctx, db, kind, asset, repo, image, scannerList, scanOpts, progress, deps)
 	} else {
-		result, scanErr = runDirectScan(ctx, kind, asset, repo, image, scanOpts, progress, deps)
+		result, scanErr = runDirectScan(ctx, kind, asset, repo, image, scannerList, scanOpts, progress, deps)
 	}
 
 	// One line per scanner, from the runs both pipelines recorded, so a
@@ -638,7 +670,7 @@ func createECRImageAsset(ctx context.Context, db *sql.DB, tokens *connections.Se
 // runStoredScan persists one scan through jobs.Manager and reads the result
 // back from the database, so the printed document and the stored state can
 // never disagree. Concurrency is 1: the CLI runs exactly one scan.
-func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, image *ecrImage, scanOpts scanners.Options, progress *scanProgress, deps scanDeps) (scanOutput, error) {
+func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, image *ecrImage, scannerList []scanners.Scanner, scanOpts scanners.Options, progress *scanProgress, deps scanDeps) (scanOutput, error) {
 	// An ECR image was already created (or reused) through assets.Service, the
 	// way the UI creates it: connection, tag and metadata must not be
 	// replaced by a bare get-or-create.
@@ -651,8 +683,6 @@ func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, ass
 		}
 		asset = stored
 	}
-
-	scannerList := deps.newScanners()
 
 	srcs := map[sources.TargetKind]sources.Source{
 		sources.KindPath:  localpath.New(),
@@ -746,6 +776,7 @@ func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, ass
 			ScannerVersion: run.ScannerVersion,
 			Status:         run.Status,
 			Error:          run.Error,
+			Warning:        run.Warning,
 		}
 		if run.DurationMS != nil {
 			item.DurationMS = *run.DurationMS
@@ -788,7 +819,7 @@ func storedAsset(ctx context.Context, db *sql.DB, kind sources.TargetKind, asset
 // runDirectScan fetches the target and scans it without touching the
 // database. It backs --no-store only: a stored scan goes through
 // jobs.Manager, so there is exactly one persisting pipeline.
-func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, image *ecrImage, scanOpts scanners.Options, progress *scanProgress, deps scanDeps) (scanOutput, error) {
+func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.Asset, repo *repoTarget, image *ecrImage, scannerList []scanners.Scanner, scanOpts scanners.Options, progress *scanProgress, deps scanDeps) (scanOutput, error) {
 	src := sources.Source(localpath.New())
 	target := sources.Target{Kind: sources.KindPath, Ref: asset.Ref}
 	switch kind {
@@ -818,7 +849,7 @@ func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.
 	}
 	defer func() { _ = ws.Close() }()
 
-	result, scanErr := scanTarget(ctx, kind, deps.newScanners(), deps.advisoryMatcher(), ws, asset, scanOpts, progress)
+	result, scanErr := scanTarget(ctx, kind, scannerList, deps.advisoryMatcher(), ws, asset, scanOpts, progress)
 	// Without a database there are no ignore decisions: every finding is open.
 	result.open = result.Findings
 	return result, scanErr
@@ -1053,7 +1084,7 @@ func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Sca
 			progress.stage(stage, s.Name())
 		}
 		start := time.Now()
-		fs, pkgs, err := runScanner(ctx, s, ws, asset, scanOpts)
+		fs, pkgs, warnings, err := runScanner(ctx, s, ws, asset, scanOpts)
 		duration := time.Since(start).Milliseconds()
 		run := scannerRun{
 			Scanner:        s.Name(),
@@ -1068,6 +1099,9 @@ func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Sca
 		} else {
 			out.Findings = append(out.Findings, fs...)
 			out.Packages = append(out.Packages, pkgs...)
+			// Partial coverage is a warning, not a failure: the scanner's
+			// findings are real, it just could not cover everything.
+			run.Warning = strings.Join(warnings, "; ")
 		}
 		out.ScannerRuns = append(out.ScannerRuns, run)
 	}
@@ -1110,19 +1144,20 @@ func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Sca
 	return out, nil
 }
 
-// runScanner scans and normalizes one scanner's output.
-func runScanner(ctx context.Context, s scanners.Scanner, ws *sources.Workspace, asset findings.Asset, opts scanners.Options) ([]findings.Finding, []findings.Package, error) {
+// runScanner scans and normalizes one scanner's output. Warnings describe
+// partial coverage and never fail the scanner.
+func runScanner(ctx context.Context, s scanners.Scanner, ws *sources.Workspace, asset findings.Asset, opts scanners.Options) ([]findings.Finding, []findings.Package, []string, error) {
 	a, ok := s.(adapter)
 	if !ok {
-		return nil, nil, fmt.Errorf("%s: scanner does not normalize its own output", s.Name())
+		return nil, nil, nil, fmt.Errorf("%s: scanner does not normalize its own output", s.Name())
 	}
 	raw, err := a.Scan(ctx, ws, opts)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", a.Name(), err)
+		return nil, nil, nil, fmt.Errorf("%s: %w", a.Name(), err)
 	}
 	fs, pkgs, err := a.Normalize(raw, asset)
 	if err != nil {
-		return nil, nil, fmt.Errorf("normalize %s: %w", a.Name(), err)
+		return nil, nil, nil, fmt.Errorf("normalize %s: %w", a.Name(), err)
 	}
-	return fs, pkgs, nil
+	return fs, pkgs, raw.Warnings, nil
 }

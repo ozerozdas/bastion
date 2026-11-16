@@ -73,8 +73,8 @@ func TestOpenRunsMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MigrationVersion: %v", err)
 	}
-	if version != 6 {
-		t.Fatalf("schema version = %d, want 6", version)
+	if version != 7 {
+		t.Fatalf("schema version = %d, want 7", version)
 	}
 }
 
@@ -119,8 +119,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MigrationVersion: %v", err)
 	}
-	if version != 6 {
-		t.Fatalf("schema version after re-open = %d, want 6", version)
+	if version != 7 {
+		t.Fatalf("schema version after re-open = %d, want 7", version)
 	}
 }
 

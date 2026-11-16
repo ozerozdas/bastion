@@ -111,6 +111,7 @@ type ScannerRun struct {
 	Status         string
 	DurationMS     *int64
 	Error          string
+	Warning        string
 	RawPath        string
 }
 
@@ -264,6 +265,7 @@ func newScannerRunParams(scanID int64, run ScannerRun) sqlcdb.InsertScannerRunPa
 		Status:         run.Status,
 		DurationMS:     nullInt64(run.DurationMS),
 		Error:          nullString(run.Error),
+		Warning:        nullString(run.Warning),
 		RawPath:        nullString(run.RawPath),
 	}
 }

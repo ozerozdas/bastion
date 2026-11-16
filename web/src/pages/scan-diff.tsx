@@ -162,6 +162,29 @@ export function ScanDiffPage() {
             <ErrorNote error={diff.error} fix={diffErrorFix(diff.error)} />
           </div>
         ) : null}
+
+        {(scan.data?.scanner_runs ?? []).some(
+          (run) => run.error || run.warning,
+        ) ? (
+          <ul className="flex flex-col gap-1 text-[11px]">
+            {(scan.data?.scanner_runs ?? [])
+              .filter((run) => run.error || run.warning)
+              .map((run) => (
+                <li
+                  key={run.scanner}
+                  className="flex flex-wrap items-baseline gap-1.5"
+                >
+                  <span className="font-mono text-faint">{run.scanner}</span>
+                  {run.error ? (
+                    <span className="text-critical">{run.error}</span>
+                  ) : null}
+                  {run.warning ? (
+                    <span className="text-medium">warning: {run.warning}</span>
+                  ) : null}
+                </li>
+              ))}
+          </ul>
+        ) : null}
       </section>
 
       {diff.isSuccess ? (

@@ -287,6 +287,27 @@ func (e Reachability) Valid() bool {
 	}
 }
 
+// Defines values for SASTState.
+const (
+	ChecksumBad  SASTState = "checksum_bad"
+	Installed    SASTState = "installed"
+	NotInstalled SASTState = "not_installed"
+)
+
+// Valid indicates whether the value is a known member of the SASTState enum.
+func (e SASTState) Valid() bool {
+	switch e {
+	case ChecksumBad:
+		return true
+	case Installed:
+		return true
+	case NotInstalled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ScanTrigger.
 const (
 	Api ScanTrigger = "api"
@@ -1299,6 +1320,40 @@ type ReachabilityStatus struct {
 	Error *string `json:"error,omitempty"`
 }
 
+// SASTState State of the downloaded Opengrep module. `not_installed` is normal
+// before the first download; `checksum_bad` means the file on disk does
+// not match the pinned digest and will not run.
+type SASTState string
+
+// SASTStatus The opt-in SAST module as the UI and the CLI see it. The download is
+// pinned to Opengrep v1.33.1 plus its community rule set and happens only
+// after `enabled` is true.
+type SASTStatus struct {
+	// Enabled The stored opt-in setting. False means no download happens and
+	// repository scans carry no `sast` findings.
+	Enabled bool `json:"enabled"`
+
+	// Error Why the installed module cannot be used, when it cannot.
+	Error *string `json:"error,omitempty"`
+
+	// InstallError Why the last download failed. It clears when a later download
+	// succeeds.
+	InstallError *string `json:"install_error,omitempty"`
+
+	// Installing True while a download is running.
+	Installing bool `json:"installing"`
+
+	// State State of the downloaded Opengrep module. `not_installed` is normal
+	// before the first download; `checksum_bad` means the file on disk does
+	// not match the pinned digest and will not run.
+	State SASTState `json:"state"`
+
+	// Version The pinned Opengrep release.
+	//
+	// Examples: v1.33.1
+	Version string `json:"version"`
+}
+
 // Scan One scan of one asset. `counts` are every finding this scan recorded,
 // per severity; decisions on the asset do not rewrite history, and a scan
 // that recorded nothing is all zeros. `scanner_runs` is filled by the
@@ -1433,6 +1488,11 @@ type ScannerRun struct {
 
 	// Status Lifecycle state of a scan.
 	Status ScanStatus `json:"status"`
+
+	// Warning Partial-coverage note from a scanner that still succeeded, such as
+	// output cut off by a timeout or results outside the workspace.
+	// Absent when the scanner covered everything.
+	Warning *string `json:"warning,omitempty"`
 }
 
 // SetAssetLinkRequest The repository an image was built from.
@@ -1468,6 +1528,14 @@ type SetFindingStateRequest struct {
 type SetReachabilityEnabledRequest struct {
 	// Enabled True runs govulncheck on future scans of Go modules; false turns the
 	// enrichment off and stops every future run.
+	Enabled bool `json:"enabled"`
+}
+
+// SetSASTEnabledRequest defines model for SetSASTEnabledRequest.
+type SetSASTEnabledRequest struct {
+	// Enabled True downloads the pinned module once and runs SAST on future
+	// repository scans; false turns it off without canceling a running
+	// download.
 	Enabled bool `json:"enabled"`
 }
 
@@ -1724,6 +1792,9 @@ type SetLicencePolicyJSONRequestBody = LicencePolicy
 // SetReachabilityEnabledJSONRequestBody defines body for SetReachabilityEnabled for application/json ContentType.
 type SetReachabilityEnabledJSONRequestBody = SetReachabilityEnabledRequest
 
+// SetSASTEnabledJSONRequestBody defines body for SetSASTEnabled for application/json ContentType.
+type SetSASTEnabledJSONRequestBody = SetSASTEnabledRequest
+
 // CreateScansJSONRequestBody defines body for CreateScans for application/json ContentType.
 type CreateScansJSONRequestBody = CreateScansRequest
 
@@ -1941,6 +2012,12 @@ type ServerInterface interface {
 	// GetDashboard Dashboard aggregates across non-archived assets.
 	// (GET /api/reports/dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
+	// GetSASTStatus Report the SAST module state.
+	// (GET /api/sast)
+	GetSASTStatus(w http.ResponseWriter, r *http.Request)
+	// SetSASTEnabled Store the SAST opt-in choice.
+	// (PUT /api/sast)
+	SetSASTEnabled(w http.ResponseWriter, r *http.Request)
 	// ListScans List scans, newest first.
 	// (GET /api/scans)
 	ListScans(w http.ResponseWriter, r *http.Request, params ListScansParams)
@@ -2577,6 +2654,34 @@ func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetSASTStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetSASTStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSASTStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetSASTEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetSASTEnabled(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetSASTEnabled(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListScans operation middleware
 func (siw *ServerInterfaceWrapper) ListScans(w http.ResponseWriter, r *http.Request) {
 
@@ -3010,6 +3115,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/epss", wrapper.SetEPSSEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reachability", wrapper.GetReachabilityStatus)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/reachability", wrapper.SetReachabilityEnabled)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/sast", wrapper.GetSASTStatus)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/sast", wrapper.SetSASTEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections", wrapper.ListConnections)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections", wrapper.CreateConnection)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/connections/{id}", wrapper.DeleteConnection)
@@ -6293,6 +6400,255 @@ func (response GetDashboard500ApplicationProblemPlusJSONResponse) VisitGetDashbo
 	return err
 }
 
+type GetSASTStatusRequestObject struct {
+}
+
+type GetSASTStatusResponseObject interface {
+	VisitGetSASTStatusResponse(w http.ResponseWriter) error
+}
+
+type GetSASTStatus200JSONResponse SASTStatus
+
+func (response GetSASTStatus200JSONResponse) VisitGetSASTStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSASTStatus401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetSASTStatus401ApplicationProblemPlusJSONResponse) VisitGetSASTStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSASTStatus403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetSASTStatus403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetSASTStatus403ResponseHeaders
+}
+
+func (response GetSASTStatus403ApplicationProblemPlusJSONResponse) VisitGetSASTStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSASTStatus421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetSASTStatus421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetSASTStatus421ResponseHeaders
+}
+
+func (response GetSASTStatus421ApplicationProblemPlusJSONResponse) VisitGetSASTStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSASTStatus500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetSASTStatus500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetSASTStatus500ResponseHeaders
+}
+
+func (response GetSASTStatus500ApplicationProblemPlusJSONResponse) VisitGetSASTStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSASTEnabledRequestObject struct {
+	Body *SetSASTEnabledJSONRequestBody
+}
+
+type SetSASTEnabledResponseObject interface {
+	VisitSetSASTEnabledResponse(w http.ResponseWriter) error
+}
+
+type SetSASTEnabled200JSONResponse SASTStatus
+
+func (response SetSASTEnabled200JSONResponse) VisitSetSASTEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSASTEnabled400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetSASTEnabled400ApplicationProblemPlusJSONResponse) VisitSetSASTEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSASTEnabled401ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetSASTEnabled401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetSASTEnabled401ResponseHeaders
+}
+
+func (response SetSASTEnabled401ApplicationProblemPlusJSONResponse) VisitSetSASTEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSASTEnabled403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetSASTEnabled403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetSASTEnabled403ResponseHeaders
+}
+
+func (response SetSASTEnabled403ApplicationProblemPlusJSONResponse) VisitSetSASTEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSASTEnabled421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetSASTEnabled421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetSASTEnabled421ResponseHeaders
+}
+
+func (response SetSASTEnabled421ApplicationProblemPlusJSONResponse) VisitSetSASTEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSASTEnabled500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetSASTEnabled500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetSASTEnabled500ResponseHeaders
+}
+
+func (response SetSASTEnabled500ApplicationProblemPlusJSONResponse) VisitSetSASTEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListScansRequestObject struct {
 	Params ListScansParams
 }
@@ -7728,6 +8084,12 @@ type StrictServerInterface interface {
 	// GetDashboard Dashboard aggregates across non-archived assets.
 	// (GET /api/reports/dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
+	// GetSASTStatus Report the SAST module state.
+	// (GET /api/sast)
+	GetSASTStatus(ctx context.Context, request GetSASTStatusRequestObject) (GetSASTStatusResponseObject, error)
+	// SetSASTEnabled Store the SAST opt-in choice.
+	// (PUT /api/sast)
+	SetSASTEnabled(ctx context.Context, request SetSASTEnabledRequestObject) (SetSASTEnabledResponseObject, error)
 	// ListScans List scans, newest first.
 	// (GET /api/scans)
 	ListScans(ctx context.Context, request ListScansRequestObject) (ListScansResponseObject, error)
@@ -8449,6 +8811,61 @@ func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDashboardResponseObject); ok {
 		if err := validResponse.VisitGetDashboardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSASTStatus operation middleware
+func (sh *strictHandler) GetSASTStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetSASTStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSASTStatus(ctx, request.(GetSASTStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSASTStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSASTStatusResponseObject); ok {
+		if err := validResponse.VisitGetSASTStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetSASTEnabled operation middleware
+func (sh *strictHandler) SetSASTEnabled(w http.ResponseWriter, r *http.Request) {
+	var request SetSASTEnabledRequestObject
+
+	var body SetSASTEnabledJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetSASTEnabled(ctx, request.(SetSASTEnabledRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetSASTEnabled")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetSASTEnabledResponseObject); ok {
+		if err := validResponse.VisitSetSASTEnabledResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

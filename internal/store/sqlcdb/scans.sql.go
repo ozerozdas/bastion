@@ -236,7 +236,7 @@ func (q *Queries) GetScan(ctx context.Context, id int64) (Scan, error) {
 }
 
 const insertScannerRun = `-- name: InsertScannerRun :exec
-INSERT INTO scanner_runs (scan_id, scanner, scanner_version, db_version, status, duration_ms, error, raw_path)
+INSERT INTO scanner_runs (scan_id, scanner, scanner_version, db_version, status, duration_ms, error, warning, raw_path)
 VALUES (
     ?1,
     ?2,
@@ -245,7 +245,8 @@ VALUES (
     ?5,
     ?6,
     ?7,
-    ?8
+    ?8,
+    ?9
 )
 `
 
@@ -257,6 +258,7 @@ type InsertScannerRunParams struct {
 	Status         string
 	DurationMS     sql.NullInt64
 	Error          sql.NullString
+	Warning        sql.NullString
 	RawPath        sql.NullString
 }
 
@@ -269,13 +271,14 @@ func (q *Queries) InsertScannerRun(ctx context.Context, arg InsertScannerRunPara
 		arg.Status,
 		arg.DurationMS,
 		arg.Error,
+		arg.Warning,
 		arg.RawPath,
 	)
 	return err
 }
 
 const listScannerRunsByScan = `-- name: ListScannerRunsByScan :many
-SELECT id, scan_id, scanner, scanner_version, db_version, status, duration_ms, error, raw_path FROM scanner_runs
+SELECT id, scan_id, scanner, scanner_version, db_version, status, duration_ms, error, raw_path, warning FROM scanner_runs
 WHERE scan_id = ?1
 ORDER BY id
 `
@@ -301,6 +304,7 @@ func (q *Queries) ListScannerRunsByScan(ctx context.Context, scanID int64) ([]Sc
 			&i.DurationMS,
 			&i.Error,
 			&i.RawPath,
+			&i.Warning,
 		); err != nil {
 			return nil, err
 		}

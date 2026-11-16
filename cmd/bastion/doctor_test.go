@@ -13,6 +13,7 @@ import (
 
 	"github.com/ozerozdas/bastion/internal/app"
 	"github.com/ozerozdas/bastion/internal/docker"
+	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
 )
@@ -62,8 +63,8 @@ func TestRunDoctorHealthy(t *testing.T) {
 	if report.Database.Status != "ok" {
 		t.Fatalf("database status = %q, want ok", report.Database.Status)
 	}
-	if report.Database.SchemaVersion != 6 {
-		t.Fatalf("schema version = %d, want 6", report.Database.SchemaVersion)
+	if report.Database.SchemaVersion != 7 {
+		t.Fatalf("schema version = %d, want 7", report.Database.SchemaVersion)
 	}
 	if report.Keyring.Status != "ok" {
 		t.Fatalf("keyring = %+v, want ok", report.Keyring)
@@ -355,6 +356,30 @@ func TestWriteDoctorText(t *testing.T) {
 	}
 	if strings.Contains(got, "warning:") {
 		t.Errorf("unexpected warnings section:\n%s", got)
+	}
+}
+
+func TestRunDoctorReportsOpengrepChecksum(t *testing.T) {
+	deps := testDoctorDeps(t)
+	deps.opengrepStatus = func() opengrep.Status {
+		return opengrep.Status{
+			Enabled: true,
+			State:   opengrep.StateChecksumBad,
+			Version: opengrep.Version,
+			Dir:     filepath.Join(deps.paths.CacheDir, "modules", "opengrep-"+opengrep.Version),
+			Error:   "binary checksum is bad",
+		}
+	}
+
+	report, err := runDoctor(context.Background(), deps)
+	if err != nil {
+		t.Fatalf("runDoctor: %v", err)
+	}
+	if report.Opengrep.State != string(opengrep.StateChecksumBad) {
+		t.Fatalf("opengrep state = %q, want checksum_bad", report.Opengrep.State)
+	}
+	if len(report.Warnings) != 1 || !strings.Contains(report.Warnings[0], "pinned checksum") {
+		t.Fatalf("warnings = %v, want one checksum warning", report.Warnings)
 	}
 }
 

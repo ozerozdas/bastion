@@ -20,6 +20,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
+	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
@@ -55,6 +56,9 @@ type doctorDeps struct {
 	// reachabilityStatus is a read-only snapshot of the Go reachability
 	// enrichment, same contract.
 	reachabilityStatus func() govulncheck.Status
+	// opengrepStatus is a read-only snapshot of the downloaded SAST module,
+	// same contract: it hashes the binary but never downloads.
+	opengrepStatus func() opengrep.Status
 	// dockerStatus probes the local Docker daemon with a short timeout.
 	dockerStatus func(ctx context.Context) docker.DaemonStatus
 }
@@ -78,6 +82,7 @@ type doctorReport struct {
 	Update          doctorUpdate       `json:"update"`
 	EPSS            doctorEPSS         `json:"epss"`
 	Reachability    doctorReachability `json:"reachability"`
+	Opengrep        doctorOpengrep     `json:"opengrep"`
 	Warnings        []string           `json:"warnings,omitempty"`
 }
 
@@ -165,6 +170,9 @@ func newDoctorDeps(opts *rootOptions) doctorDeps {
 		reachabilityStatus: func() govulncheck.Status {
 			return govulncheck.New(govulncheck.Config{DataDir: opts.paths.DataDir}).Snapshot()
 		},
+		opengrepStatus: func() opengrep.Status {
+			return newOpengrepModule(opts.paths).Status()
+		},
 		dockerStatus: docker.Status,
 	}
 }
@@ -224,6 +232,14 @@ func runDoctor(ctx context.Context, deps doctorDeps) (doctorReport, error) {
 		report.Reachability = doctorReachabilityFromStatus(deps.reachabilityStatus())
 	}
 	if warning := report.Reachability.warning(); warning != "" {
+		report.Warnings = append(report.Warnings, warning)
+	}
+
+	report.Opengrep = doctorOpengrep{State: "disabled", Version: opengrep.Version}
+	if deps.opengrepStatus != nil {
+		report.Opengrep = doctorOpengrepFromStatus(deps.opengrepStatus())
+	}
+	if warning := report.Opengrep.warning(); warning != "" {
 		report.Warnings = append(report.Warnings, warning)
 	}
 
@@ -343,6 +359,7 @@ func writeDoctorText(w io.Writer, report doctorReport) error {
 		{"update", report.Update.summary()},
 		{"epss", report.EPSS.summary()},
 		{"reachability", report.Reachability.summary()},
+		{"opengrep", report.Opengrep.summary()},
 	}
 
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)

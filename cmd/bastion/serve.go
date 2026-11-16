@@ -166,6 +166,10 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	// process runs and findings carry no reachability.
 	reachabilityService := govulncheck.New(govulncheck.Config{DataDir: opts.paths.DataDir})
 
+	// SAST is opt-in (#33): off by default, so nothing is downloaded and
+	// repository scans are unchanged until the user turns it on.
+	sastService := newOpengrepModule(opts.paths)
+
 	reportService, err := reports.NewService(db, reports.WithEPSS(epssService))
 	if err != nil {
 		return errors.Join(fmt.Errorf("create reports service: %w", err), ln.Close())
@@ -184,7 +188,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	// started in the UI is the one a scan waits for instead of a second one.
 	trivyDB := trivy.NewManager(opts.paths.TrivyCacheDir())
 	defer trivyDB.Close()
-	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore, bus, trivyDB, reachabilityService)
+	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore, bus, trivyDB, reachabilityService, sastService)
 	if err != nil {
 		return errors.Join(err, ln.Close())
 	}
@@ -217,6 +221,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		TrivyDB:       trivyDB,
 		EPSS:          epssService,
 		Reachability:  reachabilityService,
+		SAST:          sastService,
 		LicencePolicy: licencePolicyService,
 	})
 	if err != nil {
