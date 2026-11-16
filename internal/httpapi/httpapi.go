@@ -28,6 +28,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/scanners/depsdev"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
@@ -91,6 +92,9 @@ type Config struct {
 	// EPSS serves GET and PUT /api/epss. serve wires the opt-in FIRST.org
 	// feed; nil answers those endpoints with 500.
 	EPSS *epss.Service
+	// Outdated serves GET and PUT /api/outdated. serve wires the opt-in
+	// deps.dev lookup; nil answers those endpoints with 500.
+	Outdated *depsdev.Service
 	// Reachability serves GET and PUT /api/reachability. serve wires the
 	// opt-in govulncheck enrichment; nil answers those endpoints with 500.
 	Reachability *govulncheck.Service
@@ -137,6 +141,10 @@ type Server struct {
 	// epss backs GET and PUT /api/epss, with the same nil-means-unavailable
 	// contract.
 	epss *epss.Service
+
+	// outdated backs GET and PUT /api/outdated, with the same
+	// nil-means-unavailable contract.
+	outdated *depsdev.Service
 
 	// reachability backs GET and PUT /api/reachability, with the same
 	// nil-means-unavailable contract.
@@ -190,6 +198,7 @@ func New(cfg Config) (*Server, error) {
 		update:        cfg.Update,
 		trivyDB:       cfg.TrivyDB,
 		epss:          cfg.EPSS,
+		outdated:      cfg.Outdated,
 		reachability:  cfg.Reachability,
 		sast:          cfg.SAST,
 		licencePolicy: cfg.LicencePolicy,

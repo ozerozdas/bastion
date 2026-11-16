@@ -147,6 +147,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/outdated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the outdated-package lookup state.
+         * @description Returns the stored opt-in setting only. With the setting off no request
+         *     reaches deps.dev and findings carry no latest version. The handler never
+         *     blocks on the network.
+         */
+        get: operations["getOutdatedStatus"];
+        /**
+         * Store the outdated-package opt-in choice.
+         * @description Only the UI calls this. `enabled: false` stops future scans from asking
+         *     deps.dev and leaves findings without a latest version. Turning it on
+         *     affects the next scan; the response is the updated status.
+         */
+        put: operations["setOutdatedEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reachability": {
         parameters: {
             query?: never;
@@ -924,6 +952,27 @@ export interface components {
             /**
              * @description True opts in to the daily FIRST.org download; false turns it off and
              *     stops every future request.
+             */
+            enabled: boolean;
+        };
+        /**
+         * OutdatedStatus
+         * @description The opt-in outdated-package lookup as the UI and the CLI see it. The
+         *     setting is off by default; with it off no request reaches deps.dev and
+         *     findings carry no latest version.
+         */
+        OutdatedStatus: {
+            /**
+             * @description The stored opt-in setting. False means no request is ever made and
+             *     findings carry no latest version.
+             */
+            enabled: boolean;
+        };
+        /** SetOutdatedEnabledRequest */
+        SetOutdatedEnabledRequest: {
+            /**
+             * @description True opts in to the deps.dev lookup during scans; false turns it off
+             *     and stops every future request.
              */
             enabled: boolean;
         };
@@ -2212,6 +2261,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EPSSStatus"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getOutdatedStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current outdated-package lookup state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutdatedStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setOutdatedEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetOutdatedEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The choice was stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutdatedStatus"];
                 };
             };
             400: components["responses"]["Problem"];

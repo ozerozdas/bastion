@@ -184,6 +184,11 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 		res.ScannerRuns = append(res.ScannerRuns, run)
 	}
 
+	// The outdated lookup reads the same inventory and is opt-in (#38). Like
+	// the advisory lookup it is an enrichment: partial coverage is a warning
+	// on its scanner run, and a failure never fails the scan.
+	m.enrichOutdated(ctx, job, asset, res)
+
 	// One finding per fingerprint per scan (PROJECT_SPEC.md §5), in a stable
 	// order so persistence and golden output do not depend on scanner order.
 	res.Findings = findings.Merge(res.Findings)
@@ -193,6 +198,42 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 	findings.SortFindings(res.Findings)
 	findings.SortPackages(res.Packages)
 	return failures
+}
+
+// enrichOutdated adds latest-version findings for the scan's package inventory
+// (#38). It runs only when the user opted in and the inventory is non-empty.
+// Like the advisory lookup it is an enrichment: failures and partial coverage
+// are recorded in scanner_runs and logged, never added to failures.
+func (m *Manager) enrichOutdated(ctx context.Context, job *scanJob, asset findings.Asset, res *store.ScanResult) {
+	if m.outdated == nil || !m.outdated.Enabled() || len(res.Packages) == 0 || ctx.Err() != nil {
+		return
+	}
+
+	m.progress(job, StageScan, m.outdated.Name())
+	run := store.ScannerRun{
+		Scanner:        m.outdated.Name(),
+		ScannerVersion: m.outdated.Version(),
+		Status:         "succeeded",
+	}
+	start := time.Now()
+	fs, warnings, err := m.outdated.Match(ctx, res.Packages, asset)
+	duration := time.Since(start).Milliseconds()
+	run.DurationMS = &duration
+	switch {
+	case err != nil && ctx.Err() != nil:
+		run.Status = "canceled"
+		run.Error = err.Error()
+	case err != nil:
+		slog.Warn("jobs: outdated package lookup failed", "scan_id", job.scanID, "error", err)
+		run.Status = "failed"
+		run.Error = err.Error()
+	default:
+		res.Findings = append(res.Findings, fs...)
+		// Partial coverage is a warning, not a failure: the findings that
+		// were produced are real.
+		run.Warning = strings.Join(warnings, "; ")
+	}
+	res.ScannerRuns = append(res.ScannerRuns, run)
 }
 
 // enrichReachability marks the scan's Go vulnerabilities reachable,

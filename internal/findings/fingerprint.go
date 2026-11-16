@@ -54,6 +54,11 @@ func fingerprintFields(assetID int64, f Finding) []string {
 		// the matched snippet's digest. The rule also appears above; repeating
 		// it keeps the material self-contained.
 		return append(fields, stripLine(loc), f.RuleID, f.SnippetHash)
+	case TypeOutdated:
+		// An outdated finding is about one installed version: after an upgrade
+		// the old finding is fixed and a later one is new. The current version
+		// is therefore part of the identity, unlike a vulnerability's.
+		return append(fields, loc, f.PackageVersion)
 	default:
 		// Image locations are package paths inside the image and misconfig
 		// locations are file + resource/cause identifier. LayerDigest is not

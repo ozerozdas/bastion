@@ -24,6 +24,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/scanners/depsdev"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
@@ -166,6 +167,10 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	// process runs and findings carry no reachability.
 	reachabilityService := govulncheck.New(govulncheck.Config{DataDir: opts.paths.DataDir})
 
+	// Outdated-package lookup is opt-in (#38): off by default, so no request
+	// reaches api.deps.dev and scans carry no outdated findings.
+	outdatedService := depsdev.New(depsdev.Config{DataDir: opts.paths.DataDir, Version: version})
+
 	// SAST is opt-in (#33): off by default, so nothing is downloaded and
 	// repository scans are unchanged until the user turns it on.
 	sastService := newOpengrepModule(opts.paths)
@@ -188,7 +193,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	// started in the UI is the one a scan waits for instead of a second one.
 	trivyDB := trivy.NewManager(opts.paths.TrivyCacheDir())
 	defer trivyDB.Close()
-	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore, bus, trivyDB, reachabilityService, sastService)
+	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore, bus, trivyDB, outdatedService, reachabilityService, sastService)
 	if err != nil {
 		return errors.Join(err, ln.Close())
 	}
@@ -222,6 +227,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		EPSS:          epssService,
 		Reachability:  reachabilityService,
 		SAST:          sastService,
+		Outdated:      outdatedService,
 		LicencePolicy: licencePolicyService,
 	})
 	if err != nil {

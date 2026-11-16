@@ -36,6 +36,9 @@ test('opens Settings from the sidebar and closes with Escape', async ({
   await expect(
     dialog.getByRole('region', { name: 'Go reachability' }),
   ).toBeVisible()
+  await expect(
+    dialog.getByRole('region', { name: 'Outdated packages' }),
+  ).toBeVisible()
   await expect(dialog.getByRole('region', { name: 'SAST' })).toBeVisible()
   await expect(
     dialog.getByRole('region', { name: 'Licence policy' }),

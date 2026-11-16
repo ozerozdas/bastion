@@ -46,6 +46,14 @@ tags:
       made. When on, the gzipped CSV is cached and refreshed at most daily, and
       findings carry its score at read time. `GET /api/epss` never blocks on
       the network.
+  - name: outdated
+    description: |
+      The opt-in outdated-package lookup (#38). When on, a scan asks
+      api.deps.dev for the default (latest) version of each supported package
+      in its inventory and reports an `outdated` finding when the installed
+      version is older. Off by default; with the setting off no request is
+      made. Only the ecosystem and package name are sent. `GET /api/outdated`
+      never blocks on the network.
   - name: reachability
     description: |
       The opt-in Go reachability enrichment (#37). When on, a scan of a Go
@@ -277,6 +285,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EPSSStatus"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/outdated:
+    get:
+      operationId: getOutdatedStatus
+      summary: Report the outdated-package lookup state.
+      description: |
+        Returns the stored opt-in setting only. With the setting off no request
+        reaches deps.dev and findings carry no latest version. The handler never
+        blocks on the network.
+      tags: [outdated]
+      responses:
+        "200":
+          description: The current outdated-package lookup state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutdatedStatus"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setOutdatedEnabled
+      summary: Store the outdated-package opt-in choice.
+      description: |
+        Only the UI calls this. `enabled: false` stops future scans from asking
+        deps.dev and leaves findings without a latest version. Turning it on
+        affects the next scan; the response is the updated status.
+      tags: [outdated]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetOutdatedEnabledRequest"
+      responses:
+        "200":
+          description: The choice was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutdatedStatus"
         "400":
           $ref: "#/components/responses/Problem"
         "401":
@@ -1819,6 +1882,32 @@ components:
           description: |
             True opts in to the daily FIRST.org download; false turns it off and
             stops every future request.
+    OutdatedStatus:
+      type: object
+      title: OutdatedStatus
+      description: |
+        The opt-in outdated-package lookup as the UI and the CLI see it. The
+        setting is off by default; with it off no request reaches deps.dev and
+        findings carry no latest version.
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            The stored opt-in setting. False means no request is ever made and
+            findings carry no latest version.
+    SetOutdatedEnabledRequest:
+      type: object
+      title: SetOutdatedEnabledRequest
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            True opts in to the deps.dev lookup during scans; false turns it off
+            and stops every future request.
     Reachability:
       type: string
       title: Reachability

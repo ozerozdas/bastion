@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 
 import { epssQuery, useSetEPSSEnabled } from '../api/epss'
 import { licencePolicyQuery } from '../api/licence-policy'
+import { outdatedQuery, useSetOutdatedEnabled } from '../api/outdated'
 import { reachabilityQuery, useSetReachabilityEnabled } from '../api/reachability'
 import { sastQuery, useSetSASTEnabled } from '../api/sast'
 import { updateQuery, useSetUpdateConsent } from '../api/update'
@@ -59,6 +60,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <div className="flex flex-col gap-3">
           <EPSSToggle />
           <ReachabilityToggle />
+          <OutdatedToggle />
           <SASTToggle />
           <LicencePolicySection />
           <ReleaseCheckSection />
@@ -199,6 +201,30 @@ function ReachabilityToggle() {
       ) : null}
       <ToggleButton
         title="Go reachability"
+        on={data.enabled}
+        pending={toggle.isPending}
+        onChange={(enabled) => toggle.mutate(enabled)}
+      />
+    </SettingSection>
+  )
+}
+
+function OutdatedToggle() {
+  const { data } = useQuery(outdatedQuery)
+  const toggle = useSetOutdatedEnabled()
+
+  if (!data) {
+    return null
+  }
+
+  return (
+    <SettingSection title="Outdated packages" on={data.enabled}>
+      <p className="text-[11px] leading-relaxed text-muted">
+        Looks up the latest version of each package on deps.dev (api.deps.dev)
+        during scans. Only ecosystems, package names and versions are sent.
+      </p>
+      <ToggleButton
+        title="Outdated packages"
         on={data.enabled}
         pending={toggle.isPending}
         onChange={(enabled) => toggle.mutate(enabled)}
