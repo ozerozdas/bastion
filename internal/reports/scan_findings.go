@@ -22,7 +22,7 @@ func (s *Service) ScanFindings(ctx context.Context, scanID int64, filter ScanFil
 	if scanID <= 0 {
 		return nil, fmt.Errorf("%w: scan id must be positive", ErrInvalid)
 	}
-	params, err := filter.params(scanID)
+	params, err := filter.params(scanID, s.expiryNow())
 	if err != nil {
 		return nil, err
 	}
@@ -44,9 +44,10 @@ func (s *Service) ScanFindings(ctx context.Context, scanID int64, filter ScanFil
 }
 
 // params validates the filter and converts it to the query's nullable
-// arguments: a nil interface means "no filter" in ListFindingsByScan.
-func (f ScanFilter) params(scanID int64) (sqlcdb.ListFindingsByScanParams, error) {
-	params := sqlcdb.ListFindingsByScanParams{ScanID: scanID}
+// arguments: a nil interface means "no filter" in ListFindingsByScan. now is
+// the clock the query compares a decision's expiry with.
+func (f ScanFilter) params(scanID int64, now string) (sqlcdb.ListFindingsByScanParams, error) {
+	params := sqlcdb.ListFindingsByScanParams{ScanID: scanID, Now: now}
 	if err := validateEnums(f.Severity, f.Type, f.Status); err != nil {
 		return params, err
 	}
@@ -93,6 +94,8 @@ func (s *Service) findingFromScanRow(row sqlcdb.ListFindingsByScanRow) (Finding,
 		Status:         row.Status,
 		State:          row.State.String,
 		Reason:         row.Reason.String,
+		ExpiresAt:      row.ExpiresAt.String,
+		Expired:        row.Expired != 0,
 		Description:    row.Description.String,
 		References:     references,
 	}

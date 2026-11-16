@@ -226,26 +226,30 @@ type CreateInput struct {
 }
 
 // FindingStateInput is one POST /api/findings/{fingerprint}/state request.
+// ExpiresAt is the raw request value: an RFC 3339 timestamp or a YYYY-MM-DD
+// date; blank means no expiry.
 type FindingStateInput struct {
 	AssetID     int64
 	Fingerprint string
 	State       string
 	Reason      string
+	ExpiresAt   string
 }
 
 // BulkFindingStateInput is one POST /api/findings/state request: one decision
-// for many fingerprints of one asset.
+// for many fingerprints of one asset, with one shared optional expiry.
 type BulkFindingStateInput struct {
 	AssetID      int64
 	Fingerprints []string
 	State        string
 	Reason       string
+	ExpiresAt    string
 }
 
 // List returns every non-archived asset with its newest scan, open severity
 // counts and repository <-> image links.
 func (s *Service) List(ctx context.Context) ([]Asset, error) {
-	rows, err := sqlcdb.New(s.db).ListAssetSummaries(ctx)
+	rows, err := sqlcdb.New(s.db).ListAssetSummaries(ctx, store.FormatTimestamp(s.now()))
 	if err != nil {
 		return nil, fmt.Errorf("assets: list: %w", err)
 	}
@@ -861,13 +865,14 @@ func (s *Service) Cancel(ctx context.Context, scanID int64) (Scan, error) {
 
 // SetFindingState records a decision for one fingerprint of one asset.
 func (s *Service) SetFindingState(ctx context.Context, in FindingStateInput) error {
-	if err := s.checkFindingStateInput(in); err != nil {
+	expiresAt, err := s.checkFindingStateInput(in)
+	if err != nil {
 		return err
 	}
 	if err := s.requireAsset(ctx, in.AssetID); err != nil {
 		return err
 	}
-	if err := store.SetFindingState(ctx, s.db, in.AssetID, in.Fingerprint, in.State, in.Reason); err != nil {
+	if err := store.SetFindingState(ctx, s.db, in.AssetID, in.Fingerprint, in.State, in.Reason, expiresAt); err != nil {
 		return fmt.Errorf("assets: set finding state: %w", err)
 	}
 	return nil
@@ -894,11 +899,15 @@ func (s *Service) SetFindingStates(ctx context.Context, in BulkFindingStateInput
 	if err := checkFindingDecision(in.State, in.Reason); err != nil {
 		return err
 	}
+	expiresAt, err := s.parseExpiry(in.ExpiresAt)
+	if err != nil {
+		return err
+	}
 	if err := s.requireAsset(ctx, in.AssetID); err != nil {
 		return err
 	}
 
-	err := store.SetFindingStates(ctx, s.db, in.AssetID, in.Fingerprints, in.State, in.Reason)
+	err = store.SetFindingStates(ctx, s.db, in.AssetID, in.Fingerprints, in.State, in.Reason, expiresAt)
 	if err != nil {
 		var unknown *store.UnknownFingerprintsError
 		if errors.As(err, &unknown) {
@@ -928,15 +937,18 @@ func (s *Service) ClearFindingState(ctx context.Context, assetID int64, fingerpr
 }
 
 // checkFindingStateInput rejects a decision the store would refuse, with a
-// message that names the API fields.
-func (s *Service) checkFindingStateInput(in FindingStateInput) error {
+// message that names the API fields. It returns the parsed optional expiry.
+func (s *Service) checkFindingStateInput(in FindingStateInput) (*time.Time, error) {
 	if in.AssetID <= 0 {
-		return fmt.Errorf("%w: asset_id must be positive", ErrInvalid)
+		return nil, fmt.Errorf("%w: asset_id must be positive", ErrInvalid)
 	}
 	if strings.TrimSpace(in.Fingerprint) == "" {
-		return fmt.Errorf("%w: fingerprint is required", ErrInvalid)
+		return nil, fmt.Errorf("%w: fingerprint is required", ErrInvalid)
 	}
-	return checkFindingDecision(in.State, in.Reason)
+	if err := checkFindingDecision(in.State, in.Reason); err != nil {
+		return nil, err
+	}
+	return s.parseExpiry(in.ExpiresAt)
 }
 
 // checkFindingDecision validates the decision shared by the single and bulk
@@ -952,6 +964,43 @@ func checkFindingDecision(state, reason string) error {
 		return fmt.Errorf("%w: a reason is required, so a hidden finding stays reviewable", ErrInvalid)
 	}
 	return nil
+}
+
+// expiryDateLayout is the date-only form POST /api/findings.../state accepts.
+const expiryDateLayout = "2006-01-02"
+
+// parseExpiry reads the optional expires_at of a decision. It accepts an RFC
+// 3339 timestamp or a YYYY-MM-DD date; a date covers the whole day, so it
+// stops applying when the next day starts (UTC). An expiry that is not in the
+// future is refused: the decision would be open from the moment it is saved.
+func (s *Service) parseExpiry(value string) (*time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+
+	var expiresAt time.Time
+	var err error
+	if len(value) == len(expiryDateLayout) {
+		expiresAt, err = time.Parse(expiryDateLayout, value)
+		if err == nil {
+			expiresAt = expiresAt.Add(24*time.Hour - time.Millisecond)
+		}
+	} else {
+		expiresAt, err = time.Parse(time.RFC3339, value)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: expires_at must be an RFC 3339 timestamp or a YYYY-MM-DD date", ErrInvalid)
+	}
+
+	now := time.Now
+	if s.now != nil {
+		now = s.now
+	}
+	if !expiresAt.After(now()) {
+		return nil, fmt.Errorf("%w: expires_at must be in the future", ErrInvalid)
+	}
+	return &expiresAt, nil
 }
 
 // requireAsset reports whether the asset exists, archived or not.

@@ -7,6 +7,7 @@ import {
   type FindingState,
 } from '../api/findings'
 import { capitalize, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
+import { expiryDate, expiryLabel, expiryValue, type ExpiryChoice } from '../lib/expiry'
 import { epssLabel } from '../lib/epss'
 import { isHttpsUrl } from '../lib/urls'
 import { useDrawerFocus } from './drawer-focus'
@@ -48,6 +49,8 @@ export function FindingDrawer({
   const clearState = useClearFindingState()
   const [decision, setDecision] = useState<FindingState>('ignored')
   const [reason, setReason] = useState('')
+  const [expiryChoice, setExpiryChoice] = useState<ExpiryChoice>('none')
+  const [expiryDay, setExpiryDay] = useState('')
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -58,6 +61,7 @@ export function FindingDrawer({
         fingerprint: finding.fingerprint,
         state: decision,
         reason: reason.trim(),
+        expires_at: expiryValue(expiryChoice, expiryDay),
       },
       { onSuccess: onClose, onError: onRemoveFailed },
     )
@@ -104,7 +108,14 @@ export function FindingDrawer({
                 </span>
               ) : null}
               {finding.state ? (
-                <Badge tone="neutral">{stateLabels[finding.state]}</Badge>
+                <Badge tone={finding.expired ? 'medium' : 'neutral'}>
+                  {stateLabels[finding.state]}
+                  {finding.expires_at === undefined
+                    ? ''
+                    : finding.expired
+                      ? `, expired ${expiryLabel(finding.expires_at)}`
+                      : `, until ${expiryLabel(finding.expires_at)}`}
+                </Badge>
               ) : null}
             </div>
           </div>
@@ -199,7 +210,7 @@ export function FindingDrawer({
           <section className="flex flex-col gap-2 rounded-md border border-border-subtle bg-bg p-3">
             <h3 className="text-[13px] font-semibold">Decision</h3>
 
-            {finding.state ? (
+            {finding.state && !finding.expired ? (
               <>
                 <p className="text-xs text-muted">
                   Marked{' '}
@@ -233,6 +244,15 @@ export function FindingDrawer({
               </>
             ) : (
               <form onSubmit={submit} className="flex flex-col gap-2">
+                {finding.expired ? (
+                  <p className="text-xs text-muted">
+                    The previous decision expired
+                    {finding.expires_at === undefined
+                      ? ''
+                      : ` on ${expiryLabel(finding.expires_at)}`}
+                    , so the finding counts as open again.
+                  </p>
+                ) : null}
                 <div className="flex flex-col gap-1">
                   <label
                     htmlFor="finding-decision"
@@ -250,6 +270,39 @@ export function FindingDrawer({
                     <option value="accepted_risk">Accepted risk</option>
                     <option value="false_positive">False positive</option>
                   </select>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label
+                    htmlFor="finding-expiry"
+                    className="text-xs font-medium text-muted"
+                  >
+                    Expires
+                  </label>
+                  <select
+                    id="finding-expiry"
+                    value={expiryChoice}
+                    onChange={(event) =>
+                      setExpiryChoice(event.target.value as ExpiryChoice)
+                    }
+                    className={`${inputClass} w-56`}
+                  >
+                    <option value="none">No expiry</option>
+                    <option value="30">In 30 days</option>
+                    <option value="90">In 90 days</option>
+                    <option value="date">Pick a date</option>
+                  </select>
+                  {expiryChoice === 'date' ? (
+                    <input
+                      type="date"
+                      aria-label="Expiry date"
+                      required
+                      min={expiryDate(0)}
+                      value={expiryDay}
+                      onChange={(event) => setExpiryDay(event.target.value)}
+                      className={`${inputClass} w-56`}
+                    />
+                  ) : null}
                 </div>
 
                 <div className="flex flex-col gap-1">

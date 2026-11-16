@@ -1,18 +1,21 @@
 -- name: UpsertFindingState :exec
 -- Record a user decision for one fingerprint of one asset (PROJECT_SPEC.md
 -- finding_states).
--- Re-deciding replaces the previous state and reason; the decision survives
--- later scans because it is keyed on (asset_id, fingerprint).
-INSERT INTO finding_states (asset_id, fingerprint, state, reason)
+-- Re-deciding replaces the previous state, reason and expiry; the decision
+-- survives later scans because it is keyed on (asset_id, fingerprint). A NULL
+-- expires_at keeps the decision until it is cleared (#32).
+INSERT INTO finding_states (asset_id, fingerprint, state, reason, expires_at)
 VALUES (
     sqlc.arg(asset_id),
     sqlc.arg(fingerprint),
     sqlc.arg(state),
-    sqlc.narg(reason)
+    sqlc.narg(reason),
+    sqlc.narg(expires_at)
 )
 ON CONFLICT (asset_id, fingerprint) DO UPDATE SET
-    state  = excluded.state,
-    reason = excluded.reason;
+    state      = excluded.state,
+    reason     = excluded.reason,
+    expires_at = excluded.expires_at;
 
 -- name: DeleteFindingState :exec
 -- Remove the decision, so the finding shows its stored status again.

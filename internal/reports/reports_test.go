@@ -124,7 +124,7 @@ func TestDashboardAggregates(t *testing.T) {
 	betaUnknown := newFinding(beta.ID, findings.TypeVulnerability, "CVE-2026-0005", findings.SeverityUnknown)
 	scanB1 := seedScan(t, db, beta.ID, store.ScanStatusSucceeded, at(9), betaHigh, betaMedium, betaUnknown)
 	scanB2 := seedScan(t, db, beta.ID, store.ScanStatusSucceeded, at(13), betaHigh, betaMedium, betaUnknown)
-	if err := store.SetFindingState(ctx, db, beta.ID, betaHigh.Fingerprint, store.FindingStateIgnored, "accepted upstream"); err != nil {
+	if err := store.SetFindingState(ctx, db, beta.ID, betaHigh.Fingerprint, store.FindingStateIgnored, "accepted upstream", nil); err != nil {
 		t.Fatalf("SetFindingState: %v", err)
 	}
 
@@ -300,7 +300,7 @@ func TestFindingsListsLatestSucceededScanWithEffectiveStatus(t *testing.T) {
 	finding.Occurrences = 2
 	scan := seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, at(10), finding)
 
-	if err := store.SetFindingState(ctx, db, alpha.ID, finding.Fingerprint, store.FindingStateFalsePositive, "scanner false match"); err != nil {
+	if err := store.SetFindingState(ctx, db, alpha.ID, finding.Fingerprint, store.FindingStateFalsePositive, "scanner false match", nil); err != nil {
 		t.Fatalf("SetFindingState: %v", err)
 	}
 

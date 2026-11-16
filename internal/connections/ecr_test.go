@@ -329,7 +329,7 @@ func TestDeleteArchivesECRImages(t *testing.T) {
 
 	// An archived asset leaves the summary list, exactly as one archived by
 	// hand does, so its findings no longer count.
-	summaries, err := sqlcdb.New(service.db).ListAssetSummaries(ctx)
+	summaries, err := sqlcdb.New(service.db).ListAssetSummaries(ctx, "2026-11-11T10:00:00.000Z")
 	if err != nil {
 		t.Fatalf("ListAssetSummaries: %v", err)
 	}

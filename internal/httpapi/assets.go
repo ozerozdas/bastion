@@ -363,6 +363,7 @@ func (s *Server) SetFindingStates(ctx context.Context, request gen.SetFindingSta
 		Fingerprints: request.Body.Fingerprints,
 		State:        string(request.Body.State),
 		Reason:       request.Body.Reason,
+		ExpiresAt:    expiresAtValue(request.Body.ExpiresAt),
 	})
 	if err != nil {
 		s.log.Error("set finding states", "asset", request.Body.AssetId, "error", err)
@@ -403,6 +404,7 @@ func (s *Server) SetFindingState(ctx context.Context, request gen.SetFindingStat
 		Fingerprint: request.Fingerprint,
 		State:       string(request.Body.State),
 		Reason:      request.Body.Reason,
+		ExpiresAt:   expiresAtValue(request.Body.ExpiresAt),
 	})
 	if err != nil {
 		s.log.Error("set finding state", "asset", request.Body.AssetId, "error", err)
@@ -538,6 +540,15 @@ func assetLinkResponse(link assets.AssetLink) gen.AssetLink {
 		out.Revision = &revision
 	}
 	return out
+}
+
+// expiresAtValue turns the optional request field into the service's raw
+// string; an absent field means no expiry.
+func expiresAtValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 // scanResponse maps one domain scan onto the API shape. WithRuns is false for

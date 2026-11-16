@@ -163,7 +163,7 @@ func TestLoadScanReportExcludesIgnoredFromOpen(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SaveScanResult: %v", err)
 	}
-	if err := store.SetFindingState(ctx, db, asset.ID, ignored.Fingerprint, store.FindingStateIgnored, "test key"); err != nil {
+	if err := store.SetFindingState(ctx, db, asset.ID, ignored.Fingerprint, store.FindingStateIgnored, "test key", nil); err != nil {
 		t.Fatalf("SetFindingState: %v", err)
 	}
 

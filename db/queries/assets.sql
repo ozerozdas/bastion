@@ -93,9 +93,9 @@ RETURNING *;
 
 -- name: ListAssetSummaries :many
 -- Every non-archived asset with its newest scan and the open severity counts of
--- its newest succeeded scan. The counts use the dashboard scope: a decision in
--- finding_states hides its finding, and a failed or running newest scan does
--- not shadow the last complete report.
+-- its newest succeeded scan. The counts use the dashboard scope: a live
+-- decision in finding_states hides its finding, an expired one does not (#32),
+-- and a failed or running newest scan does not shadow the last complete report.
 WITH newest_scan AS (
     SELECT s.asset_id, s.id AS scan_id, s.status, s.finished_at
     FROM scans s
@@ -127,7 +127,8 @@ open_severity AS (
     JOIN last_succeeded ls ON ls.scan_id = f.scan_id
     LEFT JOIN finding_states fs
         ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
-    WHERE f.status = 'open' AND fs.id IS NULL
+    WHERE f.status = 'open'
+      AND (fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT))
     GROUP BY f.asset_id
 )
 SELECT

@@ -540,6 +540,11 @@ type BulkSetFindingStateRequest struct {
 	// AssetId The asset every fingerprint belongs to; decisions are per asset.
 	AssetId int64 `json:"asset_id"`
 
+	// ExpiresAt Optional end of the decision: an RFC 3339 timestamp, or a
+	// `YYYY-MM-DD` date that means the end of that day (UTC). It must be
+	// in the future, and the findings count as open again once it passes.
+	ExpiresAt *string `json:"expires_at,omitempty"`
+
 	// Fingerprints Findings of the asset to decide on. One unknown fingerprint
 	// rejects the whole batch.
 	Fingerprints []string `json:"fingerprints"`
@@ -832,6 +837,15 @@ type Finding struct {
 	// exploited in the next 30 days, and the score's percentile among all
 	// scored CVEs. Both are fractions between 0 and 1.
 	Epss *EPSSScore `json:"epss,omitempty"`
+
+	// Expired True when a decision exists but its expiry has passed: the finding
+	// counts as open again, while `state` keeps the expired decision so
+	// the drawer can show and replace it. Absent otherwise.
+	Expired *bool `json:"expired,omitempty"`
+
+	// ExpiresAt When the decision stops applying, in UTC (`YYYY-MM-DDTHH:MM:SS.sssZ`).
+	// Absent when the decision has no expiry.
+	ExpiresAt *string `json:"expires_at,omitempty"`
 
 	// Fingerprint Stable identifier of the finding across scans (PROJECT_SPEC.md §5).
 	Fingerprint string `json:"fingerprint"`
@@ -1198,6 +1212,11 @@ type SetEPSSEnabledRequest struct {
 type SetFindingStateRequest struct {
 	// AssetId The asset the finding belongs to; decisions are per asset.
 	AssetId int64 `json:"asset_id"`
+
+	// ExpiresAt Optional end of the decision: an RFC 3339 timestamp, or a
+	// `YYYY-MM-DD` date that means the end of that day (UTC). It must be
+	// in the future, and the finding counts as open again once it passes.
+	ExpiresAt *string `json:"expires_at,omitempty"`
 
 	// Reason Why the finding is hidden; required, so decisions stay reviewable.
 	Reason string `json:"reason"`
