@@ -28,6 +28,7 @@ import { Tabs, type TabItem } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { capitalize, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
+import { expiryDate, expiryValue, type ExpiryChoice } from '../lib/expiry'
 import { epssLabel, ordinal } from '../lib/epss'
 import { groupFindings, type FindingGroup } from '../lib/group-findings'
 import type { FindingsView } from '../lib/urls'
@@ -122,7 +123,9 @@ export function findingColumns(
           {finding.type === 'license' ? (
             <span className="ml-1.5 text-xs text-faint">informational</span>
           ) : null}
-          {finding.status === 'ignored' ? (
+          {finding.expired ? (
+            <span className="ml-1.5 text-xs text-faint">decision expired</span>
+          ) : finding.status === 'ignored' ? (
             <span className="ml-1.5 text-xs text-faint">
               {finding.state ? stateLabels[finding.state].toLowerCase() : 'ignored'}
             </span>
@@ -786,6 +789,8 @@ function BulkBar({
   const bulk = useBulkFindingState()
   const [decision, setDecision] = useState<FindingState>('ignored')
   const [reason, setReason] = useState('')
+  const [expiryChoice, setExpiryChoice] = useState<ExpiryChoice>('none')
+  const [expiryDay, setExpiryDay] = useState('')
   const count = findings.length
   // A selection can span projects, and a decision is keyed on
   // (asset_id, fingerprint), so each finding keeps its own asset id.
@@ -797,7 +802,14 @@ function BulkBar({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     bulk.mutate(
-      { findings: target, decision: { state: decision, reason: reason.trim() } },
+      {
+        findings: target,
+        decision: {
+          state: decision,
+          reason: reason.trim(),
+          expires_at: expiryValue(expiryChoice, expiryDay),
+        },
+      },
       { onSuccess: onDone },
     )
   }
@@ -821,6 +833,28 @@ function BulkBar({
             <option value="accepted_risk">Accepted risk</option>
             <option value="false_positive">False positive</option>
           </select>
+          <select
+            aria-label="Expires"
+            value={expiryChoice}
+            onChange={(event) => setExpiryChoice(event.target.value as ExpiryChoice)}
+            className={cn(inputClass, 'w-36')}
+          >
+            <option value="none">No expiry</option>
+            <option value="30">In 30 days</option>
+            <option value="90">In 90 days</option>
+            <option value="date">Pick a date</option>
+          </select>
+          {expiryChoice === 'date' ? (
+            <input
+              type="date"
+              aria-label="Expiry date"
+              required
+              min={expiryDate(0)}
+              value={expiryDay}
+              onChange={(event) => setExpiryDay(event.target.value)}
+              className={cn(inputClass, 'w-40')}
+            />
+          ) : null}
           <input
             aria-label="Reason"
             required

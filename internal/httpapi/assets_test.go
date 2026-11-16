@@ -773,3 +773,66 @@ func TestSetAssetLinkValidatesKindsAndIDs(t *testing.T) {
 		})
 	}
 }
+
+// TestSetFindingStateExpiry covers the optional expiry: a past date is a 400,
+// and an accepted one is stored and returned with the finding.
+func TestSetFindingStateExpiry(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+	asset := pathAsset(t, ts, cookie)
+
+	finding := findings.Finding{
+		Fingerprint: "fp-expiry",
+		Type:        findings.TypeVulnerability,
+		Severity:    findings.SeverityHigh,
+		Title:       "Temporary risk",
+		Scanner:     "trivy",
+		Occurrences: 1,
+	}
+	scanID := seedSucceededScan(t, ts, asset.Id, finding)
+
+	resp := doJSON(t, ts, http.MethodPost, "/api/findings/fp-expiry/state", gen.SetFindingStateRequest{
+		AssetId:   asset.Id,
+		State:     gen.FindingStateAcceptedRisk,
+		Reason:    "waiting for the vendor patch",
+		ExpiresAt: stringPointer("2020-01-01"),
+	}, withBastion(cookie))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("past expiry: status = %d, want %d: %s",
+			resp.StatusCode, http.StatusBadRequest, readBody(t, resp))
+	}
+	if problem := readProblem(t, resp); problem.Detail == nil || !strings.Contains(*problem.Detail, "future") {
+		t.Errorf("past expiry problem detail = %v, want it to mention the future", problem.Detail)
+	}
+
+	resp = doJSON(t, ts, http.MethodPost, "/api/findings/fp-expiry/state", gen.SetFindingStateRequest{
+		AssetId:   asset.Id,
+		State:     gen.FindingStateAcceptedRisk,
+		Reason:    "waiting for the vendor patch",
+		ExpiresAt: stringPointer("2999-01-01"),
+	}, withBastion(cookie))
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("future expiry: status = %d, want %d: %s",
+			resp.StatusCode, http.StatusNoContent, readBody(t, resp))
+	}
+
+	resp = ts.do(t, http.MethodGet, "/api/scans/"+itoa(scanID)+"/findings", withCookie(cookie))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET findings: status = %d, want %d: %s",
+			resp.StatusCode, http.StatusOK, readBody(t, resp))
+	}
+	list := decodeFindings(t, readBody(t, resp))
+	if len(list.Findings) != 1 {
+		t.Fatalf("findings = %+v, want 1", list.Findings)
+	}
+	got := list.Findings[0]
+	if got.ExpiresAt == nil || *got.ExpiresAt != "2999-01-01T23:59:59.999Z" {
+		t.Errorf("expires_at = %v, want the end of the chosen day", got.ExpiresAt)
+	}
+	if got.Expired != nil {
+		t.Errorf("expired = %v, want absent for a live decision", got.Expired)
+	}
+	if got.State == nil || *got.State != gen.FindingStateAcceptedRisk {
+		t.Errorf("state = %v, want accepted_risk", got.State)
+	}
+}

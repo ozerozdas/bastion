@@ -71,12 +71,15 @@ type ScanReport struct {
 
 // LoadScanReport reads a finished scan back from the database. The scan row
 // must exist; a scan that never finished is reported as it currently stands.
+// An expired decision no longer hides its finding (#32), so the open set is
+// computed against the current time.
 func LoadScanReport(ctx context.Context, db *sql.DB, scanID int64) (ScanReport, error) {
 	if db == nil {
 		return ScanReport{}, errors.New("store: load scan report: database is required")
 	}
 
 	queries := sqlcdb.New(db)
+	now := FormatTimestamp(time.Now())
 	scan, err := queries.GetScan(ctx, scanID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ScanReport{}, fmt.Errorf("store: load scan report: scan %d does not exist", scanID)
@@ -124,7 +127,7 @@ func LoadScanReport(ctx context.Context, db *sql.DB, scanID int64) (ScanReport, 
 		})
 	}
 
-	rows, err := queries.ListFindingsByScan(ctx, sqlcdb.ListFindingsByScanParams{ScanID: scanID})
+	rows, err := queries.ListFindingsByScan(ctx, sqlcdb.ListFindingsByScanParams{ScanID: scanID, Now: now})
 	if err != nil {
 		return ScanReport{}, fmt.Errorf("store: load scan report %d: findings: %w", scanID, err)
 	}
@@ -139,6 +142,7 @@ func LoadScanReport(ctx context.Context, db *sql.DB, scanID int64) (ScanReport, 
 	open, err := queries.ListFindingsByScan(ctx, sqlcdb.ListFindingsByScanParams{
 		ScanID: scanID,
 		Status: findingStatusOpen,
+		Now:    now,
 	})
 	if err != nil {
 		return ScanReport{}, fmt.Errorf("store: load scan report %d: open findings: %w", scanID, err)

@@ -28,7 +28,7 @@ func (q *Queries) DeleteFindingState(ctx context.Context, arg DeleteFindingState
 }
 
 const getFindingState = `-- name: GetFindingState :one
-SELECT id, asset_id, fingerprint, state, reason, created_at FROM finding_states
+SELECT id, asset_id, fingerprint, state, reason, created_at, expires_at FROM finding_states
 WHERE asset_id = ?1 AND fingerprint = ?2
 `
 
@@ -47,12 +47,13 @@ func (q *Queries) GetFindingState(ctx context.Context, arg GetFindingStateParams
 		&i.State,
 		&i.Reason,
 		&i.CreatedAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
 
 const listFindingStatesByAsset = `-- name: ListFindingStatesByAsset :many
-SELECT id, asset_id, fingerprint, state, reason, created_at FROM finding_states
+SELECT id, asset_id, fingerprint, state, reason, created_at, expires_at FROM finding_states
 WHERE asset_id = ?1
 ORDER BY fingerprint
 `
@@ -73,6 +74,7 @@ func (q *Queries) ListFindingStatesByAsset(ctx context.Context, assetID int64) (
 			&i.State,
 			&i.Reason,
 			&i.CreatedAt,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -137,16 +139,18 @@ func (q *Queries) ListKnownFingerprints(ctx context.Context, arg ListKnownFinger
 }
 
 const upsertFindingState = `-- name: UpsertFindingState :exec
-INSERT INTO finding_states (asset_id, fingerprint, state, reason)
+INSERT INTO finding_states (asset_id, fingerprint, state, reason, expires_at)
 VALUES (
     ?1,
     ?2,
     ?3,
-    ?4
+    ?4,
+    ?5
 )
 ON CONFLICT (asset_id, fingerprint) DO UPDATE SET
-    state  = excluded.state,
-    reason = excluded.reason
+    state      = excluded.state,
+    reason     = excluded.reason,
+    expires_at = excluded.expires_at
 `
 
 type UpsertFindingStateParams struct {
@@ -154,18 +158,21 @@ type UpsertFindingStateParams struct {
 	Fingerprint string
 	State       string
 	Reason      sql.NullString
+	ExpiresAt   sql.NullString
 }
 
 // Record a user decision for one fingerprint of one asset (PROJECT_SPEC.md
 // finding_states).
-// Re-deciding replaces the previous state and reason; the decision survives
-// later scans because it is keyed on (asset_id, fingerprint).
+// Re-deciding replaces the previous state, reason and expiry; the decision
+// survives later scans because it is keyed on (asset_id, fingerprint). A NULL
+// expires_at keeps the decision until it is cleared (#32).
 func (q *Queries) UpsertFindingState(ctx context.Context, arg UpsertFindingStateParams) error {
 	_, err := q.db.ExecContext(ctx, upsertFindingState,
 		arg.AssetID,
 		arg.Fingerprint,
 		arg.State,
 		arg.Reason,
+		arg.ExpiresAt,
 	)
 	return err
 }

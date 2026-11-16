@@ -133,9 +133,14 @@ func findingResponse(finding reports.Finding) gen.Finding {
 		Status:          gen.FindingStatus(finding.Status),
 		State:           findingStatePointer(finding.State),
 		Reason:          stringPointer(finding.Reason),
+		ExpiresAt:       stringPointer(finding.ExpiresAt),
 		FirstSeenScanId: finding.FirstSeenScanID,
 		Description:     stringPointer(finding.Description),
 		References:      finding.References,
+	}
+	if finding.Expired {
+		expired := true
+		out.Expired = &expired
 	}
 	if finding.EPSS != nil {
 		out.Epss = &gen.EPSSScore{

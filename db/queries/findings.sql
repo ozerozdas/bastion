@@ -64,7 +64,9 @@ SELECT CAST(COALESCE(
 -- Findings of one scan, most severe first, with optional type/severity/status
 -- filters. status is the effective status: a finding_states row for the same
 -- (asset_id, fingerprint) reports the finding as 'ignored' without rewriting
--- the stored row, and state/reason carry the decision for the UI.
+-- the stored row, and state/reason carry the decision for the UI. A decision
+-- whose expires_at is at or before the passed-in now counts as expired: the
+-- finding is open again, and the expired flag keeps the stale decision visible.
 SELECT
     f.id,
     f.scan_id,
@@ -87,9 +89,14 @@ SELECT
     f.scanner,
     f.scanners,
     f.first_seen_scan_id,
-    CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) AS status,
+    CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) AS status,
     fs.state AS state,
     fs.reason AS reason,
+    fs.expires_at AS expires_at,
+    CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at
 FROM findings f
 LEFT JOIN finding_states fs
@@ -97,7 +104,10 @@ LEFT JOIN finding_states fs
 WHERE f.scan_id = sqlc.arg(scan_id)
   AND (sqlc.narg(type) IS NULL OR f.type = sqlc.narg(type))
   AND (sqlc.narg(severity) IS NULL OR f.severity = sqlc.narg(severity))
-  AND (sqlc.narg(status) IS NULL OR CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) = sqlc.narg(status))
+  AND (sqlc.narg(status) IS NULL OR CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) = sqlc.narg(status))
 ORDER BY
     CASE f.severity
         WHEN 'critical' THEN 0
@@ -136,9 +146,14 @@ SELECT
     f.scanner,
     f.scanners,
     f.first_seen_scan_id,
-    CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) AS status,
+    CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) AS status,
     fs.state AS state,
     fs.reason AS reason,
+    fs.expires_at AS expires_at,
+    CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at
 FROM findings f
 JOIN scans s ON s.id = f.scan_id
@@ -155,7 +170,10 @@ WHERE a.archived_at IS NULL
   AND (sqlc.narg(asset_id) IS NULL OR f.asset_id = sqlc.narg(asset_id))
   AND (sqlc.narg(type) IS NULL OR f.type = sqlc.narg(type))
   AND (sqlc.narg(severity) IS NULL OR f.severity = sqlc.narg(severity))
-  AND (sqlc.narg(status) IS NULL OR CAST(CASE WHEN fs.id IS NULL THEN f.status ELSE 'ignored' END AS TEXT) = sqlc.narg(status))
+  AND (sqlc.narg(status) IS NULL OR CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) = sqlc.narg(status))
 ORDER BY
     CASE f.severity
         WHEN 'critical' THEN 0

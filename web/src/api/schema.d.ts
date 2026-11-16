@@ -1088,6 +1088,17 @@ export interface components {
             /** @description The user's reason for the decision in `state`. */
             reason?: string;
             /**
+             * @description When the decision stops applying, in UTC (`YYYY-MM-DDTHH:MM:SS.sssZ`).
+             *     Absent when the decision has no expiry.
+             */
+            expires_at?: string;
+            /**
+             * @description True when a decision exists but its expiry has passed: the finding
+             *     counts as open again, while `state` keeps the expired decision so
+             *     the drawer can show and replace it. Absent otherwise.
+             */
+            expired?: boolean;
+            /**
              * Format: int64
              * @description Scan that reported this fingerprint for the asset first.
              */
@@ -1578,6 +1589,12 @@ export interface components {
             state: components["schemas"]["FindingState"];
             /** @description Why the findings are hidden; shared by the whole batch. */
             reason: string;
+            /**
+             * @description Optional end of the decision: an RFC 3339 timestamp, or a
+             *     `YYYY-MM-DD` date that means the end of that day (UTC). It must be
+             *     in the future, and the findings count as open again once it passes.
+             */
+            expires_at?: string;
         };
         /** SetFindingStateRequest */
         SetFindingStateRequest: {
@@ -1589,6 +1606,12 @@ export interface components {
             state: components["schemas"]["FindingState"];
             /** @description Why the finding is hidden; required, so decisions stay reviewable. */
             reason: string;
+            /**
+             * @description Optional end of the decision: an RFC 3339 timestamp, or a
+             *     `YYYY-MM-DD` date that means the end of that day (UTC). It must be
+             *     in the future, and the finding counts as open again once it passes.
+             */
+            expires_at?: string;
         };
         /**
          * Problem
@@ -2650,7 +2673,8 @@ export interface operations {
             };
             /**
              * @description The state is unknown, the reason is blank, the list is empty or
-             *     longer than 5000, or a fingerprint is blank.
+             *     longer than 5000, a fingerprint is blank, or expires_at is not a
+             *     timestamp/date in the future.
              */
             400: {
                 headers: {
@@ -2702,7 +2726,10 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The state is unknown, the reason is blank or ids are missing. */
+            /**
+             * @description The state is unknown, the reason is blank, ids are missing, or
+             *     expires_at is not a timestamp/date in the future.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;

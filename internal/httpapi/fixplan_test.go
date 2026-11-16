@@ -69,7 +69,7 @@ func TestGetAssetFixPlan(t *testing.T) {
 	seedReportScan(t, ts.db, asset.ID, store.ScanStatusSucceeded, reportAt(10),
 		lodashLow, lodashHigh, openssl, secret, ignored)
 	if err := store.SetFindingState(t.Context(), ts.db, asset.ID, ignored.Fingerprint,
-		store.FindingStateIgnored, "not exploitable"); err != nil {
+		store.FindingStateIgnored, "not exploitable", nil); err != nil {
 		t.Fatalf("SetFindingState: %v", err)
 	}
 

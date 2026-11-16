@@ -50,6 +50,7 @@ async function openReports(
   url: string,
   list: (typeof findings)[number][] = [finding],
   afterDecision: (typeof findings)[number][] = [],
+  decisions: Record<string, unknown>[] = [],
 ) {
   let current = list
   await page.route('**/api/assets', (route) =>
@@ -59,6 +60,7 @@ async function openReports(
     route.fulfill({ json: { findings: current } }),
   )
   await page.route('**/api/findings/*/state', (route) => {
+    decisions.push(route.request().postDataJSON() as Record<string, unknown>)
     current = afterDecision
     return route.fulfill({ status: 204 })
   })
@@ -108,6 +110,24 @@ test('the finding drawer traps Tab and gives focus back to its row', async ({
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(row).toBeFocused()
 
+  expect(problems).toEqual([])
+})
+
+test('a decision can carry an expiry date', async ({ page, server }) => {
+  const problems = watch(page)
+  const decisions: Record<string, unknown>[] = []
+  await openReports(page, server.url, [finding], [], decisions)
+
+  await page.locator('tbody tr').first().focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.getByLabel('Reason').fill('Temporary acceptance.')
+  await page.getByLabel('Expires', { exact: true }).selectOption('30')
+  await page.getByRole('button', { name: 'Save decision' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  expect(decisions).toHaveLength(1)
+  expect(decisions[0].expires_at).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   expect(problems).toEqual([])
 })
 

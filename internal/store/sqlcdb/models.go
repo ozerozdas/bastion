@@ -73,6 +73,7 @@ type FindingState struct {
 	State       string
 	Reason      sql.NullString
 	CreatedAt   string
+	ExpiresAt   sql.NullString
 }
 
 type Package struct {

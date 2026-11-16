@@ -2,8 +2,9 @@
 -- open findings of each non-archived asset's most recent succeeded scan: a
 -- failed or running scan does not shadow the last complete report, and a
 -- finding_states decision hides its finding (status is computed the same way
--- as in findings.sql). Ignore decisions are keyed on (asset_id, fingerprint),
--- so they also apply retroactively to older scans in the trend.
+-- as in findings.sql) until its optional expires_at passes (#32). Ignore
+-- decisions are keyed on (asset_id, fingerprint), so they also apply
+-- retroactively to older scans in the trend.
 
 -- name: ReportTotalsBySeverity :many
 -- Open findings per severity across the fleet. Severities without findings
@@ -22,7 +23,7 @@ WHERE a.archived_at IS NULL
       WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
   )
   AND f.status = 'open'
-  AND fs.id IS NULL
+  AND (fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT))
 GROUP BY f.severity
 ORDER BY f.severity;
 
@@ -43,7 +44,7 @@ WHERE a.archived_at IS NULL
       WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
   )
   AND f.status = 'open'
-  AND fs.id IS NULL
+  AND (fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT))
 GROUP BY f.type
 ORDER BY f.type;
 
@@ -79,7 +80,7 @@ WHERE a.archived_at IS NULL
       WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
   )
   AND f.status = 'open'
-  AND fs.id IS NULL
+  AND (fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT))
 GROUP BY f.asset_id
 HAVING score > 0
 ORDER BY score DESC, a.display_name, f.asset_id
@@ -114,6 +115,7 @@ LEFT JOIN findings f
        SELECT 1
        FROM finding_states fs
        WHERE fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+         AND (fs.expires_at IS NULL OR fs.expires_at > CAST(sqlc.arg(now) AS TEXT))
    )
 WHERE r.scan_rank <= 10
 GROUP BY r.asset_id, r.scan_id, r.finished_at

@@ -91,7 +91,7 @@ WHERE a.archived_at IS NULL
       WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
   )
   AND f.status = 'open'
-  AND fs.id IS NULL
+  AND (fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT))
 GROUP BY f.asset_id
 HAVING score > 0
 ORDER BY score DESC, a.display_name, f.asset_id
@@ -112,8 +112,8 @@ type ReportTopAssetsRow struct {
 // The five riskiest assets: score = critical*1000 + high*100 + medium*10 + low,
 // counted over the same open findings as the totals. Assets whose open findings
 // are all "unknown" severity score 0 and are left out rather than ranked.
-func (q *Queries) ReportTopAssets(ctx context.Context) ([]ReportTopAssetsRow, error) {
-	rows, err := q.db.QueryContext(ctx, reportTopAssets)
+func (q *Queries) ReportTopAssets(ctx context.Context, now string) ([]ReportTopAssetsRow, error) {
+	rows, err := q.db.QueryContext(ctx, reportTopAssets, now)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +160,7 @@ WHERE a.archived_at IS NULL
       WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
   )
   AND f.status = 'open'
-  AND fs.id IS NULL
+  AND (fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT))
 GROUP BY f.severity
 ORDER BY f.severity
 `
@@ -174,12 +174,13 @@ type ReportTotalsBySeverityRow struct {
 // open findings of each non-archived asset's most recent succeeded scan: a
 // failed or running scan does not shadow the last complete report, and a
 // finding_states decision hides its finding (status is computed the same way
-// as in findings.sql). Ignore decisions are keyed on (asset_id, fingerprint),
-// so they also apply retroactively to older scans in the trend.
+// as in findings.sql) until its optional expires_at passes (#32). Ignore
+// decisions are keyed on (asset_id, fingerprint), so they also apply
+// retroactively to older scans in the trend.
 // Open findings per severity across the fleet. Severities without findings
 // are absent; the caller fills them with zero.
-func (q *Queries) ReportTotalsBySeverity(ctx context.Context) ([]ReportTotalsBySeverityRow, error) {
-	rows, err := q.db.QueryContext(ctx, reportTotalsBySeverity)
+func (q *Queries) ReportTotalsBySeverity(ctx context.Context, now string) ([]ReportTotalsBySeverityRow, error) {
+	rows, err := q.db.QueryContext(ctx, reportTotalsBySeverity, now)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +217,7 @@ WHERE a.archived_at IS NULL
       WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
   )
   AND f.status = 'open'
-  AND fs.id IS NULL
+  AND (fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT))
 GROUP BY f.type
 ORDER BY f.type
 `
@@ -228,8 +229,8 @@ type ReportTotalsByTypeRow struct {
 
 // Open findings per type across the fleet, with the same scope as
 // ReportTotalsBySeverity.
-func (q *Queries) ReportTotalsByType(ctx context.Context) ([]ReportTotalsByTypeRow, error) {
-	rows, err := q.db.QueryContext(ctx, reportTotalsByType)
+func (q *Queries) ReportTotalsByType(ctx context.Context, now string) ([]ReportTotalsByTypeRow, error) {
+	rows, err := q.db.QueryContext(ctx, reportTotalsByType, now)
 	if err != nil {
 		return nil, err
 	}
@@ -276,6 +277,7 @@ LEFT JOIN findings f
        SELECT 1
        FROM finding_states fs
        WHERE fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+         AND (fs.expires_at IS NULL OR fs.expires_at > CAST(?1 AS TEXT))
    )
 WHERE r.scan_rank <= 10
 GROUP BY r.asset_id, r.scan_id, r.finished_at
@@ -293,8 +295,8 @@ type ReportTrendScansRow struct {
 // open critical+high findings each scan reported. Oldest scan first, so the
 // caller can plot the series directly. Ignore decisions hide a finding in every
 // scan that carries its fingerprint, including scans older than the decision.
-func (q *Queries) ReportTrendScans(ctx context.Context) ([]ReportTrendScansRow, error) {
-	rows, err := q.db.QueryContext(ctx, reportTrendScans)
+func (q *Queries) ReportTrendScans(ctx context.Context, now string) ([]ReportTrendScansRow, error) {
+	rows, err := q.db.QueryContext(ctx, reportTrendScans, now)
 	if err != nil {
 		return nil, err
 	}
