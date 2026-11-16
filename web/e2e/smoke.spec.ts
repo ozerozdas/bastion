@@ -31,7 +31,9 @@ const navPages = [
     label: 'Containers',
     path: '/containers',
     subtitle: 'Images on the local Docker daemon',
-    marker: 'Local Docker images',
+    // The AWS hint renders whether or not this machine has a daemon, so the
+    // marker does not depend on the environment the suite runs in.
+    marker: 'No AWS connection yet.',
   },
   {
     label: 'Connections',

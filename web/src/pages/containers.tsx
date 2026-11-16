@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { Fragment, useState } from 'react'
 
 import {
@@ -29,8 +29,10 @@ import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { SeverityCountBadges } from '../components/severity-counts'
+import { Tabs, type TabItem } from '../components/ui/tabs'
 import { isLiveActive, liveDetail } from '../lib/live-scan'
 import { relativeTime } from '../lib/time'
+import type { ContainersTab } from '../lib/urls'
 
 /** statusTone maps a scan status onto the badge colours Repositories uses. */
 const statusTone: Record<Scan['status'], 'neutral' | 'ok' | 'critical'> = {
@@ -48,15 +50,142 @@ type ContainerRow = {
 }
 
 /**
- * ContainersPage lists the local Docker daemon's images and lets one be
- * scanned. A tracked image also shows its last scan and findings, the way a
- * project row does.
+ * ContainersPage lists the local Docker daemon's images and every AWS
+ * connection's ECR tags, one tab per source (#120). A tracked image shows its
+ * last scan and findings, the way a project row does.
  */
 export function ContainersPage() {
+  const search = useSearch({ from: '/containers' })
+  const navigate = useNavigate()
   const images = useQuery(dockerImagesQuery)
   const assets = useQuery(assetsQuery)
   const connections = useQuery(connectionsQuery)
+  // One stream for the whole page, so a scan keeps updating whichever tab is
+  // open, and after a tab switch the rows already have their live state.
   const live = useScanEvents()
+
+  const list = assets.data ?? []
+  const repos = list.filter((asset) => asset.kind === 'repo')
+  const aws = (connections.data ?? []).filter(
+    (connection) => connection.kind === 'aws',
+  )
+  // Images whose connection was removed before removal archived them: they
+  // have no connection to be listed under, so the Orphaned tab is their only
+  // place (issue #120).
+  const orphaned = list.filter(
+    (asset) =>
+      asset.kind === 'image' &&
+      asset.connection_id === undefined &&
+      asset.ecr_registry?.includes('.dkr.ecr.') === true,
+  )
+
+  // Only a reachable daemon gets a tab; without one the hint stands alone.
+  const tabs: TabItem<ContainersTab>[] = []
+  if (images.data?.available === true) {
+    tabs.push({ value: 'docker', label: 'Docker' })
+  }
+  for (const connection of aws) {
+    tabs.push({
+      value: `aws-${connection.id}`,
+      label: `AWS (${connection.name})`,
+    })
+  }
+  if (orphaned.length > 0) {
+    tabs.push({ value: 'orphaned', label: 'Orphaned' })
+  }
+  // The first tab is the bare path, as on the other tabbed pages; a stale tab
+  // (?tab=aws-9 once that connection is gone) falls back to it.
+  const tab =
+    tabs.find((item) => item.value === search.tab)?.value ?? tabs[0]?.value
+  const connection = aws.find((item) => `aws-${item.id}` === tab)
+
+  if (images.isPending || connections.isPending) {
+    return (
+      <section className="rounded-card border border-border-subtle bg-surface p-4">
+        <p className="text-muted">Looking for container sources…</p>
+      </section>
+    )
+  }
+
+  // A failed probe or connection list is shown above the tabs: the source it
+  // would have added has no tab to carry the message.
+  const errors = (
+    <>
+      {images.isError ? (
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <ErrorNote error={images.error} />
+        </section>
+      ) : null}
+      {connections.isError ? (
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <ErrorNote error={connections.error} />
+        </section>
+      ) : null}
+    </>
+  )
+
+  if (!tab) {
+    return (
+      <div className="flex flex-col gap-4">
+        {errors}
+        {images.isSuccess ? (
+          <EmptyState
+            title="No Docker daemon found"
+            body="Start Docker, OrbStack or Colima, then reload this page. Bastion only reads images the daemon already holds."
+          />
+        ) : null}
+        <AWSHint />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {errors}
+      <Tabs
+        label="Container sources"
+        items={tabs}
+        value={tab}
+        onChange={(next) => {
+          // The URL owns the tab, so a reload or a copied link lands on it.
+          // replace: switching tabs is not a step the Back button should undo.
+          void navigate({
+            to: '/containers',
+            search: next === tabs[0]?.value ? {} : { tab: next },
+            replace: true,
+          })
+        }}
+      >
+        {tab === 'docker' ? <DockerPanel assets={list} live={live} /> : null}
+        {tab === 'orphaned' ? <OrphanedImages assets={orphaned} /> : null}
+        {connection ? (
+          <EcrConnection
+            connection={connection}
+            assets={list}
+            repos={repos}
+            live={live}
+          />
+        ) : null}
+      </Tabs>
+      {/* Without an AWS connection the Docker tab is the only source, so the
+          hint sits under it rather than behind a tab that does not exist. */}
+      {aws.length === 0 ? <AWSHint /> : null}
+    </div>
+  )
+}
+
+/**
+ * DockerPanel is the local daemon's images, one row each, with the scan and
+ * link actions a tracked image offers.
+ */
+function DockerPanel({
+  assets,
+  live,
+}: {
+  assets: Asset[]
+  live: Map<number, LiveScan>
+}) {
+  const images = useQuery(dockerImagesQuery)
   const scanImage = useScanDockerImage()
   const start = useStartScans()
   const archive = useArchiveAsset()
@@ -65,12 +194,12 @@ export function ContainersPage() {
   const rows: ContainerRow[] =
     images.data?.images.map((image) => ({
       image,
-      asset: assets.data?.find(
+      asset: assets.find(
         (asset) => asset.kind === 'image' && asset.ref === image.reference,
       ),
     })) ?? []
   // The link control offers the tracked repositories.
-  const repos = (assets.data ?? []).filter((asset) => asset.kind === 'repo')
+  const repos = assets.filter((asset) => asset.kind === 'repo')
 
   function scanning(row: ContainerRow): boolean {
     if (row.asset) {
@@ -204,15 +333,6 @@ export function ContainersPage() {
 
   return (
     <>
-      {images.isSuccess ? (
-        <p className="text-xs text-faint">Local Docker images</p>
-      ) : null}
-
-      {images.isError ? (
-        <section className="rounded-card border border-border-subtle bg-surface p-4">
-          <ErrorNote error={images.error} />
-        </section>
-      ) : null}
       {scanImage.isError ? (
         <section className="rounded-card border border-border-subtle bg-surface p-4">
           <ErrorNote error={scanImage.error} />
@@ -221,12 +341,6 @@ export function ContainersPage() {
       {start.isError ? (
         <section className="rounded-card border border-border-subtle bg-surface p-4">
           <ErrorNote error={start.error} />
-        </section>
-      ) : null}
-
-      {images.isPending ? (
-        <section className="rounded-card border border-border-subtle bg-surface p-4">
-          <p className="text-muted">Looking for a Docker daemon…</p>
         </section>
       ) : null}
 
@@ -302,77 +416,28 @@ export function ContainersPage() {
           />
         </section>
       ) : null}
-
-      <EcrSection
-        assets={assets.data ?? []}
-        connections={connections.data ?? []}
-        pending={connections.isPending}
-        live={live}
-      />
     </>
   )
 }
 
 /**
- * EcrSection lists ECR repositories for every AWS connection, next to the
- * local Docker images. A machine without an AWS connection gets a hint that
- * links to Connections → Registry.
+ * AWSHint is the way to ECR without an AWS connection: a link to the
+ * Connections page's registry tab (#107).
  */
-function EcrSection({
-  assets,
-  connections,
-  pending,
-  live,
-}: {
-  assets: Asset[]
-  connections: Connection[]
-  pending: boolean
-  live: Map<number, LiveScan>
-}) {
-  const aws = connections.filter((connection) => connection.kind === 'aws')
-  // Images whose connection was removed before removal archived them: they
-  // have no connection to be listed under, so the Orphaned group is their only
-  // place (issue #120).
-  const orphaned = assets.filter(
-    (asset) =>
-      asset.kind === 'image' &&
-      asset.connection_id === undefined &&
-      asset.ecr_registry?.includes('.dkr.ecr.') === true,
-  )
-
+function AWSHint() {
   return (
-    <section aria-label="ECR" className="space-y-3">
-      <p className="text-xs text-faint">ECR images</p>
-      {pending ? (
-        <section className="rounded-card border border-border-subtle bg-surface p-4">
-          <p className="text-muted">Looking for an AWS connection…</p>
-        </section>
-      ) : null}
-      {!pending && aws.length === 0 ? (
-        <section className="rounded-card border border-border-subtle bg-surface p-4">
-          <p className="text-sm text-muted">
-            No AWS connection yet. Add one in{' '}
-            <Link
-              to="/connections"
-              search={{ tab: 'registry' }}
-              className="underline underline-offset-2 hover:text-fg"
-            >
-              Connections → Registry
-            </Link>{' '}
-            to list ECR images.
-          </p>
-        </section>
-      ) : null}
-      {aws.map((connection) => (
-        <EcrConnection
-          key={connection.id}
-          connection={connection}
-          assets={assets}
-          repos={assets.filter((asset) => asset.kind === 'repo')}
-          live={live}
-        />
-      ))}
-      {orphaned.length > 0 ? <OrphanedImages assets={orphaned} /> : null}
+    <section className="rounded-card border border-border-subtle bg-surface p-4">
+      <p className="text-sm text-muted">
+        <span>No AWS connection yet.</span> Add one in{' '}
+        <Link
+          to="/connections"
+          search={{ tab: 'registry' }}
+          className="underline underline-offset-2 hover:text-fg"
+        >
+          Connections → Registry
+        </Link>{' '}
+        to list ECR images.
+      </p>
     </section>
   )
 }
@@ -435,7 +500,6 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
 
   return (
     <section aria-label="Orphaned ECR images" className="space-y-2">
-      <h2 className="text-[13px] font-semibold">Orphaned</h2>
       <p className="text-xs text-muted">
         Images whose AWS connection was removed. Archiving one hides its
         findings; its scan history stays.

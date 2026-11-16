@@ -10,6 +10,7 @@ import { AppShell } from './components/app-shell'
 import {
   parseAssetSearch,
   parseConnectionsTab,
+  parseContainersTab,
   parseFindingsSearch,
   parseProjectsTabSearch,
   parseScanDiffSearch,
@@ -51,6 +52,9 @@ const connectionsRoute = createRoute({
 const containersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/containers',
+  // ?tab=aws-<id> or ?tab=orphaned picks a source; the bare path is the first
+  // one available, which depends on the daemon and the connections (#120).
+  validateSearch: parseContainersTab,
   component: ContainersPage,
 })
 

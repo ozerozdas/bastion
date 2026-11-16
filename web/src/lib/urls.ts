@@ -111,6 +111,35 @@ export function parseProjectsTabSearch(
   return { tab: 'scans', ...parseAssetSearch(search) }
 }
 
+/**
+ * ContainersTab names one tab of the Containers page (#120): the local Docker
+ * daemon, one AWS connection by id, or the images whose connection is gone.
+ */
+export type ContainersTab = 'docker' | 'orphaned' | `aws-${number}`
+
+/** ContainersSearch is the Containers route's search params. */
+export type ContainersSearch = {
+  /** ?tab=docker, ?tab=aws-<id> or ?tab=orphaned; absent is the first tab. */
+  tab?: ContainersTab
+}
+
+/**
+ * parseContainersTab reads ?tab=<source> from the Containers route. Only the
+ * known shapes survive; which tab exists depends on the daemon and the AWS
+ * connections, so a well-formed but stale value (a removed connection) is kept
+ * here and the page falls back to its first tab.
+ */
+export function parseContainersTab(
+  search: Record<string, unknown>,
+): ContainersSearch {
+  const raw = search.tab
+  if (raw === 'docker' || raw === 'orphaned') return { tab: raw }
+  if (typeof raw === 'string' && /^aws-\d+$/.test(raw)) {
+    return { tab: raw as ContainersTab }
+  }
+  return {}
+}
+
 /** ConnectionsTab names the two kinds of source (#107). */
 export type ConnectionsTab = 'repository' | 'registry'
 
