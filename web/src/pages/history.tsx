@@ -11,18 +11,19 @@ import { FilterBar } from '../components/filter-bar'
 import { SeverityCountBadges } from '../components/severity-counts'
 import { Badge } from '../components/ui/badge'
 import { buttonVariants } from '../components/ui/button'
+import { t, useT } from '../lib/i18n'
 import { formatDateTime, relativeTime, scanDuration } from '../lib/time'
 
 /** statusView maps a scan status to its badge text and tone (§7.5). */
 const statusView: Record<
   Scan['status'],
-  { tone: 'neutral' | 'ok' | 'critical'; label: string }
+  { tone: 'neutral' | 'ok' | 'critical'; labelKey: string }
 > = {
-  queued: { tone: 'neutral', label: 'queued' },
-  running: { tone: 'neutral', label: 'running' },
-  succeeded: { tone: 'ok', label: 'succeeded' },
-  failed: { tone: 'critical', label: 'failed' },
-  canceled: { tone: 'neutral', label: 'canceled' },
+  queued: { tone: 'neutral', labelKey: 'scanStatus.queued' },
+  running: { tone: 'neutral', labelKey: 'scanStatus.running' },
+  succeeded: { tone: 'ok', labelKey: 'scanStatus.succeeded' },
+  failed: { tone: 'critical', labelKey: 'scanStatus.failed' },
+  canceled: { tone: 'neutral', labelKey: 'scanStatus.canceled' },
 }
 
 /** triggerLabels says who started the scan in the words used in the CLI. */
@@ -34,6 +35,7 @@ const triggerLabels: Record<Scan['trigger'], string> = {
 
 /** ScansPanel is the Repositories page's Scans tab: every scan of every asset. */
 export function ScansPanel() {
+  const t = useT()
   // The project filter lives in the URL (#54), so a filtered view can be
   // reloaded, bookmarked and shared.
   const assetId = useSearch({ from: '/repositories' }).asset
@@ -74,10 +76,10 @@ export function ScansPanel() {
   const filters = [
     {
       id: 'scan-asset-filter',
-      label: 'Project',
+      label: t('scans.column.project'),
       value: assetId === undefined ? '' : String(assetId),
       options: [
-        { value: '', label: 'All projects' },
+        { value: '', label: t('findings.filter.allProjects') },
         ...(assets.data ?? []).map((asset) => ({
           value: String(asset.id),
           label: asset.display_name,
@@ -97,20 +99,22 @@ export function ScansPanel() {
       >
         <div className="flex flex-wrap items-baseline gap-2.5">
           <h2 id="scans-heading" className="text-[0.8125rem] font-semibold">
-            Scans
+            {t('scans.title')}
           </h2>
-          <span className="text-faint">
-            Newest first; every scan keeps its own findings
-          </span>
+          <span className="text-faint">{t('scans.subtitle')}</span>
         </div>
 
         <FilterBar fields={filters} layout="inline" bordered={false} />
 
-        {scans.isPending ? <p className="text-muted">Loading scans…</p> : null}
+        {scans.isPending ? (
+          <p className="text-muted">{t('scans.loading')}</p>
+        ) : null}
 
         {scans.isError ? (
           <div className="flex flex-col gap-1">
-            <h3 className="text-[0.8125rem] font-semibold">Scans failed to load</h3>
+            <h3 className="text-[0.8125rem] font-semibold">
+              {t('scans.failed')}
+            </h3>
             <ErrorNote error={scans.error} />
           </div>
         ) : null}
@@ -118,8 +122,7 @@ export function ScansPanel() {
         {scans.isSuccess ? (
           scans.data.length === 0 ? (
             <p className="text-xs text-muted">
-              No scans for this project yet. Pick another project, or scan this
-              one from Repositories.
+              {t('scans.emptyFiltered')}
             </p>
           ) : (
             <ScanTable scans={scans.data} assets={assets.data ?? []} />
@@ -132,21 +135,23 @@ export function ScansPanel() {
 
 /** ScanTable lists scans with the one link that matters: open the report. */
 function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
+  const t = useT()
   const names = useMemo(() => assetNames(assets), [assets])
   const columns: DataTableColumn<Scan>[] = [
     {
       id: 'project',
-      header: 'Project',
+      header: t('scans.column.project'),
       cellClassName: 'max-w-[22ch] truncate py-2 pr-3',
       cell: (scan) => {
         const project =
-          names.get(scan.asset_id) ?? `Asset ${String(scan.asset_id)}`
+          names.get(scan.asset_id) ??
+          t('asset.fallback', { id: scan.asset_id })
         return (
           <Link
             to="/findings"
             search={{ asset: scan.asset_id }}
             className="hover:underline"
-            title={`${project}: open its findings`}
+            title={t('scans.projectTitle', { project })}
           >
             {project}
           </Link>
@@ -155,31 +160,31 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
     },
     {
       id: 'status',
-      header: 'Status',
+      header: t('scans.column.status'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
       cell: (scan) => {
         const status = statusView[scan.status]
-        return <Badge tone={status.tone}>{status.label}</Badge>
+        return <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
       },
     },
     {
       id: 'findings',
-      header: 'Findings',
+      header: t('scans.column.findings'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
       cell: (scan) => <SeverityCountBadges counts={scan.counts} />,
     },
     {
       id: 'trigger',
-      header: 'Trigger',
+      header: t('scans.column.trigger'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 text-muted',
       cell: (scan) => triggerLabels[scan.trigger],
     },
     {
       id: 'started',
-      header: 'Started',
+      header: t('scans.column.started'),
       headerClassName: 'pl-3 text-right',
       cellClassName:
         'py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums',
@@ -189,7 +194,7 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
     },
     {
       id: 'duration',
-      header: 'Duration',
+      header: t('scans.column.duration'),
       headerClassName: 'pl-3 text-right',
       cellClassName:
         'py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums',
@@ -197,7 +202,7 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
     },
     {
       id: 'error',
-      header: 'Error',
+      header: t('scans.column.error'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
       cell: (scan) =>
@@ -216,7 +221,7 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: t('scans.column.actions'),
       headerClassName: 'pl-3 text-right',
       cellClassName: 'py-2 pl-3 whitespace-nowrap text-right',
       cell: (scan) =>
@@ -227,18 +232,18 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
               to="/scans/$scanId/diff"
               params={{ scanId: String(scan.id) }}
               className={buttonVariants({ variant: 'outline', size: 'sm' })}
-              title={`Compare scan #${String(scan.id)} with the previous one`}
+              title={t('scans.compareTitle', { id: scan.id })}
             >
-              Compare
+              {t('scans.compare')}
             </Link>
             {/* ponytail: one export format, so a plain download; a menu when a second one lands. */}
             <a
               href={`/api/scans/${String(scan.id)}/sbom`}
               download
               className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-              title={`Download the CycloneDX SBOM of scan #${String(scan.id)}`}
+              title={t('scans.downloadSbomTitle', { id: scan.id })}
             >
-              Download SBOM
+              {t('scans.downloadSbom')}
             </a>
           </div>
         ) : (
@@ -260,13 +265,14 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
 
 /** ScansEmpty explains how to get the first scan. */
 function ScansEmpty() {
+  const t = useT()
   return (
     <EmptyState
-      title="No scans yet — add a repository and press Scan"
-      body="Every scan is listed here with its status and duration. Once two scans have finished, Compare shows what is new, fixed or still open between them."
+      title={t('scans.empty.title')}
+      body={t('scans.empty.body')}
     >
       <Link to="/repositories" className={buttonVariants({ variant: 'outline' })}>
-        Go to repositories
+        {t('scans.empty.action')}
       </Link>
     </EmptyState>
   )
@@ -288,14 +294,11 @@ function ErrorNote({ error }: { error: unknown }) {
       ? `${error.message}${error.problem?.title ? ` (${error.problem.title})` : ''}`
       : error instanceof Error
         ? error.message
-        : 'the request failed'
+        : t('common.requestFailed')
 
   return (
     <p role="alert" className="text-xs text-critical">
-      {cause}{' '}
-      <span className="text-muted">
-        Reload the page; if it persists, check the terminal running bastion.
-      </span>
+      {cause} <span className="text-muted">{t('common.reloadFix')}</span>
     </p>
   )
 }

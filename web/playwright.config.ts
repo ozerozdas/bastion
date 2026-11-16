@@ -11,6 +11,7 @@ export default defineConfig({
   timeout: 30_000,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
+    locale: 'en-US',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

@@ -3,13 +3,15 @@ import { RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
+import { installI18n } from './lib/i18n'
 import { installAppearance } from './lib/theme'
 import { router } from './router'
 import './styles.css'
 
-// The CSP forbids inline scripts, so the stored appearance is applied here,
-// before the first render.
+// The CSP forbids inline scripts, so the stored appearance and language are
+// applied here, before the first render.
 installAppearance()
+installI18n()
 
 const queryClient = new QueryClient({
   defaultOptions: {

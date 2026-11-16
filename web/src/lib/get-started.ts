@@ -1,3 +1,5 @@
+import { t } from './i18n'
+
 /** GetStartedStepId names the four steps, in the order they are shown. */
 export type GetStartedStepId =
   | 'connect-github'
@@ -47,29 +49,29 @@ export function getStartedState(input: GetStartedInput): GetStartedState {
   const steps: GetStartedStep[] = [
     {
       id: 'connect-github',
-      title: 'Connect GitHub',
-      hint: 'Paste a read-only token on Connections; it stays in the OS keychain.',
+      title: t('getStarted.connect-github.title'),
+      hint: t('getStarted.connect-github.hint'),
       done: input.connectionCount > 0,
       to: '/connections',
     },
     {
       id: 'add-project',
-      title: 'Add a repository',
-      hint: 'Pick a repository or an absolute path on this machine in Repositories.',
+      title: t('getStarted.add-project.title'),
+      hint: t('getStarted.add-project.hint'),
       done: input.assetCount > 0,
       to: '/repositories',
     },
     {
       id: 'run-scan',
-      title: 'Run the first scan',
-      hint: 'Select a repository in Repositories and press Scan; findings appear when it finishes.',
+      title: t('getStarted.run-scan.title'),
+      hint: t('getStarted.run-scan.hint'),
       done: input.hasSucceededScan,
       to: '/repositories',
     },
     {
       id: 'scan-in-ci',
-      title: 'Scan in CI or from the CLI',
-      hint: 'Keep scanning on every push with the CLI reference.',
+      title: t('getStarted.scan-in-ci.title'),
+      hint: t('getStarted.scan-in-ci.hint'),
       done: input.cliDone,
       href: cliReferenceUrl,
     },

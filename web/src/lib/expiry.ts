@@ -1,3 +1,5 @@
+import { formatLocalDate } from './i18n'
+
 /** ExpiryChoice is what the decision forms offer next to the state. */
 export type ExpiryChoice = 'none' | '30' | '90' | 'date'
 
@@ -27,7 +29,7 @@ export function expiryValue(choice: ExpiryChoice, day: string): string | undefin
 export function expiryLabel(expiresAt: string): string {
   const parsed = new Date(expiresAt)
   if (Number.isNaN(parsed.getTime())) return expiresAt
-  return parsed.toLocaleDateString(undefined, {
+  return formatLocalDate(parsed, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

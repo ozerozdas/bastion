@@ -1,4 +1,5 @@
 import type { LiveScan } from '../api/events'
+import { t } from './i18n'
 
 /** liveDetail names the scanner or stage the live event is on. */
 export function liveDetail(live: LiveScan): string | null {
@@ -8,7 +9,7 @@ export function liveDetail(live: LiveScan): string | null {
 
 /** stageLabel spells out the one stage whose wire name does not read as a step. */
 export function stageLabel(stage: NonNullable<LiveScan['stage']>): string {
-  return stage === 'wait_db' ? 'Waiting for vulnerability DB' : stage
+  return stage === 'wait_db' ? t('live.waitingDb') : stage
 }
 
 /** isLiveActive reports whether the live event describes a scan still in flight. */

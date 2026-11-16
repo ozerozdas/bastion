@@ -7,7 +7,8 @@ import {
   type FindingState,
 } from '../api/findings'
 
-import { capitalize, severityTone, typeLabels } from '../lib/finding-labels'
+import { severityLabel, severityTone, typeLabels } from '../lib/finding-labels'
+import { useT } from '../lib/i18n'
 import { useDrawerFocus } from './drawer-focus'
 import { ErrorNote } from './error-note'
 import { Badge } from './ui/badge'
@@ -40,16 +41,16 @@ export function GroupDrawer({
   onRemoveFailed,
   onOpenFinding,
 }: GroupDrawerProps) {
+  const t = useT()
   const { panel, onKeyDown } = useDrawerFocus(onClose)
   const bulk = useBulkFindingState()
   const [confirming, setConfirming] = useState(false)
   const [decision, setDecision] = useState<FindingState>('ignored')
   const [reason, setReason] = useState('')
 
-  const projectsLabel =
-    group.project_count === 1
-      ? '1 project'
-      : `${String(group.project_count)} projects`
+  const projectsLabel = t('findings.group.projects', {
+    count: group.project_count,
+  })
   const target = group.findings.map((finding) => ({
     assetId: finding.asset_id,
     fingerprint: finding.fingerprint,
@@ -88,15 +89,14 @@ export function GroupDrawer({
             </h2>
             <div className="flex flex-wrap items-center gap-1.5">
               <Badge tone={severityTone[group.severity]}>
-                {group.severity === 'unknown'
-                  ? 'unknown'
-                  : capitalize(group.severity)}
+                {severityLabel(group.severity)}
               </Badge>
-              <Badge>{typeLabels[group.type]}</Badge>
+              <Badge>{t(typeLabels[group.type])}</Badge>
               <span className="text-xs text-faint">
-                {group.findings.length === 1
-                  ? `1 finding in ${projectsLabel}`
-                  : `${String(group.findings.length)} findings in ${projectsLabel}`}
+                {t('group.findings', {
+                  count: group.findings.length,
+                  projects: projectsLabel,
+                })}
               </span>
             </div>
           </div>
@@ -107,7 +107,7 @@ export function GroupDrawer({
             className="ml-auto shrink-0"
             onClick={onClose}
           >
-            Close
+            {t('group.close')}
           </Button>
         </div>
 
@@ -116,11 +116,14 @@ export function GroupDrawer({
         ) : null}
 
         <section className="flex flex-col gap-2">
-          <h3 className="text-[0.8125rem] font-semibold">Affected projects</h3>
+          <h3 className="text-[0.8125rem] font-semibold">
+            {t('group.affected')}
+          </h3>
           <ul className="flex flex-col gap-1.5">
             {group.findings.map((finding) => {
               const project =
-                assetNames.get(finding.asset_id) ?? `Asset ${String(finding.asset_id)}`
+                assetNames.get(finding.asset_id) ??
+                t('asset.fallback', { id: finding.asset_id })
               const installed =
                 finding.package_name === undefined
                   ? undefined
@@ -137,13 +140,13 @@ export function GroupDrawer({
                     <span className="flex flex-wrap items-center gap-2 text-[0.8125rem]">
                       <span className="font-medium">{project}</span>
                       <span className="font-mono text-xs text-muted">
-                        {installed ?? 'no package'}
+                        {installed ?? t('group.noPackage')}
                         <span aria-hidden="true"> → </span>
-                        <span className="sr-only">fixed in </span>
-                        {finding.fixed_version ?? 'no fixed version'}
+                        <span className="sr-only">{t('group.fixedIn')} </span>
+                        {finding.fixed_version ?? t('group.noFixedVersion')}
                       </span>
                     </span>
-                    <span className="text-xs text-faint">Open this finding</span>
+                    <span className="text-xs text-faint">{t('group.open')}</span>
                   </button>
                 </li>
               )
@@ -152,7 +155,9 @@ export function GroupDrawer({
         </section>
 
         <section className="flex flex-col gap-2 rounded-md border border-border-subtle bg-bg p-3">
-          <h3 className="text-[0.8125rem] font-semibold">Decision</h3>
+          <h3 className="text-[0.8125rem] font-semibold">
+            {t('group.decision')}
+          </h3>
 
           {ignored.length === group.findings.length ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -175,28 +180,27 @@ export function GroupDrawer({
                 }}
               >
                 {bulk.isPending
-                  ? 'Reopening…'
-                  : `Reopen in all ${projectsLabel}`}
+                  ? t('group.reopening')
+                  : t('group.reopenAll', { projects: projectsLabel })}
               </Button>
               <span className="text-xs text-faint">
-                The findings return to future scans.
+                {t('group.reopenHint')}
               </span>
             </div>
           ) : confirming ? (
             <form onSubmit={submit} className="flex flex-col gap-2">
               <p className="text-xs text-muted">
-                Ignore this finding in all {projectsLabel}?{' '}
-                {target.length === 1
-                  ? '1 finding will be hidden'
-                  : `${String(target.length)} findings will be hidden`}{' '}
-                with this reason, and the decision applies to later scans too.
+                {t('group.confirm', {
+                  projects: projectsLabel,
+                  findings: t('group.willHide', { count: target.length }),
+                })}
               </p>
               <div className="flex flex-col gap-1">
                 <label
                   htmlFor="group-decision"
                   className="text-xs font-medium text-muted"
                 >
-                  Hide in every project as
+                  {t('group.hideAs')}
                 </label>
                 <select
                   id="group-decision"
@@ -204,9 +208,13 @@ export function GroupDrawer({
                   onChange={(event) => setDecision(event.target.value as FindingState)}
                   className={`${inputClass} w-56`}
                 >
-                  <option value="ignored">Ignored</option>
-                  <option value="accepted_risk">Accepted risk</option>
-                  <option value="false_positive">False positive</option>
+                  <option value="ignored">{t('state.ignored')}</option>
+                  <option value="accepted_risk">
+                    {t('state.accepted_risk')}
+                  </option>
+                  <option value="false_positive">
+                    {t('state.false_positive')}
+                  </option>
                 </select>
               </div>
               <div className="flex flex-col gap-1">
@@ -214,7 +222,7 @@ export function GroupDrawer({
                   htmlFor="group-reason"
                   className="text-xs font-medium text-muted"
                 >
-                  Reason
+                  {t('group.reason')}
                 </label>
                 <textarea
                   id="group-reason"
@@ -222,7 +230,7 @@ export function GroupDrawer({
                   rows={3}
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
-                  placeholder="Why every project can hide this finding, for the next person who reads it."
+                  placeholder={t('group.reasonPlaceholder')}
                   className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[0.8125rem] text-fg placeholder:text-faint"
                 />
               </div>
@@ -233,8 +241,11 @@ export function GroupDrawer({
                   disabled={bulk.isPending || reason.trim() === ''}
                 >
                   {bulk.isPending
-                    ? 'Saving…'
-                    : `Hide ${String(target.length)} in ${projectsLabel}`}
+                    ? t('group.saving')
+                    : t('group.hide', {
+                        count: target.length,
+                        projects: projectsLabel,
+                      })}
                 </Button>
                 <Button
                   type="button"
@@ -242,7 +253,7 @@ export function GroupDrawer({
                   variant="ghost"
                   onClick={() => setConfirming(false)}
                 >
-                  Cancel
+                  {t('group.cancel')}
                 </Button>
               </div>
             </form>
@@ -254,10 +265,10 @@ export function GroupDrawer({
                 variant="outline"
                 onClick={() => setConfirming(true)}
               >
-                Ignore in all {projectsLabel}…
+                {t('group.ignoreAll', { projects: projectsLabel })}
               </Button>
               <span className="text-xs text-faint">
-                Asks for a reason first, then hides every project’s finding.
+                {t('group.ignoreHint')}
               </span>
             </div>
           )}
@@ -265,7 +276,7 @@ export function GroupDrawer({
           {bulk.isError ? (
             <ErrorNote
               error={bulk.error}
-              fix="Each project is saved in one transaction; the list shows what is left."
+              fix={t('findings.bulk.fix')}
             />
           ) : null}
         </section>

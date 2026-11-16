@@ -7,6 +7,7 @@ import {
   ProjectsIcon,
   ReportsIcon,
 } from '../components/icons'
+import { t } from './i18n'
 
 /** NavCounts are the numbers the sidebar can show; a missing key is "not known yet". */
 export type NavCounts = {
@@ -24,9 +25,10 @@ export type NavSection = 'main' | 'assets' | 'settings'
 export type NavItem = {
   /** Route path; "/" is the dashboard. */
   to: string
-  label: string
-  /** One line under the page title in the header. */
-  subtitle: string
+  /** Translation key of the sidebar label and the page title. */
+  labelKey: string
+  /** Translation key of the line under the page title. */
+  subtitleKey: string
   icon: ComponentType
   /** Which sidebar count this entry shows, if any. */
   count?: keyof NavCounts
@@ -38,37 +40,37 @@ export type NavItem = {
 export const navItems: NavItem[] = [
   {
     to: '/',
-    label: 'Dashboard',
-    subtitle: 'Open findings across your projects',
+    labelKey: 'nav.dashboard',
+    subtitleKey: 'nav.dashboard.subtitle',
     icon: DashboardIcon,
   },
   {
     to: '/findings',
-    label: 'Findings',
-    subtitle: 'Across every project, with fixes',
+    labelKey: 'nav.findings',
+    subtitleKey: 'nav.findings.subtitle',
     icon: ReportsIcon,
     count: 'openFindings',
   },
   {
     to: '/repositories',
-    label: 'Repositories',
-    subtitle: 'GitHub repositories and local paths you scan',
+    labelKey: 'nav.repositories',
+    subtitleKey: 'nav.repositories.subtitle',
     icon: ProjectsIcon,
     count: 'projects',
     section: 'assets',
   },
   {
     to: '/containers',
-    label: 'Containers',
-    subtitle: 'Images on the local Docker daemon',
+    labelKey: 'nav.containers',
+    subtitleKey: 'nav.containers.subtitle',
     icon: ContainersIcon,
     count: 'containers',
     section: 'assets',
   },
   {
     to: '/connections',
-    label: 'Connections',
-    subtitle: 'GitHub, AWS and Docker sources',
+    labelKey: 'nav.connections',
+    subtitleKey: 'nav.connections.subtitle',
     icon: ConnectionsIcon,
     section: 'settings',
   },
@@ -77,17 +79,17 @@ export const navItems: NavItem[] = [
 /** NavGroup is one heading and the entries under it. */
 export type NavGroup = {
   section: NavSection
-  /** Heading above the group; null for the top entries. */
-  label: string | null
+  /** Translation key of the heading above the group; null for the top entries. */
+  labelKey: string | null
   items: NavItem[]
 }
 
 /** navGroups splits navItems into the ADR-007 sections, in their order. */
 export function navGroups(items: NavItem[] = navItems): NavGroup[] {
   const groups: NavGroup[] = [
-    { section: 'main', label: null, items: [] },
-    { section: 'assets', label: 'ASSETS', items: [] },
-    { section: 'settings', label: 'SETTINGS', items: [] },
+    { section: 'main', labelKey: null, items: [] },
+    { section: 'assets', labelKey: 'nav.section.assets', items: [] },
+    { section: 'settings', labelKey: 'nav.section.settings', items: [] },
   ]
   for (const item of items) {
     const group = groups.find((entry) => entry.section === (item.section ?? 'main'))
@@ -134,10 +136,11 @@ export type NavBadge = {
  * the pill and leave the label alone.
  */
 export function navBadge(item: NavItem, counts: NavCounts): NavBadge {
+  const label = t(item.labelKey)
   const count = item.count === undefined ? undefined : counts[item.count]
   if (count === undefined || count <= 0) {
-    return { name: item.label, count: null }
+    return { name: label, count: null }
   }
   const text = String(count)
-  return { name: `${item.label}, ${text}`, count: text }
+  return { name: t('nav.badge', { label, count: text }), count: text }
 }

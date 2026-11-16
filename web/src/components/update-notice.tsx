@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { updateQuery, type UpdateStatus } from '../api/update'
+import { useT } from '../lib/i18n'
 import { dismissUpdate, isUpdateDismissed } from '../lib/update-dismiss'
 import { Button } from './ui/button'
 
@@ -13,6 +14,7 @@ import { Button } from './ui/button'
  * to one release version.
  */
 export function UpdateNotice() {
+  useT()
   const { data } = useQuery(updateQuery)
 
   // Disabled (env switch, CI, dev build): there is no check to report.
@@ -33,6 +35,7 @@ function UpdateAvailableCard({
   status: UpdateStatus
   latest: string
 }) {
+  const t = useT()
   const [dismissed, setDismissed] = useState(() =>
     isUpdateDismissed(window.localStorage, latest),
   )
@@ -65,15 +68,17 @@ function UpdateAvailableCard({
 
   return (
     <section
-      aria-label="Release available"
+      aria-label={t('update.aria')}
       className="flex flex-col gap-1.5 rounded-lg border border-border-subtle bg-surface p-2.5"
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium">{version} is available</p>
+        <p className="text-xs font-medium">
+          {t('update.available', { version })}
+        </p>
         <button
           type="button"
-          aria-label="Dismiss update notice"
-          title="Dismiss"
+          aria-label={t('update.dismissAria')}
+          title={t('update.dismiss')}
           onClick={dismiss}
           className="-mt-1 -mr-1 flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
         >
@@ -81,7 +86,11 @@ function UpdateAvailableCard({
         </button>
       </div>
       <p className="text-[0.6875rem] text-muted">
-        You have {status.current.startsWith('v') ? status.current : `v${status.current}`}.
+        {t('update.youHave', {
+          version: status.current.startsWith('v')
+            ? status.current
+            : `v${status.current}`,
+        })}
       </p>
 
       {command ? (
@@ -94,9 +103,11 @@ function UpdateAvailableCard({
             size="sm"
             variant="outline"
             onClick={() => void copy()}
-            aria-label="Copy update command"
+            aria-label={t('update.copyAria')}
           >
-            <span aria-live="polite">{copied ? 'Copied' : 'Copy'}</span>
+            <span aria-live="polite">
+              {copied ? t('update.copied') : t('update.copy')}
+            </span>
           </Button>
         </div>
       ) : null}
@@ -108,7 +119,7 @@ function UpdateAvailableCard({
           rel="noopener noreferrer"
           className="self-start text-[0.6875rem] text-muted underline underline-offset-2 hover:text-fg"
         >
-          Release notes
+          {t('update.releaseNotes')}
         </a>
       ) : null}
     </section>

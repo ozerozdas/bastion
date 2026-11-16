@@ -242,6 +242,10 @@ make gen     # sqlc + oapi-codegen + openapi-typescript (after changing SQL/quer
 make test    # go test ./...
 ```
 
+### Translations
+
+The UI ships in English and Turkish. Each language is one file in `web/src/locales/`. To add one, copy `en.json` to `<code>.json` (for example `de.json`), set `_meta.name`, and translate the values. It then appears under Configuration → Appearance → Language. Missing keys fall back to English, and `npm --prefix web run test` checks that the keys and `{placeholders}` match English.
+
 Project management lives in `.pm/` (tasks in `.pm/tasks/`, decisions in `.pm/decisions/`,
 the rulebook in `PROJECT_SPEC.md`).
 

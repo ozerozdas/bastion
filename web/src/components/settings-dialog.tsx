@@ -7,6 +7,7 @@ import { outdatedQuery, useSetOutdatedEnabled } from '../api/outdated'
 import { reachabilityQuery, useSetReachabilityEnabled } from '../api/reachability'
 import { sastQuery, useSetSASTEnabled } from '../api/sast'
 import { updateQuery, useSetUpdateConsent } from '../api/update'
+import { formatNumber, useT } from '../lib/i18n'
 import { AppearanceSettings } from './appearance-settings'
 import { useDrawerFocus } from './drawer-focus'
 import { LicencePolicyEditor } from './licence-policy-card'
@@ -16,21 +17,21 @@ import { Tabs, type TabItem } from './ui/tabs'
 
 type ConfigurationTab = 'modules' | 'appearance'
 
-const configurationTabs: TabItem<ConfigurationTab>[] = [
-  { value: 'modules', label: 'Modules' },
-  { value: 'appearance', label: 'Appearance' },
-]
-
 /**
- * SettingsDialog is the Configuration modal (#139, #142): the opt-in modules
- * and the global policy that used to be sidebar cards, plus the appearance
- * preferences. Each module says what it does and what it downloads before the
- * user turns it on, and separates the state (a badge) from the action (a
- * button).
+ * SettingsDialog is the Configuration modal (#139, #142, #143): the opt-in
+ * modules and the global policy that used to be sidebar cards, plus the
+ * appearance and language preferences. Each module says what it does and what
+ * it downloads before the user turns it on, and separates the state (a badge)
+ * from the action (a button).
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
+  const t = useT()
   const { panel, onKeyDown } = useDrawerFocus(onClose)
   const [tab, setTab] = useState<ConfigurationTab>('modules')
+  const configurationTabs: TabItem<ConfigurationTab>[] = [
+    { value: 'modules', label: t('settings.tabs.modules') },
+    { value: 'appearance', label: t('settings.tabs.appearance') },
+  ]
 
   return (
     <div className="fixed inset-0 z-40">
@@ -51,12 +52,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <div className="flex items-start gap-3">
           <div className="flex flex-col gap-0.5">
             <h2 id="configuration-title" className="text-[0.9375rem] font-semibold">
-              Configuration
+              {t('settings.title')}
             </h2>
-            <p className="text-xs text-muted">
-              Modules, policies and appearance. Modules are off until you turn
-              them on.
-            </p>
+            <p className="text-xs text-muted">{t('settings.subtitle')}</p>
           </div>
           <Button
             type="button"
@@ -65,12 +63,12 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             className="ml-auto shrink-0"
             onClick={onClose}
           >
-            Close
+            {t('common.close')}
           </Button>
         </div>
 
         <Tabs
-          label="Configuration sections"
+          label={t('settings.tabs.aria')}
           items={configurationTabs}
           value={tab}
           onChange={setTab}
@@ -105,22 +103,29 @@ function ToggleButton({
   pending: boolean
   onChange: (enabled: boolean) => void
 }) {
+  const t = useT()
   return (
     <Button
       type="button"
       size="sm"
       variant={on ? 'outline' : 'default'}
       className="mt-0.5 self-start"
-      aria-label={`Turn ${on ? 'off' : 'on'} ${title}`}
+      aria-label={t('settings.toggle.aria', {
+        action: on
+          ? t('settings.toggle.action.off')
+          : t('settings.toggle.action.on'),
+        title,
+      })}
       disabled={pending}
       onClick={() => onChange(!on)}
     >
-      {on ? 'Turn off' : 'Turn on'}
+      {on ? t('settings.toggle.on') : t('settings.toggle.off')}
     </Button>
   )
 }
 
 function EPSSToggle() {
+  const t = useT()
   const { data } = useQuery(epssQuery)
   const toggle = useSetEPSSEnabled()
 
@@ -129,36 +134,41 @@ function EPSSToggle() {
   }
 
   return (
-    <SettingSection title="EPSS exploit scores" on={data.enabled}>
+    <SettingSection title={t('settings.epss.title')} on={data.enabled}>
       <p className="text-[0.6875rem] leading-relaxed text-muted">
-        At most once a day, downloads the FIRST.org EPSS feed — a ~2.8 MB gzipped
-        CSV from epss.empiricalsecurity.com — to rank findings by how likely each
-        CVE is to be exploited. Nothing is uploaded.
+        {t('settings.epss.body')}
       </p>
       {data.enabled ? (
         data.error ? (
           <>
-            <p className="text-[0.6875rem] text-critical">Download failed</p>
+            <p className="text-[0.6875rem] text-critical">
+              {t('settings.epss.failed')}
+            </p>
             <p
               className="min-w-0 truncate font-mono text-[0.625rem] text-muted"
               title={data.error}
             >
               {data.error}
             </p>
-            <p className="text-[0.6875rem] text-faint">Retries daily.</p>
+            <p className="text-[0.6875rem] text-faint">
+              {t('settings.epss.retries')}
+            </p>
           </>
         ) : data.count === undefined ? (
-          <p className="font-mono text-[0.6875rem] text-muted">Downloading scores…</p>
+          <p className="font-mono text-[0.6875rem] text-muted">
+            {t('settings.epss.downloading')}
+          </p>
         ) : (
           <p className="text-[0.6875rem] text-muted">
-            <span className="tabular-nums">{data.count.toLocaleString()}</span>{' '}
-            CVEs
+            <span className="tabular-nums">
+              {t('settings.epss.cves', { count: formatNumber(data.count) })}
+            </span>
             {data.score_date ? ` · ${data.score_date.slice(0, 10)}` : ''}
           </p>
         )
       ) : null}
       <ToggleButton
-        title="EPSS exploit scores"
+        title={t('settings.epss.title')}
         on={data.enabled}
         pending={toggle.isPending}
         onChange={(enabled) => toggle.mutate(enabled)}
@@ -168,6 +178,7 @@ function EPSSToggle() {
 }
 
 function ReachabilityToggle() {
+  const t = useT()
   const { data } = useQuery(reachabilityQuery)
   const toggle = useSetReachabilityEnabled()
 
@@ -176,27 +187,28 @@ function ReachabilityToggle() {
   }
 
   return (
-    <SettingSection title="Go reachability" on={data.enabled}>
+    <SettingSection title={t('settings.reach.title')} on={data.enabled}>
       <p className="text-[0.6875rem] leading-relaxed text-muted">
-        Runs govulncheck on Go repositories to tell whether vulnerable code is
-        actually called, not just present. Uses vuln.go.dev for advisories and
-        proxy.golang.org (or your GOPROXY) for module downloads; nothing about
-        the scan is uploaded.
+        {t('settings.reach.body')}
       </p>
       {data.enabled ? (
         data.available ? (
-          <p className="text-[0.6875rem] text-muted">govulncheck runs on Go scans.</p>
+          <p className="text-[0.6875rem] text-muted">
+            {t('settings.reach.running')}
+          </p>
         ) : (
           <>
-            <p className="text-[0.6875rem] text-critical">No Go toolchain</p>
+            <p className="text-[0.6875rem] text-critical">
+              {t('settings.reach.noToolchain')}
+            </p>
             <p className="text-[0.6875rem] text-faint">
-              Install Go; findings stay unknown until then.
+              {t('settings.reach.install')}
             </p>
           </>
         )
       ) : null}
       <ToggleButton
-        title="Go reachability"
+        title={t('settings.reach.title')}
         on={data.enabled}
         pending={toggle.isPending}
         onChange={(enabled) => toggle.mutate(enabled)}
@@ -206,6 +218,7 @@ function ReachabilityToggle() {
 }
 
 function OutdatedToggle() {
+  const t = useT()
   const { data } = useQuery(outdatedQuery)
   const toggle = useSetOutdatedEnabled()
 
@@ -214,13 +227,12 @@ function OutdatedToggle() {
   }
 
   return (
-    <SettingSection title="Outdated packages" on={data.enabled}>
+    <SettingSection title={t('settings.outdated.title')} on={data.enabled}>
       <p className="text-[0.6875rem] leading-relaxed text-muted">
-        Looks up the latest version of each package on deps.dev (api.deps.dev)
-        during scans. Only ecosystems, package names and versions are sent.
+        {t('settings.outdated.body')}
       </p>
       <ToggleButton
-        title="Outdated packages"
+        title={t('settings.outdated.title')}
         on={data.enabled}
         pending={toggle.isPending}
         onChange={(enabled) => toggle.mutate(enabled)}
@@ -230,6 +242,7 @@ function OutdatedToggle() {
 }
 
 function SASTToggle() {
+  const t = useT()
   const { data } = useQuery(sastQuery)
   const toggle = useSetSASTEnabled()
 
@@ -238,20 +251,20 @@ function SASTToggle() {
   }
 
   return (
-    <SettingSection title="SAST" on={data.enabled}>
+    <SettingSection title={t('settings.sast.title')} on={data.enabled}>
       <p className="text-[0.6875rem] leading-relaxed text-muted">
-        Downloads Opengrep {data.version} (~47 MB) and the community rules
-        (~1.1 MB) from GitHub, then scans repository source locally for code
-        issues. Both downloads are checksum-verified.
+        {t('settings.sast.body', { version: data.version })}
       </p>
       {data.enabled ? (
         data.installing ? (
           <p className="font-mono text-[0.6875rem] text-muted">
-            Downloading Opengrep {data.version}…
+            {t('settings.sast.downloading', { version: data.version })}
           </p>
         ) : data.install_error ? (
           <>
-            <p className="text-[0.6875rem] text-critical">Download failed</p>
+            <p className="text-[0.6875rem] text-critical">
+              {t('settings.sast.failed')}
+            </p>
             <p
               className="min-w-0 truncate font-mono text-[0.625rem] text-muted"
               title={data.install_error}
@@ -261,16 +274,16 @@ function SASTToggle() {
           </>
         ) : data.state === 'installed' ? (
           <p className="text-[0.6875rem] text-muted">
-            Opengrep {data.version} runs on repository scans.
+            {t('settings.sast.installed', { version: data.version })}
           </p>
         ) : (
           <p className="text-[0.6875rem] text-muted">
-            Not installed yet; the next scan downloads it.
+            {t('settings.sast.notInstalled')}
           </p>
         )
       ) : null}
       <ToggleButton
-        title="SAST"
+        title={t('settings.sast.title')}
         on={data.enabled}
         pending={toggle.isPending}
         onChange={(enabled) => toggle.mutate(enabled)}
@@ -280,6 +293,7 @@ function SASTToggle() {
 }
 
 function LicencePolicySection() {
+  const t = useT()
   const { data } = useQuery(licencePolicyQuery())
 
   if (!data) {
@@ -287,16 +301,17 @@ function LicencePolicySection() {
   }
 
   return (
-    <SettingSection title="Licence policy">
+    <SettingSection title={t('settings.licence.title')}>
       <LicencePolicyEditor
         policy={data}
-        description="The policy for every project. An allowed licence is hidden; a denied one stays visible at high severity. Matching is exact, so “MIT OR Apache-2.0” is its own entry."
+        description={t('settings.licence.description')}
       />
     </SettingSection>
   )
 }
 
 function ReleaseCheckSection() {
+  const t = useT()
   const { data } = useQuery(updateQuery)
   const consent = useSetUpdateConsent()
 
@@ -309,19 +324,21 @@ function ReleaseCheckSection() {
   const on = data.consent === 'on'
 
   return (
-    <SettingSection title="Release check" on={on}>
+    <SettingSection title={t('settings.release.title')} on={on}>
       <p className="text-[0.6875rem] leading-relaxed text-muted">
-        At most once a day, asks github.com for the newest bastion release tag.
-        Sends your IP and User-Agent; nothing else leaves your machine.
+        {t('settings.release.body')}
       </p>
       {on && data.update_available && data.latest ? (
         <p className="text-[0.6875rem] text-muted">
-          {data.latest.startsWith('v') ? data.latest : `v${data.latest}`} is
-          available; the sidebar shows the upgrade command.
+          {t('settings.release.available', {
+            version: data.latest.startsWith('v')
+              ? data.latest
+              : `v${data.latest}`,
+          })}
         </p>
       ) : null}
       <ToggleButton
-        title="release check"
+        title={t('settings.release.toggleTitle')}
         on={on}
         pending={consent.isPending}
         onChange={(enabled) => consent.mutate(enabled)}

@@ -22,8 +22,9 @@ import { FilterBar } from '../components/filter-bar'
 import { FindingDrawer } from '../components/finding-drawer'
 import { SeverityCountBadges } from '../components/severity-counts'
 import { Badge } from '../components/ui/badge'
-import { capitalize, severityTone } from '../lib/finding-labels'
+import { severityLabel, severityTone } from '../lib/finding-labels'
 import { epssLabel } from '../lib/epss'
+import { t, useT } from '../lib/i18n'
 
 /**
  * FixPlanPanel is §7.2's "Fix plan" tab: one project's open vulnerabilities
@@ -37,6 +38,7 @@ export function FixPlanPanel({
   assetList: readonly Asset[]
   selected: Asset | undefined
 }) {
+  const t = useT()
   const navigate = useNavigate()
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const [openFingerprint, setOpenFingerprint] = useState<string | null>(null)
@@ -64,15 +66,15 @@ export function FixPlanPanel({
   return (
     <>
       <FilterBar
-        label="Fix plan filters"
+        label={t('fixPlan.filter.aria')}
         fields={[
           {
             id: 'fix-plan-project',
-            label: 'Project',
+            label: t('fixPlan.filter.project'),
             value: selected === undefined ? '' : String(selected.id),
             className: 'w-64',
             options: [
-              { value: '', label: 'Choose a project' },
+              { value: '', label: t('fixPlan.choose') },
               ...assetList.map((asset) => ({
                 value: String(asset.id),
                 label: asset.display_name,
@@ -95,27 +97,29 @@ export function FixPlanPanel({
       >
         <p className="ml-auto text-xs text-faint">
           {selected === undefined
-            ? 'Grouped by the package upgrade that closes each finding'
-            : `Open vulnerabilities of ${selected.display_name}’s latest succeeded scan`}
+            ? t('fixPlan.scope.grouped')
+            : t('fixPlan.scope.one', { project: selected.display_name })}
         </p>
       </FilterBar>
 
       {selected === undefined ? (
         <EmptyState
-          title="Choose a project"
-          body="A fix plan groups one project's open vulnerabilities by the package upgrade that closes them: upgrade lodash to 4.17.21 and three findings go away at once. Pick a project above to see its steps."
+          title={t('fixPlan.choose.title')}
+          body={t('fixPlan.choose.body')}
         />
       ) : null}
 
       {selected !== undefined && plan.isPending ? (
         <section className="rounded-card border border-border-subtle bg-surface p-4">
-          <p className="text-muted">Loading fix plan…</p>
+          <p className="text-muted">{t('fixPlan.loading')}</p>
         </section>
       ) : null}
 
       {selected !== undefined && plan.isError ? (
         <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-          <h2 className="text-[0.8125rem] font-semibold">Fix plan failed to load</h2>
+          <h2 className="text-[0.8125rem] font-semibold">
+            {t('fixPlan.failed')}
+          </h2>
           <ErrorNote error={plan.error} />
         </section>
       ) : null}
@@ -125,12 +129,10 @@ export function FixPlanPanel({
       plan.data.no_fix.length === 0 ? (
         <section className="rounded-card border border-border-subtle bg-surface p-8">
           <h2 className="text-[0.9375rem] font-semibold tracking-[-0.01em]">
-            No open vulnerabilities
+            {t('fixPlan.empty.title')}
           </h2>
           <p className="mt-2 max-w-[52ch] text-muted">
-            The latest succeeded scan found nothing open in this project, so
-            there is nothing to upgrade. Rescan the project from Repositories to
-            refresh the plan.
+            {t('fixPlan.empty.body')}
           </p>
         </section>
       ) : null}
@@ -142,16 +144,17 @@ export function FixPlanPanel({
         >
           <div className="flex flex-wrap items-baseline gap-2.5">
             <h2 id="fix-plan-heading" className="text-[0.8125rem] font-semibold">
-              Fix plan
+              {t('fixPlan.title')}
             </h2>
             <span className="text-faint">
-              {plan.data.steps.length}{' '}
-              {plan.data.steps.length === 1 ? 'upgrade' : 'upgrades'} close{' '}
-              {plan.data.steps.reduce(
-                (total, step) => total + step.finding_count,
-                0,
-              )}{' '}
-              findings
+              {t('fixPlan.summary', {
+                count: plan.data.steps.length,
+                upgrades: plan.data.steps.length,
+                findings: plan.data.steps.reduce(
+                  (total, step) => total + step.finding_count,
+                  0,
+                ),
+              })}
             </span>
           </div>
           <PlanTable
@@ -181,12 +184,12 @@ export function FixPlanPanel({
               id="fix-plan-no-fix-heading"
               className="text-[0.8125rem] font-semibold"
             >
-              No fix available
+              {t('fixPlan.noFix.title')}
             </h2>
             <span className="text-faint">
-              No fixed version is published for{' '}
-              {plan.data.no_fix.length === 1 ? 'this package' : 'these packages'}
-              , so an upgrade does not close the findings
+              {t('fixPlan.noFix.subtitle', {
+                count: plan.data.no_fix.length,
+              })}
             </span>
           </div>
           <PlanTable
@@ -232,7 +235,7 @@ function stepColumns(
   return [
     {
       id: 'score',
-      header: 'Score',
+      header: t('fixPlan.column.score'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 align-top whitespace-nowrap',
       cell: (step) => (
@@ -248,21 +251,21 @@ function stepColumns(
     },
     {
       id: 'upgrade',
-      header: 'Upgrade',
+      header: t('fixPlan.column.upgrade'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
       cell: (step) => (
         <span className="text-[0.8125rem]">
-          Upgrade <span className="font-mono">{step.package}</span>{' '}
+          {t('fixPlan.upgrade')} <span className="font-mono">{step.package}</span>{' '}
           <span className="font-mono text-muted">{installed(step)}</span>{' '}
           <span aria-hidden="true">→</span>{' '}
           <span className="font-mono font-medium">{step.target_version}</span>
           {step.approximate ? (
             <span
               className="ml-1.5 text-xs text-faint"
-              title="No ecosystem-specific version comparison decided this target, so the version order is a best effort."
+              title={t('fixPlan.approximateTitle')}
             >
-              approximate
+              {t('fixPlan.approximate')}
             </span>
           ) : null}
         </span>
@@ -270,7 +273,7 @@ function stepColumns(
     },
     {
       id: 'ecosystem',
-      header: 'Ecosystem',
+      header: t('fixPlan.column.ecosystem'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 font-mono text-xs text-muted',
       cell: (step) => step.ecosystem,
@@ -279,7 +282,7 @@ function stepColumns(
       ? [
           {
             id: 'epss',
-            header: 'Max EPSS',
+            header: t('fixPlan.column.maxEpss'),
             headerClassName: 'pl-3',
             cellClassName: 'py-2 pl-3 whitespace-nowrap text-[0.8125rem] tabular-nums',
             cell: (step: FixPlanStep) =>
@@ -295,14 +298,13 @@ function stepColumns(
       : []),
     {
       id: 'closes',
-      header: 'Closes',
+      header: t('fixPlan.column.closes'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
       cell: (step) => (
         <span className="flex items-center gap-2">
           <span className="text-[0.8125rem] tabular-nums">
-            {step.finding_count}{' '}
-            {step.finding_count === 1 ? 'finding' : 'findings'}
+            {t('fixPlan.findingCount', { count: step.finding_count })}
           </span>
           <SeverityCountBadges counts={step.severity_counts} />
         </span>
@@ -316,8 +318,8 @@ function stepColumns(
         'py-2 pr-3 pl-3 text-right text-xs whitespace-nowrap text-muted',
       cell: (step) =>
         expanded.has(planRowKey('step', step.ecosystem, step.package))
-          ? 'Hide findings'
-          : `Show ${String(step.finding_count)}`,
+          ? t('fixPlan.hide')
+          : t('fixPlan.show', { count: step.finding_count }),
     },
   ]
 }
@@ -329,7 +331,7 @@ function noFixColumns(
   return [
     {
       id: 'package',
-      header: 'Package',
+      header: t('fixPlan.column.package'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
       cell: (group) => (
@@ -343,14 +345,13 @@ function noFixColumns(
     },
     {
       id: 'closes',
-      header: 'Findings',
+      header: t('fixPlan.column.findings'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
       cell: (group) => (
         <span className="flex items-center gap-2">
           <span className="text-[0.8125rem] tabular-nums">
-            {group.finding_count}{' '}
-            {group.finding_count === 1 ? 'finding' : 'findings'}
+            {t('fixPlan.findingCount', { count: group.finding_count })}
           </span>
           <SeverityCountBadges counts={group.severity_counts} />
         </span>
@@ -364,8 +365,8 @@ function noFixColumns(
         'py-2 pr-3 pl-3 text-right text-xs whitespace-nowrap text-muted',
       cell: (group) =>
         expanded.has(planRowKey('no-fix', group.ecosystem, group.package))
-          ? 'Hide findings'
-          : `Show ${String(group.finding_count)}`,
+          ? t('fixPlan.hide')
+          : t('fixPlan.show', { count: group.finding_count }),
     },
   ]
 }
@@ -374,7 +375,7 @@ function noFixColumns(
 function installed(step: FixPlanStep): string {
   return step.installed_versions.length > 0
     ? step.installed_versions.join(', ')
-    : 'unknown version'
+    : t('fixPlan.unknownVersion')
 }
 
 /** scoreFactors is the one-line explanation next to a step's score. */
@@ -390,28 +391,41 @@ function scoreFactors(factors: readonly FixPlanFactor[]): string {
 function scoreFactor(factor: FixPlanFactor): string {
   switch (factor.name) {
     case 'severity':
-      return `severity ${String(Math.round(factor.value))}`
+      return t('fixPlan.factor.severity', {
+        value: Math.round(factor.value),
+      })
     case 'epss':
       return factor.value > 1
-        ? `EPSS ${factor.value.toFixed(1)}`
+        ? t('fixPlan.factor.epss', { value: factor.value.toFixed(1) })
         : factor.detail
     case 'latest_image':
       return factor.value > 1
-        ? `latest image ${factor.value.toFixed(1)}`
+        ? t('fixPlan.factor.latestImage', { value: factor.value.toFixed(1) })
         : factor.detail
     case 'reachability':
-      return factor.value === 1 ? factor.detail : `reachability ${factor.detail}`
+      return factor.value === 1
+        ? factor.detail
+        : t('fixPlan.factor.reachability', { detail: factor.detail })
     default:
-      return `${factor.name} ${String(factor.value)}`
+      return t('fixPlan.factor.other', {
+        name: factor.name,
+        value: factor.value,
+      })
   }
 }
 
 /** scoreTitle spells out every factor with its detail for the tooltip. */
 function scoreTitle(step: FixPlanStep): string {
-  const lines = step.factors.map(
-    (factor) => `${factor.name}: ${factor.value.toFixed(2)} (${factor.detail})`,
+  const lines = step.factors.map((factor) =>
+    t('fixPlan.factorTitle', {
+      name: factor.name,
+      value: factor.value.toFixed(2),
+      detail: factor.detail,
+    }),
   )
-  return [`Score ${step.score.toFixed(2)}`, ...lines].join('\n')
+  return [t('fixPlan.scoreTitle', { score: step.score.toFixed(2) }), ...lines].join(
+    '\n',
+  )
 }
 
 /**
@@ -480,13 +494,13 @@ function FindingList({
   onOpen: (fingerprint: string) => void
 }) {
   if (findings === undefined) {
-    return <p className="p-3 text-xs text-muted">Loading findings…</p>
+    return <p className="p-3 text-xs text-muted">{t('fixPlan.findingList.loading')}</p>
   }
   const members = findings.filter((finding) => ids.includes(finding.id))
   if (members.length === 0) {
     return (
       <p className="p-3 text-xs text-muted">
-        These findings are no longer in the latest scan.
+        {t('fixPlan.findingList.gone')}
       </p>
     )
   }
@@ -500,9 +514,7 @@ function FindingList({
             className="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
           >
             <Badge tone={severityTone[finding.severity]}>
-              {finding.severity === 'unknown'
-                ? 'unknown'
-                : capitalize(finding.severity)}
+              {severityLabel(finding.severity)}
             </Badge>
             <span className="font-mono text-xs whitespace-nowrap text-muted">
               {finding.rule_id ?? '—'}

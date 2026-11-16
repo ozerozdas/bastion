@@ -1,4 +1,5 @@
 import type { Scan } from '../api/scans'
+import { t } from './i18n'
 
 /** DiffGroup names the three groups a scan diff reports (#17). */
 export type DiffGroup = 'new' | 'fixed' | 'persisting'
@@ -19,8 +20,8 @@ export function parseScanIdParam(value: string): number | undefined {
  */
 export function scanDiffSubtitle(againstId: number | undefined): string {
   return againstId === undefined
-    ? 'first scan — nothing to compare, every finding is new'
-    : `compared with scan #${String(againstId)}`
+    ? t('diff.subtitle.first')
+    : t('diff.subtitle.against', { id: againstId })
 }
 
 /**
@@ -41,10 +42,10 @@ export function compareBaselines(
 export function diffGroupEmptyText(group: DiffGroup): string {
   switch (group) {
     case 'new':
-      return 'No findings are new in this scan.'
+      return t('diff.empty.new')
     case 'fixed':
-      return 'No findings were fixed since the scan it is compared with.'
+      return t('diff.empty.fixed')
     case 'persisting':
-      return 'No findings persisted from the scan it is compared with.'
+      return t('diff.empty.persisting')
   }
 }

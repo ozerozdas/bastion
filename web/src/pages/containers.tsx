@@ -30,6 +30,7 @@ import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { SeverityCountBadges } from '../components/severity-counts'
 import { Tabs, type TabItem } from '../components/ui/tabs'
+import { formatNumber, t, useT } from '../lib/i18n'
 import { isLiveActive, liveDetail } from '../lib/live-scan'
 import { relativeTime } from '../lib/time'
 import type { ContainersTab } from '../lib/urls'
@@ -55,6 +56,7 @@ type ContainerRow = {
  * last scan and findings, the way a project row does.
  */
 export function ContainersPage() {
+  const t = useT()
   const search = useSearch({ from: '/containers' })
   const navigate = useNavigate()
   const images = useQuery(dockerImagesQuery)
@@ -82,16 +84,16 @@ export function ContainersPage() {
   // Only a reachable daemon gets a tab; without one the hint stands alone.
   const tabs: TabItem<ContainersTab>[] = []
   if (images.data?.available === true) {
-    tabs.push({ value: 'docker', label: 'Docker' })
+    tabs.push({ value: 'docker', label: t('containers.tabs.docker') })
   }
   for (const connection of aws) {
     tabs.push({
       value: `aws-${connection.id}`,
-      label: `AWS (${connection.name})`,
+      label: t('containers.tabs.aws', { name: connection.name }),
     })
   }
   if (orphaned.length > 0) {
-    tabs.push({ value: 'orphaned', label: 'Orphaned' })
+    tabs.push({ value: 'orphaned', label: t('containers.tabs.orphaned') })
   }
   // The first tab is the bare path, as on the other tabbed pages; a stale tab
   // (?tab=aws-9 once that connection is gone) falls back to it.
@@ -102,7 +104,7 @@ export function ContainersPage() {
   if (images.isPending || connections.isPending) {
     return (
       <section className="rounded-card border border-border-subtle bg-surface p-4">
-        <p className="text-muted">Looking for container sources…</p>
+        <p className="text-muted">{t('containers.loading')}</p>
       </section>
     )
   }
@@ -130,8 +132,8 @@ export function ContainersPage() {
         {errors}
         {images.isSuccess ? (
           <EmptyState
-            title="No Docker daemon found"
-            body="Start Docker, OrbStack or Colima, then reload this page. Bastion only reads images the daemon already holds."
+            title={t('containers.empty.docker.title')}
+            body={t('containers.empty.docker.body')}
           />
         ) : null}
         <AWSHint />
@@ -143,7 +145,7 @@ export function ContainersPage() {
     <div className="flex flex-col gap-4">
       {errors}
       <Tabs
-        label="Container sources"
+        label={t('containers.tabs.aria')}
         items={tabs}
         value={tab}
         onChange={(next) => {
@@ -185,6 +187,7 @@ function DockerPanel({
   assets: Asset[]
   live: Map<number, LiveScan>
 }) {
+  const t = useT()
   const images = useQuery(dockerImagesQuery)
   const scanImage = useScanDockerImage()
   const start = useStartScans()
@@ -221,7 +224,7 @@ function DockerPanel({
   const columns: DataTableColumn<ContainerRow>[] = [
     {
       id: 'image',
-      header: 'Image',
+      header: t('containers.column.image'),
       cell: (row) => (
         <div className="max-w-[32ch]">
           <span
@@ -238,14 +241,14 @@ function DockerPanel({
     },
     {
       id: 'size',
-      header: 'Size',
+      header: t('containers.column.size'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
       cell: (row) => <span className="text-muted">{formatSize(row.image.size_bytes)}</span>,
     },
     {
       id: 'created',
-      header: 'Created',
+      header: t('containers.column.created'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
       cell: (row) => (
@@ -254,7 +257,7 @@ function DockerPanel({
     },
     {
       id: 'last-scan',
-      header: 'Last scan',
+      header: t('containers.column.lastScan'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
       cell: (row) => (
@@ -266,14 +269,14 @@ function DockerPanel({
     },
     {
       id: 'repository',
-      header: 'Repository',
+      header: t('containers.column.repository'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top',
       cell: (row) => <LinkCell asset={row.asset} repos={repos} />,
     },
     {
       id: 'open-findings',
-      header: 'Open findings',
+      header: t('containers.column.openFindings'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top',
       cell: (row) =>
@@ -285,7 +288,7 @@ function DockerPanel({
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: t('containers.column.actions'),
       headerClassName: 'pl-3 text-right',
       cellClassName: 'pl-3 align-top',
       cell: (row) => {
@@ -300,7 +303,7 @@ function DockerPanel({
               onClick={() => scan(row)}
               disabled={scanning(row) || running}
             >
-              {scanning(row) ? 'Queueing…' : 'Scan'}
+              {scanning(row) ? t('containers.queueing') : t('containers.scan')}
             </Button>
             {asset ? (
               <>
@@ -309,7 +312,7 @@ function DockerPanel({
                   search={{ asset: asset.id }}
                   className={buttonVariants({ variant: 'ghost', size: 'sm' })}
                 >
-                  View findings
+                  {t('containers.viewFindings')}
                 </Link>
                 <Button
                   type="button"
@@ -321,7 +324,7 @@ function DockerPanel({
                     setConfirmingID(asset.id)
                   }}
                 >
-                  Remove
+                  {t('containers.remove')}
                 </Button>
               </>
             ) : null}
@@ -346,8 +349,8 @@ function DockerPanel({
 
       {images.isSuccess && !images.data.available ? (
         <EmptyState
-          title="No Docker daemon found"
-          body="Start Docker, OrbStack or Colima, then reload this page. Bastion only reads images the daemon already holds."
+          title={t('containers.empty.docker.title')}
+          body={t('containers.empty.docker.body')}
         />
       ) : null}
 
@@ -355,14 +358,14 @@ function DockerPanel({
       images.data.available &&
       images.data.images.length === 0 ? (
         <EmptyState
-          title="No tagged images yet"
-          body="Pull or build an image, then reload this page. Bastion never pulls, builds or runs anything itself."
+          title={t('containers.empty.tagged.title')}
+          body={t('containers.empty.tagged.body')}
         />
       ) : null}
 
       {images.isSuccess && images.data.available && rows.length > 0 ? (
         <section
-          aria-label="Containers"
+          aria-label={t('containers.section.aria')}
           className="rounded-card border border-border-subtle bg-surface p-4"
         >
           <DataTable
@@ -425,18 +428,19 @@ function DockerPanel({
  * Connections page's registry tab (#107).
  */
 function AWSHint() {
+  const t = useT()
   return (
     <section className="rounded-card border border-border-subtle bg-surface p-4">
       <p className="text-sm text-muted">
-        <span>No AWS connection yet.</span> Add one in{' '}
+        <span>{t('containers.awsHint.before')}</span>{' '}
         <Link
           to="/connections"
           search={{ tab: 'registry' }}
           className="underline underline-offset-2 hover:text-fg"
         >
-          Connections → Registry
+          {t('containers.awsHint.link')}
         </Link>{' '}
-        to list ECR images.
+        {t('containers.awsHint.after')}
       </p>
     </section>
   )
@@ -447,12 +451,13 @@ function AWSHint() {
  * longer appear under any connection, so this is where they can be archived.
  */
 function OrphanedImages({ assets }: { assets: Asset[] }) {
+  const t = useT()
   const archive = useArchiveAsset()
 
   const columns: DataTableColumn<Asset>[] = [
     {
       id: 'image',
-      header: 'Image',
+      header: t('containers.column.image'),
       cell: (asset) => (
         <div className="max-w-[40ch]">
           <span
@@ -469,14 +474,14 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
     },
     {
       id: 'open-findings',
-      header: 'Open findings',
+      header: t('containers.column.openFindings'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top',
       cell: (asset) => <SeverityCountBadges counts={asset.open_counts} />,
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: t('containers.column.actions'),
       headerClassName: 'pl-3 text-right',
       cellClassName: 'pl-3 align-top',
       cell: (asset) => {
@@ -490,7 +495,7 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
               onClick={() => archive.mutate(asset.id)}
               disabled={archiving}
             >
-              {archiving ? 'Archiving…' : 'Archive'}
+              {archiving ? t('containers.archiving') : t('containers.archive')}
             </Button>
           </div>
         )
@@ -499,11 +504,11 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
   ]
 
   return (
-    <section aria-label="Orphaned ECR images" className="space-y-2">
-      <p className="text-xs text-muted">
-        Images whose AWS connection was removed. Archiving one hides its
-        findings; its scan history stays.
-      </p>
+    <section
+      aria-label={t('containers.orphaned.aria')}
+      className="space-y-2"
+    >
+      <p className="text-xs text-muted">{t('containers.orphaned.body')}</p>
       {archive.isError ? (
         <section className="rounded-card border border-border-subtle bg-surface p-4">
           <ErrorNote error={archive.error} />
@@ -539,6 +544,7 @@ function EcrConnection({
   repos: Asset[]
   live: Map<number, LiveScan>
 }) {
+  const t = useT()
   const discover = useQuery(ecrDiscoverQuery(connection.id))
   const scan = useScanEcrImage(connection.id)
   const archive = useArchiveAsset()
@@ -561,7 +567,7 @@ function EcrConnection({
   const columns: DataTableColumn<EcrRow>[] = [
     {
       id: 'image',
-      header: 'Image',
+      header: t('containers.column.image'),
       cell: (row) => {
         const primary = row.tag.tags[0] ?? ''
         return (
@@ -584,7 +590,7 @@ function EcrConnection({
     },
     {
       id: 'pushed',
-      header: 'Pushed',
+      header: t('containers.column.pushed'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
       cell: (row) => (
@@ -593,7 +599,7 @@ function EcrConnection({
     },
     {
       id: 'last-scan',
-      header: 'Last scan',
+      header: t('containers.column.lastScan'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
       cell: (row) => (
@@ -605,14 +611,14 @@ function EcrConnection({
     },
     {
       id: 'repository',
-      header: 'Repository',
+      header: t('containers.column.repository'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top',
       cell: (row) => <LinkCell asset={row.asset} repos={repos} />,
     },
     {
       id: 'open-findings',
-      header: 'Open findings',
+      header: t('containers.column.openFindings'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top',
       cell: (row) =>
@@ -624,7 +630,7 @@ function EcrConnection({
     },
     {
       id: 'actions',
-      header: 'Actions',
+      header: t('containers.column.actions'),
       headerClassName: 'pl-3 text-right',
       cellClassName: 'pl-3 align-top',
       cell: (row) => {
@@ -639,7 +645,11 @@ function EcrConnection({
               onClick={() => scan.mutate(row.tag)}
               disabled={scanning(row) || running}
             >
-              {scanning(row) ? 'Queueing…' : asset ? 'Scan' : 'Add & scan'}
+              {scanning(row)
+                ? t('containers.queueing')
+                : asset
+                  ? t('containers.scan')
+                  : t('containers.addAndScan')}
             </Button>
             {asset ? (
               <>
@@ -648,7 +658,7 @@ function EcrConnection({
                   search={{ asset: asset.id }}
                   className={buttonVariants({ variant: 'ghost', size: 'sm' })}
                 >
-                  View findings
+                  {t('containers.viewFindings')}
                 </Link>
                 <Button
                   type="button"
@@ -659,7 +669,7 @@ function EcrConnection({
                     setConfirmingID(asset.id)
                   }}
                 >
-                  Remove
+                  {t('containers.remove')}
                 </Button>
               </>
             ) : null}
@@ -691,13 +701,13 @@ function EcrConnection({
       ) : null}
       {discover.isPending ? (
         <section className="rounded-card border border-border-subtle bg-surface p-4">
-          <p className="text-muted">Listing ECR repositories…</p>
+          <p className="text-muted">{t('containers.listing')}</p>
         </section>
       ) : null}
       {discover.isSuccess && rows.length === 0 ? (
         <EmptyState
-          title="No ECR tags found"
-          body="This AWS connection's repositories have no tagged images yet."
+          title={t('containers.ecrEmpty.title')}
+          body={t('containers.ecrEmpty.body')}
         />
       ) : null}
       {rows.length > 0 ? (
@@ -764,6 +774,7 @@ function EcrConnection({
  * own labels.
  */
 function LinkCell({ asset, repos }: { asset: Asset | undefined; repos: Asset[] }) {
+  const t = useT()
   const setLink = useSetAssetLink()
   const clearLink = useClearAssetLink()
   const [choice, setChoice] = useState('')
@@ -790,7 +801,9 @@ function LinkCell({ asset, repos }: { asset: Asset | undefined; repos: Asset[] }
           {asset.linked_repo.revision ? (
             <span
               className="font-mono text-[0.6875rem] text-faint"
-              title={`revision ${asset.linked_repo.revision}`}
+              title={t('containers.link.revision', {
+                revision: asset.linked_repo.revision,
+              })}
             >
               {asset.linked_repo.revision.slice(0, 7)}
             </span>
@@ -802,18 +815,22 @@ function LinkCell({ asset, repos }: { asset: Asset | undefined; repos: Asset[] }
             onClick={() => clearLink.mutate(asset.id)}
             disabled={clearLink.isPending}
           >
-            {clearLink.isPending ? 'Unlinking…' : 'Unlink'}
+            {clearLink.isPending
+              ? t('containers.link.unlinking')
+              : t('containers.link.unlink')}
           </Button>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-1.5">
           <select
-            aria-label={`Link ${asset.display_name} to a repository`}
+            aria-label={t('containers.link.aria', {
+              name: asset.display_name,
+            })}
             value={choice}
             onChange={(event) => setChoice(event.target.value)}
             className="h-7 max-w-[18ch] rounded-md border border-border-strong bg-surface px-1.5 text-[0.75rem] text-fg"
           >
-            <option value="">Link to…</option>
+            <option value="">{t('containers.link.to')}</option>
             {repos.map((repo) => (
               <option key={repo.id} value={repo.id}>
                 {repo.ref}
@@ -832,13 +849,17 @@ function LinkCell({ asset, repos }: { asset: Asset | undefined; repos: Asset[] }
             }
             disabled={choice === '' || setLink.isPending}
           >
-            {setLink.isPending ? 'Linking…' : 'Link'}
+            {setLink.isPending
+              ? t('containers.link.linking')
+              : t('containers.link.link')}
           </Button>
         </div>
       )}
       {error ? (
         <span role="alert" className="text-[0.6875rem] text-critical">
-          {error instanceof ApiError ? error.message : 'the link request failed'}
+          {error instanceof ApiError
+            ? error.message
+            : t('containers.link.failed')}
         </span>
       ) : null}
     </div>
@@ -860,12 +881,10 @@ function ConfirmRemove({
   onRemove: () => void
   onCancel: () => void
 }) {
+  const t = useT()
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
-      <span>
-        Remove “{name}”? Its findings are hidden and it leaves this list;
-        scanning it again brings it back.
-      </span>
+      <span>{t('containers.confirmRemove', { name })}</span>
       <Button
         type="button"
         size="sm"
@@ -874,10 +893,10 @@ function ConfirmRemove({
         onClick={onRemove}
         disabled={pending}
       >
-        {pending ? 'Removing…' : 'Remove'}
+        {pending ? t('containers.removing') : t('containers.remove')}
       </Button>
       <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-        Cancel
+        {t('containers.cancel')}
       </Button>
     </div>
   )
@@ -901,22 +920,23 @@ function ScanCell({
   asset: Asset | undefined
   live: LiveScan | undefined
 }) {
+  const t = useT()
   if (!asset) {
-    return <Badge>not tracked</Badge>
+    return <Badge>{t('scanStatus.notTracked')}</Badge>
   }
   const lastScan = asset.last_scan
   // A live event wins over the list row until the finished event refetches it.
   const active = isLiveActive(live)
   const status = active && live ? live.status : lastScan?.status
   if (!status) {
-    return <Badge>never scanned</Badge>
+    return <Badge>{t('scanStatus.neverScanned')}</Badge>
   }
   return (
     <span className="inline-flex items-center gap-2">
-      <Badge tone={statusTone[status]}>{status}</Badge>
+      <Badge tone={statusTone[status]}>{t(`scanStatus.${status}`)}</Badge>
       <span className="text-xs text-faint">
         {active
-          ? 'in progress'
+          ? t('scanStatus.inProgress')
           : lastScan?.finished_at
             ? relativeTime(lastScan.finished_at)
             : ''}
@@ -938,9 +958,12 @@ function shortID(id: string): string {
 function formatSize(bytes: number): string {
   const mib = bytes / (1024 * 1024)
   if (mib >= 1024) {
-    return `${(mib / 1024).toFixed(1)} GiB`
+    return `${formatNumber(mib / 1024, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })} GiB`
   }
-  return `${String(Math.max(1, Math.round(mib)))} MiB`
+  return `${formatNumber(Math.max(1, Math.round(mib)))} MiB`
 }
 
 /** ErrorNote shows a failed request with a human cause. */
@@ -950,13 +973,10 @@ function ErrorNote({ error }: { error: unknown }) {
       ? error.message
       : error instanceof Error
         ? error.message
-        : 'the request failed'
+        : t('common.requestFailed')
   return (
     <p role="alert" className="text-xs text-critical">
-      {cause}{' '}
-      <span className="text-muted">
-        Reload the page; if it persists, check the terminal running bastion.
-      </span>
+      {cause} <span className="text-muted">{t('common.reloadFix')}</span>
     </p>
   )
 }

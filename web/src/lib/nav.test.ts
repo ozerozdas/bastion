@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { t } from './i18n'
 import {
   navBadge,
   navGroups,
@@ -8,13 +9,21 @@ import {
   type NavItem,
 } from './nav'
 
-const projects = navItems.find((item) => item.label === 'Repositories') as NavItem
-const containers = navItems.find((item) => item.label === 'Containers') as NavItem
-const findings = navItems.find((item) => item.label === 'Findings') as NavItem
+const projects = navItems.find(
+  (item) => item.labelKey === 'nav.repositories',
+) as NavItem
+const containers = navItems.find(
+  (item) => item.labelKey === 'nav.containers',
+) as NavItem
+const findings = navItems.find(
+  (item) => item.labelKey === 'nav.findings',
+) as NavItem
+
+const label = (item: NavItem) => t(item.labelKey)
 
 describe('navItems', () => {
   it('follows ADR-007: Findings before the ASSETS group, Connections last', () => {
-    expect(navItems.map((item) => item.label)).toEqual([
+    expect(navItems.map(label)).toEqual([
       'Dashboard',
       'Findings',
       'Repositories',
@@ -33,8 +42,8 @@ describe('navGroups', () => {
     expect(
       navGroups().map((group) => ({
         section: group.section,
-        label: group.label,
-        items: group.items.map((item) => item.label),
+        label: group.labelKey === null ? null : t(group.labelKey),
+        items: group.items.map(label),
       })),
     ).toEqual([
       { section: 'main', label: null, items: ['Dashboard', 'Findings'] },
@@ -45,33 +54,37 @@ describe('navGroups', () => {
 
   it('drops a group with no entries so no heading floats over nothing', () => {
     const mainOnly = navItems.filter((item) => item.section === undefined)
-    expect(navGroups(mainOnly).map((group) => group.label)).toEqual([null])
+    expect(
+      navGroups(mainOnly).map((group) =>
+        group.labelKey === null ? null : t(group.labelKey),
+      ),
+    ).toEqual([null])
   })
 })
 
 describe('navItemFor', () => {
   it('resolves the Repositories route, including the Scans tab', () => {
-    expect(navItemFor('/repositories').label).toBe('Repositories')
-    expect(navItemFor('/repositories/anything').label).toBe('Repositories')
+    expect(label(navItemFor('/repositories'))).toBe('Repositories')
+    expect(label(navItemFor('/repositories/anything'))).toBe('Repositories')
     // The old /projects URL keeps the right header before its redirect.
-    expect(navItemFor('/projects').label).toBe('Repositories')
+    expect(label(navItemFor('/projects'))).toBe('Repositories')
   })
 
   it('resolves the Containers route', () => {
-    expect(navItemFor('/containers').label).toBe('Containers')
+    expect(label(navItemFor('/containers'))).toBe('Containers')
   })
 
   it('resolves the redirecting Scan History URL to Repositories', () => {
-    expect(navItemFor('/scan-history').label).toBe('Repositories')
+    expect(label(navItemFor('/scan-history'))).toBe('Repositories')
   })
 
   it('resolves the scan diff page to Repositories (#17)', () => {
-    expect(navItemFor('/scans/7/diff').label).toBe('Repositories')
+    expect(label(navItemFor('/scans/7/diff'))).toBe('Repositories')
     expect(navItemFor('/scans/7/diff').to).toBe('/repositories')
   })
 
   it('falls back to the dashboard for an unknown path', () => {
-    expect(navItemFor('/nope').label).toBe('Dashboard')
+    expect(label(navItemFor('/nope'))).toBe('Dashboard')
   })
 })
 
@@ -123,7 +136,7 @@ describe('navBadge', () => {
   it('never shows a count on entries that have none', () => {
     for (const item of navItems.filter((entry) => entry.count === undefined)) {
       expect(navBadge(item, { projects: 4, openFindings: 12 })).toEqual({
-        name: item.label,
+        name: label(item),
         count: null,
       })
     }

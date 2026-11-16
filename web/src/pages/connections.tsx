@@ -16,40 +16,36 @@ import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { Tabs, type TabItem } from '../components/ui/tabs'
+import { formatLocalDate, t, useT } from '../lib/i18n'
 import type { ConnectionsTab } from '../lib/urls'
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
 
-const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
-
-/** connectionTabs are the two kinds of source (#107). */
-const connectionTabs: TabItem<ConnectionsTab>[] = [
-  { value: 'repository', label: 'Repository' },
-  { value: 'registry', label: 'Registry' },
-]
-
 /** statusView maps the API status to its badge text and tone. */
 const statusView: Record<
   ConnectionStatus,
-  { tone: 'ok' | 'critical' | 'neutral'; label: string }
+  { tone: 'ok' | 'critical' | 'neutral'; labelKey: string }
 > = {
-  ok: { tone: 'ok', label: 'ok' },
-  error: { tone: 'critical', label: 'error' },
-  unknown: { tone: 'neutral', label: 'untested' },
+  ok: { tone: 'ok', labelKey: 'connections.status.ok' },
+  error: { tone: 'critical', labelKey: 'connections.status.error' },
+  unknown: { tone: 'neutral', labelKey: 'connections.status.untested' },
 }
 
 export function ConnectionsPage() {
+  const t = useT()
   const search = useSearch({ from: '/connections' })
   const navigate = useNavigate()
   const tab: ConnectionsTab = search.tab ?? 'repository'
+  // connectionTabs are the two kinds of source (#107).
+  const connectionTabs: TabItem<ConnectionsTab>[] = [
+    { value: 'repository', label: t('connections.tabs.repository') },
+    { value: 'registry', label: t('connections.tabs.registry') },
+  ]
 
   return (
     <Tabs
-      label="Connection types"
+      label={t('connections.tabs.aria')}
       items={connectionTabs}
       value={tab}
       onChange={(next) => {
@@ -69,6 +65,7 @@ export function ConnectionsPage() {
 
 /** RepositoryPanel is the GitHub source: the connections and their form. */
 function RepositoryPanel() {
+  const t = useT()
   const connections = useQuery(connectionsQuery)
   const github = (connections.data ?? []).filter(
     (connection) => connection.kind === 'github',
@@ -78,24 +75,23 @@ function RepositoryPanel() {
     <>
       {connections.isPending ? (
         <section className="rounded-card border border-border-subtle bg-surface p-4">
-          <p className="text-muted">Loading connections…</p>
+          <p className="text-muted">{t('connections.loading')}</p>
         </section>
       ) : null}
 
       {connections.isError ? (
         <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-          <h2 className="text-[0.8125rem] font-semibold">Connections failed to load</h2>
-          <ErrorNote
-            error={connections.error}
-            fix="Restart bastion from the terminal and reload this page."
-          />
+          <h2 className="text-[0.8125rem] font-semibold">
+            {t('connections.failed')}
+          </h2>
+          <ErrorNote error={connections.error} fix={t('connections.errorFix')} />
         </section>
       ) : null}
 
       {connections.isSuccess && github.length === 0 ? (
         <EmptyState
-          title="No GitHub connection yet"
-          body="Bastion reads repositories with a read-only personal access token: a fine-grained token with Contents: read and Metadata: read, or a classic token with the repo scope for private repositories. The token is kept in the OS keychain, never in bastion's database, and is never shown again after you save it."
+          title={t('connections.empty.title')}
+          body={t('connections.empty.body')}
         >
           <a
             href="https://github.com/settings/personal-access-tokens/new"
@@ -103,10 +99,10 @@ function RepositoryPanel() {
             rel="noreferrer"
             className={buttonVariants()}
           >
-            Create a fine-grained token
+            {t('connections.empty.action')}
           </a>
           <span className="text-xs text-faint">
-            GitHub → Settings → Developer settings → Personal access tokens
+            {t('connections.empty.hint')}
           </span>
         </EmptyState>
       ) : null}
@@ -114,8 +110,12 @@ function RepositoryPanel() {
       {github.length > 0 ? (
         <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
           <div className="flex flex-wrap items-baseline gap-2.5">
-            <h2 className="text-[0.8125rem] font-semibold">GitHub</h2>
-            <span className="text-faint">Repositories bastion can read</span>
+            <h2 className="text-[0.8125rem] font-semibold">
+              {t('connections.github.title')}
+            </h2>
+            <span className="text-faint">
+              {t('connections.github.subtitle')}
+            </span>
           </div>
           <ul className="flex flex-col divide-y divide-border-subtle">
             {github.map((connection) => (
@@ -145,6 +145,7 @@ function RegistryPanel() {
  * that bastion keeps no AWS credential of its own.
  */
 function AWSPanel() {
+  const t = useT()
   const connections = useQuery(connectionsQuery)
   const aws = (connections.data ?? []).filter(
     (connection) => connection.kind === 'aws',
@@ -153,33 +154,30 @@ function AWSPanel() {
   return (
     <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
       <div className="flex flex-wrap items-baseline gap-2.5">
-        <h2 className="text-[0.8125rem] font-semibold">AWS</h2>
-        <span className="text-faint">
-          ECR through your default credential chain
-        </span>
+        <h2 className="text-[0.8125rem] font-semibold">
+          {t('connections.aws.title')}
+        </h2>
+        <span className="text-faint">{t('connections.aws.subtitle')}</span>
       </div>
 
       {connections.isPending ? (
-        <p className="text-muted">Loading connections…</p>
+        <p className="text-muted">{t('connections.loading')}</p>
       ) : null}
 
       {connections.isError ? (
         <div className="flex flex-col gap-1">
-          <h3 className="text-[0.8125rem] font-semibold">Connections failed to load</h3>
-          <ErrorNote
-            error={connections.error}
-            fix="Restart bastion from the terminal and reload this page."
-          />
+          <h3 className="text-[0.8125rem] font-semibold">
+            {t('connections.failed')}
+          </h3>
+          <ErrorNote error={connections.error} fix={t('connections.errorFix')} />
         </div>
       ) : null}
 
       {connections.isSuccess && aws.length === 0 ? (
         <p className="max-w-[70ch] text-xs text-muted">
-          No AWS connection yet. Bastion signs in with the AWS SDK's default
-          credential chain: an environment variable, a profile in{' '}
-          <span className="font-mono">~/.aws/config</span>, an SSO session or an
-          instance role. Only the profile name and region are stored; no AWS key
-          ever reaches bastion's database or keychain.
+          {t('connections.aws.emptyBefore')}{' '}
+          <span className="font-mono">~/.aws/config</span>
+          {t('connections.aws.emptyAfter')}
         </p>
       ) : null}
 
@@ -198,6 +196,7 @@ function AWSPanel() {
 
 /** AWSConnectionRow is one AWS connection with its test and remove actions. */
 function AWSConnectionRow({ connection }: { connection: Connection }) {
+  const t = useT()
   const test = useTestConnection()
   const remove = useDeleteConnection()
   const [confirming, setConfirming] = useState(false)
@@ -205,23 +204,25 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
   const archived = connection.ecr_asset_count
   const archiveWarning =
     archived > 0
-      ? `This also archives ${archived} ECR ${archived === 1 ? 'image' : 'images'} and hides ${archived === 1 ? 'its' : 'their'} findings.`
+      ? t('connections.aws.archiveWarning', { count: archived })
       : ''
 
   return (
     <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{connection.name}</span>
-        <Badge tone={status.tone}>{status.label}</Badge>
+        <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
         {connection.region ? (
           <span className="font-mono text-xs text-muted">{connection.region}</span>
         ) : null}
         {connection.profile ? (
-          <span className="text-xs text-muted">profile {connection.profile}</span>
+          <span className="text-xs text-muted">
+            {t('connections.aws.profile', { name: connection.profile })}
+          </span>
         ) : null}
         {connection.account ? (
           <span className="font-mono text-xs text-muted">
-            account {connection.account}
+            {t('connections.aws.account', { account: connection.account })}
           </span>
         ) : null}
         <span className="text-xs text-faint">
@@ -237,7 +238,7 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
               onClick={() => test.mutate(connection.id)}
               disabled={test.isPending}
             >
-              {test.isPending ? 'Testing…' : 'Test'}
+              {test.isPending ? t('connections.testing') : t('connections.test')}
             </Button>
             <Button
               type="button"
@@ -248,7 +249,7 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
                 setConfirming(true)
               }}
             >
-              Remove
+              {t('connections.remove')}
             </Button>
           </div>
         )}
@@ -265,7 +266,7 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
       {confirming ? (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
           <span>
-            {`Remove “${connection.name}”? Only the profile and region are forgotten; no credentials are stored.`}
+            {t('connections.aws.confirmRemove', { name: connection.name })}
             {archiveWarning ? ` ${archiveWarning}` : ''}
           </span>
           <Button
@@ -276,7 +277,7 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
             onClick={() => remove.mutate(connection.id)}
             disabled={remove.isPending}
           >
-            {remove.isPending ? 'Removing…' : 'Remove'}
+            {remove.isPending ? t('connections.removing') : t('connections.remove')}
           </Button>
           <Button
             type="button"
@@ -287,7 +288,7 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
               setConfirming(false)
             }}
           >
-            Cancel
+            {t('connections.cancel')}
           </Button>
         </div>
       ) : null}
@@ -295,13 +296,13 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
       {test.isError ? (
         <ErrorNote
           error={test.error}
-          fix="Test again; if it keeps failing, check the profile and region."
+          fix={t('connections.aws.testErrorFix')}
         />
       ) : null}
       {remove.isError ? (
         <ErrorNote
           error={remove.error}
-          fix="The connection stays until removal succeeds; try again."
+          fix={t('connections.aws.removeErrorFix')}
         />
       ) : null}
     </li>
@@ -310,6 +311,7 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
 
 /** AddAWSForm creates an AWS connection; the server tests it before replying. */
 function AddAWSForm() {
+  const t = useT()
   const create = useCreateConnection()
   const [name, setName] = useState('')
   const [profile, setProfile] = useState('')
@@ -328,14 +330,14 @@ function AddAWSForm() {
             connection.status === 'ok'
               ? {
                   tone: 'ok',
-                  cause: `Connection added; authenticated to AWS account ${connection.account ?? 'unknown'}.`,
+                  cause: t('connections.aws.added', {
+                    account: connection.account ?? t('health.unknown'),
+                  }),
                 }
               : {
                   tone: 'warn',
-                  cause: 'Connection saved, but the test failed.',
-                  fix:
-                    connection.hint ??
-                    'Check the profile and region, then use Test to try again.',
+                  cause: t('connections.savedTestFailed'),
+                  fix: connection.hint ?? t('connections.aws.checkFix'),
                 },
           )
         },
@@ -351,18 +353,20 @@ function AddAWSForm() {
       className="flex flex-col gap-3 rounded-md border border-border-subtle bg-bg p-3"
     >
       <div className="flex flex-col gap-0.5">
-        <h3 className="text-[0.8125rem] font-semibold">Add a connection</h3>
+        <h3 className="text-[0.8125rem] font-semibold">
+          {t('connections.aws.addTitle')}
+        </h3>
         <p className="text-xs text-muted">
-          The profile is the one you signed in with, for example{' '}
-          <span className="font-mono">aws sso login --profile work</span>. No AWS
-          keys are stored.
+          {t('connections.aws.addBodyBefore')}{' '}
+          <span className="font-mono">aws sso login --profile work</span>
+          {t('connections.aws.addBodyAfter')}
         </p>
       </div>
 
       <div className="flex w-full max-w-3xl flex-wrap items-end gap-3">
         <div className="flex w-52 flex-col gap-1">
           <label htmlFor="aws-name" className="text-xs font-medium text-muted">
-            Name
+            {t('connections.name')}
           </label>
           <input
             id="aws-name"
@@ -377,7 +381,7 @@ function AddAWSForm() {
 
         <div className="flex w-56 flex-col gap-1">
           <label htmlFor="aws-profile" className="text-xs font-medium text-muted">
-            Profile (optional)
+            {t('connections.profileOptional')}
           </label>
           <input
             id="aws-profile"
@@ -386,14 +390,14 @@ function AddAWSForm() {
             onChange={(event) => setProfile(event.target.value)}
             autoComplete="off"
             spellCheck={false}
-            placeholder="default chain (AWS_PROFILE or default)"
+            placeholder={t('connections.profilePlaceholder')}
             className={inputClass}
           />
         </div>
 
         <div className="flex w-44 flex-col gap-1">
           <label htmlFor="aws-region" className="text-xs font-medium text-muted">
-            Region
+            {t('connections.region')}
           </label>
           <input
             id="aws-region"
@@ -413,14 +417,11 @@ function AddAWSForm() {
             create.isPending || name.trim() === '' || region.trim() === ''
           }
         >
-          {create.isPending ? 'Adding…' : 'Add connection'}
+          {create.isPending ? t('connections.adding') : t('connections.add')}
         </Button>
       </div>
 
-      <p className="text-xs text-faint">
-        Credentials come from the AWS SDK's default chain when bastion tests the
-        connection. Nothing is written to the database or the OS keychain.
-      </p>
+      <p className="text-xs text-faint">{t('connections.aws.hint')}</p>
 
       {notice ? <NoticeLine notice={notice} /> : null}
     </form>
@@ -433,6 +434,7 @@ function AddAWSForm() {
  * renders nothing: a machine without Docker is a normal state, not an error.
  */
 function DockerPanel() {
+  const t = useT()
   const images = useQuery(dockerImagesQuery)
 
   if (!images.isSuccess || !images.data.available) {
@@ -443,18 +445,21 @@ function DockerPanel() {
   return (
     <section className="flex flex-col gap-2 rounded-card border border-border-subtle bg-surface p-4">
       <div className="flex flex-wrap items-baseline gap-2.5">
-        <h2 className="text-[0.8125rem] font-semibold">Docker</h2>
-        <Badge tone="ok">available</Badge>
+        <h2 className="text-[0.8125rem] font-semibold">
+          {t('connections.docker.title')}
+        </h2>
+        <Badge tone="ok">{t('connections.docker.available')}</Badge>
         <span className="text-faint">
-          {count} {count === 1 ? 'image' : 'images'}
+          {t('connections.docker.images', { count })}
         </span>
       </div>
       <p className="text-xs text-muted">
-        Reached at <span className="font-mono">{images.data.host}</span>
+        {t('connections.docker.reachedAt')}{' '}
+        <span className="font-mono">{images.data.host}</span>
       </p>
       <div>
         <Link to="/containers" className={buttonVariants({ size: 'sm' })}>
-          View containers
+          {t('connections.docker.view')}
         </Link>
       </div>
     </section>
@@ -472,7 +477,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
     <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{connection.name}</span>
-        <Badge tone={status.tone}>{status.label}</Badge>
+        <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
         {connection.login ? (
           <span className="font-mono text-xs text-muted">@{connection.login}</span>
         ) : null}
@@ -489,7 +494,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
               onClick={() => test.mutate(connection.id)}
               disabled={test.isPending}
             >
-              {test.isPending ? 'Testing…' : 'Test'}
+              {test.isPending ? t('connections.testing') : t('connections.test')}
             </Button>
             <Button
               type="button"
@@ -500,7 +505,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
                 setConfirming(true)
               }}
             >
-              Remove
+              {t('connections.remove')}
             </Button>
           </div>
         )}
@@ -523,7 +528,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
             onClick={() => remove.mutate(connection.id)}
             disabled={remove.isPending}
           >
-            {remove.isPending ? 'Removing…' : 'Remove'}
+            {remove.isPending ? t('connections.removing') : t('connections.remove')}
           </Button>
           <Button
             type="button"
@@ -534,7 +539,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
               setConfirming(false)
             }}
           >
-            Cancel
+            {t('connections.cancel')}
           </Button>
         </div>
       ) : null}
@@ -542,13 +547,13 @@ function ConnectionRow({ connection }: { connection: Connection }) {
       {test.isError ? (
         <ErrorNote
           error={test.error}
-          fix="Test again; if it keeps failing, remove and re-add the connection."
+          fix={t('connections.github.testErrorFix')}
         />
       ) : null}
       {remove.isError ? (
         <ErrorNote
           error={remove.error}
-          fix="The token stays until removal succeeds; try again."
+          fix={t('connections.github.removeErrorFix')}
         />
       ) : null}
     </li>
@@ -557,6 +562,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
 
 /** AddGitHubForm creates a connection; the server tests it before replying. */
 function AddGitHubForm() {
+  const t = useT()
   const create = useCreateConnection()
   const [name, setName] = useState('')
   const [token, setToken] = useState('')
@@ -574,14 +580,14 @@ function AddGitHubForm() {
             connection.status === 'ok'
               ? {
                   tone: 'ok',
-                  cause: `Connection added; GitHub authenticated as ${connection.login ?? 'your account'}.`,
+                  cause: t('connections.github.added', {
+                    login: connection.login ?? t('connections.github.loginFallback'),
+                  }),
                 }
               : {
                   tone: 'warn',
-                  cause: 'Connection saved, but the test failed.',
-                  fix:
-                    connection.hint ??
-                    'Check the token scopes, then use Test to try again.',
+                  cause: t('connections.savedTestFailed'),
+                  fix: connection.hint ?? t('connections.github.checkFix'),
                 },
           )
         },
@@ -598,17 +604,16 @@ function AddGitHubForm() {
       className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
     >
       <div className="flex flex-col gap-0.5">
-        <h2 className="text-[0.8125rem] font-semibold">Add GitHub connection</h2>
-        <p className="text-xs text-muted">
-          A read-only token is enough. It is stored in the OS keychain and never
-          shown again.
-        </p>
+        <h2 className="text-[0.8125rem] font-semibold">
+          {t('connections.github.addTitle')}
+        </h2>
+        <p className="text-xs text-muted">{t('connections.github.addBody')}</p>
       </div>
 
       <div className="flex w-full max-w-3xl flex-wrap items-end gap-3">
         <div className="flex w-52 flex-col gap-1">
           <label htmlFor="github-name" className="text-xs font-medium text-muted">
-            Name
+            {t('connections.name')}
           </label>
           <input
             id="github-name"
@@ -623,7 +628,7 @@ function AddGitHubForm() {
 
         <div className="flex min-w-64 flex-1 flex-col gap-1">
           <label htmlFor="github-token" className="text-xs font-medium text-muted">
-            Personal access token
+            {t('connections.github.token')}
           </label>
           <input
             id="github-token"
@@ -642,14 +647,11 @@ function AddGitHubForm() {
           type="submit"
           disabled={create.isPending || name.trim() === '' || token.trim() === ''}
         >
-          {create.isPending ? 'Adding…' : 'Add connection'}
+          {create.isPending ? t('connections.adding') : t('connections.add')}
         </Button>
       </div>
 
-      <p className="text-xs text-faint">
-        Tokens are never written to bastion's database, logged, or returned by the
-        API.
-      </p>
+      <p className="text-xs text-faint">{t('connections.github.addHint')}</p>
 
       {notice ? <NoticeLine notice={notice} /> : null}
     </form>
@@ -692,7 +694,7 @@ function ErrorNote({ error, fix }: { error: unknown; fix: string }) {
       ? error.message
       : error instanceof Error
         ? error.message
-        : 'the request failed'
+        : t('common.requestFailed')
 
   return (
     <p role="alert" className="text-xs text-critical">
@@ -706,12 +708,15 @@ function createErrorNote(
   error: unknown,
   provider: 'GitHub' | 'AWS',
 ): { cause: string; fix: string } {
-  const article = provider === 'AWS' ? 'An' : 'A'
+  const existsKey =
+    provider === 'AWS'
+      ? 'connections.create.exists.an'
+      : 'connections.create.exists.a'
   if (error instanceof ApiError) {
     if (error.status === 409) {
       return {
-        cause: `${article} ${provider} connection with that name already exists.`,
-        fix: 'Pick a different name.',
+        cause: t(existsKey, { provider }),
+        fix: t('connections.create.existsFix'),
       }
     }
     if (error.status === 400) {
@@ -719,29 +724,31 @@ function createErrorNote(
         cause: error.message,
         fix:
           provider === 'AWS'
-            ? 'Check the name, profile and region, then try again.'
-            : 'Check the name and token, then try again.',
+            ? t('connections.create.awsFix')
+            : t('connections.create.githubFix'),
       }
     }
     return {
       cause: error.message,
-      fix: 'Try again; if it persists, check the terminal running bastion.',
+      fix: t('connections.create.retryFix'),
     }
   }
   return {
-    cause: error instanceof Error ? error.message : 'the request failed',
-    fix: 'Try again.',
+    cause: error instanceof Error ? error.message : t('common.requestFailed'),
+    fix: t('connections.create.tryAgain'),
   }
 }
 
 /** lastCheckedLabel formats the last test time, or says it never ran. */
 function lastCheckedLabel(timestamp: string | undefined): string {
   if (!timestamp) {
-    return 'never tested'
+    return t('connections.neverTested')
   }
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) {
-    return 'never tested'
+    return t('connections.neverTested')
   }
-  return `tested ${dateTimeFormat.format(date)}`
+  return t('connections.tested', {
+    date: formatLocalDate(date, { dateStyle: 'medium', timeStyle: 'short' }),
+  })
 }

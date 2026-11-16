@@ -26,44 +26,46 @@ import {
   markCliStepDone,
   type GetStartedState,
 } from '../lib/get-started'
+import { useT } from '../lib/i18n'
 import { formatDateTime, relativeTime } from '../lib/time'
 
 /** severityTiles is the fixed order of the four severity totals (§7.1). */
 const severityTiles: {
   key: keyof SeverityTotals
-  label: string
+  labelKey: string
   mark: string
 }[] = [
-  { key: 'critical', label: 'Critical', mark: 'bg-critical' },
-  { key: 'high', label: 'High', mark: 'bg-high' },
-  { key: 'medium', label: 'Medium', mark: 'bg-medium' },
-  { key: 'low', label: 'Low', mark: 'bg-low' },
+  { key: 'critical', labelKey: 'severity.critical', mark: 'bg-critical' },
+  { key: 'high', labelKey: 'severity.high', mark: 'bg-high' },
+  { key: 'medium', labelKey: 'severity.medium', mark: 'bg-medium' },
+  { key: 'low', labelKey: 'severity.low', mark: 'bg-low' },
 ]
 
 /** typeLabels maps the API's type keys to the words shown in the UI. */
-const typeLabels: { key: keyof TypeTotals; label: string }[] = [
-  { key: 'vulnerability', label: 'Vulnerabilities' },
-  { key: 'secret', label: 'Secrets' },
-  { key: 'outdated', label: 'Outdated packages' },
-  { key: 'misconfig', label: 'Misconfigurations' },
-  { key: 'license', label: 'Licenses' },
-  { key: 'malware', label: 'Malware' },
-  { key: 'sast', label: 'Code issues' },
+const typeLabels: { key: keyof TypeTotals; labelKey: string }[] = [
+  { key: 'vulnerability', labelKey: 'type.plural.vulnerability' },
+  { key: 'secret', labelKey: 'type.plural.secret' },
+  { key: 'outdated', labelKey: 'type.plural.outdated' },
+  { key: 'misconfig', labelKey: 'type.plural.misconfig' },
+  { key: 'license', labelKey: 'type.plural.license' },
+  { key: 'malware', labelKey: 'type.plural.malware' },
+  { key: 'sast', labelKey: 'type.plural.sast' },
 ]
 
 /** statusView maps a scan status to its badge text and tone. */
 const statusView: Record<
   LastScan['status'],
-  { tone: 'neutral' | 'ok' | 'critical'; label: string }
+  { tone: 'neutral' | 'ok' | 'critical'; labelKey: string }
 > = {
-  queued: { tone: 'neutral', label: 'queued' },
-  running: { tone: 'neutral', label: 'running' },
-  succeeded: { tone: 'ok', label: 'succeeded' },
-  failed: { tone: 'critical', label: 'failed' },
-  canceled: { tone: 'neutral', label: 'canceled' },
+  queued: { tone: 'neutral', labelKey: 'scanStatus.queued' },
+  running: { tone: 'neutral', labelKey: 'scanStatus.running' },
+  succeeded: { tone: 'ok', labelKey: 'scanStatus.succeeded' },
+  failed: { tone: 'critical', labelKey: 'scanStatus.failed' },
+  canceled: { tone: 'neutral', labelKey: 'scanStatus.canceled' },
 }
 
 export function DashboardPage() {
+  const t = useT()
   const dashboard = useQuery(dashboardQuery)
   const connections = useQuery(connectionsQuery)
   const assets = useQuery(assetsQuery)
@@ -103,7 +105,7 @@ export function DashboardPage() {
   if (dashboard.status === 'pending') {
     return (
       <section className="rounded-card border border-border-subtle bg-surface p-4">
-        <p className="text-muted">Loading dashboard…</p>
+        <p className="text-muted">{t('dashboard.loading')}</p>
       </section>
     )
   }
@@ -111,7 +113,9 @@ export function DashboardPage() {
   if (dashboard.status === 'error') {
     return (
       <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[0.8125rem] font-semibold">Dashboard failed to load</h2>
+        <h2 className="text-[0.8125rem] font-semibold">
+          {t('dashboard.failed')}
+        </h2>
         <ErrorNote error={dashboard.error} />
       </section>
     )
@@ -132,19 +136,19 @@ export function DashboardPage() {
           />
         ) : null}
         <EmptyState
-          title="No scans yet"
-          body="Totals by severity, findings by type and the trend of open critical and high findings appear here after the first successful scan."
+          title={t('dashboard.noScans.title')}
+          body={t('dashboard.noScans.body')}
         >
           {checklist === undefined || checklist.visible ? null : (
             <>
               <Link to="/connections" className={buttonVariants()}>
-                Connect GitHub
+                {t('dashboard.connectGithub')}
               </Link>
               <Link
                 to="/repositories"
                 className={buttonVariants({ variant: 'outline' })}
               >
-                Add a local path
+                {t('dashboard.addLocalPath')}
               </Link>
             </>
           )}
@@ -171,10 +175,10 @@ export function DashboardPage() {
       >
         <div className="flex flex-wrap items-baseline gap-2.5">
           <h2 id="severity-heading" className="text-[0.8125rem] font-semibold">
-            Open findings
+            {t('dashboard.openFindings')}
           </h2>
           <span className="text-faint">
-            {total} across each project&rsquo;s latest succeeded scan
+            {t('dashboard.openFindings.scope', { total })}
           </span>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
@@ -182,14 +186,14 @@ export function DashboardPage() {
             <SeverityTile
               key={tile.key}
               count={data.totals_by_severity[tile.key]}
-              label={tile.label}
+              label={t(tile.labelKey)}
               mark={tile.mark}
             />
           ))}
           {data.totals_by_severity.unknown > 0 ? (
             <SeverityTile
               count={data.totals_by_severity.unknown}
-              label="Unknown"
+              label={t('severity.unknown')}
               mark="bg-border-strong"
             />
           ) : null}
@@ -203,13 +207,13 @@ export function DashboardPage() {
 
       <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
         <div className="flex flex-col gap-0.5">
-          <h2 className="text-[0.8125rem] font-semibold">Open critical and high</h2>
-          <p className="text-xs text-muted">
-            Up to the last ten succeeded scans per project, oldest first.
-          </p>
+          <h2 className="text-[0.8125rem] font-semibold">
+            {t('dashboard.trend.title')}
+          </h2>
+          <p className="text-xs text-muted">{t('dashboard.trend.body')}</p>
         </div>
         {data.trend.length === 0 ? (
-          <p className="text-xs text-muted">No succeeded scans to plot yet.</p>
+          <p className="text-xs text-muted">{t('dashboard.trend.empty')}</p>
         ) : (
           <ul className="flex flex-col divide-y divide-border-subtle">
             {data.trend.map((trend) => (
@@ -222,17 +226,20 @@ export function DashboardPage() {
                   search={{ asset: trend.asset_id }}
                   className="truncate text-[0.8125rem] hover:underline"
                 >
-                  {names.get(trend.asset_id) ?? `Asset ${String(trend.asset_id)}`}
+                  {names.get(trend.asset_id) ??
+                    t('asset.fallback', { id: trend.asset_id })}
                 </Link>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-faint tabular-nums">
-                    {trend.scans.at(-1)?.critical_high_open ?? 0} open
+                    {t('dashboard.trend.open', {
+                      count: trend.scans.at(-1)?.critical_high_open ?? 0,
+                    })}
                   </span>
                   <Sparkline
                     trend={trend}
                     label={
                       names.get(trend.asset_id) ??
-                      `Asset ${String(trend.asset_id)}`
+                      t('asset.fallback', { id: trend.asset_id })
                     }
                   />
                 </div>
@@ -244,16 +251,24 @@ export function DashboardPage() {
 
       <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
         <div className="flex flex-wrap items-baseline gap-2.5">
-          <h2 className="text-[0.8125rem] font-semibold">Last scan per project</h2>
-          <span className="text-faint">Newest scan of each project, whatever its status</span>
+          <h2 className="text-[0.8125rem] font-semibold">
+            {t('dashboard.lastScans.title')}
+          </h2>
+          <span className="text-faint">{t('dashboard.lastScans.subtitle')}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[0.8125rem]">
             <thead className="text-xs text-faint">
               <tr>
-                <th className="pb-2 font-medium">Project</th>
-                <th className="pb-2 font-medium">Status</th>
-                <th className="pb-2 text-right font-medium">Last scan</th>
+                <th className="pb-2 font-medium">
+                  {t('dashboard.column.project')}
+                </th>
+                <th className="pb-2 font-medium">
+                  {t('dashboard.column.status')}
+                </th>
+                <th className="pb-2 text-right font-medium">
+                  {t('dashboard.column.lastScan')}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
@@ -271,7 +286,7 @@ export function DashboardPage() {
                       </Link>
                     </td>
                     <td className="py-2 pr-3">
-                      <Badge tone={status.tone}>{status.label}</Badge>
+                      <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
                     </td>
                     <td
                       className="py-2 text-right whitespace-nowrap text-muted tabular-nums"
@@ -283,7 +298,7 @@ export function DashboardPage() {
                     >
                       {scan.finished_at
                         ? relativeTime(scan.finished_at)
-                        : 'not finished'}
+                        : t('dashboard.notFinished')}
                     </td>
                   </tr>
                 )
@@ -306,6 +321,7 @@ function GetStartedCard({
   onDismiss: () => void
   onCliDone: () => void
 }) {
+  const t = useT()
   return (
     <section
       aria-labelledby="get-started-heading"
@@ -314,15 +330,17 @@ function GetStartedCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <h2 id="get-started-heading" className="text-[0.8125rem] font-semibold">
-            Get started
+            {t('dashboard.getStarted.title')}
           </h2>
           <p className="text-xs text-muted">
-            Four steps from an empty install to findings. {state.doneCount} of{' '}
-            {state.total} done.
+            {t('dashboard.getStarted.body', {
+              done: state.doneCount,
+              total: state.total,
+            })}
           </p>
         </div>
         <Button type="button" size="sm" variant="ghost" onClick={onDismiss}>
-          Dismiss
+          {t('dashboard.getStarted.dismiss')}
         </Button>
       </div>
       <ol className="flex flex-col gap-2.5">
@@ -360,7 +378,9 @@ function GetStartedCard({
                   ) : (
                     <span className="text-[0.8125rem]">{step.title}</span>
                   )}
-                  {step.done ? <Badge tone="ok">done</Badge> : null}
+                  {step.done ? (
+                    <Badge tone="ok">{t('dashboard.getStarted.done')}</Badge>
+                  ) : null}
                 </div>
                 <p className="text-xs text-muted">{step.hint}</p>
               </div>
@@ -395,6 +415,7 @@ function SeverityTile({
 
 /** FindingsByType lists open findings per type with a proportional bar. */
 function FindingsByType({ totals }: { totals: TypeTotals }) {
+  const t = useT()
   const rows = typeLabels
     .map((row) => ({ ...row, count: totals[row.key] }))
     .filter((row) => row.count > 0)
@@ -402,18 +423,22 @@ function FindingsByType({ totals }: { totals: TypeTotals }) {
 
   return (
     <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
-      <h2 className="text-[0.8125rem] font-semibold">Findings by type</h2>
+      <h2 className="text-[0.8125rem] font-semibold">
+        {t('dashboard.byType.title')}
+      </h2>
       {rows.length === 0 ? (
-        <p className="text-xs text-muted">No open findings in the latest succeeded scans.</p>
+        <p className="text-xs text-muted">{t('dashboard.byType.empty')}</p>
       ) : (
         <ul className="flex flex-col gap-2.5">
           {rows.map((row) => (
             <li key={row.key} className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="flex items-baseline gap-2 text-[0.8125rem]">
-                  {row.label}
+                  {t(row.labelKey)}
                   {row.key === 'license' ? (
-                    <span className="text-xs text-faint">informational</span>
+                    <span className="text-xs text-faint">
+                      {t('dashboard.byType.informational')}
+                    </span>
                   ) : null}
                 </span>
                 <span className="text-xs text-muted tabular-nums">{row.count}</span>
@@ -434,25 +459,36 @@ function FindingsByType({ totals }: { totals: TypeTotals }) {
 
 /** RiskiestAssets is the top five by score, with per-severity counts. */
 function RiskiestAssets({ assets }: { assets: AssetRisk[] }) {
+  const t = useT()
   return (
     <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
       <div className="flex flex-wrap items-baseline gap-2.5">
-        <h2 className="text-[0.8125rem] font-semibold">Riskiest projects</h2>
-        <span className="text-faint">Top 5 by open severity weight</span>
+        <h2 className="text-[0.8125rem] font-semibold">
+          {t('dashboard.riskiest.title')}
+        </h2>
+        <span className="text-faint">{t('dashboard.riskiest.subtitle')}</span>
       </div>
       {assets.length === 0 ? (
-        <p className="text-xs text-muted">No project has open findings right now.</p>
+        <p className="text-xs text-muted">{t('dashboard.riskiest.empty')}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[0.8125rem]">
             <thead className="text-xs text-faint">
               <tr>
-                <th className="pb-2 font-medium">Project</th>
-                <th className="pb-2 text-right font-medium">Score</th>
-                <th className="pb-2 pl-3 font-medium">Critical</th>
-                <th className="pb-2 pl-2 font-medium">High</th>
-                <th className="pb-2 pl-2 font-medium">Medium</th>
-                <th className="pb-2 pl-2 font-medium">Low</th>
+                <th className="pb-2 font-medium">
+                  {t('dashboard.column.project')}
+                </th>
+                <th className="pb-2 text-right font-medium">
+                  {t('dashboard.column.score')}
+                </th>
+                <th className="pb-2 pl-3 font-medium">
+                  {t('severity.critical')}
+                </th>
+                <th className="pb-2 pl-2 font-medium">{t('severity.high')}</th>
+                <th className="pb-2 pl-2 font-medium">
+                  {t('severity.medium')}
+                </th>
+                <th className="pb-2 pl-2 font-medium">{t('severity.low')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
@@ -514,6 +550,7 @@ function CountBadge({
  * only up to its accessible title; there is no chart library for one polyline.
  */
 function Sparkline({ trend, label }: { trend: AssetTrend; label: string }) {
+  const t = useT()
   const values = trend.scans.map((scan) => scan.critical_high_open)
   const width = 96
   const height = 24
@@ -525,7 +562,12 @@ function Sparkline({ trend, label }: { trend: AssetTrend; label: string }) {
     y: height - pad - (value / max) * (height - pad * 2),
   }))
   const summary = values.join(', ')
-  const title = `${label}: open critical and high findings over the last ${String(values.length)} succeeded ${values.length === 1 ? 'scan' : 'scans'}, oldest first: ${summary}`
+  const title = t('dashboard.sparkline', {
+    label,
+    count: values.length,
+    scans: t('dashboard.sparkline.scans', { count: values.length }),
+    values: summary,
+  })
 
   return (
     <svg
@@ -575,19 +617,17 @@ function assetNames(
 
 /** ErrorNote shows the problem detail the API returned, plus what to do next. */
 function ErrorNote({ error }: { error: unknown }) {
+  const t = useT()
   const cause =
     error instanceof ApiError
       ? `${error.message}${error.problem?.title ? ` (${error.problem.title})` : ''}`
       : error instanceof Error
         ? error.message
-        : 'the request failed'
+        : t('common.requestFailed')
 
   return (
     <p role="alert" className="text-xs text-critical">
-      {cause}{' '}
-      <span className="text-muted">
-        Reload the page; if it persists, check the terminal running bastion.
-      </span>
+      {cause} <span className="text-muted">{t('common.reloadFix')}</span>
     </p>
   )
 }

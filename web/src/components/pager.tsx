@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 
+import { formatNumber, useT } from '../lib/i18n'
 import { findingsPageSizes, type FindingsPageSize } from '../lib/urls'
 import { Button } from './ui/button'
 
@@ -28,6 +29,7 @@ export function Pager({
   onPageChange,
   onPageSizeChange,
 }: PagerProps) {
+  const t = useT()
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const first = total === 0 ? 0 : (page - 1) * pageSize + 1
   const last = Math.min(page * pageSize, total)
@@ -51,11 +53,15 @@ export function Pager({
 
   return (
     <nav
-      aria-label="Pagination"
+      aria-label={t('pager.aria')}
       className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border-subtle pt-3 text-xs text-muted"
     >
       <span className="tabular-nums">
-        {first}–{last} of {total}
+        {t('pager.range', {
+          first: formatNumber(first),
+          last: formatNumber(last),
+          total: formatNumber(total),
+        })}
       </span>
       <div className="ml-auto flex items-center gap-1.5">
         <Button
@@ -65,11 +71,11 @@ export function Pager({
           disabled={page <= 1}
           onClick={() => go(page - 1)}
         >
-          Previous
+          {t('pager.previous')}
         </Button>
         <form onSubmit={submit} className="flex items-center gap-1.5">
           <label htmlFor="pager-page" className="sr-only">
-            Page
+            {t('pager.page')}
           </label>
           <input
             id="pager-page"
@@ -80,7 +86,9 @@ export function Pager({
             onChange={(event) => setJump(event.target.value)}
             className={`${inputClass} w-14 text-center`}
           />
-          <span className="tabular-nums">of {pageCount}</span>
+          <span className="tabular-nums">
+            {t('pager.of', { count: formatNumber(pageCount) })}
+          </span>
         </form>
         <Button
           type="button"
@@ -89,11 +97,11 @@ export function Pager({
           disabled={page >= pageCount}
           onClick={() => go(page + 1)}
         >
-          Next
+          {t('pager.next')}
         </Button>
       </div>
       <label className="flex items-center gap-1.5">
-        <span>Rows per page</span>
+        <span>{t('pager.rowsPerPage')}</span>
         <select
           value={pageSize}
           onChange={(event) =>
