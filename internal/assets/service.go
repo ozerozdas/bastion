@@ -697,28 +697,44 @@ func (s *Service) ClearLink(ctx context.Context, imageID int64) error {
 	return nil
 }
 
+// ScanPage is one page of the scan list. Total counts every scan the filter
+// matches, before limit and offset.
+type ScanPage struct {
+	Scans []Scan
+	Total int
+}
+
 // Scans lists scans newest first, optionally narrowed to one asset. assetID 0
-// means every asset; limit must be between 1 and MaxScanLimit.
-func (s *Service) Scans(ctx context.Context, assetID int64, limit int) ([]Scan, error) {
+// means every asset; limit must be between 1 and MaxScanLimit and offset must
+// be 0 or greater.
+func (s *Service) Scans(ctx context.Context, assetID int64, limit, offset int) (ScanPage, error) {
 	if assetID < 0 {
-		return nil, fmt.Errorf("%w: asset_id must be positive", ErrInvalid)
+		return ScanPage{}, fmt.Errorf("%w: asset_id must be positive", ErrInvalid)
 	}
 	if limit < 1 || limit > MaxScanLimit {
-		return nil, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalid, MaxScanLimit)
+		return ScanPage{}, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalid, MaxScanLimit)
 	}
-	params := sqlcdb.ListScansParams{Limit: int64(limit)}
+	if offset < 0 {
+		return ScanPage{}, fmt.Errorf("%w: offset must be 0 or greater", ErrInvalid)
+	}
+	queries := sqlcdb.New(s.db)
+	params := sqlcdb.ListScansParams{Limit: int64(limit), Offset: int64(offset)}
 	if assetID > 0 {
 		params.AssetID = assetID
 	}
-	rows, err := sqlcdb.New(s.db).ListScans(ctx, params)
+	total, err := queries.CountScans(ctx, params.AssetID)
 	if err != nil {
-		return nil, fmt.Errorf("assets: list scans: %w", err)
+		return ScanPage{}, fmt.Errorf("assets: count scans: %w", err)
+	}
+	rows, err := queries.ListScans(ctx, params)
+	if err != nil {
+		return ScanPage{}, fmt.Errorf("assets: list scans: %w", err)
 	}
 	out := make([]Scan, 0, len(rows))
 	for _, row := range rows {
 		scan, err := scanFromRow(row.Scan)
 		if err != nil {
-			return nil, err
+			return ScanPage{}, err
 		}
 		scan.Counts = SeverityCounts{
 			Critical: int(row.CriticalCount),
@@ -729,7 +745,7 @@ func (s *Service) Scans(ctx context.Context, assetID int64, limit int) ([]Scan, 
 		}
 		out = append(out, scan)
 	}
-	return out, nil
+	return ScanPage{Scans: out, Total: int(total)}, nil
 }
 
 // Scan reads one scan with its scanner runs.

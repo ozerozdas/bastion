@@ -86,6 +86,42 @@ describe('parseFindingsSearch', () => {
   it('drops an unknown tab instead of hiding the findings list', () => {
     expect(parseFindingsSearch({ tab: 'plan' })).toEqual({})
   })
+
+  it('keeps a page above 1 and an offered page size', () => {
+    expect(parseFindingsSearch({ page: '3', size: '100' })).toEqual({
+      page: 3,
+      size: 100,
+    })
+    expect(parseFindingsSearch({ page: 2, size: 25 })).toEqual({
+      page: 2,
+      size: 25,
+    })
+  })
+
+  it('keeps page and size with a view or a project', () => {
+    expect(parseFindingsSearch({ view: 'single', page: '2' })).toEqual({
+      view: 'single',
+      page: 2,
+    })
+    expect(parseFindingsSearch({ asset: '7', size: '200' })).toEqual({
+      asset: 7,
+      size: 200,
+    })
+  })
+
+  it('drops page 1, the default size and values the pager cannot offer', () => {
+    expect(parseFindingsSearch({ page: '1', size: '50' })).toEqual({})
+    expect(parseFindingsSearch({ page: '0' })).toEqual({})
+    expect(parseFindingsSearch({ page: '-1' })).toEqual({})
+    expect(parseFindingsSearch({ size: '75' })).toEqual({})
+    expect(parseFindingsSearch({ size: 'abc' })).toEqual({})
+  })
+
+  it('does not page the fix plan, which is per project', () => {
+    expect(parseFindingsSearch({ tab: 'fix-plan', page: '3', size: '25' })).toEqual(
+      { tab: 'fix-plan' },
+    )
+  })
 })
 
 describe('parseScanDiffSearch', () => {

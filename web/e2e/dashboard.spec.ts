@@ -89,7 +89,16 @@ test('dashboard project names link to their filtered findings', async ({
     route.fulfill({ json: { assets: [alpha, beta] } }),
   )
   await page.route('**/api/findings?**', (route) =>
-    route.fulfill({ json: { findings: [] } }),
+    route.fulfill({
+      json: {
+        findings: [],
+        groups: [],
+        total: 0,
+        total_findings: 0,
+        limit: 50,
+        offset: 0,
+      },
+    }),
   )
 
   await page.goto(server.url)

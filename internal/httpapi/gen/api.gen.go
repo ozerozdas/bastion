@@ -476,18 +476,54 @@ func (e FindingsExportFormatQuery) Valid() bool {
 	}
 }
 
+// Defines values for FindingsListViewQuery.
+const (
+	FindingsListViewQueryGrouped FindingsListViewQuery = "grouped"
+	FindingsListViewQuerySingle  FindingsListViewQuery = "single"
+)
+
+// Valid indicates whether the value is a known member of the FindingsListViewQuery enum.
+func (e FindingsListViewQuery) Valid() bool {
+	switch e {
+	case FindingsListViewQueryGrouped:
+		return true
+	case FindingsListViewQuerySingle:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FindingsViewQuery.
 const (
-	Grouped FindingsViewQuery = "grouped"
-	Single  FindingsViewQuery = "single"
+	FindingsViewQueryGrouped FindingsViewQuery = "grouped"
+	FindingsViewQuerySingle  FindingsViewQuery = "single"
 )
 
 // Valid indicates whether the value is a known member of the FindingsViewQuery enum.
 func (e FindingsViewQuery) Valid() bool {
 	switch e {
-	case Grouped:
+	case FindingsViewQueryGrouped:
 		return true
-	case Single:
+	case FindingsViewQuerySingle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListFindingsParamsView.
+const (
+	ListFindingsParamsViewGrouped ListFindingsParamsView = "grouped"
+	ListFindingsParamsViewSingle  ListFindingsParamsView = "single"
+)
+
+// Valid indicates whether the value is a known member of the ListFindingsParamsView enum.
+func (e ListFindingsParamsView) Valid() bool {
+	switch e {
+	case ListFindingsParamsViewGrouped:
+		return true
+	case ListFindingsParamsViewSingle:
 		return true
 	default:
 		return false
@@ -971,9 +1007,67 @@ type Finding struct {
 	Type FindingType `json:"type"`
 }
 
-// FindingList defines model for FindingList.
-type FindingList struct {
+// FindingGroup One rule (or, without a rule id, one fingerprint) and type, folded
+// across projects (#90). Members keep the single list's order, and groups
+// sort by worst severity, then finding count, then title.
+type FindingGroup struct {
+	// AssetIds Affected assets, first-seen order.
+	AssetIds []int64 `json:"asset_ids"`
+
+	// Findings Every member finding, in the single list's order.
 	Findings []Finding `json:"findings"`
+
+	// FixedVersion The fixed version when every member agrees on one; absent otherwise.
+	FixedVersion *string `json:"fixed_version,omitempty"`
+
+	// FixedVersions Distinct fixed versions, first-seen order.
+	FixedVersions []string `json:"fixed_versions"`
+
+	// Key Stable key of the group (rule id or fingerprint, then type); the UI
+	// uses it for selection and React keys.
+	Key string `json:"key"`
+
+	// Packages Distinct package names, first-seen order.
+	Packages     []string `json:"packages"`
+	ProjectCount int      `json:"project_count"`
+
+	// RuleId Absent when the scanner reported no rule id.
+	RuleId *string `json:"rule_id,omitempty"`
+
+	// Severity Normalized severity scale (`unknown` when a scanner gave no usable level).
+	Severity Severity `json:"severity"`
+	Title    string   `json:"title"`
+
+	// Type Kind of finding (PROJECT_SPEC.md §5).
+	Type FindingType `json:"type"`
+}
+
+// FindingList One page of a findings list. `view=single` fills `findings` and leaves
+// `groups` empty; `view=grouped` fills `groups` and leaves `findings`
+// empty. `total` counts the rows the filters match in the chosen view
+// (findings, or groups) before the window; `total_findings` always counts
+// the matching findings, which in grouped view is the sum over every
+// group, not just this page. `limit` is `0` on endpoints without a page
+// size, such as the findings of one scan.
+type FindingList struct {
+	// Findings This page's findings, most severe first. Empty in grouped view.
+	Findings []Finding `json:"findings"`
+
+	// Groups One row per rule and type, worst first. Empty in single view.
+	Groups []FindingGroup `json:"groups"`
+
+	// Limit The page size the request asked for; `0` when there is none.
+	Limit int `json:"limit"`
+
+	// Offset How many rows the request skipped.
+	Offset int `json:"offset"`
+
+	// Total Rows the filters match: findings in single view, groups in grouped
+	// view.
+	Total int `json:"total"`
+
+	// TotalFindings Findings the filters match, across every group in grouped view.
+	TotalFindings int `json:"total_findings"`
 }
 
 // FindingState The user decision that hides a finding across scans.
@@ -1262,9 +1356,17 @@ type ScanEventStage string
 // ScanEventType The SSE event name.
 type ScanEventType string
 
-// ScanList Scans, newest first.
+// ScanList One page of scans, newest first, with the total count.
 type ScanList struct {
-	Scans []Scan `json:"scans"`
+	// Limit The page size the request asked for.
+	Limit int `json:"limit"`
+
+	// Offset How many scans the request skipped.
+	Offset int    `json:"offset"`
+	Scans  []Scan `json:"scans"`
+
+	// Total Scans the filters match, before the window.
+	Total int `json:"total"`
 }
 
 // ScanQueueResult defines model for ScanQueueResult.
@@ -1448,11 +1550,20 @@ type FindingTypeQuery = FindingType
 // FindingsExportFormatQuery defines model for FindingsExportFormatQuery.
 type FindingsExportFormatQuery string
 
+// FindingsLimitQuery defines model for FindingsLimitQuery.
+type FindingsLimitQuery = int
+
+// FindingsListViewQuery defines model for FindingsListViewQuery.
+type FindingsListViewQuery string
+
 // FindingsViewQuery defines model for FindingsViewQuery.
 type FindingsViewQuery string
 
 // Fingerprint defines model for Fingerprint.
 type Fingerprint = string
+
+// OffsetQuery defines model for OffsetQuery.
+type OffsetQuery = int
 
 // ScanID defines model for ScanID.
 type ScanID = int64
@@ -1465,6 +1576,10 @@ type SeverityQuery = Severity
 
 // ListFindingsParams defines parameters for ListFindings.
 type ListFindingsParams struct {
+	// View `single` returns one row per finding; `grouped` folds one row per rule
+	// and type across projects.
+	View *ListFindingsParamsView `form:"view,omitempty" json:"view,omitempty"`
+
 	// AssetId Only findings of this asset.
 	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
 
@@ -1476,7 +1591,16 @@ type ListFindingsParams struct {
 
 	// Status Only findings with this effective status.
 	Status *FindingStatusQuery `form:"status,omitempty" json:"status,omitempty"`
+
+	// Limit Rows per page. In grouped view a row is one rule and type.
+	Limit *FindingsLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Rows to skip before the page.
+	Offset *OffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
 }
+
+// ListFindingsParamsView defines parameters for ListFindings.
+type ListFindingsParamsView string
 
 // ClearFindingStateParams defines parameters for ClearFindingState.
 type ClearFindingStateParams struct {
@@ -1491,6 +1615,9 @@ type ListScansParams struct {
 
 	// Limit Maximum number of scans to return, newest first.
 	Limit *ScanLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Rows to skip before the page.
+	Offset *OffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // GetScanDiffParams defines parameters for GetScanDiff.
@@ -1510,6 +1637,9 @@ type ListScanFindingsParams struct {
 
 	// Status Only findings with this effective status.
 	Status *FindingStatusQuery `form:"status,omitempty" json:"status,omitempty"`
+
+	// Offset Rows to skip before the page.
+	Offset *OffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // CreateAssetJSONRequestBody defines body for CreateAsset for application/json ContentType.
@@ -2074,6 +2204,19 @@ func (siw *ServerInterfaceWrapper) ListFindings(w http.ResponseWriter, r *http.R
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListFindingsParams
 
+	// ------------- Optional query parameter "view" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "view", r.URL.Query(), &params.View, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "view"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "view", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "asset_id" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -2122,6 +2265,32 @@ func (siw *ServerInterfaceWrapper) ListFindings(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
 		}
 		return
 	}
@@ -2310,6 +2479,19 @@ func (siw *ServerInterfaceWrapper) ListScans(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListScans(w, r, params)
 	}))
@@ -2482,6 +2664,19 @@ func (siw *ServerInterfaceWrapper) ListScanFindings(w http.ResponseWriter, r *ht
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
 		}
 		return
 	}

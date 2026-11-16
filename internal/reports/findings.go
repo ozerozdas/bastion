@@ -70,12 +70,112 @@ type Finding struct {
 	Reachability findings.Reachability
 }
 
+// Page bounds one page of the latest-findings list. In grouped view a row is
+// one rule and type.
+const (
+	// DefaultFindingLimit is the page size when the caller does not ask for one.
+	DefaultFindingLimit = 50
+	// MaxFindingLimit caps one page, so a client cannot ask for the whole table.
+	MaxFindingLimit = 500
+)
+
+// Page is a limit/offset window over the latest-findings list.
+type Page struct {
+	Limit  int
+	Offset int
+}
+
+// Validate reports whether the window is one the list accepts.
+func (p Page) Validate() error {
+	if p.Limit < 1 || p.Limit > MaxFindingLimit {
+		return fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalid, MaxFindingLimit)
+	}
+	if p.Offset < 0 {
+		return fmt.Errorf("%w: offset must be 0 or greater", ErrInvalid)
+	}
+	return nil
+}
+
+// allRows is SQLite's "no upper bound" limit. Internal callers that need every
+// row (the fix plan and the export) pass it instead of a page size.
+const allRows = -1
+
+// GroupPage is one page of the grouped list. Total counts groups; TotalFindings
+// counts the findings behind every group, not just this page.
+type GroupPage struct {
+	Groups        []FindingGroup
+	Total         int
+	TotalFindings int
+}
+
 // Findings lists the findings of the most recent succeeded scan of every
 // non-archived asset, most severe first, with the effective status: a
 // finding_states decision for the same asset and fingerprint reports the
 // finding as ignored and fills State and Reason.
 func (s *Service) Findings(ctx context.Context, filter Filter) ([]Finding, error) {
-	params, err := filter.params(s.expiryNow())
+	return s.listFindings(ctx, filter, allRows, 0)
+}
+
+// FindingsPage lists one page of the latest findings and the number of rows the
+// filters match, ignoring the window.
+func (s *Service) FindingsPage(ctx context.Context, filter Filter, page Page) ([]Finding, int, error) {
+	if err := page.Validate(); err != nil {
+		return nil, 0, err
+	}
+
+	countParams, err := filter.countParams(s.expiryNow())
+	if err != nil {
+		return nil, 0, err
+	}
+	count, err := sqlcdb.New(s.db).CountLatestFindings(ctx, countParams)
+	if err != nil {
+		return nil, 0, fmt.Errorf("reports: count findings: %w", err)
+	}
+
+	findings, err := s.listFindings(ctx, filter, int64(page.Limit), int64(page.Offset))
+	if err != nil {
+		return nil, 0, err
+	}
+	return findings, int(count), nil
+}
+
+// GroupedFindings folds the latest findings into one row per rule and type and
+// cuts the requested window from the groups.
+func (s *Service) GroupedFindings(ctx context.Context, filter Filter, page Page) (GroupPage, error) {
+	if err := page.Validate(); err != nil {
+		return GroupPage{}, err
+	}
+
+	// ponytail: grouping folds the whole filtered list in memory before the
+	// page is cut, because a group's members span projects and a SQL GROUP BY
+	// would still have to rebuild every member row. The ceiling is the latest
+	// findings of the fleet; move the grouping into SQL if it reaches six
+	// figures.
+	all, err := s.Findings(ctx, filter)
+	if err != nil {
+		return GroupPage{}, err
+	}
+	groups := GroupFindings(all)
+
+	start := page.Offset
+	if start > len(groups) {
+		start = len(groups)
+	}
+	end := start + page.Limit
+	if end > len(groups) {
+		end = len(groups)
+	}
+
+	return GroupPage{
+		Groups:        groups[start:end],
+		Total:         len(groups),
+		TotalFindings: len(all),
+	}, nil
+}
+
+// listFindings reads the latest findings with the window limit and offset.
+func (s *Service) listFindings(ctx context.Context, filter Filter, limit, offset int64) ([]Finding, error) {
+	params, err := filter.params(s.expiryNow(), limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -145,24 +245,46 @@ func (s *Service) enrich(finding *Finding) {
 // params validates the filter and converts it to the query's nullable
 // arguments: a nil interface means "no filter" in ListLatestFindings. now is
 // the clock the query compares a decision's expiry with.
-func (f Filter) params(now string) (sqlcdb.ListLatestFindingsParams, error) {
-	params := sqlcdb.ListLatestFindingsParams{Now: now}
-
-	if f.AssetID < 0 {
-		return params, fmt.Errorf("%w: asset_id must be positive", ErrInvalid)
+func (f Filter) params(now string, limit, offset int64) (sqlcdb.ListLatestFindingsParams, error) {
+	params := sqlcdb.ListLatestFindingsParams{Now: now, Limit: limit, Offset: offset}
+	if err := f.validate(); err != nil {
+		return params, err
 	}
+
 	if f.AssetID > 0 {
 		params.AssetID = f.AssetID
-	}
-
-	if err := validateEnums(f.Severity, f.Type, f.Status); err != nil {
-		return params, err
 	}
 	params.Severity = nullable(f.Severity)
 	params.Type = nullable(f.Type)
 	params.Status = nullable(f.Status)
 
 	return params, nil
+}
+
+// countParams validates the filter and converts it to CountLatestFindings'
+// arguments, which mirror ListLatestFindings' filters without the window.
+func (f Filter) countParams(now string) (sqlcdb.CountLatestFindingsParams, error) {
+	params := sqlcdb.CountLatestFindingsParams{Now: now}
+	if err := f.validate(); err != nil {
+		return params, err
+	}
+
+	if f.AssetID > 0 {
+		params.AssetID = f.AssetID
+	}
+	params.Severity = nullable(f.Severity)
+	params.Type = nullable(f.Type)
+	params.Status = nullable(f.Status)
+
+	return params, nil
+}
+
+// validate rejects a filter the list cannot answer.
+func (f Filter) validate() error {
+	if f.AssetID < 0 {
+		return fmt.Errorf("%w: asset_id must be positive", ErrInvalid)
+	}
+	return validateEnums(f.Severity, f.Type, f.Status)
 }
 
 // validateEnums rejects an enum value no filter accepts. The message names the

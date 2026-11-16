@@ -57,7 +57,16 @@ async function openReports(
     route.fulfill({ json: { assets: [asset] } }),
   )
   await page.route('**/api/findings?**', (route) =>
-    route.fulfill({ json: { findings: current } }),
+    route.fulfill({
+      json: {
+        findings: current,
+        groups: [],
+        total: current.length,
+        total_findings: current.length,
+        limit: 50,
+        offset: 0,
+      },
+    }),
   )
   await page.route('**/api/findings/*/state', (route) => {
     decisions.push(route.request().postDataJSON() as Record<string, unknown>)

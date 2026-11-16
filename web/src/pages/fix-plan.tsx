@@ -4,7 +4,7 @@ import { useState, type ReactNode } from 'react'
 
 import type { Asset } from '../api/assets'
 import { epssQuery } from '../api/epss'
-import { latestFindingsQuery, type Finding } from '../api/findings'
+import { allFindingsQuery, type Finding } from '../api/findings'
 import {
   fixPlanQuery,
   type FixPlanFactor,
@@ -45,11 +45,7 @@ export function FixPlanPanel({
   const epss = useQuery(epssQuery)
   // The plan carries finding ids; the list supplies the rows the drawer needs.
   const findings = useQuery({
-    ...latestFindingsQuery({
-      assetId: selected?.id,
-      type: 'vulnerability',
-      status: 'open',
-    }),
+    ...allFindingsQuery({ assetId: selected?.id, type: 'vulnerability', status: 'open' }),
     enabled: selected !== undefined,
   })
 

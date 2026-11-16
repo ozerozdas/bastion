@@ -16,11 +16,14 @@ type ScanQueueResult = components['schemas']['ScanQueueResult']
 export const scansKey = ['scans'] as const
 
 /** scansQuery lists scans newest first, optionally for one asset. */
-export function scansQuery(assetId?: number, limit = 50) {
-  const params = new URLSearchParams({ limit: String(limit) })
+export function scansQuery(assetId?: number, limit = 50, offset = 0) {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  })
   if (assetId !== undefined) params.set('asset_id', String(assetId))
   return queryOptions({
-    queryKey: [...scansKey, 'list', assetId ?? null, limit],
+    queryKey: [...scansKey, 'list', assetId ?? null, limit, offset],
     queryFn: async () => (await api.get<ScanList>(`/api/scans?${params}`)).scans,
   })
 }

@@ -44,6 +44,21 @@ func (q *Queries) CountFindingsByScan(ctx context.Context, scanID int64) (CountF
 	return i, err
 }
 
+const countScans = `-- name: CountScans :one
+SELECT COUNT(*)
+FROM scans s
+WHERE (?1 IS NULL OR s.asset_id = ?1)
+`
+
+// Number of scans ListScans returns for the same asset filter, ignoring limit
+// and offset.
+func (q *Queries) CountScans(ctx context.Context, assetID interface{}) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countScans, assetID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createScan = `-- name: CreateScan :one
 INSERT INTO scans (asset_id, target_ref, status, "trigger", started_at)
 VALUES (
@@ -285,12 +300,14 @@ SELECT
 FROM scans s
 WHERE (?1 IS NULL OR s.asset_id = ?1)
 ORDER BY s.id DESC
-LIMIT ?2
+LIMIT CASE WHEN ?3 IS NULL THEN -1 ELSE ?3 END
+OFFSET CASE WHEN ?2 IS NULL THEN 0 ELSE ?2 END
 `
 
 type ListScansParams struct {
 	AssetID interface{}
-	Limit   int64
+	Offset  interface{}
+	Limit   interface{}
 }
 
 type ListScansRow struct {
@@ -307,8 +324,9 @@ type ListScansRow struct {
 // are every finding the scan recorded, per severity, in one statement; the
 // correlated subqueries read only the findings of the listed scans (see
 // idx_findings_scan).
+// A nil window means no page: SQLite has no NULL LIMIT, so -1 stands in.
 func (q *Queries) ListScans(ctx context.Context, arg ListScansParams) ([]ListScansRow, error) {
-	rows, err := q.db.QueryContext(ctx, listScans, arg.AssetID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listScans, arg.AssetID, arg.Offset, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

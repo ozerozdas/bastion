@@ -27,6 +27,15 @@ export function parseAssetSearch(search: Record<string, unknown>): AssetSearch {
 /** FindingsView names the two ways the Findings page lists rows (#90). */
 export type FindingsView = 'single' | 'grouped'
 
+/** FindingsPageSizes are the page sizes the Findings table offers. */
+export const findingsPageSizes = [25, 50, 100, 200] as const
+
+/** FindingsPageSize is one of the offered page sizes. */
+export type FindingsPageSize = (typeof findingsPageSizes)[number]
+
+/** defaultFindingsPageSize is the page size when the URL names none. */
+export const defaultFindingsPageSize: FindingsPageSize = 50
+
 /**
  * FindingsSearch is the Findings route's search params. Grouped is the default
  * (#106), so it is the bare path; only opting out into single is in the URL.
@@ -41,26 +50,55 @@ export type FindingsSearch = {
   asset?: number
   /** ?tab=fix-plan shows the package upgrade plan; absent is the findings list. */
   tab?: 'fix-plan'
+  /** ?page=<n> is the 1-based page; absent is page 1. */
+  page?: number
+  /** ?size=<n> is one of findingsPageSizes; absent is 50. */
+  size?: FindingsPageSize
 }
 
 /**
- * parseFindingsSearch reads ?view=single, ?asset=<id> and ?tab=fix-plan from the
- * Findings route. Without an asset the view defaults to grouped (#106), so its
- * URL is the bare path; an unknown view falls back to that default. ?asset=
- * forces single, keeps the validation the old reports route had, and drops any
- * view. ?tab=fix-plan keeps the project filter: the plan is per asset.
+ * parseFindingsSearch reads ?view=single, ?asset=<id>, ?tab=fix-plan, ?page=<n>
+ * and ?size=<n> from the Findings route. Without an asset the view defaults to
+ * grouped (#106), so its URL is the bare path; an unknown view falls back to
+ * that default. ?asset= forces single and drops any view. A page below 2 or a
+ * size that is not offered is dropped, so the URL stays canonical.
  */
 export function parseFindingsSearch(
   search: Record<string, unknown>,
 ): FindingsSearch {
   const asset = parseAssetSearch(search)
+  const page = parsePositiveInt(search.page)
+  const size = parsePageSize(search.size)
+  const paging: Pick<FindingsSearch, 'page' | 'size'> = {
+    ...(page !== undefined && page > 1 ? { page } : {}),
+    ...(size !== undefined && size !== defaultFindingsPageSize ? { size } : {}),
+  }
   if (search.tab === 'fix-plan') {
     return { tab: 'fix-plan', ...asset }
   }
   if (asset.asset !== undefined) {
-    return asset
+    return { ...asset, ...paging }
   }
-  return search.view === 'single' ? { view: 'single' } : {}
+  return search.view === 'single'
+    ? { view: 'single', ...paging }
+    : { ...paging }
+}
+
+/** parsePositiveInt reads a positive integer from a search value. */
+function parsePositiveInt(raw: unknown): number | undefined {
+  if (typeof raw === 'number' && Number.isInteger(raw) && raw > 0) {
+    return raw
+  }
+  if (typeof raw === 'string' && /^[1-9]\d*$/.test(raw)) {
+    return Number(raw)
+  }
+  return undefined
+}
+
+/** parsePageSize keeps only the sizes the page-size select offers. */
+function parsePageSize(raw: unknown): FindingsPageSize | undefined {
+  const value = parsePositiveInt(raw)
+  return findingsPageSizes.find((size) => size === value)
 }
 
 /** ScanDiffSearch is the scan diff route's optional baseline scan (#17). */

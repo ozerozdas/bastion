@@ -1,7 +1,6 @@
 package export
 
 import (
-	"sort"
 	"strconv"
 	"strings"
 
@@ -21,96 +20,15 @@ func ValidView(view string) bool {
 	return view == ViewGrouped || view == ViewSingle
 }
 
-// severityRank orders severities worst first, matching the findings list and
-// the UI's grouping.
-var severityRank = map[string]int{
-	"critical": 0,
-	"high":     1,
-	"medium":   2,
-	"low":      3,
-	"unknown":  4,
-}
-
-// findingGroup is one grouped row under construction: the members and the
-// values the row shows.
-type findingGroup struct {
-	key        string
-	ruleID     string
-	title      string
-	kind       string
-	severity   string
-	findings   int
-	open       int
-	assetIDs   []int64
-	packages   []string
-	hasEPSS    bool
-	maxScore   float64
-	maxPercent float64
-}
-
 // Grouped builds one row per rule and type from the latest findings. assetNames
 // names the projects; a missing id falls back to "Asset <id>". EPSS columns are
 // added only when the feed is enabled, and the row carries the highest score
 // among its members.
 //
-// The grouping key and the ordering mirror web/src/lib/group-findings.ts: a
-// finding without a rule id groups by fingerprint, and rows sort by worst
-// severity, then finding count, then title.
+// The folding and ordering belong to reports.GroupFindings, which the grouped
+// findings list shares, so the download and the page always agree.
 func Grouped(findings []reports.Finding, assetNames map[int64]string, epssEnabled bool) Table {
-	groups := make(map[string]*findingGroup)
-	order := make([]*findingGroup, 0, len(findings))
-
-	for _, finding := range findings {
-		ruleID := strings.TrimSpace(finding.RuleID)
-		key := ruleID
-		if key == "" {
-			key = finding.Fingerprint
-		}
-		key += "\x00" + finding.Type
-
-		group, ok := groups[key]
-		if !ok {
-			group = &findingGroup{
-				key:      key,
-				ruleID:   ruleID,
-				title:    finding.Title,
-				kind:     finding.Type,
-				severity: finding.Severity,
-			}
-			groups[key] = group
-			order = append(order, group)
-		}
-
-		group.findings++
-		if finding.Status == reports.FindingStatusOpen {
-			group.open++
-		}
-		if !containsInt64(group.assetIDs, finding.AssetID) {
-			group.assetIDs = append(group.assetIDs, finding.AssetID)
-		}
-		if name := strings.TrimSpace(finding.PackageName); name != "" && !containsString(group.packages, name) {
-			group.packages = append(group.packages, name)
-		}
-		if rank(finding.Severity) < rank(group.severity) {
-			group.severity = finding.Severity
-		}
-		if finding.EPSS != nil && (!group.hasEPSS || finding.EPSS.Score > group.maxScore) {
-			group.hasEPSS = true
-			group.maxScore = finding.EPSS.Score
-			group.maxPercent = finding.EPSS.Percentile
-		}
-	}
-
-	sort.SliceStable(order, func(i, j int) bool {
-		a, b := order[i], order[j]
-		if rank(a.severity) != rank(b.severity) {
-			return rank(a.severity) < rank(b.severity)
-		}
-		if a.findings != b.findings {
-			return a.findings > b.findings
-		}
-		return a.title < b.title
-	})
+	groups := reports.GroupFindings(findings)
 
 	columns := []Column{
 		{Key: "rule", Header: "Rule"},
@@ -129,20 +47,21 @@ func Grouped(findings []reports.Finding, assetNames map[int64]string, epssEnable
 		)
 	}
 
-	rows := make([][]Cell, 0, len(order))
-	for _, group := range order {
+	rows := make([][]Cell, 0, len(groups))
+	for _, group := range groups {
 		row := []Cell{
-			TextCell(group.ruleID),
-			TextCell(group.kind),
-			TextCell(group.severity),
-			TextCell(group.title),
-			TextCell(strings.Join(group.packages, ", ")),
-			TextCell(strings.Join(groupProjectNames(group.assetIDs, assetNames), ", ")),
-			IntCell(int64(group.findings)),
-			IntCell(int64(group.open)),
+			TextCell(group.RuleID),
+			TextCell(group.Type),
+			TextCell(group.Severity),
+			TextCell(group.Title),
+			TextCell(strings.Join(group.Packages, ", ")),
+			TextCell(strings.Join(groupProjectNames(group.AssetIDs, assetNames), ", ")),
+			IntCell(int64(len(group.Findings))),
+			IntCell(int64(openCount(group.Findings))),
 		}
 		if epssEnabled {
-			row = append(row, epssCells(group.hasEPSS, group.maxScore, group.maxPercent)...)
+			score, percentile, ok := maxEPSS(group.Findings)
+			row = append(row, epssCells(ok, score, percentile)...)
 		}
 		rows = append(rows, row)
 	}
@@ -212,6 +131,32 @@ func Single(findings []reports.Finding, assetNames map[int64]string, epssEnabled
 	return Table{Columns: columns, Rows: rows}
 }
 
+// openCount is how many members are still open.
+func openCount(findings []reports.Finding) int {
+	open := 0
+	for _, finding := range findings {
+		if finding.Status == reports.FindingStatusOpen {
+			open++
+		}
+	}
+	return open
+}
+
+// maxEPSS is the group's highest member score, the first one when two tie.
+func maxEPSS(findings []reports.Finding) (score, percentile float64, ok bool) {
+	for _, finding := range findings {
+		if finding.EPSS == nil {
+			continue
+		}
+		if !ok || finding.EPSS.Score > score {
+			ok = true
+			score = finding.EPSS.Score
+			percentile = finding.EPSS.Percentile
+		}
+	}
+	return score, percentile, ok
+}
+
 // epssCells is a grouped row's max EPSS pair, empty when no member has a score.
 func epssCells(present bool, score, percentile float64) []Cell {
 	if !present {
@@ -236,30 +181,4 @@ func projectName(assetID int64, assetNames map[int64]string) string {
 		return name
 	}
 	return "Asset " + strconv.FormatInt(assetID, 10)
-}
-
-// rank is a severity's order; an unknown value sorts last like the API does.
-func rank(severity string) int {
-	if value, ok := severityRank[severity]; ok {
-		return value
-	}
-	return severityRank["unknown"]
-}
-
-func containsInt64(values []int64, value int64) bool {
-	for _, candidate := range values {
-		if candidate == value {
-			return true
-		}
-	}
-	return false
-}
-
-func containsString(values []string, value string) bool {
-	for _, candidate := range values {
-		if candidate == value {
-			return true
-		}
-	}
-	return false
 }

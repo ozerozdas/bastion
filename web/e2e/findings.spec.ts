@@ -37,7 +37,156 @@ const baseFinding = {
   references: ['https://example.com/advisory'],
 }
 
-const findings = [
+
+/** StubFinding is the subset of a Finding the stubbed API needs. */
+type StubFinding = {
+  id: number
+  scan_id: number
+  asset_id: number
+  type: string
+  fingerprint: string
+  severity: string
+  title: string
+  rule_id?: string
+  package_name?: string
+  package_version?: string
+  fixed_version?: string
+  location?: string
+  occurrences: number
+  scanner: string
+  status: string
+  description?: string
+  references: string[]
+}
+
+/** StubGroup mirrors the API's FindingGroup, built the way the server does. */
+type StubGroup = {
+  key: string
+  rule_id?: string
+  title: string
+  type: string
+  severity: string
+  asset_ids: number[]
+  project_count: number
+  packages: string[]
+  fixed_versions: string[]
+  fixed_version?: string
+  findings: StubFinding[]
+}
+
+const severityRank: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  unknown: 4,
+}
+
+function rank(severity: string): number {
+  return severityRank[severity] ?? severityRank.unknown
+}
+
+/** groupRows folds one row per rule and type, like reports.GroupFindings. */
+function groupRows(rows: StubFinding[]): StubGroup[] {
+  const groups = new Map<string, StubGroup>()
+  for (const finding of rows) {
+    const ruleId = finding.rule_id?.trim() ?? ''
+    const key = `${ruleId === '' ? finding.fingerprint : ruleId}\u0000${finding.type}`
+    let group = groups.get(key)
+    if (group === undefined) {
+      group = {
+        key,
+        rule_id: ruleId === '' ? undefined : ruleId,
+        title: finding.title,
+        type: finding.type,
+        severity: finding.severity,
+        asset_ids: [],
+        project_count: 0,
+        packages: [],
+        fixed_versions: [],
+        findings: [],
+      }
+      groups.set(key, group)
+    }
+    group.findings.push(finding)
+    if (!group.asset_ids.includes(finding.asset_id)) {
+      group.asset_ids.push(finding.asset_id)
+    }
+    const packageName = finding.package_name?.trim() ?? ''
+    if (packageName !== '' && !group.packages.includes(packageName)) {
+      group.packages.push(packageName)
+    }
+    const fixed = finding.fixed_version ?? ''
+    if (fixed !== '' && !group.fixed_versions.includes(fixed)) {
+      group.fixed_versions.push(fixed)
+    }
+    if (rank(finding.severity) < rank(group.severity)) {
+      group.severity = finding.severity
+    }
+  }
+
+  const ordered = [...groups.values()]
+  for (const group of ordered) {
+    group.project_count = group.asset_ids.length
+    if (group.fixed_versions.length === 1) {
+      group.fixed_version = group.fixed_versions[0]
+    }
+  }
+  return ordered.sort(
+    (a, b) =>
+      rank(a.severity) - rank(b.severity) ||
+      b.findings.length - a.findings.length ||
+      a.title.localeCompare(b.title),
+  )
+}
+
+/**
+ * respondFindings answers GET /api/findings the way the server does: filter,
+ * pick the view, then cut the page and report both totals.
+ */
+function respondFindings(rows: StubFinding[], url: URL) {
+  const assetId = url.searchParams.get('asset_id')
+  const severity = url.searchParams.get('severity')
+  const type = url.searchParams.get('type')
+  const status = url.searchParams.get('status')
+  const filtered = rows.filter(
+    (finding) =>
+      (assetId === null || finding.asset_id === Number(assetId)) &&
+      (severity === null || finding.severity === severity) &&
+      (type === null || finding.type === type) &&
+      (status === null || finding.status === status),
+  )
+  const view = url.searchParams.get('view') ?? 'single'
+  const limit = Number(url.searchParams.get('limit') ?? '50')
+  const offset = Number(url.searchParams.get('offset') ?? '0')
+  const window = <T>(items: T[]): T[] => items.slice(offset, offset + limit)
+
+  if (view === 'grouped') {
+    const groups = groupRows(filtered)
+    return {
+      json: {
+        findings: [],
+        groups: window(groups),
+        total: groups.length,
+        total_findings: filtered.length,
+        limit,
+        offset,
+      },
+    }
+  }
+  return {
+    json: {
+      findings: window(filtered),
+      groups: [],
+      total: filtered.length,
+      total_findings: filtered.length,
+      limit,
+      offset,
+    },
+  }
+}
+
+const findings: StubFinding[] = [
   {
     ...baseFinding,
     rule_id: 'CVE-2021-1111',
@@ -107,12 +256,7 @@ test('lists findings across projects with no filter, critical first', async ({
   await page.route('**/api/findings?**', (route) => {
     const url = new URL(route.request().url())
     requested.push(url)
-    const assetId = url.searchParams.get('asset_id')
-    const rows =
-      assetId === null
-        ? findings
-        : findings.filter((finding) => finding.asset_id === Number(assetId))
-    return route.fulfill({ json: { findings: rows } })
+    return route.fulfill(respondFindings(findings, url))
   })
 
   await openDashboard(page, server.url)
@@ -178,15 +322,9 @@ test('groups one CVE across projects and keeps the view in the URL', async ({
   await page.route('**/api/assets', (route) =>
     route.fulfill({ json: { assets: [alpha, beta] } }),
   )
-  await page.route('**/api/findings?**', (route) => {
-    const url = new URL(route.request().url())
-    const assetId = url.searchParams.get('asset_id')
-    const rows =
-      assetId === null
-        ? findings
-        : findings.filter((finding) => finding.asset_id === Number(assetId))
-    return route.fulfill({ json: { findings: rows } })
-  })
+  await page.route('**/api/findings?**', (route) =>
+    route.fulfill(respondFindings(findings, new URL(route.request().url()))),
+  )
 
   await openDashboard(page, server.url)
   await page.getByRole('link', { name: /^Findings/ }).click()
@@ -264,7 +402,7 @@ test('redirects old report URLs to the findings list', async ({ page, server }) 
     route.fulfill({ json: { assets: [asset] } }),
   )
   await page.route('**/api/findings?**', (route) =>
-    route.fulfill({ json: { findings: [] } }),
+    route.fulfill(respondFindings([], new URL(route.request().url()))),
   )
 
   await openDashboard(page, server.url)
@@ -301,7 +439,7 @@ test('a bulk decision sends one request per project', async ({ page, server }) =
     route.fulfill({ json: { assets: [alpha, beta] } }),
   )
   await page.route('**/api/findings?**', (route) =>
-    route.fulfill({ json: { findings } }),
+    route.fulfill(respondFindings(findings, new URL(route.request().url()))),
   )
   // The bulk endpoint takes one asset per request; a per-finding POST would
   // match neither this route nor the list stub and fail the test.
@@ -352,15 +490,9 @@ test('exports the current view as a download from the page actions', async ({
   await page.route('**/api/assets', (route) =>
     route.fulfill({ json: { assets: [alpha, beta] } }),
   )
-  await page.route('**/api/findings?**', (route) => {
-    const url = new URL(route.request().url())
-    const assetId = url.searchParams.get('asset_id')
-    const rows =
-      assetId === null
-        ? findings
-        : findings.filter((finding) => finding.asset_id === Number(assetId))
-    return route.fulfill({ json: { findings: rows } })
-  })
+  await page.route('**/api/findings?**', (route) =>
+    route.fulfill(respondFindings(findings, new URL(route.request().url()))),
+  )
 
   await openDashboard(page, server.url)
   await page.getByRole('link', { name: /^Findings/ }).click()
@@ -398,6 +530,72 @@ test('exports the current view as a download from the page actions', async ({
   expect((await singleDownload).suggestedFilename()).toMatch(
     /^bastion-findings-single-\d{8}\.csv$/,
   )
+
+  expect(problems).toEqual([])
+})
+
+test('pages findings server-side and keeps the page in the URL', async ({
+  page,
+  server,
+}) => {
+  const problems = watch(page)
+  const paged: StubFinding[] = Array.from({ length: 120 }, (_, index) => ({
+    ...baseFinding,
+    id: 1000 + index,
+    asset_id: index % 2 === 0 ? alpha.id : beta.id,
+    fingerprint: `fp-paged-${String(index)}`,
+    rule_id: `CVE-2030-${String(index).padStart(4, '0')}`,
+    severity: index % 2 === 0 ? 'high' : 'medium',
+    title: `Paged finding ${String(index)}`,
+  }))
+
+  await page.route('**/api/assets', (route) =>
+    route.fulfill({ json: { assets: [alpha, beta] } }),
+  )
+  await page.route('**/api/findings?**', (route) =>
+    route.fulfill(respondFindings(paged, new URL(route.request().url()))),
+  )
+
+  await openDashboard(page, server.url)
+  await page.getByRole('link', { name: /^Findings/ }).click()
+  const origin = new URL(page.url()).origin
+  const pager = page.getByRole('navigation', { name: 'Pagination' })
+  const rows = page.locator('tbody tr')
+
+  // Grouped is the default; the footer states the window and the total.
+  await expect(page).toHaveURL(`${origin}/findings`)
+  await expect(rows).toHaveCount(50)
+  await expect(pager).toContainText('1–50 of 120')
+
+  await page.getByRole('button', { name: 'Next' }).click()
+  await expect(page).toHaveURL(`${origin}/findings?page=2`)
+  await expect(rows).toHaveCount(50)
+  await expect(pager).toContainText('51–100 of 120')
+
+  // Select-all covers the current page only.
+  await page.getByLabel('Select all grouped findings').check()
+  await expect(page.getByText('50 selected')).toBeVisible()
+
+  // Jumping to the last page clears the selection and shows the short page.
+  await page.locator('#pager-page').fill('3')
+  await page.locator('#pager-page').press('Enter')
+  await expect(page).toHaveURL(`${origin}/findings?page=3`)
+  await expect(rows).toHaveCount(20)
+  await expect(pager).toContainText('101–120 of 120')
+  await expect(page.getByText('50 selected')).toHaveCount(0)
+
+  // A page size goes back to page 1 and stays in the URL.
+  await page.getByLabel('Rows per page').selectOption('25')
+  await expect(page).toHaveURL(`${origin}/findings?size=25`)
+  await expect(rows).toHaveCount(25)
+  await expect(pager).toContainText('1–25 of 120')
+
+  // A filter change also resets the page; 60 of the 120 findings are high.
+  await page.getByRole('button', { name: 'Next' }).click()
+  await expect(page).toHaveURL(`${origin}/findings?size=25&page=2`)
+  await page.locator('#findings-severity').selectOption('high')
+  await expect(page).toHaveURL(`${origin}/findings?size=25`)
+  await expect(pager).toContainText('1–25 of 60')
 
   expect(problems).toEqual([])
 })

@@ -10,6 +10,89 @@ import (
 	"database/sql"
 )
 
+const countFindingsByScanFiltered = `-- name: CountFindingsByScanFiltered :one
+SELECT COUNT(*)
+FROM findings f
+LEFT JOIN finding_states fs
+    ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+WHERE f.scan_id = ?1
+  AND (?2 IS NULL OR f.type = ?2)
+  AND (?3 IS NULL OR f.severity = ?3)
+  AND (?4 IS NULL OR CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(?5 AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) = ?4)
+`
+
+type CountFindingsByScanFilteredParams struct {
+	ScanID   int64
+	Type     interface{}
+	Severity interface{}
+	Status   interface{}
+	Now      string
+}
+
+// Number of rows ListFindingsByScan returns for the same filters, ignoring
+// limit and offset. It is the scan findings list's total.
+func (q *Queries) CountFindingsByScanFiltered(ctx context.Context, arg CountFindingsByScanFilteredParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countFindingsByScanFiltered,
+		arg.ScanID,
+		arg.Type,
+		arg.Severity,
+		arg.Status,
+		arg.Now,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countLatestFindings = `-- name: CountLatestFindings :one
+SELECT COUNT(*)
+FROM findings f
+JOIN scans s ON s.id = f.scan_id
+JOIN assets a ON a.id = f.asset_id
+LEFT JOIN finding_states fs
+    ON fs.asset_id = f.asset_id AND fs.fingerprint = f.fingerprint
+WHERE a.archived_at IS NULL
+  AND s.status = 'succeeded'
+  AND s.id = (
+      SELECT MAX(s2.id)
+      FROM scans s2
+      WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
+  )
+  AND (?1 IS NULL OR f.asset_id = ?1)
+  AND (?2 IS NULL OR f.type = ?2)
+  AND (?3 IS NULL OR f.severity = ?3)
+  AND (?4 IS NULL OR CAST(CASE
+        WHEN fs.id IS NULL OR fs.expires_at <= CAST(?5 AS TEXT) THEN f.status
+        ELSE 'ignored'
+    END AS TEXT) = ?4)
+`
+
+type CountLatestFindingsParams struct {
+	AssetID  interface{}
+	Type     interface{}
+	Severity interface{}
+	Status   interface{}
+	Now      string
+}
+
+// Number of rows ListLatestFindings returns for the same filters, ignoring
+// limit and offset. Grouped view counts groups in Go, not here.
+func (q *Queries) CountLatestFindings(ctx context.Context, arg CountLatestFindingsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLatestFindings,
+		arg.AssetID,
+		arg.Type,
+		arg.Severity,
+		arg.Status,
+		arg.Now,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const earliestScanIDForFingerprint = `-- name: EarliestScanIDForFingerprint :one
 SELECT CAST(COALESCE(
     (
@@ -191,6 +274,8 @@ ORDER BY
         ELSE 4
     END,
     f.fingerprint
+LIMIT CASE WHEN ?7 IS NULL THEN -1 ELSE ?7 END
+OFFSET CASE WHEN ?6 IS NULL THEN 0 ELSE ?6 END
 `
 
 type ListFindingsByScanParams struct {
@@ -199,6 +284,8 @@ type ListFindingsByScanParams struct {
 	Type     interface{}
 	Severity interface{}
 	Status   interface{}
+	Offset   interface{}
+	Limit    interface{}
 }
 
 type ListFindingsByScanRow struct {
@@ -238,6 +325,7 @@ type ListFindingsByScanRow struct {
 // the stored row, and state/reason carry the decision for the UI. A decision
 // whose expires_at is at or before the passed-in now counts as expired: the
 // finding is open again, and the expired flag keeps the stale decision visible.
+// A nil window means no page: SQLite has no NULL LIMIT, so -1 stands in.
 func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScanParams) ([]ListFindingsByScanRow, error) {
 	rows, err := q.db.QueryContext(ctx, listFindingsByScan,
 		arg.Now,
@@ -245,6 +333,8 @@ func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScan
 		arg.Type,
 		arg.Severity,
 		arg.Status,
+		arg.Offset,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
@@ -358,6 +448,8 @@ ORDER BY
     END,
     f.asset_id,
     f.fingerprint
+LIMIT CASE WHEN ?7 IS NULL THEN -1 ELSE ?7 END
+OFFSET CASE WHEN ?6 IS NULL THEN 0 ELSE ?6 END
 `
 
 type ListLatestFindingsParams struct {
@@ -366,6 +458,8 @@ type ListLatestFindingsParams struct {
 	Type     interface{}
 	Severity interface{}
 	Status   interface{}
+	Offset   interface{}
+	Limit    interface{}
 }
 
 type ListLatestFindingsRow struct {
@@ -404,6 +498,7 @@ type ListLatestFindingsRow struct {
 // scans are skipped: when the newest scan failed, its asset still reports the
 // previous succeeded scan. Filters and the effective status match
 // ListFindingsByScan.
+// A nil window means no page: SQLite has no NULL LIMIT, so -1 stands in.
 func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindingsParams) ([]ListLatestFindingsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listLatestFindings,
 		arg.Now,
@@ -411,6 +506,8 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 		arg.Type,
 		arg.Severity,
 		arg.Status,
+		arg.Offset,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err

@@ -366,6 +366,115 @@ func TestScanListSeverityCounts(t *testing.T) {
 	}
 }
 
+// TestScanListPagination covers offset and total on the scan list: newest
+// first, with the existing limit default and cap unchanged.
+func TestScanListPagination(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+	asset := pathAsset(t, ts, cookie)
+
+	first := seedSucceededScan(t, ts, asset.Id)
+	second := seedSucceededScan(t, ts, asset.Id)
+	third := seedSucceededScan(t, ts, asset.Id)
+
+	all := scanList(t, ts, cookie, "?asset_id="+itoa(asset.Id))
+	if all.Total != 3 || all.Limit != 50 || all.Offset != 0 {
+		t.Errorf("default list = total %d, limit %d, offset %d; want 3, 50, 0",
+			all.Total, all.Limit, all.Offset)
+	}
+	if len(all.Scans) != 3 || all.Scans[0].Id != third {
+		t.Errorf("scans = %+v, want newest first", all.Scans)
+	}
+
+	page := scanList(t, ts, cookie, "?asset_id="+itoa(asset.Id)+"&limit=2&offset=1")
+	if page.Total != 3 || page.Limit != 2 || page.Offset != 1 {
+		t.Errorf("page = total %d, limit %d, offset %d; want 3, 2, 1",
+			page.Total, page.Limit, page.Offset)
+	}
+	if len(page.Scans) != 2 || page.Scans[0].Id != second || page.Scans[1].Id != first {
+		t.Errorf("page scans = %+v, want scans %d and %d", page.Scans, second, first)
+	}
+
+	last := scanList(t, ts, cookie, "?asset_id="+itoa(asset.Id)+"&limit=2&offset=2")
+	if len(last.Scans) != 1 || last.Scans[0].Id != first || last.Total != 3 {
+		t.Errorf("last page = %+v, want only scan %d", last.Scans, first)
+	}
+
+	for _, query := range []string{"?limit=0", "?limit=201", "?offset=-1"} {
+		resp := ts.do(t, http.MethodGet, "/api/scans"+query, withCookie(cookie))
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want %d", query, resp.StatusCode, http.StatusBadRequest)
+		}
+	}
+}
+
+// TestScanFindingsPagination covers offset and total on one scan's findings. The
+// endpoint keeps its full-list default (limit 0 means no page size).
+func TestScanFindingsPagination(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+	asset := pathAsset(t, ts, cookie)
+
+	scanID := seedSucceededScan(t, ts, asset.Id,
+		findings.Finding{
+			Fingerprint: "fp-high", Type: findings.TypeSecret,
+			Severity: findings.SeverityHigh, Title: "AWS key", Scanner: "gitleaks", Occurrences: 1,
+		},
+		findings.Finding{
+			Fingerprint: "fp-medium", Type: findings.TypeVulnerability,
+			Severity: findings.SeverityMedium, Title: "Medium CVE", Scanner: "trivy", Occurrences: 1,
+		},
+		findings.Finding{
+			Fingerprint: "fp-low", Type: findings.TypeVulnerability,
+			Severity: findings.SeverityLow, Title: "Low CVE", Scanner: "trivy", Occurrences: 1,
+		},
+	)
+
+	read := func(query string) gen.FindingList {
+		t.Helper()
+		resp := ts.do(t, http.MethodGet, "/api/scans/"+itoa(scanID)+"/findings"+query, withCookie(cookie))
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET findings%s: status = %d, want %d: %s",
+				query, resp.StatusCode, http.StatusOK, readBody(t, resp))
+		}
+		return decodeFindings(t, readBody(t, resp))
+	}
+
+	all := read("")
+	if all.Total != 3 || all.TotalFindings != 3 || all.Limit != 0 || all.Offset != 0 {
+		t.Errorf("default = total %d, total_findings %d, limit %d, offset %d; want 3, 3, 0, 0",
+			all.Total, all.TotalFindings, all.Limit, all.Offset)
+	}
+	if len(all.Findings) != 3 {
+		t.Fatalf("findings = %+v, want all three", all.Findings)
+	}
+
+	page := read("?offset=1")
+	if page.Total != 3 || page.Offset != 1 || len(page.Findings) != 2 {
+		t.Errorf("offset page = total %d, offset %d, %d findings; want 3, 1, 2",
+			page.Total, page.Offset, len(page.Findings))
+	}
+	if page.Findings[0].Fingerprint != "fp-medium" {
+		t.Errorf("first row = %+v, want the medium finding", page.Findings[0])
+	}
+
+	beyond := read("?offset=9")
+	if beyond.Total != 3 || len(beyond.Findings) != 0 {
+		t.Errorf("beyond page = total %d, %d findings; want 3, 0", beyond.Total, len(beyond.Findings))
+	}
+
+	filtered := read("?severity=high&offset=1")
+	if filtered.Total != 1 || len(filtered.Findings) != 0 {
+		t.Errorf("filtered page = total %d, %d findings; want 1, 0",
+			filtered.Total, len(filtered.Findings))
+	}
+
+	resp := ts.do(t, http.MethodGet, "/api/scans/"+itoa(scanID)+"/findings?offset=-1", withCookie(cookie))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("negative offset: status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
 // TestCancelFinishedScanIsConflict covers the 409 contract of cancel.
 func TestCancelFinishedScanIsConflict(t *testing.T) {
 	ts := newTestServer(t)

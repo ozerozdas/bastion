@@ -59,13 +59,21 @@ async function stubEPSS(page: Page, enabled = false, scores = enabled) {
     await route.fulfill({ json: body() })
   })
   await page.route('**/api/assets', (route) => route.fulfill({ json: { assets: [asset] } }))
-  await page.route('**/api/findings?**', (route) =>
-    route.fulfill({
-      // The server omits `epss` from findings while the feed is off, so the
-      // off test stubs exactly that; the on test needs the score present.
-      json: { findings: [scores ? finding : { ...finding, epss: undefined }] },
-    }),
-  )
+  await page.route('**/api/findings?**', (route) => {
+    // The server omits `epss` from findings while the feed is off, so the
+    // off test stubs exactly that; the on test needs the score present.
+    const rows = [scores ? finding : { ...finding, epss: undefined }]
+    return route.fulfill({
+      json: {
+        findings: rows,
+        groups: [],
+        total: rows.length,
+        total_findings: rows.length,
+        limit: 50,
+        offset: 0,
+      },
+    })
+  })
 }
 
 /** openFindings opens the single-row findings table. */
