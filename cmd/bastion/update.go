@@ -1,14 +1,63 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/ozerozdas/bastion/internal/app"
 	"github.com/ozerozdas/bastion/internal/update"
 )
+
+// updateFlags are the `bastion update` switches.
+type updateFlags struct {
+	check bool
+	force bool
+}
+
+// updateDeps is the command's one side effect, injectable so tests never touch
+// the network or the running binary.
+type updateDeps struct {
+	selfUpdate func(context.Context, update.SelfUpdateConfig) error
+}
+
+// newUpdateCmd replaces the running binary with the latest release. A Homebrew
+// install and a Windows build are reported, never modified.
+func newUpdateCmd() *cobra.Command {
+	var flags updateFlags
+
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "Update bastion to the latest release",
+		Long: "Update bastion to the latest release.\n\n" +
+			"The release archive is verified against the release's checksums.txt and renamed over " +
+			"the running binary. A Homebrew install is left alone (the command prints `brew upgrade`), " +
+			"and Windows prints the release link instead. Development builds refuse to update unless --force.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runUpdate(cmd.Context(), cmd.OutOrStdout(), flags,
+				updateDeps{selfUpdate: update.SelfUpdate})
+		},
+	}
+	cmd.Flags().BoolVar(&flags.check, "check", false, "report the latest release without installing it")
+	cmd.Flags().BoolVar(&flags.force, "force", false, "update even from a development build")
+
+	return cmd
+}
+
+// runUpdate passes the flags and the build version to the self-updater.
+func runUpdate(ctx context.Context, out io.Writer, flags updateFlags, deps updateDeps) error {
+	return deps.selfUpdate(ctx, update.SelfUpdateConfig{
+		CurrentVersion: version,
+		Check:          flags.check,
+		Force:          flags.force,
+		Out:            out,
+	})
+}
 
 // newUpdateChecker wires the opt-in release check with the resolved paths and
 // the build version. It performs no I/O: the checker only reads files when
