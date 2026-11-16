@@ -103,6 +103,7 @@ func TestGetAssetFixPlan(t *testing.T) {
 		{Name: gen.FixPlanFactorSeverity, Value: 17, Detail: "1 critical + 1 high"},
 		{Name: gen.FixPlanFactorEPSS, Value: 1, Detail: "EPSS off"},
 		{Name: gen.FixPlanFactorLatestImage, Value: 1, Detail: "no image link"},
+		{Name: gen.FixPlanFactorReachability, Value: 1, Detail: "no Go findings"},
 	}
 	if !reflect.DeepEqual(step.Factors, wantFactors) {
 		t.Errorf("factors = %+v, want %+v", step.Factors, wantFactors)

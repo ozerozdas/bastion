@@ -189,6 +189,25 @@ export function FindingDrawer({
             </>
           ) : null}
 
+          {finding.reachability ? (
+            <>
+              <dt className="text-muted">Reachability</dt>
+              <dd>
+                <Badge
+                  tone={
+                    finding.reachability === 'reachable'
+                      ? 'critical'
+                      : finding.reachability === 'unreachable'
+                        ? 'ok'
+                        : 'neutral'
+                  }
+                >
+                  {finding.reachability}
+                </Badge>
+              </dd>
+            </>
+          ) : null}
+
           {finding.first_seen_scan_id !== undefined ? (
             <>
               <dt className="text-muted">First seen</dt>

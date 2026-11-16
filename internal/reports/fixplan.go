@@ -46,6 +46,9 @@ func (s *Service) FixPlan(ctx context.Context, assetID int64) (fixplan.Plan, err
 
 	inputs := make([]fixplan.Input, 0, len(rows))
 	scores := make(map[int64]epss.Score, len(rows))
+	// reach carries the scan's govulncheck answer per finding; the step folds
+	// them into one state (#37).
+	reach := make(map[int64]findings.Reachability, len(rows))
 	// keys matches a step's findings against the linked images' latest scans:
 	// rule id and package, since the fingerprint embeds the asset id.
 	keys := make(map[int64]string, len(rows))
@@ -60,6 +63,9 @@ func (s *Service) FixPlan(ctx context.Context, assetID int64) (fixplan.Plan, err
 		})
 		if row.RuleID.String != "" && row.PackageName.String != "" {
 			keys[row.ID] = vulnerabilityKey(row.RuleID.String, row.PackageName.String)
+		}
+		if row.Reachability.Valid {
+			reach[row.ID] = findings.Reachability(row.Reachability.String)
 		}
 		if s.epss != nil && row.RuleID.String != "" {
 			if score, ok := s.epss.Lookup(row.RuleID.String); ok {
@@ -76,6 +82,7 @@ func (s *Service) FixPlan(ctx context.Context, assetID int64) (fixplan.Plan, err
 	for i := range plan.Steps {
 		step := &plan.Steps[i]
 		step.MaxEPSS = maxScore(step.FindingIDs, scores)
+		step.Reachability = stepReachability(step.FindingIDs, reach)
 		scored := fixplan.Score(*step, fixplan.ScoreOptions{
 			EPSSEnabled: s.epssEnabled(),
 			ImageLink:   link.forStep(asset, *step, keys),
@@ -189,6 +196,18 @@ func (s *Service) epssEnabled() bool {
 // what two scans of the same code share.
 func vulnerabilityKey(ruleID, pkg string) string {
 	return ruleID + "\x00" + pkg
+}
+
+// stepReachability folds the step's findings into one state, keeping the order
+// the findings were read in so the result is deterministic.
+func stepReachability(ids []int64, reach map[int64]findings.Reachability) findings.Reachability {
+	states := make([]findings.Reachability, 0, len(ids))
+	for _, id := range ids {
+		if state, ok := reach[id]; ok {
+			states = append(states, state)
+		}
+	}
+	return fixplan.AggregateReachability(states)
 }
 
 // maxScore returns the highest EPSS score among the given findings, keeping its

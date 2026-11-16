@@ -23,6 +23,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/httpapi"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
@@ -160,6 +161,10 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	// Status call and every lookup are no-ops and no request is made.
 	epssService := newEPSSService(opts.paths)
 
+	// Go reachability is opt-in too (#37): off by default, so no govulncheck
+	// process runs and findings carry no reachability.
+	reachabilityService := govulncheck.New(govulncheck.Config{DataDir: opts.paths.DataDir})
+
 	reportService, err := reports.NewService(db, reports.WithEPSS(epssService))
 	if err != nil {
 		return errors.Join(fmt.Errorf("create reports service: %w", err), ln.Close())
@@ -172,7 +177,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	// started in the UI is the one a scan waits for instead of a second one.
 	trivyDB := trivy.NewManager(opts.paths.TrivyCacheDir())
 	defer trivyDB.Close()
-	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore, bus, trivyDB)
+	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore, bus, trivyDB, reachabilityService)
 	if err != nil {
 		return errors.Join(err, ln.Close())
 	}
@@ -195,15 +200,16 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 
 	updateChecker := deps.newUpdateChecker(opts.paths)
 	srv, err := deps.newServer(httpapi.Config{
-		Version:     version,
-		Port:        port,
-		Connections: service,
-		Reports:     reportService,
-		Assets:      assetService,
-		Events:      bus,
-		Update:      updateChecker,
-		TrivyDB:     trivyDB,
-		EPSS:        epssService,
+		Version:      version,
+		Port:         port,
+		Connections:  service,
+		Reports:      reportService,
+		Assets:       assetService,
+		Events:       bus,
+		Update:       updateChecker,
+		TrivyDB:      trivyDB,
+		EPSS:         epssService,
+		Reachability: reachabilityService,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())

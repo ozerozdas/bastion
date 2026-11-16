@@ -27,6 +27,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/update"
 	"github.com/ozerozdas/bastion/web"
@@ -88,6 +89,9 @@ type Config struct {
 	// EPSS serves GET and PUT /api/epss. serve wires the opt-in FIRST.org
 	// feed; nil answers those endpoints with 500.
 	EPSS *epss.Service
+	// Reachability serves GET and PUT /api/reachability. serve wires the
+	// opt-in govulncheck enrichment; nil answers those endpoints with 500.
+	Reachability *govulncheck.Service
 }
 
 // Server serves the bastion API and UI. Create it with New, take its handler
@@ -126,6 +130,10 @@ type Server struct {
 	// contract.
 	epss *epss.Service
 
+	// reachability backs GET and PUT /api/reachability, with the same
+	// nil-means-unavailable contract.
+	reachability *govulncheck.Service
+
 	// token arrives once, in the browser URL. session is the cookie value that
 	// replaces it. They are distinct values: a token that leaked into shell
 	// history or a proxy log can never be replayed as a cookie.
@@ -156,18 +164,19 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		version:     cfg.Version,
-		port:        cfg.Port,
-		log:         logger,
-		connections: cfg.Connections,
-		reports:     cfg.Reports,
-		assets:      cfg.Assets,
-		events:      broker,
-		update:      cfg.Update,
-		trivyDB:     cfg.TrivyDB,
-		epss:        cfg.EPSS,
-		token:       token,
-		session:     session,
+		version:      cfg.Version,
+		port:         cfg.Port,
+		log:          logger,
+		connections:  cfg.Connections,
+		reports:      cfg.Reports,
+		assets:       cfg.Assets,
+		events:       broker,
+		update:       cfg.Update,
+		trivyDB:      cfg.TrivyDB,
+		epss:         cfg.EPSS,
+		reachability: cfg.Reachability,
+		token:        token,
+		session:      session,
 	}
 	s.handler = s.buildHandler()
 	return s, nil

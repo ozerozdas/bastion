@@ -403,6 +403,8 @@ function scoreFactor(factor: FixPlanFactor): string {
       return factor.value > 1
         ? `latest image ${factor.value.toFixed(1)}`
         : factor.detail
+    case 'reachability':
+      return factor.value === 1 ? factor.detail : `reachability ${factor.detail}`
     default:
       return `${factor.name} ${String(factor.value)}`
   }

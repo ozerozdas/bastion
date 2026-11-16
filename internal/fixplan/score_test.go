@@ -127,8 +127,8 @@ func TestScoreCombinesFactors(t *testing.T) {
 	if math.Abs(scored.Score-want) > 1e-9 {
 		t.Errorf("score = %v, want %v", scored.Score, want)
 	}
-	if len(scored.Factors) != 3 {
-		t.Fatalf("factors = %+v, want severity, epss and latest_image", scored.Factors)
+	if len(scored.Factors) != 4 {
+		t.Fatalf("factors = %+v, want severity, epss, latest_image and reachability", scored.Factors)
 	}
 }
 
@@ -177,5 +177,49 @@ func TestSortByScoreTieBreak(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("order = %v, want %v", got, want)
 		}
+	}
+}
+
+// TestScoreReachability covers the #37 multiplier and its step aggregation: a
+// reachable call outranks a module-level report, which is cut but never
+// dropped, and no Go finding leaves the score unchanged.
+func TestScoreReachability(t *testing.T) {
+	step := Step{SeverityCounts: SeverityCounts{Critical: 1}}
+
+	tests := []struct {
+		state  findings.Reachability
+		value  float64
+		detail string
+		score  float64
+	}{
+		{findings.ReachabilityReachable, 1.5, "reachable", 15},
+		{findings.ReachabilityUnreachable, 0.3, "unreachable", 3},
+		{findings.ReachabilityUnknown, 1, "reachability unknown", 10},
+		{"", 1, "no Go findings", 10},
+	}
+	for _, tt := range tests {
+		step.Reachability = tt.state
+		scored := Score(step, ScoreOptions{})
+		got := factor(t, scored, FactorReachability)
+		if got.Value != tt.value || got.Detail != tt.detail {
+			t.Errorf("%q factor = %+v, want %v and %q", tt.state, got, tt.value, tt.detail)
+		}
+		if scored.Score != tt.score {
+			t.Errorf("%q score = %v, want %v", tt.state, scored.Score, tt.score)
+		}
+	}
+
+	if got := AggregateReachability([]findings.Reachability{
+		findings.ReachabilityUnreachable, findings.ReachabilityReachable,
+	}); got != findings.ReachabilityReachable {
+		t.Errorf("aggregate = %q, want reachable", got)
+	}
+	if got := AggregateReachability([]findings.Reachability{
+		findings.ReachabilityUnreachable, findings.ReachabilityUnknown,
+	}); got != findings.ReachabilityUnknown {
+		t.Errorf("aggregate = %q, want unknown", got)
+	}
+	if got := AggregateReachability(nil); got != "" {
+		t.Errorf("aggregate of nothing = %q, want empty", got)
 	}
 }

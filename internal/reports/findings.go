@@ -64,6 +64,10 @@ type Finding struct {
 	// Nil when the feed is off, not downloaded yet, or does not score the
 	// finding's rule id.
 	EPSS *epss.Score
+	// Reachability is govulncheck's answer for a Go vulnerability (#37):
+	// reachable, unreachable or unknown. Empty when the opt-in enrichment was
+	// off for the scan that produced the finding.
+	Reachability findings.Reachability
 }
 
 // Findings lists the findings of the most recent succeeded scan of every
@@ -115,6 +119,7 @@ func (s *Service) Findings(ctx context.Context, filter Filter) ([]Finding, error
 			Expired:        row.Expired != 0,
 			Description:    row.Description.String,
 			References:     references,
+			Reachability:   findings.Reachability(row.Reachability.String),
 		}
 		if row.FirstSeenScanID.Valid {
 			firstSeen := row.FirstSeenScanID.Int64
