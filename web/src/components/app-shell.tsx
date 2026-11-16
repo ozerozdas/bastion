@@ -3,12 +3,9 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
-import { EPSSCard } from './epss-card'
-import { LicencePolicyCard } from './licence-policy-card'
-import { ReachabilityCard } from './reachability-card'
-import { SASTCard } from './sast-card'
 import { HealthChip } from './health-chip'
-import { MoonIcon, SunIcon } from './icons'
+import { MoonIcon, SettingsIcon, SunIcon } from './icons'
+import { SettingsDialog } from './settings-dialog'
 import { TrivyDBChip } from './trivy-db-chip'
 import { UpdateNotice } from './update-notice'
 import { assetsQuery } from '../api/assets'
@@ -18,6 +15,12 @@ import { applyTheme, currentTheme, type Theme } from '../lib/theme'
 import { cn } from '../lib/utils'
 
 const pageActionsId = 'page-actions'
+
+/** navItemClass is the look every sidebar entry shares, links and Settings alike. */
+const navItemClass =
+  'flex h-[34px] items-center gap-2.5 rounded-md px-2.5 text-[13px] text-muted transition-colors hover:bg-hover hover:text-fg'
+const navItemActiveClass =
+  'bg-active text-fg shadow-[0_0_0_1px_var(--b-border-subtle)]'
 
 /** PageActions renders its children at the right end of the page header. */
 export function PageActions({ children }: { children: ReactNode }) {
@@ -36,6 +39,7 @@ export function PageActions({ children }: { children: ReactNode }) {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const current = navItemFor(pathname)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const assets = useQuery(assetsQuery)
   const dashboard = useQuery(dashboardQuery)
   const counts: NavCounts = {
@@ -98,11 +102,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     to={item.to}
                     aria-label={badge.name}
                     aria-current={active ? 'page' : undefined}
-                    className={cn(
-                      'flex h-[34px] items-center gap-2.5 rounded-md px-2.5 text-[13px] text-muted transition-colors hover:bg-hover hover:text-fg',
-                      active &&
-                        'bg-active text-fg shadow-[0_0_0_1px_var(--b-border-subtle)]',
-                    )}
+                    className={cn(navItemClass, active && navItemActiveClass)}
                   >
                     <Icon />
                     {item.label}
@@ -125,11 +125,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="mt-auto flex flex-col gap-2">
           <UpdateNotice />
-          <EPSSCard />
-          <ReachabilityCard />
-          <SASTCard />
-          <LicencePolicyCard />
           <TrivyDBChip />
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className={navItemClass}
+          >
+            <SettingsIcon />
+            Settings
+          </button>
           <HealthChip action={<ThemeToggle />} />
         </div>
       </aside>
@@ -142,6 +146,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         <div className="flex flex-col gap-4 px-7 py-6">{children}</div>
       </main>
+
+      {settingsOpen ? (
+        <SettingsDialog onClose={() => setSettingsOpen(false)} />
+      ) : null}
     </div>
   )
 }

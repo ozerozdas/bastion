@@ -1,72 +1,28 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import {
-  updateQuery,
-  useSetUpdateConsent,
-  type UpdateStatus,
-} from '../api/update'
+import { updateQuery, type UpdateStatus } from '../api/update'
 import { dismissUpdate, isUpdateDismissed } from '../lib/update-dismiss'
 import { Button } from './ui/button'
 
 /**
- * UpdateNotice is the sidebar's release card, directly above the version chip.
- *
- * It asks once (consent `unset`), shows a newer release when the cached check
- * found one, and renders nothing when the user declined or bastion is current.
- * The dismiss is local to this browser and scoped to one release version.
+ * UpdateNotice is the sidebar's release alert, directly above the version chip.
+ * It shows a newer release when the cached check found one and renders nothing
+ * when the check is off or bastion is current; the opt-in itself is a setting
+ * in the settings modal (#139). The dismiss is local to this browser and scoped
+ * to one release version.
  */
 export function UpdateNotice() {
   const { data } = useQuery(updateQuery)
 
-  // Disabled (env switch, CI, dev build): asking would promise a check that
-  // cannot run.
+  // Disabled (env switch, CI, dev build): there is no check to report.
   if (!data || data.disabled) {
     return null
-  }
-  if (data.consent === 'unset') {
-    return <ConsentCard />
   }
   if (data.consent === 'on' && data.update_available && data.latest) {
     return <UpdateAvailableCard status={data} latest={data.latest} />
   }
   return null
-}
-
-/** ConsentCard is the one-time question; the answer is stored by the API. */
-function ConsentCard() {
-  const consent = useSetUpdateConsent()
-
-  return (
-    <section
-      aria-label="Release check"
-      className="flex flex-col gap-1 rounded-lg border border-border-subtle bg-surface p-2.5"
-    >
-      <p className="text-xs font-medium">Check for new releases?</p>
-      <p className="text-[11px] leading-relaxed text-muted">
-        One request a day to github.com. Nothing else leaves your machine.
-      </p>
-      <div className="mt-1 flex gap-1.5">
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => consent.mutate(true)}
-          disabled={consent.isPending}
-        >
-          Turn on
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => consent.mutate(false)}
-          disabled={consent.isPending}
-        >
-          No thanks
-        </Button>
-      </div>
-    </section>
-  )
 }
 
 /** UpdateAvailableCard shows the release and the command that installs it. */

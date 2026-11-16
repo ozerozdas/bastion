@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, test, watch } from './fixtures'
+import { expect, openSettings, test, watch } from './fixtures'
 
 // The EPSS feed is stubbed: the e2e server must never reach FIRST.org, and the
 // tests need a deterministic score date and count.
@@ -92,10 +92,21 @@ test('EPSS is off by default and renders no scores', async ({ page, server }) =>
   await stubEPSS(page, false)
   await openFindings(page, server.url)
 
+  // The setting lives in the Settings modal, not the sidebar.
   await expect(
     page.getByRole('region', { name: 'EPSS exploit scores' }),
+  ).toHaveCount(0)
+  await openSettings(page)
+
+  const card = page.getByRole('region', { name: 'EPSS exploit scores' })
+  await expect(card).toBeVisible()
+  await expect(card.getByText('Off', { exact: true })).toBeVisible()
+  await expect(
+    card.getByRole('button', { name: 'Turn on EPSS exploit scores' }),
   ).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Turn on' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
   await expect(page.getByRole('columnheader', { name: 'EPSS' })).toHaveCount(0)
 
   await page.locator('tbody tr').first().click()
@@ -113,9 +124,13 @@ test('turning EPSS on shows the feed and the finding score', async ({
   await stubEPSS(page, false, true)
   await openFindings(page, server.url)
 
-  await page.getByRole('button', { name: 'Turn on' }).click()
+  await openSettings(page)
+  await page
+    .getByRole('button', { name: 'Turn on EPSS exploit scores' })
+    .click()
 
   await expect(page.getByText('406,615 CVEs · 2026-11-15')).toBeVisible()
+  await page.keyboard.press('Escape')
   await expect(page.getByRole('columnheader', { name: 'EPSS' })).toBeVisible()
   await expect(page.getByRole('cell', { name: /1\.00/ })).toBeVisible()
 

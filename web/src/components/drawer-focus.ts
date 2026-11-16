@@ -40,9 +40,10 @@ function trapTab(event: KeyboardEvent<HTMLElement>, container: HTMLElement) {
 }
 
 /**
- * useDrawerFocus is the focus behaviour every side drawer shares (#90): focus
- * moves into the panel on open so Escape and Tab work at once, Tab is trapped,
- * and closing without a decision gives focus back to the row that opened it.
+ * useDrawerFocus is the focus behaviour every overlay shares (#90): the side
+ * drawers and the settings modal. Focus moves into the panel on open so Escape
+ * and Tab work at once, Tab is trapped, and closing gives focus back to the
+ * element that opened it.
  */
 export function useDrawerFocus(onClose: () => void): {
   panel: RefObject<HTMLDivElement | null>

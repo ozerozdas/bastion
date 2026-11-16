@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, test, watch } from './fixtures'
+import { expect, openSettings, test, watch } from './fixtures'
 
 type SASTStatus = {
   enabled: boolean
@@ -45,12 +45,16 @@ test('SAST is off by default and explains the download', async ({ page, server }
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
 
+  await openSettings(page)
+
   const card = page.getByRole('region', { name: 'SAST' })
   await expect(card).toBeVisible()
-  await expect(card).toContainText('Off')
+  await expect(card.getByText('Off', { exact: true })).toBeVisible()
   await expect(card).toContainText('~47 MB')
-  await expect(card).toContainText('~1 MB')
-  await expect(page.getByRole('button', { name: 'Enable SAST' })).toBeVisible()
+  await expect(card).toContainText('~1.1 MB')
+  await expect(
+    card.getByRole('button', { name: 'Turn on SAST' }),
+  ).toBeVisible()
 
   expect(problems).toEqual([])
 })
@@ -68,12 +72,15 @@ test('turning SAST on shows the installed module', async ({ page, server }) => {
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Enable SAST' }).click()
+  await openSettings(page)
+  await page.getByRole('button', { name: 'Turn on SAST' }).click()
 
   const card = page.getByRole('region', { name: 'SAST' })
-  await expect(card).toContainText('On')
+  await expect(card.getByText('On', { exact: true })).toBeVisible()
   await expect(card).toContainText('v1.33.1')
-  await expect(card.getByRole('button', { name: 'Off' })).toBeVisible()
+  await expect(
+    card.getByRole('button', { name: 'Turn off SAST' }),
+  ).toBeVisible()
   expect(stub.puts).toEqual([true])
 
   expect(problems).toEqual([])
