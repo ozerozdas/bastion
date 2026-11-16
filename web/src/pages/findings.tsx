@@ -860,7 +860,7 @@ function BulkBar({
       {bulk.isError ? (
         <ErrorNote
           error={bulk.error}
-          fix="Findings before the failure were saved; the list shows what is left."
+          fix="Each project is saved in one transaction; the list shows what is left."
         />
       ) : null}
     </div>

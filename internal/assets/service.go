@@ -52,6 +52,20 @@ var (
 	ErrUnavailable = errors.New("assets: scan queue is not configured")
 )
 
+// UnknownFingerprintsError reports fingerprints a bulk decision named that the
+// asset has no finding for. Nothing was written; Unwrap reports ErrNotFound.
+type UnknownFingerprintsError struct {
+	AssetID      int64
+	Fingerprints []string
+}
+
+func (e *UnknownFingerprintsError) Error() string {
+	return fmt.Sprintf("%s: asset %d has no finding for %d fingerprint(s)", ErrNotFound, e.AssetID, len(e.Fingerprints))
+}
+
+// Unwrap lets handlers treat an unknown fingerprint as a not-found outcome.
+func (e *UnknownFingerprintsError) Unwrap() error { return ErrNotFound }
+
 // TokenSource resolves GitHub credentials. *connections.Service implements it:
 // ConnectionToken looks one connection up, Token is the default token.
 type TokenSource interface {
@@ -217,6 +231,15 @@ type FindingStateInput struct {
 	Fingerprint string
 	State       string
 	Reason      string
+}
+
+// BulkFindingStateInput is one POST /api/findings/state request: one decision
+// for many fingerprints of one asset.
+type BulkFindingStateInput struct {
+	AssetID      int64
+	Fingerprints []string
+	State        string
+	Reason       string
 }
 
 // List returns every non-archived asset with its newest scan, open severity
@@ -850,6 +873,42 @@ func (s *Service) SetFindingState(ctx context.Context, in FindingStateInput) err
 	return nil
 }
 
+// SetFindingStates records one decision for many fingerprints of one asset in
+// a single transaction. Every fingerprint must be a finding of the asset: one
+// unknown fingerprint rejects the whole batch, so nothing is written.
+func (s *Service) SetFindingStates(ctx context.Context, in BulkFindingStateInput) error {
+	if in.AssetID <= 0 {
+		return fmt.Errorf("%w: asset_id must be positive", ErrInvalid)
+	}
+	if len(in.Fingerprints) == 0 {
+		return fmt.Errorf("%w: at least one fingerprint is required", ErrInvalid)
+	}
+	if len(in.Fingerprints) > store.MaxFindingStateBatch {
+		return fmt.Errorf("%w: at most %d fingerprints per request", ErrInvalid, store.MaxFindingStateBatch)
+	}
+	for _, fingerprint := range in.Fingerprints {
+		if strings.TrimSpace(fingerprint) == "" {
+			return fmt.Errorf("%w: fingerprint is required", ErrInvalid)
+		}
+	}
+	if err := checkFindingDecision(in.State, in.Reason); err != nil {
+		return err
+	}
+	if err := s.requireAsset(ctx, in.AssetID); err != nil {
+		return err
+	}
+
+	err := store.SetFindingStates(ctx, s.db, in.AssetID, in.Fingerprints, in.State, in.Reason)
+	if err != nil {
+		var unknown *store.UnknownFingerprintsError
+		if errors.As(err, &unknown) {
+			return &UnknownFingerprintsError{AssetID: unknown.AssetID, Fingerprints: unknown.Fingerprints}
+		}
+		return fmt.Errorf("assets: set finding states: %w", err)
+	}
+	return nil
+}
+
 // ClearFindingState removes the decision for one fingerprint of one asset.
 // Clearing a decision that does not exist is not an error.
 func (s *Service) ClearFindingState(ctx context.Context, assetID int64, fingerprint string) error {
@@ -877,13 +936,19 @@ func (s *Service) checkFindingStateInput(in FindingStateInput) error {
 	if strings.TrimSpace(in.Fingerprint) == "" {
 		return fmt.Errorf("%w: fingerprint is required", ErrInvalid)
 	}
-	switch in.State {
+	return checkFindingDecision(in.State, in.Reason)
+}
+
+// checkFindingDecision validates the decision shared by the single and bulk
+// endpoints, so both refuse exactly the same states and reasons.
+func checkFindingDecision(state, reason string) error {
+	switch state {
 	case store.FindingStateIgnored, store.FindingStateAcceptedRisk, store.FindingStateFalsePositive:
 	default:
-		return fmt.Errorf("%w: state %q is not one of %s, %s, %s", ErrInvalid, in.State,
+		return fmt.Errorf("%w: state %q is not one of %s, %s, %s", ErrInvalid, state,
 			store.FindingStateIgnored, store.FindingStateAcceptedRisk, store.FindingStateFalsePositive)
 	}
-	if strings.TrimSpace(in.Reason) == "" {
+	if strings.TrimSpace(reason) == "" {
 		return fmt.Errorf("%w: a reason is required, so a hidden finding stays reviewable", ErrInvalid)
 	}
 	return nil
