@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 
 import { SettingSection } from './setting-section'
+import { languageOptions, setLanguage, useLanguage, useT } from '../lib/i18n'
 import {
   fontFamilyOptions,
   fontSizeOptions,
@@ -26,11 +27,14 @@ const choiceOff =
   'border-border-strong bg-surface text-muted hover:bg-hover hover:text-fg'
 
 /**
- * AppearanceSettings is the Appearance tab (#142): theme family, light/dark
- * mode, font family and font size. Every change is stored and applied at once,
- * so the dialog itself is the live preview.
+ * AppearanceSettings is the Appearance tab (#142, #143): theme family,
+ * light/dark mode, font family, font size and the interface language. Every
+ * change is stored and applied at once, so the dialog itself is the live
+ * preview.
  */
 export function AppearanceSettings() {
+  const t = useT()
+  const language = useLanguage()
   const theme = useSyncExternalStore(subscribeAppearance, storedTheme)
   const mode = useSyncExternalStore(subscribeAppearance, storedMode)
   const family = useSyncExternalStore(subscribeAppearance, storedFontFamily)
@@ -38,10 +42,10 @@ export function AppearanceSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <SettingSection title="Theme">
+      <SettingSection title={t('appearance.theme.title')}>
         <div
           role="radiogroup"
-          aria-label="Theme"
+          aria-label={t('appearance.theme.aria')}
           className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3"
         >
           {themeOptions.map((option) => (
@@ -75,18 +79,22 @@ export function AppearanceSettings() {
                 <span className="theme-swatch-half" data-swatch-mode="dark" />
               </span>
               <span className="text-[0.8125rem] font-medium">
-                {option.label}
+                {t(option.labelKey)}
               </span>
               <span className="text-[0.6875rem] leading-snug text-muted">
-                {option.hint}
+                {t(option.hintKey)}
               </span>
             </label>
           ))}
         </div>
       </SettingSection>
 
-      <SettingSection title="Mode">
-        <div role="group" aria-label="Colour mode" className="mt-0.5 flex gap-1">
+      <SettingSection title={t('appearance.mode.title')}>
+        <div
+          role="group"
+          aria-label={t('appearance.mode.aria')}
+          className="mt-0.5 flex gap-1"
+        >
           {modeOptions.map((option) => (
             <button
               key={option.value}
@@ -98,18 +106,18 @@ export function AppearanceSettings() {
                 mode === option.value ? choiceOn : choiceOff,
               )}
             >
-              {option.label}
+              {t(option.labelKey)}
             </button>
           ))}
         </div>
         <p className="text-[0.6875rem] text-muted">
-          System follows your operating system&rsquo;s light or dark setting.
+          {t('appearance.mode.hint')}
         </p>
       </SettingSection>
 
-      <SettingSection title="Font family">
+      <SettingSection title={t('appearance.fontFamily.title')}>
         <select
-          aria-label="Font family"
+          aria-label={t('appearance.fontFamily.aria')}
           value={family}
           onChange={(event) =>
             setFontFamily(event.target.value as FontFamily)
@@ -118,17 +126,21 @@ export function AppearanceSettings() {
         >
           {fontFamilyOptions.map((option) => (
             <option key={option.value} value={option.value}>
-              {option.label}
+              {t(option.labelKey)}
             </option>
           ))}
         </select>
         <p className="text-[0.6875rem] text-muted">
-          Locally installed stacks only; no font is downloaded.
+          {t('appearance.fontFamily.hint')}
         </p>
       </SettingSection>
 
-      <SettingSection title="Font size">
-        <div role="group" aria-label="Font size" className="mt-0.5 flex gap-1">
+      <SettingSection title={t('appearance.fontSize.title')}>
+        <div
+          role="group"
+          aria-label={t('appearance.fontSize.aria')}
+          className="mt-0.5 flex gap-1"
+        >
           {fontSizeOptions.map((option) => (
             <button
               key={option.value}
@@ -140,10 +152,28 @@ export function AppearanceSettings() {
                 size === option.value ? choiceOn : choiceOff,
               )}
             >
-              {option.label}
+              {t(option.labelKey)}
             </button>
           ))}
         </div>
+      </SettingSection>
+
+      <SettingSection title={t('appearance.language.title')}>
+        <select
+          aria-label={t('appearance.language.aria')}
+          value={language}
+          onChange={(event) => setLanguage(event.target.value)}
+          className="mt-0.5 h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg"
+        >
+          {languageOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <p className="text-[0.6875rem] text-muted">
+          {t('appearance.language.hint')}
+        </p>
       </SettingSection>
     </div>
   )

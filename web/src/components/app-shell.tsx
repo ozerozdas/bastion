@@ -15,6 +15,7 @@ import { TrivyDBChip } from './trivy-db-chip'
 import { UpdateNotice } from './update-notice'
 import { assetsQuery } from '../api/assets'
 import { dashboardQuery, openFindingTotal } from '../api/reports'
+import { useT } from '../lib/i18n'
 import { navBadge, navGroups, navItemFor, type NavCounts } from '../lib/nav'
 import {
   resolveMode,
@@ -47,6 +48,7 @@ export function PageActions({ children }: { children: ReactNode }) {
  * sections, a 56px header for the page title, and a scrolling page area.
  */
 export function AppShell({ children }: { children: ReactNode }) {
+  const t = useT()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const current = navItemFor(pathname)
   const [configOpen, setConfigOpen] = useState(false)
@@ -74,32 +76,32 @@ export function AppShell({ children }: { children: ReactNode }) {
         <button
           type="button"
           disabled
-          title="Search arrives with the findings table"
+          title={t('app.search.title')}
           className="flex h-8 items-center gap-2 rounded-md border border-border-strong bg-surface px-2.5 text-left text-xs text-faint disabled:cursor-not-allowed"
         >
           <SearchIcon />
-          <span className="truncate">Search findings, CVEs…</span>
+          <span className="truncate">{t('app.search.placeholder')}</span>
           <span className="ml-auto rounded border border-border-strong px-1 font-mono text-[0.6875rem]">
             ⌘K
           </span>
         </button>
 
-        <nav aria-label="Primary" className="flex flex-col gap-3">
+        <nav aria-label={t('app.nav.primary')} className="flex flex-col gap-3">
           {navGroups().map((group) => (
             <div
               key={group.section}
-              role={group.label === null ? undefined : 'group'}
+              role={group.labelKey === null ? undefined : 'group'}
               aria-labelledby={
-                group.label === null ? undefined : `nav-${group.section}`
+                group.labelKey === null ? undefined : `nav-${group.section}`
               }
               className="flex flex-col gap-0.5"
             >
-              {group.label === null ? null : (
+              {group.labelKey === null ? null : (
                 <h2
                   id={`nav-${group.section}`}
                   className="px-2.5 pt-1 pb-1 text-[0.625rem] font-semibold tracking-[0.08em] text-faint uppercase"
                 >
-                  {group.label}
+                  {t(group.labelKey)}
                 </h2>
               )}
               {group.items.map((item) => {
@@ -115,7 +117,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     className={cn(navItemClass, active && navItemActiveClass)}
                   >
                     <Icon />
-                    {item.label}
+                    {t(item.labelKey)}
                     {badge.count === null ? null : (
                       // The accessible name already carries the number, so the pill
                       // must not be read a second time.
@@ -141,7 +143,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   )}
                 >
                   <SettingsIcon />
-                  Configuration
+                  {t('app.configuration')}
                 </button>
               ) : null}
             </div>
@@ -157,8 +159,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex min-h-14 flex-wrap items-center gap-3 border-b border-border-subtle px-7 py-2.5">
-          <h1 className="text-[0.9375rem] font-semibold">{current.label}</h1>
-          <span className="text-faint">{current.subtitle}</span>
+          <h1 className="text-[0.9375rem] font-semibold">
+            {t(current.labelKey)}
+          </h1>
+          <span className="text-faint">{t(current.subtitleKey)}</span>
           <div id={pageActionsId} className="ml-auto flex items-center gap-2" />
         </header>
         <div className="flex flex-col gap-4 px-7 py-6">{children}</div>
@@ -177,11 +181,14 @@ export function AppShell({ children }: { children: ReactNode }) {
  * again in Configuration.
  */
 function ThemeToggle() {
+  const t = useT()
   const mode = useSyncExternalStore(subscribeAppearance, () =>
     resolveMode(storedMode()),
   )
   const next = mode === 'dark' ? 'light' : 'dark'
-  const label = `Switch to ${next} theme`
+  const label = t('app.theme.switch', {
+    mode: next === 'dark' ? t('app.theme.dark') : t('app.theme.light'),
+  })
 
   return (
     <button

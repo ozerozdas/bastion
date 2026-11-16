@@ -1,5 +1,6 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 
+import { t } from '../lib/i18n'
 import { assetsKey } from './assets'
 import { ApiError, api } from './client'
 import { scansKey } from './scans'
@@ -45,7 +46,7 @@ export function useScanEcrImage(connectionId: number) {
     mutationFn: async (tag: EcrTag) => {
       const primary = tag.tags[0]
       if (!primary) {
-        throw new Error('the ECR image has no tag')
+        throw new Error(t('error.ecrNoTag'))
       }
       let assetId: number
       try {

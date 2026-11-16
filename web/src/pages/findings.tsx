@@ -33,12 +33,13 @@ import { GroupDrawer } from '../components/group-drawer'
 import { LicencePolicyCard } from '../components/licence-policy-card'
 import { Pager } from '../components/pager'
 import { PageActions } from '../components/app-shell'
-import { Tabs, type TabItem } from '../components/ui/tabs'
+import { Tabs } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
-import { capitalize, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
+import { severityLabel, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
 import { expiryDate, expiryValue, type ExpiryChoice } from '../lib/expiry'
-import { epssLabel, ordinal } from '../lib/epss'
+import { epssLabel, percentileLabel } from '../lib/epss'
+import { formatNumber, t, useLanguage, useT } from '../lib/i18n'
 import {
   defaultFindingsPageSize,
   type FindingsPageSize,
@@ -63,12 +64,6 @@ const typeOptions: FindingType[] = [
 
 const severityOptions: Severity[] = ['critical', 'high', 'medium', 'low', 'unknown']
 
-/** findingsTabs are the two views of §7.2: the findings list and its fix plan (#27). */
-const findingsTabs: TabItem<'findings' | 'fix-plan'>[] = [
-  { value: 'findings', label: 'Findings' },
-  { value: 'fix-plan', label: 'Fix plan' },
-]
-
 /**
  * findingColumns builds the table for the projects on screen. The Project
  * column needs the asset names, which the findings themselves do not carry.
@@ -80,17 +75,18 @@ export function findingColumns(
   showReachability = false,
 ): DataTableColumn<Finding>[] {
   const projectName = (finding: Finding) =>
-    assetNames.get(finding.asset_id) ?? `Asset ${String(finding.asset_id)}`
+    assetNames.get(finding.asset_id) ??
+    t('asset.fallback', { id: finding.asset_id })
 
   return [
     {
       id: 'severity',
-      header: 'Severity',
+      header: t('findings.column.severity'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pr-3 pl-3',
       cell: (finding) => (
         <Badge tone={severityTone[finding.severity]}>
-          {finding.severity === 'unknown' ? 'unknown' : capitalize(finding.severity)}
+          {severityLabel(finding.severity)}
         </Badge>
       ),
     },
@@ -98,16 +94,19 @@ export function findingColumns(
       ? [
           {
             id: 'epss',
-            header: 'EPSS',
+            header: t('findings.column.epss'),
             headerClassName: 'pl-3',
             cellClassName:
               'py-2 pl-3 whitespace-nowrap tabular-nums text-[0.8125rem]',
             cell: (finding: Finding) =>
               finding.epss ? (
                 <span title={epssLabel(finding.epss)}>
-                  {finding.epss.score.toFixed(2)}
+                  {formatNumber(finding.epss.score, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
                   <span className="ml-1 text-xs text-faint">
-                    {ordinal(finding.epss.percentile * 100)}
+                    {percentileLabel(finding.epss.percentile * 100)}
                   </span>
                 </span>
               ) : (
@@ -120,7 +119,7 @@ export function findingColumns(
       ? [
           {
             id: 'reachability',
-            header: 'Reach',
+            header: t('findings.column.reach'),
             headerClassName: 'pl-3',
             cellClassName: 'py-2 pl-3 whitespace-nowrap',
             cell: (finding: Finding) =>
@@ -134,7 +133,7 @@ export function findingColumns(
                         : 'neutral'
                   }
                 >
-                  {finding.reachability}
+                  {t(`reachability.${finding.reachability}`)}
                 </Badge>
               ) : (
                 <span className="text-faint">—</span>
@@ -144,7 +143,7 @@ export function findingColumns(
       : []),
     {
       id: 'project',
-      header: 'Project',
+      header: t('findings.column.project'),
       headerClassName: 'pl-3',
       cellClassName: 'max-w-[22ch] py-2 pl-3',
       cellTitle: projectName,
@@ -154,24 +153,30 @@ export function findingColumns(
     },
     {
       id: 'type',
-      header: 'Type',
+      header: t('findings.column.type'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 whitespace-nowrap',
       cell: (finding) => (
         <>
-          {typeLabels[finding.type]}
+          {t(typeLabels[finding.type])}
           {finding.type === 'license' ? (
             <span className="ml-1.5 text-xs text-faint">
               {finding.licence_policy === 'deny'
-                ? 'denied by policy'
-                : 'informational'}
+                ? t('findings.licence.denied')
+                : t('findings.licence.informational')}
             </span>
           ) : null}
           {finding.expired ? (
-            <span className="ml-1.5 text-xs text-faint">decision expired</span>
+            <span className="ml-1.5 text-xs text-faint">
+              {t('findings.decisionExpired')}
+            </span>
           ) : finding.status === 'ignored' ? (
             <span className="ml-1.5 text-xs text-faint">
-              {finding.state ? stateLabels[finding.state].toLowerCase() : 'ignored'}
+              {t(
+                finding.state
+                  ? stateLabels[finding.state]
+                  : 'state.ignored',
+              ).toLowerCase()}
             </span>
           ) : null}
         </>
@@ -179,14 +184,14 @@ export function findingColumns(
     },
     {
       id: 'rule',
-      header: 'Rule',
+      header: t('findings.column.rule'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap text-muted',
       cell: (finding) => finding.rule_id ?? '—',
     },
     {
       id: 'package',
-      header: 'Package',
+      header: t('findings.column.package'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
       cell: (finding) => {
@@ -204,7 +209,8 @@ export function findingColumns(
             ) : null}
             {finding.fixed_version ? (
               <span className="block text-xs text-muted">
-                fixed in <span className="font-mono">{finding.fixed_version}</span>
+                {t('findings.fixedIn')}{' '}
+                <span className="font-mono">{finding.fixed_version}</span>
               </span>
             ) : finding.location ? (
               <span
@@ -220,7 +226,7 @@ export function findingColumns(
     },
     {
       id: 'finding',
-      header: 'Finding',
+      header: t('findings.column.finding'),
       headerClassName: 'pl-3',
       cellClassName: 'max-w-[38ch] py-2 pl-3',
       cell: (finding) => (
@@ -228,7 +234,7 @@ export function findingColumns(
           <span className="block">{finding.title}</span>
           {finding.occurrences > 1 ? (
             <span className="text-xs text-faint tabular-nums">
-              ×{finding.occurrences} occurrences
+              {t('findings.occurrences', { count: finding.occurrences })}
             </span>
           ) : null}
         </>
@@ -236,7 +242,7 @@ export function findingColumns(
     },
     {
       id: 'scanner',
-      header: 'Scanner',
+      header: t('findings.column.scanner'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap text-muted',
       cell: (finding) => finding.scanner,
@@ -253,50 +259,53 @@ function groupedColumns(
   assetNames: ReadonlyMap<number, string>,
 ): DataTableColumn<FindingGroup>[] {
   const projects = (group: FindingGroup) =>
-    group.project_count === 1
-      ? '1 project'
-      : `${String(group.project_count)} projects`
+    t('findings.group.projects', { count: group.project_count })
 
   return [
     {
       id: 'severity',
-      header: 'Severity',
+      header: t('findings.column.severity'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pr-3 pl-3 whitespace-nowrap',
       cell: (group) => (
         <Badge tone={severityTone[group.severity]}>
-          {group.severity === 'unknown' ? 'unknown' : capitalize(group.severity)}
+          {severityLabel(group.severity)}
         </Badge>
       ),
     },
     {
       id: 'rule',
-      header: 'Finding',
+      header: t('findings.column.finding'),
       headerClassName: 'pl-3',
       cellClassName: 'max-w-[46ch] py-2 pl-3',
       cell: (group) => (
         <>
           <span className="block">{group.title}</span>
           <span className="font-mono text-xs text-muted">
-            {group.rule_id ?? `${typeLabels[group.type]} finding`}
+            {group.rule_id ??
+              t('findings.group.findingFallback', {
+                type: t(typeLabels[group.type]),
+              })}
           </span>
         </>
       ),
     },
     {
       id: 'projects',
-      header: 'Projects',
+      header: t('findings.column.projects'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 whitespace-nowrap',
       cellTitle: (group) =>
         group.asset_ids
-          .map((id) => assetNames.get(id) ?? `Asset ${String(id)}`)
+          .map(
+            (id) => assetNames.get(id) ?? t('asset.fallback', { id }),
+          )
           .join(', '),
       cell: (group) => <span className="tabular-nums">{projects(group)}</span>,
     },
     {
       id: 'fixed',
-      header: 'Fixed in',
+      header: t('findings.column.fixedIn'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap',
       cellTitle: (group) =>
@@ -307,7 +316,7 @@ function groupedColumns(
         group.fixed_version !== undefined ? (
           group.fixed_version
         ) : group.fixed_versions.length > 1 ? (
-          <span className="text-muted">varies</span>
+          <span className="text-muted">{t('findings.group.varies')}</span>
         ) : (
           <span className="text-faint">—</span>
         ),
@@ -336,6 +345,7 @@ function FindingsExportMenu({
   filter: FindingFilter
   view: FindingsExportView
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const menu = useRef<HTMLDivElement>(null)
 
@@ -368,12 +378,12 @@ function FindingsExportMenu({
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
-        Export
+        {t('findings.export')}
       </Button>
       {open ? (
         <div
           role="menu"
-          aria-label="Export findings"
+          aria-label={t('findings.export.aria')}
           className="absolute right-0 z-20 mt-1 flex w-28 flex-col rounded-md border border-border-strong bg-surface p-1 shadow-lg"
         >
           {exportFormats.map(({ format, label }) => (
@@ -401,6 +411,8 @@ function FindingsExportMenu({
  * forces single, and the toggle only appears for the fleet-wide list.
  */
 export function FindingsPage() {
+  const t = useT()
+  const languageCode = useLanguage()
   const search = useSearch({ from: '/findings' })
   const navigate = useNavigate()
   const assets = useQuery(assetsQuery)
@@ -484,9 +496,13 @@ export function FindingsPage() {
         epss.data?.enabled === true,
         reachability.data?.enabled === true,
       ),
-    [assetNames, epss.data?.enabled, reachability.data?.enabled],
+    // The headers and fallbacks are translated, so a language switch rebuilds.
+    [assetNames, epss.data?.enabled, reachability.data?.enabled, languageCode],
   )
-  const groupColumns = useMemo(() => groupedColumns(assetNames), [assetNames])
+  const groupColumns = useMemo(
+    () => groupedColumns(assetNames),
+    [assetNames, languageCode],
+  )
 
   // A decision removes the row that opened the drawer, so the drawer's own
   // focus restore lands on nothing: keep focus in the table once the refreshed
@@ -523,7 +539,7 @@ export function FindingsPage() {
   if (assets.isPending) {
     return (
       <section className="rounded-card border border-border-subtle bg-surface p-4">
-        <p className="text-muted">Loading findings…</p>
+        <p className="text-muted">{t('findings.loading')}</p>
       </section>
     )
   }
@@ -531,7 +547,9 @@ export function FindingsPage() {
   if (assets.isError) {
     return (
       <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[0.8125rem] font-semibold">Repositories failed to load</h2>
+        <h2 className="text-[0.8125rem] font-semibold">
+          {t('findings.assetsFailed')}
+        </h2>
         <ErrorNote error={assets.error} />
       </section>
     )
@@ -540,11 +558,11 @@ export function FindingsPage() {
   if (assetList.length === 0) {
     return (
       <EmptyState
-        title="No repositories yet"
-        body="Findings come from each asset's latest succeeded scan. Add a repository or a local path in Repositories, run a scan, then come back to see vulnerabilities, secrets and the fixed version that closes each finding."
+        title={t('findings.empty.title')}
+        body={t('findings.empty.body')}
       >
         <Link to="/repositories" className={buttonVariants()}>
-          Go to repositories
+          {t('findings.empty.action')}
         </Link>
       </EmptyState>
     )
@@ -682,11 +700,11 @@ export function FindingsPage() {
   const filters: FilterField[] = [
     {
       id: 'findings-project',
-      label: 'Project',
+      label: t('findings.filter.project'),
       value: selected === undefined ? '' : String(selected.id),
       className: 'w-64',
       options: [
-        { value: '', label: 'All projects' },
+        { value: '', label: t('findings.filter.allProjects') },
         ...assetList.map((asset) => ({
           value: String(asset.id),
           label: asset.display_name,
@@ -707,12 +725,15 @@ export function FindingsPage() {
     },
     {
       id: 'findings-type',
-      label: 'Type',
+      label: t('findings.filter.type'),
       value: type,
       className: 'w-44',
       options: [
-        { value: '', label: 'All types' },
-        ...typeOptions.map((option) => ({ value: option, label: typeLabels[option] })),
+        { value: '', label: t('findings.filter.allTypes') },
+        ...typeOptions.map((option) => ({
+          value: option,
+          label: t(typeLabels[option]),
+        })),
       ],
       onChange: (value) => {
         setType(value as FindingType | '')
@@ -725,14 +746,14 @@ export function FindingsPage() {
     },
     {
       id: 'findings-severity',
-      label: 'Severity',
+      label: t('findings.filter.severity'),
       value: severity,
       className: 'w-40',
       options: [
-        { value: '', label: 'All severities' },
+        { value: '', label: t('findings.filter.allSeverities') },
         ...severityOptions.map((option) => ({
           value: option,
-          label: option === 'unknown' ? 'Unknown' : capitalize(option),
+          label: severityLabel(option),
         })),
       ],
       onChange: (value) => {
@@ -746,12 +767,12 @@ export function FindingsPage() {
     },
     {
       id: 'findings-status',
-      label: 'Status',
+      label: t('findings.filter.status'),
       value: status,
       className: 'w-36',
       options: [
-        { value: 'open', label: 'Open' },
-        { value: 'ignored', label: 'Ignored' },
+        { value: 'open', label: t('findings.filter.open') },
+        { value: 'ignored', label: t('findings.filter.ignored') },
       ],
       onChange: (value) => {
         setStatus(value as FindingStatus)
@@ -774,13 +795,13 @@ export function FindingsPage() {
             ? new Set()
             : new Set((pageFindings ?? []).map((finding) => finding.fingerprint)),
         ),
-      label: 'Select all findings',
+      label: t('findings.selectAll'),
       checkboxClassName: 'cursor-pointer align-middle',
     },
     row: (finding) => ({
       checked: checked.has(finding.fingerprint),
       onChange: () => toggleChecked(finding.fingerprint),
-      label: `Select ${finding.title}`,
+      label: t('findings.selectRow', { title: finding.title }),
       cellClassName: 'py-2',
       checkboxClassName: 'cursor-pointer align-middle',
     }),
@@ -797,13 +818,13 @@ export function FindingsPage() {
             ? new Set()
             : new Set((groups ?? []).map((group) => group.key)),
         ),
-      label: 'Select all grouped findings',
+      label: t('findings.selectAllGroups'),
       checkboxClassName: 'cursor-pointer align-middle',
     },
     row: (group) => ({
       checked: checkedGroups.has(group.key),
       onChange: () => toggleGroupChecked(group.key),
-      label: `Select ${group.title} in every project`,
+      label: t('findings.selectGroupRow', { title: group.title }),
       cellClassName: 'py-2',
       checkboxClassName: 'cursor-pointer align-middle',
     }),
@@ -826,8 +847,11 @@ export function FindingsPage() {
         </PageActions>
       ) : null}
       <Tabs
-        label="Findings views"
-        items={findingsTabs}
+        label={t('findings.tabs.aria')}
+        items={[
+          { value: 'findings', label: t('findings.tabs.findings') },
+          { value: 'fix-plan', label: t('findings.tabs.fixPlan') },
+        ]}
         value={tab}
         onChange={changeTab}
       >
@@ -838,16 +862,16 @@ export function FindingsPage() {
       {selected === undefined ? null : (
         <LicencePolicyCard
           assetId={selected.id}
-          title={`Licence policy for ${selected.display_name}`}
+          title={t('licence.forProject', { project: selected.display_name })}
         />
       )}
-      <FilterBar label="Finding filters" fields={filters}>
+      <FilterBar label={t('findings.filter.aria')} fields={filters}>
         {/* Grouping folds a rule across projects, so it is only offered while
             every project is in the list (#106). */}
         {search.asset === undefined ? (
           <div
             role="group"
-            aria-label="Findings view"
+            aria-label={t('findings.view.aria')}
             className="flex items-center gap-1 rounded-md border border-border-subtle bg-bg p-0.5"
           >
             {(['single', 'grouped'] as const).map((option) => {
@@ -865,7 +889,9 @@ export function FindingsPage() {
                       : 'text-muted hover:text-fg',
                   )}
                 >
-                  {option === 'single' ? 'Single' : 'Grouped'}
+                  {option === 'single'
+                    ? t('findings.view.single')
+                    : t('findings.view.grouped')}
                 </button>
               )
             })}
@@ -873,20 +899,22 @@ export function FindingsPage() {
         ) : null}
         <p className="ml-auto text-xs text-faint">
           {selected === undefined
-            ? 'Findings of every project’s latest succeeded scan'
-            : `Findings of ${selected.display_name}’s latest succeeded scan`}
+            ? t('findings.scope.all')
+            : t('findings.scope.one', { project: selected.display_name })}
         </p>
       </FilterBar>
 
       {findings.isPending ? (
         <section className="rounded-card border border-border-subtle bg-surface p-4">
-          <p className="text-muted">Loading findings…</p>
+          <p className="text-muted">{t('findings.loading')}</p>
         </section>
       ) : null}
 
       {findings.isError ? (
         <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-          <h2 className="text-[0.8125rem] font-semibold">Findings failed to load</h2>
+          <h2 className="text-[0.8125rem] font-semibold">
+            {t('findings.failed')}
+          </h2>
           <ErrorNote error={findings.error} />
         </section>
       ) : null}
@@ -899,17 +927,21 @@ export function FindingsPage() {
             className="text-[0.9375rem] font-semibold tracking-[-0.01em]"
           >
             {status === 'open' && !filtered
-              ? `No open findings in the latest ${selected ? 'scan' : 'scans'}`
+              ? t('findings.emptyOpen', {
+                  count: selected === undefined ? 2 : 1,
+                })
               : status === 'ignored' && !filtered
-                ? `No ignored findings in the latest ${selected ? 'scan' : 'scans'}`
-                : 'No findings match these filters'}
+                ? t('findings.emptyIgnored', {
+                    count: selected === undefined ? 2 : 1,
+                  })
+                : t('findings.emptyFiltered')}
           </h2>
           <p className="mt-2 max-w-[52ch] text-muted">
             {filtered || status === 'ignored'
-              ? 'Clear a filter, or switch Status to Open to see the findings still waiting for a decision.'
+              ? t('findings.emptyHint.filtered')
               : selected === undefined
-                ? 'Either no asset has a succeeded scan yet, or their latest scans found nothing open. Run a scan from Repositories, then reload this page.'
-                : 'Either the asset has no succeeded scan yet, or its latest scan found nothing open. Run a scan from Repositories, then reload this page.'}
+                ? t('findings.emptyHint.all')
+                : t('findings.emptyHint.one')}
           </p>
         </section>
       ) : null}
@@ -926,16 +958,17 @@ export function FindingsPage() {
               tabIndex={-1}
               className="text-[0.8125rem] font-semibold"
             >
-              Findings
+              {t('findings.heading')}
             </h2>
             <span className="text-faint">
               {grouped
-                ? `${String(total)} grouped rules from ${String(totalFindings)} findings`
-                : `${String(total)} ${
-                    selected === undefined
-                      ? 'across all projects'
-                      : 'in the latest succeeded scan'
-                  }`}
+                ? t('findings.count.grouped', {
+                    total: formatNumber(total),
+                    findings: formatNumber(totalFindings),
+                  })
+                : selected === undefined
+                  ? t('findings.count.all', { total: formatNumber(total) })
+                  : t('findings.count.one', { total: formatNumber(total) })}
             </span>
           </div>
           {checkedFindings.length > 0 ? (
@@ -1032,6 +1065,7 @@ function BulkBar({
   status: FindingStatus
   onDone: () => void
 }) {
+  const t = useT()
   const bulk = useBulkFindingState()
   const [decision, setDecision] = useState<FindingState>('ignored')
   const [reason, setReason] = useState('')
@@ -1065,35 +1099,39 @@ function BulkBar({
       {status === 'open' ? (
         <form
           onSubmit={submit}
-          aria-label="Bulk decision"
+          aria-label={t('findings.bulk.aria')}
           className="flex flex-wrap items-center gap-2"
         >
-          <span className="text-xs font-medium tabular-nums">{count} selected</span>
+          <span className="text-xs font-medium tabular-nums">
+            {t('findings.bulk.selected', { count })}
+          </span>
           <select
-            aria-label="Hide selected findings as"
+            aria-label={t('findings.bulk.hideAs')}
             value={decision}
             onChange={(event) => setDecision(event.target.value as FindingState)}
             className={cn(inputClass, 'w-40')}
           >
-            <option value="ignored">Ignored</option>
-            <option value="accepted_risk">Accepted risk</option>
-            <option value="false_positive">False positive</option>
+            <option value="ignored">{t('state.ignored')}</option>
+            <option value="accepted_risk">{t('state.accepted_risk')}</option>
+            <option value="false_positive">
+              {t('state.false_positive')}
+            </option>
           </select>
           <select
-            aria-label="Expires"
+            aria-label={t('findings.bulk.expires')}
             value={expiryChoice}
             onChange={(event) => setExpiryChoice(event.target.value as ExpiryChoice)}
             className={cn(inputClass, 'w-36')}
           >
-            <option value="none">No expiry</option>
-            <option value="30">In 30 days</option>
-            <option value="90">In 90 days</option>
-            <option value="date">Pick a date</option>
+            <option value="none">{t('findings.bulk.noExpiry')}</option>
+            <option value="30">{t('findings.bulk.in30')}</option>
+            <option value="90">{t('findings.bulk.in90')}</option>
+            <option value="date">{t('findings.bulk.pickDate')}</option>
           </select>
           {expiryChoice === 'date' ? (
             <input
               type="date"
-              aria-label="Expiry date"
+              aria-label={t('findings.bulk.expiryDate')}
               required
               min={expiryDate(0)}
               value={expiryDay}
@@ -1102,11 +1140,11 @@ function BulkBar({
             />
           ) : null}
           <input
-            aria-label="Reason"
+            aria-label={t('findings.bulk.reason')}
             required
             value={reason}
             onChange={(event) => setReason(event.target.value)}
-            placeholder="Reason, shared by every selected finding"
+            placeholder={t('findings.bulk.reasonPlaceholder')}
             className={cn(inputClass, 'w-auto min-w-48 flex-1')}
           />
           <Button
@@ -1114,15 +1152,19 @@ function BulkBar({
             size="sm"
             disabled={bulk.isPending || reason.trim() === ''}
           >
-            {bulk.isPending ? 'Saving…' : `Hide ${count}`}
+            {bulk.isPending
+              ? t('findings.bulk.saving')
+              : t('findings.bulk.hide', { count })}
           </Button>
           <Button type="button" size="sm" variant="ghost" onClick={onDone}>
-            Clear
+            {t('findings.bulk.clear')}
           </Button>
         </form>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium tabular-nums">{count} selected</span>
+          <span className="text-xs font-medium tabular-nums">
+            {t('findings.bulk.selected', { count })}
+          </span>
           <Button
             type="button"
             size="sm"
@@ -1130,17 +1172,19 @@ function BulkBar({
             disabled={bulk.isPending}
             onClick={() => bulk.mutate({ findings: target }, { onSuccess: onDone })}
           >
-            {bulk.isPending ? 'Reopening…' : `Reopen ${count}`}
+            {bulk.isPending
+              ? t('findings.bulk.reopening')
+              : t('findings.bulk.reopen', { count })}
           </Button>
           <Button type="button" size="sm" variant="ghost" onClick={onDone}>
-            Clear
+            {t('findings.bulk.clear')}
           </Button>
         </div>
       )}
       {bulk.isError ? (
         <ErrorNote
           error={bulk.error}
-          fix="Each project is saved in one transaction; the list shows what is left."
+          fix={t('findings.bulk.fix')}
         />
       ) : null}
     </div>

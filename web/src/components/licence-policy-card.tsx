@@ -6,13 +6,12 @@ import {
   useSetLicencePolicy,
   type LicencePolicy,
 } from '../api/licence-policy'
+import { useT } from '../lib/i18n'
 import { ErrorNote } from './error-note'
 import { Button } from './ui/button'
 
 const textareaClass =
   'min-h-16 w-full resize-y rounded-md border border-border-strong bg-surface px-2 py-1 font-mono text-[0.6875rem] text-fg placeholder:text-faint'
-
-const defaultDescription = 'Allow hides a licence; deny raises it to high.'
 
 /**
  * LicencePolicyCard is one scope's licence policy (#39): an asset's policy next
@@ -20,12 +19,14 @@ const defaultDescription = 'Allow hides a licence; deny raises it to high.'
  */
 export function LicencePolicyCard({
   assetId,
-  title = 'Licence policy',
+  title,
 }: {
   assetId?: number
   title?: string
 }) {
+  const t = useT()
   const { data } = useQuery(licencePolicyQuery(assetId))
+  const heading = title ?? t('licence.title')
 
   if (!data) {
     return null
@@ -33,10 +34,10 @@ export function LicencePolicyCard({
 
   return (
     <section
-      aria-label={title}
+      aria-label={heading}
       className="flex flex-col gap-1 rounded-lg border border-border-subtle bg-surface p-2.5"
     >
-      <p className="text-xs font-medium">{title}</p>
+      <p className="text-xs font-medium">{heading}</p>
       <LicencePolicyEditor assetId={assetId} policy={data} />
     </section>
   )
@@ -51,12 +52,13 @@ export function LicencePolicyCard({
 export function LicencePolicyEditor({
   assetId,
   policy,
-  description = defaultDescription,
+  description,
 }: {
   assetId?: number
   policy: LicencePolicy
   description?: string
 }) {
+  const t = useT()
   const save = useSetLicencePolicy(assetId)
   const [editing, setEditing] = useState(false)
   const [allow, setAllow] = useState('')
@@ -96,35 +98,33 @@ export function LicencePolicyEditor({
     return (
       <form onSubmit={submit} className="flex flex-col gap-1.5">
         <label htmlFor={allowId} className="text-[0.6875rem] text-muted">
-          Allowed licences
+          {t('licence.allowed')}
         </label>
         <textarea
           id={allowId}
-          aria-label="Allowed licences"
+          aria-label={t('licence.allowed')}
           value={allow}
           onChange={(event) => setAllow(event.target.value)}
           placeholder={'MIT\nApache-2.0'}
           className={textareaClass}
         />
         <label htmlFor={denyId} className="text-[0.6875rem] text-muted">
-          Denied licences
+          {t('licence.denied')}
         </label>
         <textarea
           id={denyId}
-          aria-label="Denied licences"
+          aria-label={t('licence.denied')}
           value={deny}
           onChange={(event) => setDeny(event.target.value)}
           placeholder={'GPL-3.0\nAGPL-3.0'}
           className={textareaClass}
         />
         <p className="text-[0.625rem] leading-relaxed text-faint">
-          One licence per line. Allow hides it; deny raises it to high.
-          Matches exactly as reported, so “MIT OR Apache-2.0” is its own
-          entry.
+          {t('licence.hint')}
         </p>
         <div className="flex flex-wrap items-center gap-1">
           <Button type="submit" size="sm" disabled={save.isPending}>
-            {save.isPending ? 'Saving…' : 'Save licence policy'}
+            {save.isPending ? t('licence.saving') : t('licence.save')}
           </Button>
           <Button
             type="button"
@@ -133,7 +133,7 @@ export function LicencePolicyEditor({
             onClick={() => setEditing(false)}
             disabled={save.isPending}
           >
-            Cancel
+            {t('licence.cancel')}
           </Button>
         </div>
         {save.isError ? <ErrorNote error={save.error} /> : null}
@@ -147,9 +147,9 @@ export function LicencePolicyEditor({
         <p className="text-[0.6875rem] text-muted tabular-nums">
           {allowed === 0 && denied === 0
             ? assetId === undefined
-              ? 'No rules. Licences are reported as scanned.'
-              : 'No rules here. The global policy applies.'
-            : `${String(allowed)} allowed · ${String(denied)} denied`}
+              ? t('licence.noRulesGlobal')
+              : t('licence.noRulesAsset')
+            : t('licence.counts', { allowed, denied })}
         </p>
         <button
           ref={editButton}
@@ -157,10 +157,12 @@ export function LicencePolicyEditor({
           onClick={startEditing}
           className="text-[0.6875rem] text-faint hover:text-fg"
         >
-          Edit
+          {t('licence.edit')}
         </button>
       </div>
-      <p className="text-[0.625rem] leading-relaxed text-faint">{description}</p>
+      <p className="text-[0.625rem] leading-relaxed text-faint">
+        {description ?? t('licence.defaultDescription')}
+      </p>
     </>
   )
 }

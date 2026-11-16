@@ -9,36 +9,37 @@
 /** ThemeOption is one palette family in the Appearance tab. */
 export type ThemeOption = {
   value: string
-  label: string
-  /** One line under the label: what the palette looks like. */
-  hint: string
+  /** Translation key of the palette's name. */
+  labelKey: string
+  /** Translation key of the line under it: what the palette looks like. */
+  hintKey: string
 }
 
 export const themeOptions = [
   {
     value: 'classic',
-    label: 'Classic',
-    hint: 'Today’s neutral look, light and dark.',
+    labelKey: 'theme.classic.label',
+    hintKey: 'theme.classic.hint',
   },
   {
     value: 'claude',
-    label: 'Claude',
-    hint: 'Warm cream and terracotta.',
+    labelKey: 'theme.claude.label',
+    hintKey: 'theme.claude.hint',
   },
   {
     value: 'contrast',
-    label: 'High contrast',
-    hint: 'Maximum text contrast, light and dark.',
+    labelKey: 'theme.contrast.label',
+    hintKey: 'theme.contrast.hint',
   },
   {
     value: 'nord',
-    label: 'Nord-style',
-    hint: 'Cool blue-grey.',
+    labelKey: 'theme.nord.label',
+    hintKey: 'theme.nord.hint',
   },
   {
     value: 'solarized',
-    label: 'Solarized-style',
-    hint: 'Warm paper and teal.',
+    labelKey: 'theme.solarized.label',
+    hintKey: 'theme.solarized.hint',
   },
 ] as const satisfies readonly ThemeOption[]
 
@@ -49,30 +50,30 @@ export type Mode = 'system' | 'light' | 'dark'
 export type ResolvedMode = Exclude<Mode, 'system'>
 
 export const modeOptions = [
-  { value: 'system', label: 'System' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-] as const satisfies readonly { value: Mode; label: string }[]
+  { value: 'system', labelKey: 'mode.system' },
+  { value: 'light', labelKey: 'mode.light' },
+  { value: 'dark', labelKey: 'mode.dark' },
+] as const satisfies readonly { value: Mode; labelKey: string }[]
 
 /** FontFamily names the locally available stacks; nothing is downloaded. */
 export type FontFamily = 'system' | 'humanist' | 'serif' | 'mono'
 
 export const fontFamilyOptions = [
-  { value: 'system', label: 'System' },
-  { value: 'humanist', label: 'Humanist' },
-  { value: 'serif', label: 'Serif' },
-  { value: 'mono', label: 'Monospace' },
-] as const satisfies readonly { value: FontFamily; label: string }[]
+  { value: 'system', labelKey: 'font.system' },
+  { value: 'humanist', labelKey: 'font.humanist' },
+  { value: 'serif', labelKey: 'font.serif' },
+  { value: 'mono', labelKey: 'font.mono' },
+] as const satisfies readonly { value: FontFamily; labelKey: string }[]
 
 /** FontSize scales the root font size; the UI is sized in rem. */
 export type FontSize = 'small' | 'default' | 'large' | 'xlarge'
 
 export const fontSizeOptions = [
-  { value: 'small', label: 'Small' },
-  { value: 'default', label: 'Default' },
-  { value: 'large', label: 'Large' },
-  { value: 'xlarge', label: 'Extra large' },
-] as const satisfies readonly { value: FontSize; label: string }[]
+  { value: 'small', labelKey: 'fontSize.small' },
+  { value: 'default', labelKey: 'fontSize.default' },
+  { value: 'large', labelKey: 'fontSize.large' },
+  { value: 'xlarge', labelKey: 'fontSize.xlarge' },
+] as const satisfies readonly { value: FontSize; labelKey: string }[]
 
 const themeKey = 'bastion-theme'
 const modeKey = 'bastion-mode'

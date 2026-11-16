@@ -18,14 +18,15 @@ import {
   scanDiffSubtitle,
   type DiffGroup,
 } from '../lib/scan-diff'
+import { t, useT } from '../lib/i18n'
 import { formatDateTime } from '../lib/time'
 import { findingColumns } from './findings'
 
 /** diffGroups is the fixed order the page and its summary use. */
-const diffGroups: { key: DiffGroup; label: string }[] = [
-  { key: 'new', label: 'New' },
-  { key: 'fixed', label: 'Fixed' },
-  { key: 'persisting', label: 'Persisting' },
+const diffGroups: { key: DiffGroup; labelKey: string }[] = [
+  { key: 'new', labelKey: 'diff.group.new' },
+  { key: 'fixed', labelKey: 'diff.group.fixed' },
+  { key: 'persisting', labelKey: 'diff.group.persisting' },
 ]
 
 const selectClass =
@@ -37,6 +38,7 @@ const selectClass =
  * findings come from the older scan and are shown read-only.
  */
 export function ScanDiffPage() {
+  const t = useT()
   const { scanId: rawScanId } = useParams({ from: '/scans/$scanId/diff' })
   const { against } = useSearch({ from: '/scans/$scanId/diff' })
   const navigate = useNavigate()
@@ -73,10 +75,11 @@ export function ScanDiffPage() {
   if (scanId === undefined) {
     return (
       <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[0.9375rem] font-semibold">No such scan</h2>
+        <h2 className="text-[0.9375rem] font-semibold">
+          {t('diff.noScan.title')}
+        </h2>
         <p className="text-xs text-muted">
-          A scan comparison needs a scan id in the URL, like{' '}
-          <span className="font-mono">/scans/12/diff</span>.
+          {t('diff.noScan.body', { example: '/scans/12/diff' })}
         </p>
       </section>
     )
@@ -88,14 +91,16 @@ export function ScanDiffPage() {
       search={{ tab: 'scans', asset: scan.data?.asset_id }}
       className="text-xs text-muted hover:text-fg hover:underline"
     >
-      ← Scans
+      {t('diff.back')}
     </Link>
   )
 
   if (scan.isError) {
     return (
       <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[0.9375rem] font-semibold">Scan failed to load</h2>
+        <h2 className="text-[0.9375rem] font-semibold">
+          {t('diff.failed')}
+        </h2>
         <ErrorNote error={scan.error} />
         {backToScans}
       </section>
@@ -113,7 +118,7 @@ export function ScanDiffPage() {
             id="scan-diff-heading"
             className="text-[0.9375rem] font-semibold tracking-[-0.01em]"
           >
-            Changes in scan #{String(scanId)}
+            {t('diff.title', { id: scanId })}
           </h2>
           {diff.data === undefined ? null : (
             <span className="text-faint">
@@ -125,7 +130,7 @@ export function ScanDiffPage() {
         <div className="flex flex-wrap items-center gap-3">
           {backToScans}
           <label htmlFor="scan-diff-against" className="ml-2 text-xs text-muted">
-            Compare with
+            {t('diff.compareWith')}
           </label>
           <select
             id="scan-diff-against"
@@ -144,7 +149,7 @@ export function ScanDiffPage() {
             }}
             className={selectClass}
           >
-            <option value="">Previous succeeded scan</option>
+            <option value="">{t('diff.previous')}</option>
             {options.map((option) => (
               <option key={option.id} value={String(option.id)}>
                 #{option.id}
@@ -154,11 +159,15 @@ export function ScanDiffPage() {
           </select>
         </div>
 
-        {diff.isPending ? <p className="text-muted">Loading changes…</p> : null}
+        {diff.isPending ? (
+          <p className="text-muted">{t('diff.loading')}</p>
+        ) : null}
 
         {diff.isError ? (
           <div className="flex flex-col gap-1">
-            <h3 className="text-[0.8125rem] font-semibold">Changes failed to load</h3>
+            <h3 className="text-[0.8125rem] font-semibold">
+              {t('diff.changesFailed')}
+            </h3>
             <ErrorNote error={diff.error} fix={diffErrorFix(diff.error)} />
           </div>
         ) : null}
@@ -179,7 +188,9 @@ export function ScanDiffPage() {
                     <span className="text-critical">{run.error}</span>
                   ) : null}
                   {run.warning ? (
-                    <span className="text-medium">warning: {run.warning}</span>
+                    <span className="text-medium">
+                      {t('diff.warning', { warning: run.warning })}
+                    </span>
                   ) : null}
                 </li>
               ))}
@@ -193,7 +204,7 @@ export function ScanDiffPage() {
             {diffGroups.map((group) => (
               <DiffSummary
                 key={group.key}
-                label={group.label}
+                label={t(group.labelKey)}
                 counts={diff.data.counts[group.key]}
               />
             ))}
@@ -209,10 +220,10 @@ export function ScanDiffPage() {
               >
                 <div className="flex flex-wrap items-baseline gap-2.5">
                   <h2 id={`diff-${group.key}`} className="text-[0.8125rem] font-semibold">
-                    {group.label} findings
+                    {t('diff.group.heading', { group: t(group.labelKey) })}
                   </h2>
                   <span className="text-faint tabular-nums">
-                    {rows.length === 1 ? '1 finding' : `${String(rows.length)} findings`}
+                    {t('diff.group.count', { count: rows.length })}
                   </span>
                 </div>
                 {rows.length === 0 ? (
@@ -264,6 +275,6 @@ function DiffSummary({
 /** diffErrorFix explains the one status the page can do something about. */
 function diffErrorFix(error: unknown): string | undefined {
   return error instanceof ApiError && error.status === 409
-    ? 'Only a succeeded scan can be compared.'
+    ? t('diff.onlySucceeded')
     : undefined
 }

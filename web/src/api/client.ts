@@ -1,3 +1,4 @@
+import { t } from '../lib/i18n'
 import type { components } from './schema'
 
 /** Problem is the RFC 9457 body every bastion error carries (§6). */
@@ -12,7 +13,7 @@ export class ApiError extends Error {
     super(
       problem?.detail ??
         problem?.title ??
-        `Request failed with status ${String(status)}`,
+        t('error.requestFailed', { status }),
     )
     this.name = 'ApiError'
     this.status = status

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { trivyDBQuery, useDownloadTrivyDB } from '../api/trivy-db'
+import { useT } from '../lib/i18n'
 import { trivyDBView } from '../lib/trivy-db'
 import { Button } from './ui/button'
 
@@ -11,6 +12,7 @@ import { Button } from './ui/button'
  * user asks for it (or when a scan needs the DB, which the API reports here).
  */
 export function TrivyDBChip() {
+  const t = useT()
   const { data } = useQuery(trivyDBQuery)
   const download = useDownloadTrivyDB()
   const view = trivyDBView(data)
@@ -19,20 +21,20 @@ export function TrivyDBChip() {
     case 'missing':
       return (
         <section
-          aria-label="Vulnerability database"
+          aria-label={t('trivyDb.aria')}
           className="flex flex-col gap-1.5 rounded-lg border border-border-subtle bg-surface p-2.5"
         >
-          <p className="text-xs font-medium">Vulnerability DB not downloaded</p>
+          <p className="text-xs font-medium">{t('trivyDb.missing')}</p>
           <Button
             type="button"
             size="sm"
             variant="outline"
             className="self-start"
-            aria-label="Download vulnerability database (about 1.7 GB)"
+            aria-label={t('trivyDb.downloadAria')}
             onClick={() => download.mutate()}
             disabled={download.isPending}
           >
-            Download (~1.7 GB)
+            {t('trivyDb.download')}
           </Button>
         </section>
       )
@@ -41,7 +43,7 @@ export function TrivyDBChip() {
       return (
         <div
           role="status"
-          aria-label="Downloading vulnerability database"
+          aria-label={t('trivyDb.downloadingAria')}
           className="flex items-center gap-2 rounded-lg border border-border-subtle py-2.5 pr-2 pl-3"
         >
           <span
@@ -49,8 +51,8 @@ export function TrivyDBChip() {
             className="size-3 shrink-0 rounded-full border-2 border-border-strong border-t-accent motion-safe:animate-spin"
           />
           <span className="min-w-0 font-mono text-[0.6875rem] text-muted">
-            Downloading vulnerability DB…
-            {view.fromScan ? ' · started by a scan' : ''}
+            {t('trivyDb.downloading')}
+            {view.fromScan ? t('trivyDb.fromScan') : ''}
           </span>
         </div>
       )
@@ -58,11 +60,11 @@ export function TrivyDBChip() {
     case 'failed':
       return (
         <section
-          aria-label="Vulnerability database"
+          aria-label={t('trivyDb.aria')}
           className="flex flex-col gap-1.5 rounded-lg border border-border-subtle bg-surface p-2.5"
         >
           <p className="text-xs font-medium text-critical">
-            Vulnerability DB download failed
+            {t('trivyDb.failed')}
           </p>
           {view.error ? (
             <p
@@ -77,11 +79,11 @@ export function TrivyDBChip() {
             size="sm"
             variant="outline"
             className="self-start"
-            aria-label="Retry vulnerability database download"
+            aria-label={t('trivyDb.retryAria')}
             onClick={() => download.mutate()}
             disabled={download.isPending}
           >
-            Retry
+            {t('trivyDb.retry')}
           </Button>
         </section>
       )

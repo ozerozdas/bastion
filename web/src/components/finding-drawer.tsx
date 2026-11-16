@@ -6,9 +6,15 @@ import {
   type Finding,
   type FindingState,
 } from '../api/findings'
-import { capitalize, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
+import {
+  severityLabel,
+  severityTone,
+  stateLabels,
+  typeLabels,
+} from '../lib/finding-labels'
 import { expiryDate, expiryLabel, expiryValue, type ExpiryChoice } from '../lib/expiry'
 import { epssLabel } from '../lib/epss'
+import { useT } from '../lib/i18n'
 import { isHttpsUrl } from '../lib/urls'
 import { useDrawerFocus } from './drawer-focus'
 import { ErrorNote } from './error-note'
@@ -44,6 +50,7 @@ export function FindingDrawer({
   onRemoveFailed,
   readOnly = false,
 }: FindingDrawerProps) {
+  const t = useT()
   const { panel, onKeyDown } = useDrawerFocus(onClose)
   const setState = useSetFindingState()
   const clearState = useClearFindingState()
@@ -74,6 +81,8 @@ export function FindingDrawer({
         ? finding.package_name
         : `${finding.package_name}@${finding.package_version}`
 
+  const stateLabel = finding.state ? t(stateLabels[finding.state]) : ''
+
   return (
     <div className="fixed inset-0 z-40">
       <div
@@ -97,26 +106,28 @@ export function FindingDrawer({
             </h2>
             <div className="flex flex-wrap items-center gap-1.5">
               <Badge tone={severityTone[finding.severity]}>
-                {finding.severity === 'unknown'
-                  ? 'unknown'
-                  : capitalize(finding.severity)}
+                {severityLabel(finding.severity)}
               </Badge>
-              <Badge>{typeLabels[finding.type]}</Badge>
+              <Badge>{t(typeLabels[finding.type])}</Badge>
               {finding.type === 'license' ? (
                 <span className="text-xs text-faint">
                   {finding.licence_policy === 'deny'
-                    ? 'denied by licence policy; severity raised'
-                    : 'informational, no action needed'}
+                    ? t('finding.licence.denied')
+                    : t('finding.licence.informational')}
                 </span>
               ) : null}
               {finding.state ? (
                 <Badge tone={finding.expired ? 'medium' : 'neutral'}>
-                  {stateLabels[finding.state]}
+                  {stateLabel}
                   {finding.expires_at === undefined
                     ? ''
                     : finding.expired
-                      ? `, expired ${expiryLabel(finding.expires_at)}`
-                      : `, until ${expiryLabel(finding.expires_at)}`}
+                      ? t('finding.state.expired', {
+                          date: expiryLabel(finding.expires_at),
+                        })
+                      : t('finding.state.until', {
+                          date: expiryLabel(finding.expires_at),
+                        })}
                 </Badge>
               ) : null}
             </div>
@@ -128,7 +139,7 @@ export function FindingDrawer({
             className="ml-auto shrink-0"
             onClick={onClose}
           >
-            Close
+            {t('finding.close')}
           </Button>
         </div>
 
@@ -137,54 +148,54 @@ export function FindingDrawer({
             {finding.description}
           </p>
         ) : (
-          <p className="text-xs text-faint">No description was reported.</p>
+          <p className="text-xs text-faint">{t('finding.noDescription')}</p>
         )}
 
         <dl className="grid grid-cols-[7rem_1fr] items-baseline gap-x-3 gap-y-1.5 text-[0.8125rem]">
-          <dt className="text-muted">Scanner</dt>
+          <dt className="text-muted">{t('finding.scanner')}</dt>
           <dd className="font-mono text-xs">
             {(finding.scanners?.length ? finding.scanners : [finding.scanner]).join(', ')}
           </dd>
 
           {finding.rule_id ? (
             <>
-              <dt className="text-muted">Rule</dt>
+              <dt className="text-muted">{t('finding.rule')}</dt>
               <dd className="font-mono text-xs break-all">{finding.rule_id}</dd>
             </>
           ) : null}
 
           {packageLabel ? (
             <>
-              <dt className="text-muted">Package</dt>
+              <dt className="text-muted">{t('finding.package')}</dt>
               <dd className="font-mono text-xs break-all">{packageLabel}</dd>
             </>
           ) : null}
 
           {finding.fixed_version ? (
             <>
-              <dt className="text-muted">Fixed in</dt>
+              <dt className="text-muted">{t('finding.fixedIn')}</dt>
               <dd className="font-mono text-xs break-all">{finding.fixed_version}</dd>
             </>
           ) : (
             <>
-              <dt className="text-muted">Fix</dt>
-              <dd className="text-xs text-muted">No fixed version reported.</dd>
+              <dt className="text-muted">{t('finding.fix')}</dt>
+              <dd className="text-xs text-muted">{t('finding.noFixedVersion')}</dd>
             </>
           )}
 
           {finding.location ? (
             <>
-              <dt className="text-muted">Location</dt>
+              <dt className="text-muted">{t('finding.location')}</dt>
               <dd className="font-mono text-xs break-all">{finding.location}</dd>
             </>
           ) : null}
 
-          <dt className="text-muted">Occurrences</dt>
+          <dt className="text-muted">{t('finding.occurrences')}</dt>
           <dd className="tabular-nums">{finding.occurrences}</dd>
 
           {finding.epss ? (
             <>
-              <dt className="text-muted">EPSS</dt>
+              <dt className="text-muted">{t('finding.epss')}</dt>
               <dd className="tabular-nums">
                 {epssLabel(finding.epss)}
               </dd>
@@ -193,7 +204,7 @@ export function FindingDrawer({
 
           {finding.reachability ? (
             <>
-              <dt className="text-muted">Reachability</dt>
+              <dt className="text-muted">{t('finding.reachability')}</dt>
               <dd>
                 <Badge
                   tone={
@@ -212,12 +223,14 @@ export function FindingDrawer({
 
           {finding.first_seen_scan_id !== undefined ? (
             <>
-              <dt className="text-muted">First seen</dt>
-              <dd className="tabular-nums">scan {finding.first_seen_scan_id}</dd>
+              <dt className="text-muted">{t('finding.firstSeen')}</dt>
+              <dd className="tabular-nums">
+                {t('finding.scanId', { id: finding.first_seen_scan_id })}
+              </dd>
             </>
           ) : null}
 
-          <dt className="text-muted">Fingerprint</dt>
+          <dt className="text-muted">{t('finding.fingerprint')}</dt>
           <dd className="font-mono text-[0.6875rem] break-all text-muted">
             {finding.fingerprint}
           </dd>
@@ -225,18 +238,23 @@ export function FindingDrawer({
 
         {readOnly ? (
           <p className="rounded-md border border-border-subtle bg-bg p-3 text-xs text-muted">
-            This finding is fixed, so there is nothing to decide.
+            {t('finding.readOnly')}
           </p>
         ) : (
           <section className="flex flex-col gap-2 rounded-md border border-border-subtle bg-bg p-3">
-            <h3 className="text-[0.8125rem] font-semibold">Decision</h3>
+            <h3 className="text-[0.8125rem] font-semibold">
+              {t('finding.decision')}
+            </h3>
 
             {finding.state && !finding.expired ? (
               <>
                 <p className="text-xs text-muted">
-                  Marked{' '}
-                  <span className="text-fg">{stateLabels[finding.state]}</span>
-                  {finding.reason ? `: ${finding.reason}` : '.'}
+                  {finding.reason
+                    ? t('finding.markedReason', {
+                        state: stateLabel,
+                        reason: finding.reason,
+                      })
+                    : t('finding.marked', { state: stateLabel })}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
@@ -255,10 +273,12 @@ export function FindingDrawer({
                     }}
                     disabled={clearState.isPending}
                   >
-                    {clearState.isPending ? 'Reopening…' : 'Reopen'}
+                    {clearState.isPending
+                      ? t('finding.reopening')
+                      : t('finding.reopen')}
                   </Button>
                   <span className="text-xs text-faint">
-                    The finding returns to future scans.
+                    {t('finding.reopenHint')}
                   </span>
                 </div>
                 {clearState.isError ? <ErrorNote error={clearState.error} /> : null}
@@ -267,11 +287,11 @@ export function FindingDrawer({
               <form onSubmit={submit} className="flex flex-col gap-2">
                 {finding.expired ? (
                   <p className="text-xs text-muted">
-                    The previous decision expired
                     {finding.expires_at === undefined
-                      ? ''
-                      : ` on ${expiryLabel(finding.expires_at)}`}
-                    , so the finding counts as open again.
+                      ? t('finding.expiredPrevious')
+                      : t('finding.expiredPreviousOn', {
+                          date: expiryLabel(finding.expires_at),
+                        })}
                   </p>
                 ) : null}
                 <div className="flex flex-col gap-1">
@@ -279,7 +299,7 @@ export function FindingDrawer({
                     htmlFor="finding-decision"
                     className="text-xs font-medium text-muted"
                   >
-                    Hide this finding as
+                    {t('finding.hideAs')}
                   </label>
                   <select
                     id="finding-decision"
@@ -287,9 +307,13 @@ export function FindingDrawer({
                     onChange={(event) => setDecision(event.target.value as FindingState)}
                     className={`${inputClass} w-56`}
                   >
-                    <option value="ignored">Ignored</option>
-                    <option value="accepted_risk">Accepted risk</option>
-                    <option value="false_positive">False positive</option>
+                    <option value="ignored">{t('state.ignored')}</option>
+                    <option value="accepted_risk">
+                      {t('state.accepted_risk')}
+                    </option>
+                    <option value="false_positive">
+                      {t('state.false_positive')}
+                    </option>
                   </select>
                 </div>
 
@@ -298,7 +322,7 @@ export function FindingDrawer({
                     htmlFor="finding-expiry"
                     className="text-xs font-medium text-muted"
                   >
-                    Expires
+                    {t('finding.expires')}
                   </label>
                   <select
                     id="finding-expiry"
@@ -308,15 +332,15 @@ export function FindingDrawer({
                     }
                     className={`${inputClass} w-56`}
                   >
-                    <option value="none">No expiry</option>
-                    <option value="30">In 30 days</option>
-                    <option value="90">In 90 days</option>
-                    <option value="date">Pick a date</option>
+                    <option value="none">{t('findings.bulk.noExpiry')}</option>
+                    <option value="30">{t('findings.bulk.in30')}</option>
+                    <option value="90">{t('findings.bulk.in90')}</option>
+                    <option value="date">{t('findings.bulk.pickDate')}</option>
                   </select>
                   {expiryChoice === 'date' ? (
                     <input
                       type="date"
-                      aria-label="Expiry date"
+                      aria-label={t('findings.bulk.expiryDate')}
                       required
                       min={expiryDate(0)}
                       value={expiryDay}
@@ -331,7 +355,7 @@ export function FindingDrawer({
                     htmlFor="finding-reason"
                     className="text-xs font-medium text-muted"
                   >
-                    Reason
+                    {t('finding.reason')}
                   </label>
                   <textarea
                     id="finding-reason"
@@ -339,7 +363,7 @@ export function FindingDrawer({
                     rows={3}
                     value={reason}
                     onChange={(event) => setReason(event.target.value)}
-                    placeholder="Why this finding can be hidden, for the next person who reads it."
+                    placeholder={t('finding.reasonPlaceholder')}
                     className="w-full rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[0.8125rem] text-fg placeholder:text-faint"
                   />
                 </div>
@@ -350,24 +374,28 @@ export function FindingDrawer({
                     size="sm"
                     disabled={setState.isPending || reason.trim() === ''}
                   >
-                    {setState.isPending ? 'Saving…' : 'Save decision'}
+                    {setState.isPending
+                      ? t('finding.saving')
+                      : t('finding.save')}
                   </Button>
                   <span className="text-xs text-faint">
-                    Applies to later scans of this project too.
+                    {t('finding.applies')}
                   </span>
                 </div>
               </form>
             )}
 
             {setState.isError ? (
-              <ErrorNote error={setState.error} fix="Add a reason and try again." />
+              <ErrorNote error={setState.error} fix={t('finding.errorFix')} />
             ) : null}
           </section>
         )}
 
         {finding.references.length > 0 ? (
           <section className="flex flex-col gap-1.5">
-            <h3 className="text-[0.8125rem] font-semibold">References</h3>
+            <h3 className="text-[0.8125rem] font-semibold">
+              {t('finding.references')}
+            </h3>
             <ul className="flex flex-col gap-1 text-xs">
               {finding.references.map((reference, index) => (
                 <li key={`${String(index)}-${reference}`} className="break-all">

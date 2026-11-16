@@ -1,5 +1,6 @@
 import type { SeverityTotals } from '../api/reports'
 import { severitySummary } from '../lib/finding-labels'
+import { t, useT } from '../lib/i18n'
 import { Badge } from './ui/badge'
 
 /** severityCounts is the fixed order and tone of the four severity counts. */
@@ -27,7 +28,10 @@ export function CountBadge({
     <Badge
       tone={tone}
       className={count === 0 ? 'tabular-nums opacity-40' : 'tabular-nums'}
-      aria-label={`${String(count)} open ${label} findings`}
+      aria-label={t('severity.openCount', {
+        count,
+        severity: t(`severity.lower.${label}`),
+      })}
     >
       {count}
     </Badge>
@@ -40,6 +44,7 @@ export function CountBadge({
  * reads as text and not as four colours.
  */
 export function SeverityCountBadges({ counts }: { counts: SeverityTotals }) {
+  useT()
   return (
     <>
       <span aria-hidden="true" className="flex flex-wrap gap-1">

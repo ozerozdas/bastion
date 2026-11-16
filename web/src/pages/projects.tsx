@@ -25,6 +25,7 @@ import { Button, buttonVariants } from '../components/ui/button'
 import { CountBadge, severityCounts } from '../components/severity-counts'
 import { Tabs, type TabItem } from '../components/ui/tabs'
 import { suggestFix } from '../lib/hints'
+import { t, useT } from '../lib/i18n'
 import { isLiveActive, liveDetail } from '../lib/live-scan'
 import { relativeTime } from '../lib/time'
 import type { ProjectsTab } from '../lib/urls'
@@ -36,46 +37,60 @@ const inputClass =
 /** statusView maps a scan status to its badge text and tone (§7.5). */
 const statusView: Record<
   Scan['status'],
-  { tone: 'neutral' | 'ok' | 'critical'; label: string }
+  { tone: 'neutral' | 'ok' | 'critical'; labelKey: string }
 > = {
-  queued: { tone: 'neutral', label: 'queued' },
-  running: { tone: 'neutral', label: 'running' },
-  succeeded: { tone: 'ok', label: 'succeeded' },
-  failed: { tone: 'critical', label: 'failed' },
-  canceled: { tone: 'neutral', label: 'canceled' },
+  queued: { tone: 'neutral', labelKey: 'scanStatus.queued' },
+  running: { tone: 'neutral', labelKey: 'scanStatus.running' },
+  succeeded: { tone: 'ok', labelKey: 'scanStatus.succeeded' },
+  failed: { tone: 'critical', labelKey: 'scanStatus.failed' },
+  canceled: { tone: 'neutral', labelKey: 'scanStatus.canceled' },
 }
 
 /**
  * projectColumns are the table headers; ProjectRow renders its own cells
  * because it owns the per-row mutations and inline detail rows.
  */
-const projectColumns: DataTableColumn<Asset>[] = [
-  { id: 'project', header: 'Repository' },
-  { id: 'ref', header: 'Ref', headerClassName: 'pl-3' },
-  { id: 'images', header: 'Images', headerClassName: 'pl-3' },
-  { id: 'last-scan', header: 'Last scan', headerClassName: 'pl-3' },
-  { id: 'open-findings', header: 'Open findings', headerClassName: 'pl-3' },
-  { id: 'actions', header: 'Actions', headerClassName: 'pl-3 text-right' },
-]
-
-/** projectTabs are the two views of §7's Repositories section (#88). */
-const projectTabs: TabItem<ProjectsTab>[] = [
-  { value: 'projects', label: 'Repositories' },
-  { value: 'scans', label: 'Scans' },
-]
+function projectColumns(): DataTableColumn<Asset>[] {
+  return [
+    { id: 'project', header: t('repos.column.repository') },
+    { id: 'ref', header: t('repos.column.ref'), headerClassName: 'pl-3' },
+    { id: 'images', header: t('repos.column.images'), headerClassName: 'pl-3' },
+    {
+      id: 'last-scan',
+      header: t('repos.column.lastScan'),
+      headerClassName: 'pl-3',
+    },
+    {
+      id: 'open-findings',
+      header: t('repos.column.openFindings'),
+      headerClassName: 'pl-3',
+    },
+    {
+      id: 'actions',
+      header: t('repos.column.actions'),
+      headerClassName: 'pl-3 text-right',
+    },
+  ]
+}
 
 /**
  * ProjectsPage is §7.3: the assets table and the scan list as two tabs, so a
  * scan history stays with the projects it belongs to (#88).
  */
 export function ProjectsPage() {
+  const t = useT()
   const search = useSearch({ from: '/repositories' })
   const navigate = useNavigate()
   const tab: ProjectsTab = search.tab ?? 'projects'
+  // projectTabs are the two views of §7's Repositories section (#88).
+  const projectTabs: TabItem<ProjectsTab>[] = [
+    { value: 'projects', label: t('repos.tabs.repositories') },
+    { value: 'scans', label: t('repos.tabs.scans') },
+  ]
 
   return (
     <Tabs
-      label="Repositories views"
+      label={t('repos.tabs.aria')}
       items={projectTabs}
       value={tab}
       onChange={(next) => {
@@ -95,6 +110,7 @@ export function ProjectsPage() {
 
 /** ProjectsPanel is §7.3: the repositories table plus the add dialog. */
 function ProjectsPanel() {
+  const t = useT()
   const assets = useQuery(assetsQuery)
   const live = useScanEvents()
   const [adding, setAdding] = useState(false)
@@ -105,25 +121,24 @@ function ProjectsPanel() {
     <>
       <PageActions>
         <Button type="button" size="sm" onClick={() => setAdding(true)}>
-          Add repository
+          {t('repos.add')}
         </Button>
       </PageActions>
       <section
-        aria-label="Repositories"
+        aria-label={t('repos.section.aria')}
         className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
       >
 
         {assets.isPending ? (
-          <p className="text-muted">Loading repositories…</p>
+          <p className="text-muted">{t('repos.loading')}</p>
         ) : null}
 
         {assets.isError ? (
           <div className="flex flex-col gap-1">
-            <h3 className="text-[0.8125rem] font-semibold">Repositories failed to load</h3>
-            <ErrorNote
-              error={assets.error}
-              fix="Reload the page; if it persists, check the terminal running bastion."
-            />
+            <h3 className="text-[0.8125rem] font-semibold">
+              {t('repos.failed')}
+            </h3>
+            <ErrorNote error={assets.error} fix={t('common.reloadFix')} />
           </div>
         ) : null}
 
@@ -143,16 +158,14 @@ function ProjectsPanel() {
 
 /** ProjectsEmpty points at both ways to create the first repository (§7). */
 function ProjectsEmpty({ onAdd }: { onAdd: () => void }) {
+  const t = useT()
   return (
-    <EmptyState
-      title="No repositories yet"
-      body="Repositories are the GitHub repositories and local paths you scan. Connect GitHub to search your repositories and add them in bulk, or add an absolute path to a directory on this machine. Scans run locally; source is never uploaded."
-    >
+    <EmptyState title={t('repos.empty.title')} body={t('repos.empty.body')}>
       <Link to="/connections" className={buttonVariants()}>
-        Connect GitHub
+        {t('repos.empty.connect')}
       </Link>
       <Button type="button" variant="outline" onClick={onAdd}>
-        Add a local path
+        {t('repos.empty.addPath')}
       </Button>
     </EmptyState>
   )
@@ -166,6 +179,7 @@ function ProjectsTable({
   assets: Asset[]
   live: Map<number, LiveScan>
 }) {
+  const t = useT()
   const start = useStartScans()
   const [selected, setSelected] = useState<Set<number>>(() => new Set())
   const selectedIds = assets
@@ -193,12 +207,12 @@ function ProjectsTable({
     all: {
       checked: allSelected,
       onChange: toggleAll,
-      label: 'Select all repositories',
+      label: t('repos.selectAll'),
     },
     row: (asset) => ({
       checked: selected.has(asset.id),
       onChange: () => toggle(asset.id),
-      label: `Select ${asset.display_name}`,
+      label: t('repos.selectRow', { name: asset.display_name }),
       cellClassName: 'py-2 align-top',
     }),
     headerClassName: 'w-8',
@@ -208,7 +222,9 @@ function ProjectsTable({
     <>
       {selectedIds.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-muted">{selectedIds.length} selected</span>
+          <span className="text-muted">
+            {t('repos.selected', { count: selectedIds.length })}
+          </span>
           <Button
             type="button"
             size="sm"
@@ -219,7 +235,9 @@ function ProjectsTable({
             }
             disabled={start.isPending}
           >
-            {start.isPending ? 'Starting…' : `Scan selected (${selectedIds.length})`}
+            {start.isPending
+              ? t('repos.starting')
+              : t('repos.scanSelected', { count: selectedIds.length })}
           </Button>
           <Button
             type="button"
@@ -227,7 +245,7 @@ function ProjectsTable({
             variant="ghost"
             onClick={() => setSelected(new Set())}
           >
-            Clear
+            {t('repos.clear')}
           </Button>
         </div>
       ) : null}
@@ -235,13 +253,13 @@ function ProjectsTable({
       {start.isError ? (
         <ErrorNote
           error={start.error}
-          fix="Scan the projects one at a time to see which one failed."
+          fix={t('repos.startErrorFix')}
         />
       ) : null}
 
       <DataTable
         rows={assets}
-        columns={projectColumns}
+        columns={projectColumns()}
         rowKey={(asset) => String(asset.id)}
         selection={selection}
         renderRow={(asset) => (
@@ -263,6 +281,7 @@ function ProjectRow({
   /** The table's selection config, so the shared row keeps its checkbox. */
   selection: DataTableSelection<Asset>
 }) {
+  const t = useT()
   const start = useStartScans()
   const cancel = useCancelScan()
   const archive = useArchiveAsset()
@@ -326,9 +345,11 @@ function ProjectRow({
         </td>
         <td className="py-2 pl-3 align-top whitespace-nowrap">
           {status ? (
-            <Badge tone={statusView[status].tone}>{statusView[status].label}</Badge>
+            <Badge tone={statusView[status].tone}>
+              {t(statusView[status].labelKey)}
+            </Badge>
           ) : (
-            <Badge>never scanned</Badge>
+            <Badge>{t('scanStatus.neverScanned')}</Badge>
           )}
           <span className="ml-2 text-xs text-faint">
             {scanWhen(lastScan, running)}
@@ -358,7 +379,7 @@ function ProjectRow({
               onClick={() => start.mutate([asset.id])}
               disabled={start.isPending || running}
             >
-              {start.isPending ? 'Queueing…' : 'Scan'}
+              {start.isPending ? t('repos.queueing') : t('repos.scan')}
             </Button>
             {running && lastScan ? (
               <Button
@@ -368,7 +389,7 @@ function ProjectRow({
                 onClick={() => cancel.mutate(lastScan.scan_id)}
                 disabled={cancel.isPending}
               >
-                {cancel.isPending ? 'Canceling…' : 'Cancel'}
+                {cancel.isPending ? t('repos.canceling') : t('repos.cancel')}
               </Button>
             ) : null}
             <Link
@@ -376,7 +397,7 @@ function ProjectRow({
               search={{ asset: asset.id }}
               className={buttonVariants({ variant: 'ghost', size: 'sm' })}
             >
-              View findings
+              {t('repos.viewFindings')}
             </Link>
             <Button
               type="button"
@@ -387,7 +408,7 @@ function ProjectRow({
                 setConfirming(true)
               }}
             >
-              Remove
+              {t('repos.remove')}
             </Button>
           </div>
         </td>
@@ -398,8 +419,7 @@ function ProjectRow({
           <td colSpan={7} className="pb-2">
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
               <span>
-                Remove “{asset.display_name}”? Its existing scans stay in the
-                Scans tab.
+                {t('repos.confirmRemove', { name: asset.display_name })}
               </span>
               <Button
                 type="button"
@@ -409,7 +429,7 @@ function ProjectRow({
                 onClick={() => archive.mutate(asset.id)}
                 disabled={archive.isPending}
               >
-                {archive.isPending ? 'Removing…' : 'Remove'}
+                {archive.isPending ? t('repos.removing') : t('repos.remove')}
               </Button>
               <Button
                 type="button"
@@ -420,7 +440,7 @@ function ProjectRow({
                   setConfirming(false)
                 }}
               >
-                Cancel
+                {t('common.cancel')}
               </Button>
             </div>
           </td>
@@ -440,7 +460,7 @@ function ProjectRow({
           <td colSpan={7} className="pb-2">
             <ErrorNote
               error={start.error}
-              fix="Scan again; if it keeps failing, check the terminal running bastion."
+              fix={t('repos.startError')}
             />
           </td>
         </tr>
@@ -450,7 +470,7 @@ function ProjectRow({
           <td colSpan={7} className="pb-2">
             <ErrorNote
               error={cancel.error}
-              fix="Reload the page to see the scan's final status."
+              fix={t('repos.cancelError')}
             />
           </td>
         </tr>
@@ -460,7 +480,7 @@ function ProjectRow({
           <td colSpan={7} className="pb-2">
             <ErrorNote
               error={archive.error}
-              fix="The repository stays until removal succeeds; try again."
+              fix={t('repos.archiveError')}
             />
           </td>
         </tr>
@@ -474,10 +494,11 @@ function ProjectRow({
  * is derived from the text, because the API keeps the scanner's wording.
  */
 function ScanFailure({ error }: { error: string | undefined }) {
+  const t = useT()
   return (
     <p className="flex flex-col gap-0.5 text-xs">
       <span className="text-critical">
-        {error ?? 'The scan failed without an error message.'}
+        {error ?? t('repos.scanFailedNoMessage')}
       </span>
       <span className="text-muted">{suggestFix(error)}</span>
     </p>
@@ -522,6 +543,7 @@ function AddProjectDialog({
 
 /** AddProjects is the dialog body: GitHub discovery plus a local path. */
 function AddProjects({ onDone }: { onDone: () => void }) {
+  const t = useT()
   const connections = useQuery(connectionsQuery)
   const github = (connections.data ?? []).filter(
     (connection) => connection.kind === 'github',
@@ -532,36 +554,30 @@ function AddProjects({ onDone }: { onDone: () => void }) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <h2 id="add-repositories" className="text-[0.8125rem] font-semibold">
-            Add repositories
+            {t('repos.addDialog.title')}
           </h2>
-          <p className="text-xs text-muted">
-            Repositories are read with a connection token. A local path is
-            scanned in place; nothing is uploaded.
-          </p>
+          <p className="text-xs text-muted">{t('repos.addDialog.body')}</p>
         </div>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>
-          Close
+          {t('common.close')}
         </Button>
       </div>
 
       {connections.isPending ? (
-        <p className="text-muted">Loading connections…</p>
+        <p className="text-muted">{t('repos.loadingConnections')}</p>
       ) : null}
 
       {connections.isError ? (
-        <ErrorNote
-          error={connections.error}
-          fix="Reload the page; if it persists, check the terminal running bastion."
-        />
+        <ErrorNote error={connections.error} fix={t('common.reloadFix')} />
       ) : null}
 
       {connections.isSuccess && github.length === 0 ? (
         <p className="text-xs text-muted">
-          No GitHub connection yet.{' '}
+          {t('repos.noGithub.before')}{' '}
           <Link to="/connections" className="underline">
-            Add one on Connections
+            {t('repos.noGithub.link')}
           </Link>{' '}
-          to pick repositories, or add a local path below.
+          {t('repos.noGithub.after')}
         </p>
       ) : null}
 
@@ -588,6 +604,7 @@ function DiscoverRepos({
   connections: Connection[]
   onAdded: () => void
 }) {
+  const t = useT()
   const queryClient = useQueryClient()
   const create = useCreateAsset()
   const [connectionId, setConnectionId] = useState<number | undefined>(undefined)
@@ -680,7 +697,7 @@ function DiscoverRepos({
             htmlFor="discover-connection"
             className="text-xs font-medium text-muted"
           >
-            GitHub connection
+            {t('repos.discover.connection')}
           </label>
           <select
             id="discover-connection"
@@ -698,7 +715,7 @@ function DiscoverRepos({
 
         <div className="flex min-w-64 flex-1 flex-col gap-1">
           <label htmlFor="discover-search" className="text-xs font-medium text-muted">
-            Search, or type any owner/repo
+            {t('repos.discover.search')}
           </label>
           <input
             id="discover-search"
@@ -717,7 +734,9 @@ function DiscoverRepos({
           onClick={() => void addChosen()}
           disabled={adding || chosen.length === 0}
         >
-          {adding ? 'Adding…' : `Add ${String(chosen.length)}`}
+          {adding
+            ? t('repos.discover.adding')
+            : t('repos.discover.add', { count: chosen.length })}
         </Button>
 
         {typedName && !repos.some((repo) => repo.full_name === typedName) ? (
@@ -727,7 +746,7 @@ function DiscoverRepos({
             onClick={() => void addChosen([typedName])}
             disabled={adding}
           >
-            Add {typedName}
+            {t('repos.discover.addTyped', { name: typedName })}
           </Button>
         ) : null}
       </div>
@@ -735,17 +754,17 @@ function DiscoverRepos({
       {!requested ? (
         <div>
           <Button type="button" variant="outline" onClick={() => setRequested(true)}>
-            List repositories
+            {t('repos.discover.list')}
           </Button>
         </div>
       ) : discover.isPending ? (
-        <p className="text-muted">Loading repositories…</p>
+        <p className="text-muted">{t('repos.loading')}</p>
       ) : null}
 
       {discover.isError ? (
         <ErrorNote
           error={discover.error}
-          fix="Re-test the GitHub connection on Connections; the token may have expired or lost access."
+          fix={t('repos.discover.errorFix')}
         />
       ) : null}
 
@@ -753,12 +772,12 @@ function DiscoverRepos({
         shown.length === 0 ? (
           <p className="text-xs text-muted">
             {needle === ''
-              ? 'This connection can read no repositories.'
-              : `No repositories match “${search.trim()}”.`}
+              ? t('repos.discover.none')
+              : t('repos.discover.noMatch', { query: search.trim() })}
           </p>
         ) : (
           <ul
-            aria-label="Repositories"
+            aria-label={t('repos.discover.reposAria')}
             className="flex max-h-72 flex-col divide-y divide-border-subtle overflow-y-auto"
           >
             {shown.map((repo) => (
@@ -777,7 +796,7 @@ function DiscoverRepos({
         <div role="status" className="flex flex-col gap-1 text-xs">
           {result.added > 0 ? (
             <span className="text-ok">
-              Added {result.added} {result.added === 1 ? 'project' : 'projects'}.
+              {t('repos.discover.added', { count: result.added })}
             </span>
           ) : null}
           {result.errors.length > 0 ? (
@@ -807,6 +826,7 @@ function RepoOption({
   checked: boolean
   onToggle: () => void
 }) {
+  const t = useT()
   const id = `repo-${repo.full_name}`
   return (
     <li className="py-1.5 first:pt-0 last:pb-0">
@@ -828,9 +848,11 @@ function RepoOption({
           {repo.full_name}
         </span>
         <span className="text-xs text-faint">{repo.default_branch}</span>
-        {repo.private ? <Badge>private</Badge> : null}
-        {repo.archived ? <Badge>archived</Badge> : null}
-        {repo.already_added ? <Badge tone="ok">added</Badge> : null}
+        {repo.private ? <Badge>{t('repos.repo.private')}</Badge> : null}
+        {repo.archived ? <Badge>{t('repos.repo.archived')}</Badge> : null}
+        {repo.already_added ? (
+          <Badge tone="ok">{t('repos.repo.added')}</Badge>
+        ) : null}
       </label>
     </li>
   )
@@ -838,6 +860,7 @@ function RepoOption({
 
 /** AddLocalPath adds one directory on this machine as an asset. */
 function AddLocalPath({ onAdded }: { onAdded: () => void }) {
+  const t = useT()
   const create = useCreateAsset()
   const [path, setPath] = useState('')
   const [notice, setNotice] = useState<{
@@ -871,7 +894,7 @@ function AddLocalPath({ onAdded }: { onAdded: () => void }) {
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex min-w-64 flex-1 flex-col gap-1">
           <label htmlFor="asset-path" className="text-xs font-medium text-muted">
-            Or add a local path
+            {t('repos.local.label')}
           </label>
           <input
             id="asset-path"
@@ -884,12 +907,10 @@ function AddLocalPath({ onAdded }: { onAdded: () => void }) {
           />
         </div>
         <Button type="submit" disabled={create.isPending || path.trim() === ''}>
-          {create.isPending ? 'Adding…' : 'Add path'}
+          {create.isPending ? t('repos.local.adding') : t('repos.local.add')}
         </Button>
       </div>
-      <p className="text-xs text-faint">
-        An absolute path to a directory on this machine; it is scanned in place.
-      </p>
+      <p className="text-xs text-faint">{t('repos.local.hint')}</p>
 
       {notice ? (
         <p
@@ -911,24 +932,24 @@ function addErrorNote(error: unknown): { cause: string; fix: string } {
   if (error instanceof ApiError) {
     if (error.status === 409) {
       return {
-        cause: 'That project is already added.',
-        fix: 'Remove it first, or pick another one.',
+        cause: t('repos.error.conflict'),
+        fix: t('repos.error.conflictFix'),
       }
     }
     if (error.status === 400) {
       return {
         cause: error.message,
-        fix: 'Check the reference; a path must be an absolute directory that exists.',
+        fix: t('repos.error.badRefFix'),
       }
     }
     return {
       cause: error.message,
-      fix: 'Try again; if it persists, check the terminal running bastion.',
+      fix: t('repos.error.retryFix'),
     }
   }
   return {
-    cause: error instanceof Error ? error.message : 'the request failed',
-    fix: 'Try again.',
+    cause: error instanceof Error ? error.message : t('common.requestFailed'),
+    fix: t('repos.error.tryAgain'),
   }
 }
 
@@ -939,7 +960,7 @@ function ErrorNote({ error, fix }: { error: unknown; fix: string }) {
       ? error.message
       : error instanceof Error
         ? error.message
-        : 'the request failed'
+        : t('common.requestFailed')
 
   return (
     <p role="alert" className="text-xs text-critical">
@@ -951,7 +972,7 @@ function ErrorNote({ error, fix }: { error: unknown; fix: string }) {
 /** scanWhen says when the last scan finished, or that it is still running. */
 function scanWhen(lastScan: Asset['last_scan'], running: boolean): string {
   if (running) {
-    return 'in progress'
+    return t('scanStatus.inProgress')
   }
   if (!lastScan?.finished_at) {
     return ''

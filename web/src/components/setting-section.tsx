@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { t } from '../lib/i18n'
 import { Badge } from './ui/badge'
 
 /** SettingSection is one setting: its name, its state and its control. */
@@ -21,7 +22,9 @@ export function SettingSection({
       <div className="flex items-center gap-2">
         <h3 className="text-[0.8125rem] font-semibold">{title}</h3>
         {on === undefined ? null : (
-          <Badge tone={on ? 'ok' : 'neutral'}>{on ? 'On' : 'Off'}</Badge>
+          <Badge tone={on ? 'ok' : 'neutral'}>
+            {on ? t('settings.badge.on') : t('settings.badge.off')}
+          </Badge>
         )}
       </div>
       {children}
