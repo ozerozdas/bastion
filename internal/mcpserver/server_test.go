@@ -199,6 +199,7 @@ func TestToolsAreDescribed(t *testing.T) {
 		"list_findings": {"asset_id", "severity", "type", "status", "query", "sort", "order", "limit", "offset"},
 		"get_fix_plan":  {"asset_id"},
 		"diff_scans":    {"scan_id", "against_scan_id", "asset_id"},
+		"trigger_scan":  {"asset_id"},
 	}
 	for name, properties := range want {
 		tool, ok := byName[name]

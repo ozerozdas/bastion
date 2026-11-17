@@ -12,6 +12,24 @@ RETURNING *;
 -- name: GetScan :one
 SELECT * FROM scans WHERE id = sqlc.arg(id);
 
+-- name: GetActiveScanByAsset :one
+-- The newest scan of one asset that is still queued or running. The MCP
+-- handoff uses it to return the scan that already covers the asset instead of
+-- queueing a second one. sql.ErrNoRows means the asset has no active scan.
+SELECT * FROM scans
+WHERE asset_id = sqlc.arg(asset_id)
+  AND status IN ('queued', 'running')
+ORDER BY id DESC
+LIMIT 1;
+
+-- name: ListQueuedScansByTrigger :many
+-- Queued scans a running server still has to pick up. The handoff poller asks
+-- for trigger='api'; the id order keeps a poll deterministic.
+SELECT * FROM scans
+WHERE status = 'queued'
+  AND "trigger" = sqlc.arg(trigger)
+ORDER BY id;
+
 -- name: MarkScanRunning :exec
 -- Keep the start time a caller has already recorded; set it on the first
 -- transition to running.
@@ -47,13 +65,17 @@ ORDER BY id DESC
 LIMIT 1;
 
 -- name: FailUnfinishedScans :exec
--- Startup recovery: a scan still queued or running when this process starts
--- was cut short by the previous process exiting, so it can never finish.
+-- Startup recovery: a scan still running when this process starts was cut
+-- short by the previous process exiting, so it can never finish. A queued scan
+-- is in the same position, except one the MCP handoff wrote (trigger 'api'):
+-- it has no worker yet and the new server's poller picks it up, so it stays
+-- queued. Handoff rows survive a restart as a result.
 UPDATE scans
 SET status = 'failed',
     finished_at = sqlc.arg(finished_at),
     error = sqlc.arg(error)
-WHERE status IN ('queued', 'running');
+WHERE status = 'running'
+   OR (status = 'queued' AND "trigger" <> 'api');
 
 -- name: ListScannerRunsByScan :many
 -- Scanner runs of one scan in execution order. Reading a finished scan back

@@ -17,6 +17,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -37,6 +38,11 @@ const (
 	statusQueued  = "queued"
 	statusRunning = "running"
 )
+
+// handoffPollInterval is how often the server looks for scans `bastion mcp`
+// queued for it. Two seconds keeps a tool call responsive without polling the
+// database in a tight loop.
+const handoffPollInterval = 2 * time.Second
 
 // RecoveryError is stored on scans that were left unfinished by a process
 // that stopped mid-scan.
@@ -233,7 +239,11 @@ type Manager struct {
 	queue  []*scanJob
 	jobs   map[int64]*scanJob
 	serial map[string]chan struct{}
-	closed bool
+	// handoff holds the scan ids the poller already pushed, so a row that is
+	// still queued when the next poll runs is not queued twice.
+	handoff        map[int64]struct{}
+	handoffStarted bool
+	closed         bool
 }
 
 // scanJob is one queued or running scan. state, jobs and queue are guarded by
@@ -295,6 +305,7 @@ func New(cfg Config) (*Manager, error) {
 		done:         make(chan struct{}),
 		jobs:         make(map[int64]*scanJob),
 		serial:       make(map[string]chan struct{}),
+		handoff:      make(map[int64]struct{}),
 	}
 	m.cond = sync.NewCond(&m.mu)
 
@@ -349,36 +360,43 @@ func (m *Manager) Enqueue(ctx context.Context, assetID int64, trigger string) (i
 	// first; the worker may publish progress immediately afterwards.
 	m.publish(Event{Type: EventQueued, ScanID: scan.ID, AssetID: assetID, Status: statusQueued})
 
-	jobCtx, cancel := context.WithCancel(m.runCtx)
-	job := &scanJob{
-		scanID: scan.ID,
-		asset: Asset{
-			ID:          asset.ID,
-			Kind:        sources.TargetKind(asset.Kind),
-			Ref:         asset.Ref,
-			DisplayName: asset.DisplayName,
-		},
-		ctx:    jobCtx,
-		cancel: cancel,
-		state:  stateQueued,
-	}
-
-	m.mu.Lock()
-	if m.closed {
-		m.mu.Unlock()
-		cancel()
+	job := newScanJob(m.runCtx, scan.ID, Asset{
+		ID:          asset.ID,
+		Kind:        sources.TargetKind(asset.Kind),
+		Ref:         asset.Ref,
+		DisplayName: asset.DisplayName,
+	})
+	if err := m.startJob(job); err != nil {
 		// Shutdown started between the check above and here. Record the row
 		// as canceled rather than leaving a queued scan nobody will run.
 		job.state = stateFinished
 		m.finishCanceled(ctx, job)
-		return 0, ErrShutdown
+		return 0, err
 	}
-	m.jobs[scan.ID] = job
-	m.queue = append(m.queue, job)
-	m.cond.Signal()
-	m.mu.Unlock()
 
 	return scan.ID, nil
+}
+
+// newScanJob builds the in-memory job for an existing scan row. Its context
+// derives from the manager's run context, so Shutdown cancels it.
+func newScanJob(runCtx context.Context, scanID int64, asset Asset) *scanJob {
+	jobCtx, cancel := context.WithCancel(runCtx)
+	return &scanJob{scanID: scanID, asset: asset, ctx: jobCtx, cancel: cancel, state: stateQueued}
+}
+
+// startJob hands job to the pool. ErrShutdown means the manager stopped before
+// accepting it; the caller decides what the scan row becomes.
+func (m *Manager) startJob(job *scanJob) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		job.cancel()
+		return ErrShutdown
+	}
+	m.jobs[job.scanID] = job
+	m.queue = append(m.queue, job)
+	m.cond.Signal()
+	return nil
 }
 
 // Cancel stops a queued or running scan. A queued scan never touches the
@@ -407,9 +425,11 @@ func (m *Manager) Cancel(scanID int64) error {
 	return nil
 }
 
-// Recover marks scans left queued or running by an earlier process as failed.
-// It must run before this manager starts accepting scans (at server startup),
-// otherwise it would fail scans that are currently running.
+// Recover marks scans left running by an earlier process as failed, and so
+// queued scans that only that process's worker pool could have picked up.
+// Queued scans written by the MCP handoff (trigger 'api') stay queued: the
+// poller started after Recover claims them, so a handoff row survives a serve
+// restart. Recover must therefore run before StartHandoff.
 func (m *Manager) Recover(ctx context.Context) error {
 	finishedAt := time.Now().UTC().Format(time.RFC3339)
 	if err := m.queries.FailUnfinishedScans(ctx, sqlcdb.FailUnfinishedScansParams{
@@ -419,6 +439,106 @@ func (m *Manager) Recover(ctx context.Context) error {
 		return fmt.Errorf("jobs: recover unfinished scans: %w", err)
 	}
 	return nil
+}
+
+// StartHandoff starts the poller that picks up scans `bastion mcp` queued in
+// the database. It is called by `bastion serve` once, after Recover: Recover
+// leaves those rows queued, and the poller claims them.
+//
+// The CLI and tests that never call StartHandoff never poll.
+func (m *Manager) StartHandoff() {
+	m.mu.Lock()
+	if m.closed || m.handoffStarted {
+		m.mu.Unlock()
+		return
+	}
+	m.handoffStarted = true
+	// Counted before the goroutine starts, under the same lock Shutdown takes,
+	// so its Wait sees the poller.
+	m.workers.Add(1)
+	m.mu.Unlock()
+
+	go m.pollHandoff()
+}
+
+// pollHandoff claims handed-off scans once immediately and then every
+// handoffPollInterval until the manager stops.
+func (m *Manager) pollHandoff() {
+	defer m.workers.Done()
+
+	m.claimHandoff(m.runCtx)
+	ticker := time.NewTicker(handoffPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-m.runCtx.Done():
+			return
+		case <-ticker.C:
+			m.claimHandoff(m.runCtx)
+		}
+	}
+}
+
+// claimHandoff pushes every queued handoff scan (trigger 'api') this manager
+// has not accepted yet into the pool under its own scan id. The accepted set
+// makes a poll idempotent: the row stays 'queued' until a worker marks it
+// running, so the next poll can still see it.
+func (m *Manager) claimHandoff(ctx context.Context) {
+	rows, err := m.queries.ListQueuedScansByTrigger(ctx, store.ScanTriggerAPI)
+	if err != nil {
+		if ctx.Err() == nil {
+			slog.Warn("jobs: list handed-off scans", "error", err)
+		}
+		return
+	}
+	for _, row := range rows {
+		m.claimHandoffScan(ctx, row)
+	}
+}
+
+// claimHandoffScan accepts one handed-off scan, unless it was accepted before
+// or the manager is shutting down.
+func (m *Manager) claimHandoffScan(ctx context.Context, row sqlcdb.Scan) {
+	asset, err := m.queries.GetAsset(ctx, row.AssetID)
+	if errors.Is(err, sql.ErrNoRows) {
+		// The asset went away and the scan row with it.
+		return
+	}
+	if err != nil {
+		if ctx.Err() == nil {
+			slog.Warn("jobs: read asset of handed-off scan", "scan_id", row.ID, "error", err)
+		}
+		return
+	}
+
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return
+	}
+	if _, ok := m.handoff[row.ID]; ok {
+		m.mu.Unlock()
+		return
+	}
+	m.handoff[row.ID] = struct{}{}
+	m.mu.Unlock()
+
+	// The row was created by another process, so this process never published
+	// its queued event; subscribers should learn about the scan before the
+	// worker reports progress for it.
+	m.publish(Event{Type: EventQueued, ScanID: row.ID, AssetID: row.AssetID, Status: statusQueued})
+
+	job := newScanJob(m.runCtx, row.ID, Asset{
+		ID:          asset.ID,
+		Kind:        sources.TargetKind(asset.Kind),
+		Ref:         asset.Ref,
+		DisplayName: asset.DisplayName,
+	})
+	if err := m.startJob(job); err != nil {
+		// Shutdown won the race between the two locks. The row stays queued and
+		// the next serve's Recover marks it failed.
+		slog.Warn("jobs: handed-off scan left queued", "scan_id", row.ID)
+	}
 }
 
 // Shutdown stops accepting scans, cancels every queued and running scan, and
@@ -472,6 +592,9 @@ func (m *Manager) worker() {
 		m.mu.Lock()
 		job.state = stateFinished
 		delete(m.jobs, job.scanID)
+		// The scan is final, so the poller will never select it again; drop
+		// the accepted entry instead of growing the set for the manager's life.
+		delete(m.handoff, job.scanID)
 		m.mu.Unlock()
 		job.cancel()
 	}

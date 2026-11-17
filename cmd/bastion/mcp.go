@@ -14,20 +14,25 @@ import (
 	"github.com/ozerozdas/bastion/internal/assets"
 	"github.com/ozerozdas/bastion/internal/mcpserver"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/servelock"
 )
 
-// newMCPCmd is `bastion mcp`: the read-only Model Context Protocol server over
-// stdio. It opens the same database as `bastion serve` and reads the same
-// stored state, but it never starts a scan pipeline of its own.
+// newMCPCmd is `bastion mcp`: the Model Context Protocol server over stdio. It
+// opens the same database as `bastion serve` and reads the same stored state,
+// but it never starts a scan pipeline of its own. Its only write is
+// trigger_scan, which queues a scan row for a running serve to run.
 func newMCPCmd(root *rootOptions) *cobra.Command {
 	return &cobra.Command{
 		Use:   "mcp",
-		Short: "Serve read-only MCP tools over stdio for AI agents",
+		Short: "Serve MCP tools over stdio for AI agents",
 		Long: "Serve bastion's assets, findings, fix plans and scan diffs over the\n" +
-			"Model Context Protocol on stdin/stdout.\n\n" +
-			"The server is read-only: scans run from the UI or the CLI. It opens the\n" +
-			"same --data-dir and database as `bastion serve` and starts no scan worker,\n" +
-			"download or recovery. stdout carries the protocol, so logs go to stderr.",
+			"Model Context Protocol on stdin/stdout, and queue scans for a running\n" +
+			"bastion serve.\n\n" +
+			"The server starts no scan worker, download or recovery. It opens the same\n" +
+			"--data-dir and database as `bastion serve`. trigger_scan only records a\n" +
+			"queued scan for that server, which runs it and shows it in the UI; the\n" +
+			"tool fails when no serve holds the data directory's lock. stdout carries\n" +
+			"the protocol, so logs go to stderr.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runMCP(cmd, root.paths, defaultServeDeps(), &mcp.StdioTransport{})
@@ -35,12 +40,11 @@ func newMCPCmd(root *rootOptions) *cobra.Command {
 	}
 }
 
-// mcpServices is the read-only service subset `bastion mcp` opens: the
-// database and the read models on top of it. It deliberately builds no scan
-// manager, Trivy manager, SAST module or EPSS fetcher, so it can never recover,
-// fail or race another bastion process's scans. assets.Service is safe without
-// a manager because the read paths (List, Scans) never touch it; only Enqueue
-// does, and no MCP tool queues scans any more.
+// mcpServices is the service subset `bastion mcp` opens: the database and the
+// read models on top of it. It deliberately builds no scan manager, Trivy
+// manager, SAST module or EPSS fetcher, so it can never recover, fail or race
+// another bastion process's scans. assets.Service is safe without a manager
+// because only Enqueue needs one; trigger_scan writes the queued row itself.
 type mcpServices struct {
 	db      *sql.DB
 	assets  *assets.Service
@@ -85,7 +89,7 @@ func (s *mcpServices) Close() {
 	}
 }
 
-// runMCP opens the read-only services and blocks until the client disconnects
+// runMCP opens the MCP services and blocks until the client disconnects
 // or the process is interrupted.
 func runMCP(cmd *cobra.Command, paths app.Paths, deps serveDeps, transport mcp.Transport) error {
 	ctx := cmd.Context()
@@ -102,7 +106,10 @@ func runMCP(cmd *cobra.Command, paths app.Paths, deps serveDeps, transport mcp.T
 		Version: version,
 		Assets:  services.assets,
 		Reports: services.reports,
-		Logger:  slog.Default(),
+		// serve holds the data directory's lock for its whole lifetime, so the
+		// check is a read-only probe of that lock, not a network or auth surface.
+		ServeRunning: func() bool { return servelock.Held(paths.DataDir) },
+		Logger:       slog.Default(),
 	})
 	if err != nil {
 		return fmt.Errorf("mcp: %w", err)

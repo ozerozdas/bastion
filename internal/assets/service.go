@@ -38,6 +38,10 @@ const (
 // ScanTriggerUI is the scans.trigger value for a scan queued from the UI/API.
 const ScanTriggerUI = "ui"
 
+// scanStatusQueued is the status of a scan waiting for a worker. The MCP
+// handoff writes it itself because no scan manager exists in that process.
+const scanStatusQueued = "queued"
+
 // Scan sort columns the list accepts. The SQL maps these names onto fixed
 // ORDER BY keys, so the column is never interpolated into the query.
 const (
@@ -917,6 +921,51 @@ func (s *Service) Enqueue(ctx context.Context, assetIDs []int64) ([]QueuedScan, 
 		out = append(out, QueuedScan{ScanID: scanID, AssetID: id})
 	}
 	return out, nil
+}
+
+// QueueMCP records a queued scan for assetID that a running `bastion serve`
+// picks up through its handoff poller (the 'api' trigger, the programmatic
+// surface). No manager is involved: the row is the whole handoff, and the
+// server's poller claims it by id.
+//
+// The asset must exist and must not be archived. When the asset already has a
+// queued or running scan, that scan is returned with alreadyQueued true and no
+// row is created, so triggering the same asset twice does not queue a second
+// scan.
+func (s *Service) QueueMCP(ctx context.Context, assetID int64) (QueuedScan, bool, error) {
+	if assetID <= 0 {
+		return QueuedScan{}, false, fmt.Errorf("%w: asset id must be positive", ErrInvalid)
+	}
+
+	queries := sqlcdb.New(s.db)
+	asset, err := queries.GetAsset(ctx, assetID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return QueuedScan{}, false, fmt.Errorf("%w: asset %d", ErrNotFound, assetID)
+	}
+	if err != nil {
+		return QueuedScan{}, false, fmt.Errorf("assets: queue mcp asset %d: %w", assetID, err)
+	}
+	if asset.ArchivedAt.Valid {
+		return QueuedScan{}, false, fmt.Errorf("%w: asset %d is archived", ErrConflict, assetID)
+	}
+
+	active, err := queries.GetActiveScanByAsset(ctx, assetID)
+	switch {
+	case err == nil:
+		return QueuedScan{ScanID: active.ID, AssetID: assetID}, true, nil
+	case !errors.Is(err, sql.ErrNoRows):
+		return QueuedScan{}, false, fmt.Errorf("assets: active scan of asset %d: %w", assetID, err)
+	}
+
+	scan, err := queries.CreateScan(ctx, sqlcdb.CreateScanParams{
+		AssetID: assetID,
+		Status:  scanStatusQueued,
+		Trigger: store.ScanTriggerAPI,
+	})
+	if err != nil {
+		return QueuedScan{}, false, fmt.Errorf("assets: queue mcp asset %d: create scan: %w", assetID, err)
+	}
+	return QueuedScan{ScanID: scan.ID, AssetID: assetID}, false, nil
 }
 
 // Cancel stops a queued or running scan and returns the scan as it stands. A

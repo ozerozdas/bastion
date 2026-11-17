@@ -24,7 +24,7 @@ func TestRecoverFailsUnfinishedScans(t *testing.T) {
 	queued, err := queries.CreateScan(ctx, sqlcdb.CreateScanParams{
 		AssetID: asset.ID,
 		Status:  "queued",
-		Trigger: "api",
+		Trigger: "cli",
 	})
 	if err != nil {
 		t.Fatalf("CreateScan queued: %v", err)
@@ -32,7 +32,7 @@ func TestRecoverFailsUnfinishedScans(t *testing.T) {
 	running, err := queries.CreateScan(ctx, sqlcdb.CreateScanParams{
 		AssetID: asset.ID,
 		Status:  "queued",
-		Trigger: "api",
+		Trigger: "cli",
 	})
 	if err != nil {
 		t.Fatalf("CreateScan running: %v", err)
@@ -46,7 +46,7 @@ func TestRecoverFailsUnfinishedScans(t *testing.T) {
 	succeeded, err := queries.CreateScan(ctx, sqlcdb.CreateScanParams{
 		AssetID: asset.ID,
 		Status:  "queued",
-		Trigger: "api",
+		Trigger: "cli",
 	})
 	if err != nil {
 		t.Fatalf("CreateScan succeeded: %v", err)
