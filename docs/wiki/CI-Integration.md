@@ -23,7 +23,34 @@ bastion scan --path . --no-store --skip-dirs testdata \
   --format sarif --fail-on critical > bastion.sarif
 ```
 
-## GitHub Actions example
+## GitHub Action
+
+The repository ships a composite action. It installs a pinned release (checked against
+the release's `checksums.txt`), caches the vulnerability DB weekly, runs the scan,
+uploads SARIF to code scanning and then fails on the threshold:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+
+steps:
+  - uses: actions/checkout@v7
+  - uses: ozerozdas/bastion@v0.4.1
+    with:
+      fail-on: critical        # empty: never fail on findings
+      skip-dirs: |
+        testdata
+      # version: v0.4.1       # bastion release to install
+      # upload-sarif: "true"  # false: only write bastion.sarif
+```
+
+Outputs: `sarif-file` and `exit-code` (`0` clean, `2` threshold reached). The SARIF is
+uploaded before the step fails, so findings show up in code scanning either way.
+[`.github/workflows/action-sample.yml`](../../.github/workflows/action-sample.yml) is a
+working example.
+
+## Manual GitHub Actions example
 
 ```yaml
 - name: Install bastion
@@ -37,7 +64,7 @@ bastion scan --path . --no-store --skip-dirs testdata \
 ```
 
 Uploading the SARIF file to GitHub code scanning needs the `security-events: write`
-permission. A ready-made GitHub Action is planned for Phase 4.
+permission.
 
 ## Tips
 

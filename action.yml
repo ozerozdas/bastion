@@ -1,0 +1,118 @@
+name: bastion scan
+description: Scan the checked-out repository with bastion, upload SARIF to code scanning and fail on a severity threshold.
+author: ozerozdas
+branding:
+  icon: shield
+  color: gray-dark
+
+inputs:
+  version:
+    description: bastion release to install (a tag such as v0.4.1). Pin it; the archive is checked against the release's checksums.txt.
+    default: v0.4.1
+  path:
+    description: Directory to scan.
+    default: .
+  fail-on:
+    description: Fail the step when an open finding is at or above this severity (critical, high, medium or low). Empty never fails on findings.
+    default: critical
+  skip-dirs:
+    description: Directories to leave out, relative to path, one per line.
+    default: ""
+  sarif-file:
+    description: Where to write the SARIF report.
+    default: bastion.sarif
+  upload-sarif:
+    description: Upload the SARIF report to GitHub code scanning (needs security-events write permission).
+    default: "true"
+  cache:
+    description: Cache the vulnerability database between runs (about 1.7 GB, refreshed weekly).
+    default: "true"
+
+outputs:
+  sarif-file:
+    description: Path of the SARIF report.
+    value: ${{ inputs.sarif-file }}
+  exit-code:
+    description: bastion's exit code (0 clean, 2 threshold reached).
+    value: ${{ steps.scan.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install bastion
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64) target=linux_amd64 ;;
+          Linux-ARM64) target=linux_arm64 ;;
+          macOS-X64) target=darwin_amd64 ;;
+          macOS-ARM64) target=darwin_arm64 ;;
+          *) echo "::error::unsupported runner ${RUNNER_OS}-${RUNNER_ARCH}"; exit 1 ;;
+        esac
+        archive="bastion_${VERSION#v}_${target}.tar.gz"
+        base="https://github.com/ozerozdas/bastion/releases/download/${VERSION}"
+        dir="${RUNNER_TEMP}/bastion-${VERSION}"
+        mkdir -p "$dir"
+        cd "$dir"
+        curl -fsSLO "${base}/${archive}"
+        curl -fsSLO "${base}/checksums.txt"
+        grep " ${archive}\$" checksums.txt > archive.sha256
+        if command -v sha256sum >/dev/null; then sha256sum -c archive.sha256; else shasum -a 256 -c archive.sha256; fi
+        tar -xzf "$archive" bastion
+        echo "$dir" >> "$GITHUB_PATH"
+
+    - id: week
+      if: inputs.cache == 'true'
+      shell: bash
+      run: echo "key=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+    - if: inputs.cache == 'true'
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.os == 'macOS' && '~/Library/Caches/bastion/trivy' || '~/.cache/bastion/trivy' }}
+        key: bastion-trivy-${{ runner.os }}-${{ steps.week.outputs.key }}
+        restore-keys: bastion-trivy-${{ runner.os }}-
+
+    - id: scan
+      name: Scan
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        SKIP_DIRS: ${{ inputs.skip-dirs }}
+        SARIF_FILE: ${{ inputs.sarif-file }}
+      run: |
+        set -euo pipefail
+        # Secret findings carry an HMAC; runners have no keyring, so use a per-run key.
+        export BASTION_HMAC_KEY="${BASTION_HMAC_KEY:-$(openssl rand -base64 32)}"
+        args=(scan --path "$SCAN_PATH" --no-store --quiet --format sarif)
+        if [ -n "$FAIL_ON" ]; then args+=(--fail-on "$FAIL_ON"); fi
+        while IFS= read -r dir; do
+          if [ -n "$dir" ]; then args+=(--skip-dirs "$dir"); fi
+        done <<< "$SKIP_DIRS"
+        # The shell runs with -e; capture the exit code instead of aborting on 2.
+        code=0
+        bastion "${args[@]}" > "$SARIF_FILE" || code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        # Exit 2 means the threshold was reached; fail after the upload step.
+        if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then
+          echo "::error::bastion scan failed with exit code $code"
+          exit "$code"
+        fi
+
+    - if: inputs.upload-sarif == 'true'
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ inputs.sarif-file }}
+        category: bastion
+
+    - if: steps.scan.outputs.exit-code == '2'
+      shell: bash
+      env:
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        echo "::error::bastion found open findings at or above ${FAIL_ON}"
+        exit 1

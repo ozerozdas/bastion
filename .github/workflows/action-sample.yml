@@ -1,0 +1,28 @@
+# Sample use of the bastion action (action.yml at the repo root). It scans this
+# repository with the released binary and fails when a critical finding is open.
+name: action-sample
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - action.yml
+      - .github/workflows/action-sample.yml
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./
+        with:
+          fail-on: critical
+          skip-dirs: |
+            testdata
+            tools
