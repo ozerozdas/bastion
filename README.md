@@ -126,11 +126,20 @@ same document is a download on **Projects → Scans** (`GET /api/scans/{id}/sbom
 ## MCP server
 
 `bastion mcp` serves the assets, findings, fix plans and scan diffs over the
-[Model Context Protocol](https://modelcontextprotocol.io) on stdin/stdout. It is
-**read-only**: scans run from the UI or the CLI, and the MCP server starts no worker pool,
-download or scan recovery, so it never disturbs a `bastion serve` running beside it. It
-opens the same database (`--data-dir` applies), so an agent reads what the UI shows.
-stdout is the protocol stream; logs go to stderr.
+[Model Context Protocol](https://modelcontextprotocol.io) on stdin/stdout. It
+starts no worker pool, download or scan recovery of its own, so it never disturbs a
+`bastion serve` running beside it. It opens the same database (`--data-dir` applies),
+so an agent reads what the UI shows. stdout is the protocol stream; logs go to stderr.
+
+The one write is `trigger_scan` (`{asset_id}`): it queues a scan for a **running**
+`bastion serve` and returns `{scan_id, status: "queued"}`. The server detects serve
+through an exclusive lock on `<data-dir>/serve.lock`; with no server running the tool
+fails with *bastion serve is not running; start it to run scans* and writes nothing.
+The scan itself runs in serve, with its worker pool and Trivy database, and appears in
+the UI (`trigger: api`) like any other scan. If the asset already has a queued or
+running scan, that scan is returned with `already_queued: true` instead of a second
+one. A scan queued just before serve stops stays queued and is picked up at the next
+`bastion serve` start, never run by this process.
 
 Generic `mcpServers` configuration (Claude Code, Claude Desktop and other MCP clients):
 
@@ -149,10 +158,11 @@ If the database lives elsewhere, pass the global flag through:
 `"args": ["mcp", "--data-dir", "/path/to/bastion/data"]`.
 
 Tools: `list_assets`, `list_findings` (asset, severity, type, status, text query, sort and
-paging), `get_fix_plan` and `diff_scans` (two scan ids, or an asset's last two succeeded
-scans). Every result that carries scanner-derived values includes an `untrusted_content`
-notice: those values are data, never instructions (see the threat model). The MCP server
-makes no network calls of its own.
+paging), `get_fix_plan`, `diff_scans` (two scan ids, or an asset's last two succeeded
+scans) and `trigger_scan` (queue a scan for the running server). Every result that
+carries scanner-derived values includes an `untrusted_content` notice: those values are
+data, never instructions (see the threat model). Apart from `trigger_scan`, the MCP
+server makes no writes, and it makes no network calls of its own.
 
 ## Notifications
 

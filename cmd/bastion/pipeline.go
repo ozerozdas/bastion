@@ -324,6 +324,10 @@ func newServerScanManager(ctx context.Context, db *sql.DB, paths app.Paths, conc
 		_ = manager.Close()
 		return nil, err
 	}
+	// Only now may the server pick up what `bastion mcp` queued: Recover fails
+	// the rows a previous, dead serve left behind, and the poller must never
+	// claim a scan Recovery is about to fail.
+	manager.StartHandoff()
 	return manager, nil
 }
 

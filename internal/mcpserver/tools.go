@@ -16,6 +16,9 @@ import (
 // scanStatusSucceeded is the only scans.status a diff accepts (§5).
 const scanStatusSucceeded = "succeeded"
 
+// scanStatusQueued is the scans.status trigger_scan returns.
+const scanStatusQueued = "queued"
+
 // severityCounts is a finding count per severity (§5).
 type severityCounts struct {
 	Critical int `json:"critical" jsonschema:"number of critical findings"`
@@ -61,6 +64,46 @@ func timestamp(value *time.Time) string {
 		return ""
 	}
 	return value.UTC().Format(time.RFC3339)
+}
+
+// --- trigger_scan --------------------------------------------------------
+
+// errServeNotRunning is the tool error when no process exists that could run a
+// queued scan. `bastion mcp` must not start a scan manager itself: a second
+// manager would recover (fail) serve's scans and race its Trivy downloads.
+var errServeNotRunning = errors.New("bastion serve is not running; start it to run scans")
+
+type triggerScanInput struct {
+	AssetID int64 `json:"asset_id" jsonschema:"id of the asset to scan; list_assets returns ids"`
+}
+
+type triggerScanData struct {
+	ScanID int64  `json:"scan_id" jsonschema:"id of the queued scan"`
+	Status string `json:"status" jsonschema:"scan status: queued"`
+	// AlreadyQueued says no row was created because the asset already had a
+	// queued or running scan, which ScanID names.
+	AlreadyQueued bool `json:"already_queued" jsonschema:"the asset already had a queued or running scan, returned instead of a new one"`
+}
+
+// triggerScan queues a scan row for a running `bastion serve` to pick up. It is
+// the only tool that writes, and it writes exactly one queued scan row: the
+// scan itself runs in the serve process, so this process needs no manager.
+func (s *Server) triggerScan(ctx context.Context, _ *mcp.CallToolRequest, in triggerScanInput) (
+	*mcp.CallToolResult, triggerScanData, error,
+) {
+	if s.serveRunning == nil || !s.serveRunning() {
+		return nil, triggerScanData{}, errServeNotRunning
+	}
+
+	queued, alreadyQueued, err := s.assets.QueueMCP(ctx, in.AssetID)
+	if err != nil {
+		return nil, triggerScanData{}, fmt.Errorf("trigger scan: %w", err)
+	}
+	return nil, triggerScanData{
+		ScanID:        queued.ScanID,
+		Status:        scanStatusQueued,
+		AlreadyQueued: alreadyQueued,
+	}, nil
 }
 
 // --- list_assets ---------------------------------------------------------

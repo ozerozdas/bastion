@@ -22,6 +22,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
+	"github.com/ozerozdas/bastion/internal/servelock"
 )
 
 // serverServices is the service graph `bastion serve` and `bastion mcp` both
@@ -30,6 +31,7 @@ import (
 // both entrypoints on the same behaviour instead of drifting apart.
 type serverServices struct {
 	db           *sql.DB
+	releaseLock  func()
 	events       *events.Broker
 	connections  *connections.Service
 	reports      *reports.Service
@@ -52,16 +54,25 @@ func newServerServices(ctx context.Context, paths app.Paths, port, concurrency i
 	if paths.DataDir == "" {
 		return nil, errors.New("serve: data directory is not resolved")
 	}
+	// One serve per data directory. The lock also tells `bastion mcp` that a
+	// server is running: a second manager would recover (fail) this one's scans
+	// and race its Trivy database downloads. It is released when Close runs,
+	// including when startup fails below.
+	releaseLock, err := servelock.Acquire(paths.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("serve: %w", err)
+	}
 	// Database setup (migrations) must run even when the caller's context is
 	// already canceled: tests start the server with an immediately canceled
 	// context to exercise the shutdown path.
 	openCtx := context.WithoutCancel(ctx)
 	db, err := deps.openDB(openCtx, paths.DBPath())
 	if err != nil {
+		releaseLock()
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	services := &serverServices{db: db, events: events.NewBroker()}
+	services := &serverServices{db: db, releaseLock: releaseLock, events: events.NewBroker()}
 	ok := false
 	defer func() {
 		if !ok {
@@ -161,8 +172,8 @@ func newServerServices(ctx context.Context, paths app.Paths, port, concurrency i
 }
 
 // Close stops the scan workers, so a running scan is persisted as canceled
-// instead of being cut off by process exit, then releases the Trivy manager
-// and the database.
+// instead of being cut off by process exit, then releases the Trivy manager,
+// the database and the serve lock.
 func (s *serverServices) Close() {
 	if s.scanManager != nil {
 		stopScanManager(s.scanManager)
@@ -172,5 +183,8 @@ func (s *serverServices) Close() {
 	}
 	if s.db != nil {
 		_ = s.db.Close()
+	}
+	if s.releaseLock != nil {
+		s.releaseLock()
 	}
 }

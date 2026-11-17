@@ -137,7 +137,8 @@ UPDATE scans
 SET status = 'failed',
     finished_at = ?1,
     error = ?2
-WHERE status IN ('queued', 'running')
+WHERE status = 'running'
+   OR (status = 'queued' AND "trigger" <> 'api')
 `
 
 type FailUnfinishedScansParams struct {
@@ -145,8 +146,11 @@ type FailUnfinishedScansParams struct {
 	Error      sql.NullString
 }
 
-// Startup recovery: a scan still queued or running when this process starts
-// was cut short by the previous process exiting, so it can never finish.
+// Startup recovery: a scan still running when this process starts was cut
+// short by the previous process exiting, so it can never finish. A queued scan
+// is in the same position, except one the MCP handoff wrote (trigger 'api'):
+// it has no worker yet and the new server's poller picks it up, so it stays
+// queued. Handoff rows survive a restart as a result.
 func (q *Queries) FailUnfinishedScans(ctx context.Context, arg FailUnfinishedScansParams) error {
 	_, err := q.db.ExecContext(ctx, failUnfinishedScans, arg.FinishedAt, arg.Error)
 	return err
@@ -180,6 +184,33 @@ func (q *Queries) FinishScan(ctx context.Context, arg FinishScanParams) error {
 		arg.ID,
 	)
 	return err
+}
+
+const getActiveScanByAsset = `-- name: GetActiveScanByAsset :one
+SELECT id, asset_id, target_ref, status, "trigger", started_at, finished_at, error FROM scans
+WHERE asset_id = ?1
+  AND status IN ('queued', 'running')
+ORDER BY id DESC
+LIMIT 1
+`
+
+// The newest scan of one asset that is still queued or running. The MCP
+// handoff uses it to return the scan that already covers the asset instead of
+// queueing a second one. sql.ErrNoRows means the asset has no active scan.
+func (q *Queries) GetActiveScanByAsset(ctx context.Context, assetID int64) (Scan, error) {
+	row := q.db.QueryRowContext(ctx, getActiveScanByAsset, assetID)
+	var i Scan
+	err := row.Scan(
+		&i.ID,
+		&i.AssetID,
+		&i.TargetRef,
+		&i.Status,
+		&i.Trigger,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.Error,
+	)
+	return i, err
 }
 
 const getPreviousSucceededScan = `-- name: GetPreviousSucceededScan :one
@@ -275,6 +306,47 @@ func (q *Queries) InsertScannerRun(ctx context.Context, arg InsertScannerRunPara
 		arg.RawPath,
 	)
 	return err
+}
+
+const listQueuedScansByTrigger = `-- name: ListQueuedScansByTrigger :many
+SELECT id, asset_id, target_ref, status, "trigger", started_at, finished_at, error FROM scans
+WHERE status = 'queued'
+  AND "trigger" = ?1
+ORDER BY id
+`
+
+// Queued scans a running server still has to pick up. The handoff poller asks
+// for trigger='api'; the id order keeps a poll deterministic.
+func (q *Queries) ListQueuedScansByTrigger(ctx context.Context, trigger string) ([]Scan, error) {
+	rows, err := q.db.QueryContext(ctx, listQueuedScansByTrigger, trigger)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Scan
+	for rows.Next() {
+		var i Scan
+		if err := rows.Scan(
+			&i.ID,
+			&i.AssetID,
+			&i.TargetRef,
+			&i.Status,
+			&i.Trigger,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.Error,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listScannerRunsByScan = `-- name: ListScannerRunsByScan :many

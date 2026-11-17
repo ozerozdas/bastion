@@ -23,6 +23,10 @@ const (
 // ScanTriggerCLI is the scans.trigger value for a scan started from the CLI.
 const ScanTriggerCLI = "cli"
 
+// ScanTriggerAPI is the scans.trigger value for a scan requested through
+// bastion's programmatic surface (bastion mcp); serve's handoff poller runs it.
+const ScanTriggerAPI = "api"
+
 // scanStatusQueued is the state StartScan creates a scan in.
 const scanStatusQueued = "queued"
 
