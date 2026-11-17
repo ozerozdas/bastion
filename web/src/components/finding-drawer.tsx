@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 import {
   useClearFindingState,
@@ -6,6 +7,7 @@ import {
   type Finding,
   type FindingState,
 } from '../api/findings'
+import { llmQuery, useExplainFinding } from '../api/llm'
 import {
   severityLabel,
   severityTone,
@@ -59,6 +61,8 @@ export function FindingDrawer({
   const { panel, onKeyDown } = useDrawerFocus(onClose)
   const setState = useSetFindingState()
   const clearState = useClearFindingState()
+  const { data: llm } = useQuery(llmQuery)
+  const explain = useExplainFinding()
   const [decision, setDecision] = useState<FindingState>('ignored')
   const [reason, setReason] = useState('')
   const [expiryChoice, setExpiryChoice] = useState<ExpiryChoice>('none')
@@ -240,6 +244,43 @@ export function FindingDrawer({
         ) : (
           <p className="text-xs text-faint">{t('finding.noDescription')}</p>
         )}
+
+        {llm?.enabled && llm.model !== '' ? (
+          <section className="flex flex-col gap-2 rounded-md border border-border-subtle bg-bg p-3">
+            <div className="flex items-center gap-2">
+              <h3 className="text-[0.8125rem] font-semibold">
+                {t('finding.explain.title')}
+              </h3>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="ml-auto"
+                disabled={explain.isPending}
+                onClick={() =>
+                  explain.mutate({
+                    assetId: finding.asset_id,
+                    fingerprint: finding.fingerprint,
+                  })
+                }
+              >
+                {explain.isPending
+                  ? t('finding.explain.pending')
+                  : t('finding.explain.action')}
+              </Button>
+            </div>
+            <p className="text-xs text-faint">{t('finding.explain.hint')}</p>
+            {explain.isError ? <ErrorNote error={explain.error} /> : null}
+            {explain.data ? (
+              <>
+                <MarkdownText source={explain.data.text} />
+                <p className="text-[0.6875rem] text-faint">
+                  {t('finding.explain.note', { model: explain.data.model })}
+                </p>
+              </>
+            ) : null}
+          </section>
+        ) : null}
 
         {readOnly ? (
           <p className="rounded-md border border-border-subtle bg-bg p-3 text-xs text-muted">

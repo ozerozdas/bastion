@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 
 import { epssQuery, useSetEPSSEnabled } from '../api/epss'
 import { licencePolicyQuery } from '../api/licence-policy'
+import { llmQuery, useSetLLMSettings } from '../api/llm'
 import {
   notificationsQuery,
   useSetNotificationSettings,
@@ -22,7 +23,7 @@ import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Tabs, type TabItem } from './ui/tabs'
 
-type ConfigurationTab = 'modules' | 'notifications' | 'mcp' | 'appearance'
+type ConfigurationTab = 'modules' | 'notifications' | 'ai' | 'mcp' | 'appearance'
 
 /**
  * SettingsDialog is the Configuration modal (#139, #142, #143): the opt-in
@@ -38,6 +39,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const configurationTabs: TabItem<ConfigurationTab>[] = [
     { value: 'modules', label: t('settings.tabs.modules') },
     { value: 'notifications', label: t('settings.tabs.notifications') },
+    { value: 'ai', label: t('settings.tabs.ai') },
     { value: 'mcp', label: t('settings.tabs.mcp') },
     { value: 'appearance', label: t('settings.tabs.appearance') },
   ]
@@ -86,6 +88,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <AppearanceSettings />
           ) : tab === 'notifications' ? (
             <NotificationsSection />
+          ) : tab === 'ai' ? (
+            <AISection />
           ) : tab === 'mcp' ? (
             <MCPSettings />
           ) : (
@@ -668,6 +672,114 @@ function NotificationsSection() {
         pending={save.isPending}
         onChange={(enabled) => save.mutate({ enabled })}
       />
+    </SettingSection>
+  )
+}
+
+function AISection() {
+  const t = useT()
+  const { data } = useQuery(llmQuery)
+  const save = useSetLLMSettings()
+  const [enabled, setEnabled] = useState(false)
+  const [endpoint, setEndpoint] = useState('')
+  const [model, setModel] = useState('')
+
+  // Seed the form from the server; depend on the individual fields so an
+  // unrelated save does not overwrite what the user is typing.
+  useEffect(() => {
+    if (!data) {
+      return
+    }
+    setEnabled(data.enabled)
+    setEndpoint(data.endpoint)
+    setModel(data.model)
+  }, [data?.enabled, data?.endpoint, data?.model])
+
+  if (!data) {
+    return null
+  }
+
+  const changed =
+    enabled !== data.enabled ||
+    endpoint.trim() !== data.endpoint ||
+    model.trim() !== data.model
+
+  return (
+    <SettingSection title={t('settings.ai.title')} on={enabled}>
+      <p className="text-[0.6875rem] leading-relaxed text-muted">
+        {t('settings.ai.body')}
+      </p>
+
+      <label className="mt-1 flex items-center gap-2 text-[0.6875rem] text-muted">
+        <Checkbox
+          checked={enabled}
+          onChange={(event) => setEnabled(event.target.checked)}
+        />
+        {t('settings.ai.enabled')}
+      </label>
+
+      <label
+        htmlFor="ai-endpoint"
+        className="mt-1 text-[0.6875rem] text-muted"
+      >
+        {t('settings.ai.endpoint')}
+      </label>
+      <input
+        id="ai-endpoint"
+        type="text"
+        autoComplete="off"
+        value={endpoint}
+        placeholder={t('settings.ai.endpointPlaceholder')}
+        onChange={(event) => setEndpoint(event.target.value)}
+        className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint"
+      />
+      <p className="text-[0.6875rem] text-faint">
+        {t('settings.ai.endpointHint')}
+      </p>
+
+      <label htmlFor="ai-model" className="mt-1 text-[0.6875rem] text-muted">
+        {t('settings.ai.model')}
+      </label>
+      <input
+        id="ai-model"
+        type="text"
+        autoComplete="off"
+        value={model}
+        placeholder={t('settings.ai.modelPlaceholder')}
+        onChange={(event) => setModel(event.target.value)}
+        className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint"
+      />
+      <p className="text-[0.6875rem] text-faint">
+        {t('settings.ai.modelHint')}
+      </p>
+
+      <Button
+        type="button"
+        size="sm"
+        className="mt-1 self-start"
+        disabled={!changed || endpoint.trim() === '' || save.isPending}
+        onClick={() =>
+          save.mutate({
+            enabled,
+            endpoint: endpoint.trim(),
+            model: model.trim(),
+          })
+        }
+      >
+        {save.isPending ? t('settings.ai.saving') : t('settings.ai.save')}
+      </Button>
+      {save.isError ? (
+        <p className="text-[0.6875rem] text-critical">
+          {save.error instanceof Error
+            ? save.error.message
+            : t('settings.ai.saveFailed')}
+        </p>
+      ) : null}
+      {enabled && model.trim() === '' ? (
+        <p className="text-[0.6875rem] text-critical">
+          {t('settings.ai.modelRequired')}
+        </p>
+      ) : null}
     </SettingSection>
   )
 }

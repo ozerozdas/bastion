@@ -120,6 +120,15 @@ tags:
       The first scan of an asset sends nothing. The Slack webhook and the SMTP
       password are stored in the OS keyring and never returned: the API only
       reports whether each is configured.
+  - name: llm
+    description: |
+      The optional local LLM (ADR-003, #48). Off by default. When enabled,
+      bastion posts one finding to an OpenAI-compatible endpoint on the
+      loopback interface and returns the model's explanation. The endpoint
+      must be an http(s) URL on a loopback IP literal or `localhost`; nothing
+      is resolved and no other host is accepted. Target-derived text travels
+      as delimited untrusted data, and the answer is advisory only: it never
+      triggers an action.
   - name: reports
     description: |
       Aggregates for the Dashboard (PROJECT_SPEC.md §7.1). Every number counts
@@ -1857,6 +1866,132 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /api/llm:
+    get:
+      operationId: getLLMSettings
+      summary: Read the local-model settings.
+      description: |
+        Returns the master switch, the endpoint and the model name. The
+        endpoint is loopback-only and there is no credential.
+      tags: [llm]
+      responses:
+        "200":
+          description: The stored local-model settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LLMSettings"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setLLMSettings
+      summary: Store the local-model settings.
+      description: |
+        Writes only the fields the body carries; every other stored setting is
+        left untouched. The endpoint must be an http(s) URL whose host is a
+        loopback IP literal or `localhost`; a name is never resolved. Any other
+        endpoint, a model name that is too long, or a malformed URL is a 422.
+      tags: [llm]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetLLMSettingsRequest"
+      responses:
+        "200":
+          description: The settings were stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LLMSettings"
+        "400":
+          description: |
+            The body is missing or malformed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: |
+            The endpoint is not loopback http(s), or the model name is longer
+            than 200 characters. Nothing was stored.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/assets/{assetId}/findings/{fingerprint}/explain:
+    post:
+      operationId: explainFinding
+      summary: Explain one finding with the optional local model.
+      description: |
+        Sends the finding to the configured local OpenAI-compatible endpoint
+        (`POST {endpoint}/chat/completions`) and returns the model's answer as
+        Markdown. The finding's text is sent as delimited untrusted data and
+        the answer is advisory: this endpoint never changes a finding, a scan
+        or any other state. It answers 400 when the feature is off or no model
+        is configured, 404 when the asset has no such finding, and 502 when
+        the local endpoint fails.
+      tags: [llm]
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          description: The asset the finding belongs to.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - $ref: "#/components/parameters/Fingerprint"
+      responses:
+        "200":
+          description: The model's explanation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExplainFindingResponse"
+        "400":
+          description: |
+            The local model is disabled, no model is configured, or the stored
+            endpoint is no longer valid.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: The asset or its finding does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "502":
+          description: The local model endpoint failed or returned no answer.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/reports/dashboard:
     get:
       operationId: getDashboard
@@ -2466,6 +2601,70 @@ components:
           description: |
             Removes the stored SMTP password. Cannot be combined with
             `email_password`.
+    LLMSettings:
+      type: object
+      title: LLMSettings
+      description: |
+        The stored local-model choices (ADR-003, #48). The endpoint is an
+        OpenAI-compatible base URL on the loopback interface; there is no
+        credential.
+      additionalProperties: false
+      required: [enabled, endpoint, model]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            The master switch. With it off no request reaches a model server
+            and the finding drawer shows no Explain action.
+        endpoint:
+          type: string
+          maxLength: 2048
+          description: |
+            The base URL, for example `http://127.0.0.1:11434/v1` (Ollama).
+            Only http(s) on a loopback IP literal or `localhost` is accepted;
+            a name is never resolved.
+        model:
+          type: string
+          maxLength: 200
+          description: |
+            The model name the server expects, for example `llama3.1`. Empty
+            until the user chooses one; an explanation requires it.
+    SetLLMSettingsRequest:
+      type: object
+      title: SetLLMSettingsRequest
+      description: |
+        The settable local-model fields. Omitted fields are left untouched.
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        endpoint:
+          type: string
+          maxLength: 2048
+          description: |
+            An http(s) base URL on a loopback IP literal or `localhost`. Any
+            other host, a non-http scheme, embedded credentials, a query or a
+            fragment is refused.
+        model:
+          type: string
+          maxLength: 200
+          description: The model name, for example `llama3.1`.
+    ExplainFindingResponse:
+      type: object
+      title: ExplainFindingResponse
+      description: |
+        The local model's explanation, as Markdown. It is advisory only: no
+        state was changed to produce it. `model` labels the answer even if the
+        setting changes while the drawer is open.
+      additionalProperties: false
+      required: [text, model]
+      properties:
+        text:
+          type: string
+          description: The explanation, capped at 8 KiB.
+        model:
+          type: string
+          description: The model that produced the answer.
     LicencePolicyAction:
       type: string
       title: LicencePolicyAction

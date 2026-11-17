@@ -1178,6 +1178,17 @@ type EcrTag struct {
 	Tags []string `json:"tags"`
 }
 
+// ExplainFindingResponse The local model's explanation, as Markdown. It is advisory only: no
+// state was changed to produce it. `model` labels the answer even if the
+// setting changes while the drawer is open.
+type ExplainFindingResponse struct {
+	// Model The model that produced the answer.
+	Model string `json:"model"`
+
+	// Text The explanation, capped at 8 KiB.
+	Text string `json:"text"`
+}
+
 // Finding One normalized finding of an asset's latest succeeded scan. Optional
 // fields are absent when the scanner did not provide them.
 type Finding struct {
@@ -1517,6 +1528,24 @@ type Health struct {
 
 // HealthStatus Always `ok` while the server is accepting requests.
 type HealthStatus string
+
+// LLMSettings The stored local-model choices (ADR-003, #48). The endpoint is an
+// OpenAI-compatible base URL on the loopback interface; there is no
+// credential.
+type LLMSettings struct {
+	// Enabled The master switch. With it off no request reaches a model server
+	// and the finding drawer shows no Explain action.
+	Enabled bool `json:"enabled"`
+
+	// Endpoint The base URL, for example `http://127.0.0.1:11434/v1` (Ollama).
+	// Only http(s) on a loopback IP literal or `localhost` is accepted;
+	// a name is never resolved.
+	Endpoint string `json:"endpoint"`
+
+	// Model The model name the server expects, for example `llama3.1`. Empty
+	// until the user chooses one; an explanation requires it.
+	Model string `json:"model"`
+}
 
 // LastScan defines model for LastScan.
 type LastScan struct {
@@ -1893,6 +1922,19 @@ type SetFindingStateRequest struct {
 	State FindingState `json:"state"`
 }
 
+// SetLLMSettingsRequest The settable local-model fields. Omitted fields are left untouched.
+type SetLLMSettingsRequest struct {
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Endpoint An http(s) base URL on a loopback IP literal or `localhost`. Any
+	// other host, a non-http scheme, embedded credentials, a query or a
+	// fragment is refused.
+	Endpoint *string `json:"endpoint,omitempty"`
+
+	// Model The model name, for example `llama3.1`.
+	Model *string `json:"model,omitempty"`
+}
+
 // SetNotificationSettingsRequest The settable notification fields. Omitted fields are left untouched;
 // `slack_webhook` and `email_password` are write-only and
 // `clear_slack_webhook` and `clear_email_password` remove the stored
@@ -2262,6 +2304,9 @@ type SetFindingStateJSONRequestBody = SetFindingStateRequest
 // SetLicencePolicyJSONRequestBody defines body for SetLicencePolicy for application/json ContentType.
 type SetLicencePolicyJSONRequestBody = LicencePolicy
 
+// SetLLMSettingsJSONRequestBody defines body for SetLLMSettings for application/json ContentType.
+type SetLLMSettingsJSONRequestBody = SetLLMSettingsRequest
+
 // SetNotificationSettingsJSONRequestBody defines body for SetNotificationSettings for application/json ContentType.
 type SetNotificationSettingsJSONRequestBody = SetNotificationSettingsRequest
 
@@ -2443,6 +2488,9 @@ type ServerInterface interface {
 	// CreateAsset Track a repository or a local path.
 	// (POST /api/assets)
 	CreateAsset(w http.ResponseWriter, r *http.Request)
+	// ExplainFinding Explain one finding with the optional local model.
+	// (POST /api/assets/{assetId}/findings/{fingerprint}/explain)
+	ExplainFinding(w http.ResponseWriter, r *http.Request, assetId int64, fingerprint Fingerprint)
 	// DeleteAsset Archive an asset.
 	// (DELETE /api/assets/{id})
 	DeleteAsset(w http.ResponseWriter, r *http.Request, id AssetID)
@@ -2506,6 +2554,12 @@ type ServerInterface interface {
 	// SetLicencePolicy Replace the licence allow/deny policy.
 	// (PUT /api/licence-policy)
 	SetLicencePolicy(w http.ResponseWriter, r *http.Request, params SetLicencePolicyParams)
+	// GetLLMSettings Read the local-model settings.
+	// (GET /api/llm)
+	GetLLMSettings(w http.ResponseWriter, r *http.Request)
+	// SetLLMSettings Store the local-model settings.
+	// (PUT /api/llm)
+	SetLLMSettings(w http.ResponseWriter, r *http.Request)
 	// GetMCPSetup Report the command that starts the MCP server.
 	// (GET /api/mcp)
 	GetMCPSetup(w http.ResponseWriter, r *http.Request)
@@ -2605,6 +2659,41 @@ func (siw *ServerInterfaceWrapper) CreateAsset(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateAsset(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExplainFinding operation middleware
+func (siw *ServerInterfaceWrapper) ExplainFinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "assetId" -------------
+	var assetId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "assetId", r.PathValue("assetId"), &assetId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assetId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fingerprint" -------------
+	var fingerprint Fingerprint
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fingerprint", r.PathValue("fingerprint"), &fingerprint, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fingerprint", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExplainFinding(w, r, assetId, fingerprint)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3221,6 +3310,34 @@ func (siw *ServerInterfaceWrapper) SetLicencePolicy(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetLicencePolicy(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetLLMSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetLLMSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLLMSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetLLMSettings operation middleware
+func (siw *ServerInterfaceWrapper) SetLLMSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetLLMSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3907,6 +4024,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications", wrapper.GetNotificationSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/notifications", wrapper.SetNotificationSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications/test", wrapper.SendTestNotification)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/llm", wrapper.GetLLMSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/llm", wrapper.SetLLMSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assets/{assetId}/findings/{fingerprint}/explain", wrapper.ExplainFinding)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/dashboard", wrapper.GetDashboard)
 
 	return m
@@ -4191,6 +4311,162 @@ func (response CreateAsset500ApplicationProblemPlusJSONResponse) VisitCreateAsse
 type CreateAsset502ApplicationProblemPlusJSONResponse Problem
 
 func (response CreateAsset502ApplicationProblemPlusJSONResponse) VisitCreateAssetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExplainFindingRequestObject struct {
+	AssetId     int64       `json:"assetId"`
+	Fingerprint Fingerprint `json:"fingerprint"`
+}
+
+type ExplainFindingResponseObject interface {
+	VisitExplainFindingResponse(w http.ResponseWriter) error
+}
+
+type ExplainFinding200JSONResponse ExplainFindingResponse
+
+func (response ExplainFinding200JSONResponse) VisitExplainFindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExplainFinding400ApplicationProblemPlusJSONResponse Problem
+
+func (response ExplainFinding400ApplicationProblemPlusJSONResponse) VisitExplainFindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExplainFinding401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ExplainFinding401ApplicationProblemPlusJSONResponse) VisitExplainFindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExplainFinding403ResponseHeaders struct {
+	ContentType *string
+}
+
+type ExplainFinding403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ExplainFinding403ResponseHeaders
+}
+
+func (response ExplainFinding403ApplicationProblemPlusJSONResponse) VisitExplainFindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExplainFinding404ApplicationProblemPlusJSONResponse Problem
+
+func (response ExplainFinding404ApplicationProblemPlusJSONResponse) VisitExplainFindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExplainFinding421ResponseHeaders struct {
+	ContentType *string
+}
+
+type ExplainFinding421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ExplainFinding421ResponseHeaders
+}
+
+func (response ExplainFinding421ApplicationProblemPlusJSONResponse) VisitExplainFindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExplainFinding500ResponseHeaders struct {
+	ContentType *string
+}
+
+type ExplainFinding500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ExplainFinding500ResponseHeaders
+}
+
+func (response ExplainFinding500ApplicationProblemPlusJSONResponse) VisitExplainFindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExplainFinding502ApplicationProblemPlusJSONResponse Problem
+
+func (response ExplainFinding502ApplicationProblemPlusJSONResponse) VisitExplainFindingResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7165,6 +7441,259 @@ func (response SetLicencePolicy500ApplicationProblemPlusJSONResponse) VisitSetLi
 	return err
 }
 
+type GetLLMSettingsRequestObject struct {
+}
+
+type GetLLMSettingsResponseObject interface {
+	VisitGetLLMSettingsResponse(w http.ResponseWriter) error
+}
+
+type GetLLMSettings200JSONResponse LLMSettings
+
+func (response GetLLMSettings200JSONResponse) VisitGetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLLMSettings401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetLLMSettings401ApplicationProblemPlusJSONResponse) VisitGetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLLMSettings403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetLLMSettings403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetLLMSettings403ResponseHeaders
+}
+
+func (response GetLLMSettings403ApplicationProblemPlusJSONResponse) VisitGetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLLMSettings421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetLLMSettings421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetLLMSettings421ResponseHeaders
+}
+
+func (response GetLLMSettings421ApplicationProblemPlusJSONResponse) VisitGetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLLMSettings500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetLLMSettings500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetLLMSettings500ResponseHeaders
+}
+
+func (response GetLLMSettings500ApplicationProblemPlusJSONResponse) VisitGetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLLMSettingsRequestObject struct {
+	Body *SetLLMSettingsJSONRequestBody
+}
+
+type SetLLMSettingsResponseObject interface {
+	VisitSetLLMSettingsResponse(w http.ResponseWriter) error
+}
+
+type SetLLMSettings200JSONResponse LLMSettings
+
+func (response SetLLMSettings200JSONResponse) VisitSetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLLMSettings400ApplicationProblemPlusJSONResponse Problem
+
+func (response SetLLMSettings400ApplicationProblemPlusJSONResponse) VisitSetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLLMSettings401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetLLMSettings401ApplicationProblemPlusJSONResponse) VisitSetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLLMSettings403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetLLMSettings403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetLLMSettings403ResponseHeaders
+}
+
+func (response SetLLMSettings403ApplicationProblemPlusJSONResponse) VisitSetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLLMSettings421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetLLMSettings421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetLLMSettings421ResponseHeaders
+}
+
+func (response SetLLMSettings421ApplicationProblemPlusJSONResponse) VisitSetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLLMSettings422ApplicationProblemPlusJSONResponse Problem
+
+func (response SetLLMSettings422ApplicationProblemPlusJSONResponse) VisitSetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetLLMSettings500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetLLMSettings500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetLLMSettings500ResponseHeaders
+}
+
+func (response SetLLMSettings500ApplicationProblemPlusJSONResponse) VisitSetLLMSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMCPSetupRequestObject struct {
 }
 
@@ -10117,6 +10646,9 @@ type StrictServerInterface interface {
 	// CreateAsset Track a repository or a local path.
 	// (POST /api/assets)
 	CreateAsset(ctx context.Context, request CreateAssetRequestObject) (CreateAssetResponseObject, error)
+	// ExplainFinding Explain one finding with the optional local model.
+	// (POST /api/assets/{assetId}/findings/{fingerprint}/explain)
+	ExplainFinding(ctx context.Context, request ExplainFindingRequestObject) (ExplainFindingResponseObject, error)
 	// DeleteAsset Archive an asset.
 	// (DELETE /api/assets/{id})
 	DeleteAsset(ctx context.Context, request DeleteAssetRequestObject) (DeleteAssetResponseObject, error)
@@ -10180,6 +10712,12 @@ type StrictServerInterface interface {
 	// SetLicencePolicy Replace the licence allow/deny policy.
 	// (PUT /api/licence-policy)
 	SetLicencePolicy(ctx context.Context, request SetLicencePolicyRequestObject) (SetLicencePolicyResponseObject, error)
+	// GetLLMSettings Read the local-model settings.
+	// (GET /api/llm)
+	GetLLMSettings(ctx context.Context, request GetLLMSettingsRequestObject) (GetLLMSettingsResponseObject, error)
+	// SetLLMSettings Store the local-model settings.
+	// (PUT /api/llm)
+	SetLLMSettings(ctx context.Context, request SetLLMSettingsRequestObject) (SetLLMSettingsResponseObject, error)
 	// GetMCPSetup Report the command that starts the MCP server.
 	// (GET /api/mcp)
 	GetMCPSetup(ctx context.Context, request GetMCPSetupRequestObject) (GetMCPSetupResponseObject, error)
@@ -10338,6 +10876,33 @@ func (sh *strictHandler) CreateAsset(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateAssetResponseObject); ok {
 		if err := validResponse.VisitCreateAssetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExplainFinding operation middleware
+func (sh *strictHandler) ExplainFinding(w http.ResponseWriter, r *http.Request, assetId int64, fingerprint Fingerprint) {
+	var request ExplainFindingRequestObject
+
+	request.AssetId = assetId
+	request.Fingerprint = fingerprint
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExplainFinding(ctx, request.(ExplainFindingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExplainFinding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExplainFindingResponseObject); ok {
+		if err := validResponse.VisitExplainFindingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -10927,6 +11492,61 @@ func (sh *strictHandler) SetLicencePolicy(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetLicencePolicyResponseObject); ok {
 		if err := validResponse.VisitSetLicencePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetLLMSettings operation middleware
+func (sh *strictHandler) GetLLMSettings(w http.ResponseWriter, r *http.Request) {
+	var request GetLLMSettingsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLLMSettings(ctx, request.(GetLLMSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLLMSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetLLMSettingsResponseObject); ok {
+		if err := validResponse.VisitGetLLMSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetLLMSettings operation middleware
+func (sh *strictHandler) SetLLMSettings(w http.ResponseWriter, r *http.Request) {
+	var request SetLLMSettingsRequestObject
+
+	var body SetLLMSettingsJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetLLMSettings(ctx, request.(SetLLMSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetLLMSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetLLMSettingsResponseObject); ok {
+		if err := validResponse.VisitSetLLMSettingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

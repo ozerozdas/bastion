@@ -67,6 +67,14 @@ test('opens Configuration from the sidebar and closes with Escape', async ({
   ).toBeFocused()
   await page.keyboard.press('ArrowRight')
   await expect(
+    dialog.getByRole('tab', { name: 'AI', exact: true }),
+  ).toBeFocused()
+  await expect(
+    dialog.getByRole('tab', { name: 'AI', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByLabel('Endpoint')).toBeVisible()
+  await page.keyboard.press('ArrowRight')
+  await expect(
     dialog.getByRole('tab', { name: 'MCP', exact: true }),
   ).toBeFocused()
   await expect(

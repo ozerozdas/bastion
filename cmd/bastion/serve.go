@@ -152,6 +152,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		LicencePolicy: services.licence,
 		Preferences:   services.preferences,
 		Notifications: services.notify,
+		LLM:           services.llm,
 		MCP:           mcpSetup,
 	})
 	if err != nil {

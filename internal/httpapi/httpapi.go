@@ -27,6 +27,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
+	"github.com/ozerozdas/bastion/internal/localllm"
 	"github.com/ozerozdas/bastion/internal/notifications"
 	"github.com/ozerozdas/bastion/internal/preferences"
 	"github.com/ozerozdas/bastion/internal/reports"
@@ -113,6 +114,10 @@ type Config struct {
 	// endpoint (#44/#45). serve wires the keyring-backed service; nil answers
 	// those endpoints with 500.
 	Notifications *notifications.Service
+	// LLM serves GET and PUT /api/llm and the finding explanation endpoint
+	// (ADR-003, #48). serve wires the file-backed service; nil answers those
+	// endpoints with 500.
+	LLM *localllm.Service
 	// MCP serves GET /api/mcp (#163): the command that starts `bastion mcp`
 	// for this install. serve resolves it from the running binary; the zero
 	// value answers the endpoint with 500.
@@ -179,6 +184,10 @@ type Server struct {
 	// (#44/#45), with the same nil-means-unavailable contract.
 	notifications *notifications.Service
 
+	// llm backs the local-model settings and the finding explanation endpoint
+	// (ADR-003, #48), with the same nil-means-unavailable contract.
+	llm *localllm.Service
+
 	// mcp backs GET /api/mcp (#163). The zero value means serve did not resolve
 	// the running binary, and the endpoint answers 500.
 	mcp MCPSetup
@@ -229,6 +238,7 @@ func New(cfg Config) (*Server, error) {
 		licencePolicy: cfg.LicencePolicy,
 		preferences:   cfg.Preferences,
 		notifications: cfg.Notifications,
+		llm:           cfg.LLM,
 		mcp:           cfg.MCP,
 		token:         token,
 		session:       session,
