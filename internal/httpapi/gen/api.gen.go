@@ -266,6 +266,24 @@ func (e LicencePolicyAction) Valid() bool {
 	}
 }
 
+// Defines values for NotificationThreshold.
+const (
+	NotificationThresholdCritical NotificationThreshold = "critical"
+	NotificationThresholdHigh     NotificationThreshold = "high"
+)
+
+// Valid indicates whether the value is a known member of the NotificationThreshold enum.
+func (e NotificationThreshold) Valid() bool {
+	switch e {
+	case NotificationThresholdCritical:
+		return true
+	case NotificationThresholdHigh:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Reachability.
 const (
 	ReachabilityReachable   Reachability = "reachable"
@@ -1427,6 +1445,28 @@ type LicencePolicy struct {
 // rule applies.
 type LicencePolicyAction string
 
+// NotificationSettings The stored notification choices. The Slack webhook is absent by design:
+// the API reports only whether one is configured.
+type NotificationSettings struct {
+	// Enabled The master switch. With it off no notifier is called after a scan.
+	Enabled bool `json:"enabled"`
+
+	// SlackConfigured Whether a Slack webhook is stored in the OS keyring. The URL itself
+	// is never returned.
+	SlackConfigured bool `json:"slack_configured"`
+
+	// SlackEnabled Whether the Slack notifier is called after a scan.
+	SlackEnabled bool `json:"slack_enabled"`
+
+	// Threshold The lowest severity that makes a new finding notify. `high` counts
+	// critical and high findings; `critical` counts only critical ones.
+	Threshold NotificationThreshold `json:"threshold"`
+}
+
+// NotificationThreshold The lowest severity that makes a new finding notify. `high` counts
+// critical and high findings; `critical` counts only critical ones.
+type NotificationThreshold string
+
 // OutdatedStatus The opt-in outdated-package lookup as the UI and the CLI see it. The
 // setting is off by default; with it off no request reaches deps.dev and
 // findings carry no latest version.
@@ -1704,6 +1744,25 @@ type SetFindingStateRequest struct {
 
 	// State The user decision that hides a finding across scans.
 	State FindingState `json:"state"`
+}
+
+// SetNotificationSettingsRequest The settable notification fields. Omitted fields are left untouched;
+// `slack_webhook` is write-only and `clear_slack_webhook` removes the
+// stored webhook.
+type SetNotificationSettingsRequest struct {
+	// ClearSlackWebhook Removes the stored webhook. Cannot be combined with
+	// `slack_webhook`.
+	ClearSlackWebhook *bool `json:"clear_slack_webhook,omitempty"`
+	Enabled           *bool `json:"enabled,omitempty"`
+	SlackEnabled      *bool `json:"slack_enabled,omitempty"`
+
+	// SlackWebhook An https incoming-webhook URL on hooks.slack.com. Stored in the OS
+	// keyring, never in SQLite and never returned.
+	SlackWebhook *string `json:"slack_webhook,omitempty"`
+
+	// Threshold The lowest severity that makes a new finding notify. `high` counts
+	// critical and high findings; `critical` counts only critical ones.
+	Threshold *NotificationThreshold `json:"threshold,omitempty"`
 }
 
 // SetOutdatedEnabledRequest defines model for SetOutdatedEnabledRequest.
@@ -2026,6 +2085,9 @@ type SetFindingStateJSONRequestBody = SetFindingStateRequest
 // SetLicencePolicyJSONRequestBody defines body for SetLicencePolicy for application/json ContentType.
 type SetLicencePolicyJSONRequestBody = LicencePolicy
 
+// SetNotificationSettingsJSONRequestBody defines body for SetNotificationSettings for application/json ContentType.
+type SetNotificationSettingsJSONRequestBody = SetNotificationSettingsRequest
+
 // SetOutdatedEnabledJSONRequestBody defines body for SetOutdatedEnabled for application/json ContentType.
 type SetOutdatedEnabledJSONRequestBody = SetOutdatedEnabledRequest
 
@@ -2249,6 +2311,15 @@ type ServerInterface interface {
 	// SetLicencePolicy Replace the licence allow/deny policy.
 	// (PUT /api/licence-policy)
 	SetLicencePolicy(w http.ResponseWriter, r *http.Request, params SetLicencePolicyParams)
+	// GetNotificationSettings Read the notification settings.
+	// (GET /api/notifications)
+	GetNotificationSettings(w http.ResponseWriter, r *http.Request)
+	// SetNotificationSettings Store the notification settings.
+	// (PUT /api/notifications)
+	SetNotificationSettings(w http.ResponseWriter, r *http.Request)
+	// SendTestNotification Send a test message to Slack.
+	// (POST /api/notifications/test)
+	SendTestNotification(w http.ResponseWriter, r *http.Request)
 	// GetOutdatedStatus Report the outdated-package lookup state.
 	// (GET /api/outdated)
 	GetOutdatedStatus(w http.ResponseWriter, r *http.Request)
@@ -2935,6 +3006,48 @@ func (siw *ServerInterfaceWrapper) SetLicencePolicy(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetNotificationSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetNotificationSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNotificationSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetNotificationSettings operation middleware
+func (siw *ServerInterfaceWrapper) SetNotificationSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetNotificationSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendTestNotification operation middleware
+func (siw *ServerInterfaceWrapper) SendTestNotification(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendTestNotification(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetOutdatedStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetOutdatedStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -3551,6 +3664,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/licence-policy", wrapper.SetLicencePolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/preferences", wrapper.GetPreferences)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/preferences", wrapper.SetPreferences)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications", wrapper.GetNotificationSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/notifications", wrapper.SetNotificationSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications/test", wrapper.SendTestNotification)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/dashboard", wrapper.GetDashboard)
 
 	return m
@@ -6625,6 +6741,379 @@ func (response SetLicencePolicy500ApplicationProblemPlusJSONResponse) VisitSetLi
 	return err
 }
 
+type GetNotificationSettingsRequestObject struct {
+}
+
+type GetNotificationSettingsResponseObject interface {
+	VisitGetNotificationSettingsResponse(w http.ResponseWriter) error
+}
+
+type GetNotificationSettings200JSONResponse NotificationSettings
+
+func (response GetNotificationSettings200JSONResponse) VisitGetNotificationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationSettings401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetNotificationSettings401ApplicationProblemPlusJSONResponse) VisitGetNotificationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationSettings403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetNotificationSettings403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetNotificationSettings403ResponseHeaders
+}
+
+func (response GetNotificationSettings403ApplicationProblemPlusJSONResponse) VisitGetNotificationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationSettings421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetNotificationSettings421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetNotificationSettings421ResponseHeaders
+}
+
+func (response GetNotificationSettings421ApplicationProblemPlusJSONResponse) VisitGetNotificationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNotificationSettings500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetNotificationSettings500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetNotificationSettings500ResponseHeaders
+}
+
+func (response GetNotificationSettings500ApplicationProblemPlusJSONResponse) VisitGetNotificationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetNotificationSettingsRequestObject struct {
+	Body *SetNotificationSettingsJSONRequestBody
+}
+
+type SetNotificationSettingsResponseObject interface {
+	VisitSetNotificationSettingsResponse(w http.ResponseWriter) error
+}
+
+type SetNotificationSettings200JSONResponse NotificationSettings
+
+func (response SetNotificationSettings200JSONResponse) VisitSetNotificationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetNotificationSettings400ApplicationProblemPlusJSONResponse Problem
+
+func (response SetNotificationSettings400ApplicationProblemPlusJSONResponse) VisitSetNotificationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetNotificationSettings401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetNotificationSettings401ApplicationProblemPlusJSONResponse) VisitSetNotificationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetNotificationSettings403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetNotificationSettings403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetNotificationSettings403ResponseHeaders
+}
+
+func (response SetNotificationSettings403ApplicationProblemPlusJSONResponse) VisitSetNotificationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetNotificationSettings421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetNotificationSettings421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetNotificationSettings421ResponseHeaders
+}
+
+func (response SetNotificationSettings421ApplicationProblemPlusJSONResponse) VisitSetNotificationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetNotificationSettings500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetNotificationSettings500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetNotificationSettings500ResponseHeaders
+}
+
+func (response SetNotificationSettings500ApplicationProblemPlusJSONResponse) VisitSetNotificationSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendTestNotificationRequestObject struct {
+}
+
+type SendTestNotificationResponseObject interface {
+	VisitSendTestNotificationResponse(w http.ResponseWriter) error
+}
+
+type SendTestNotification204Response struct {
+}
+
+func (response SendTestNotification204Response) VisitSendTestNotificationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SendTestNotification400ApplicationProblemPlusJSONResponse Problem
+
+func (response SendTestNotification400ApplicationProblemPlusJSONResponse) VisitSendTestNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendTestNotification401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SendTestNotification401ApplicationProblemPlusJSONResponse) VisitSendTestNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendTestNotification403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SendTestNotification403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SendTestNotification403ResponseHeaders
+}
+
+func (response SendTestNotification403ApplicationProblemPlusJSONResponse) VisitSendTestNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendTestNotification421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SendTestNotification421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SendTestNotification421ResponseHeaders
+}
+
+func (response SendTestNotification421ApplicationProblemPlusJSONResponse) VisitSendTestNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendTestNotification500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SendTestNotification500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SendTestNotification500ResponseHeaders
+}
+
+func (response SendTestNotification500ApplicationProblemPlusJSONResponse) VisitSendTestNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendTestNotification502ApplicationProblemPlusJSONResponse Problem
+
+func (response SendTestNotification502ApplicationProblemPlusJSONResponse) VisitSendTestNotificationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetOutdatedStatusRequestObject struct {
 }
 
@@ -9152,6 +9641,15 @@ type StrictServerInterface interface {
 	// SetLicencePolicy Replace the licence allow/deny policy.
 	// (PUT /api/licence-policy)
 	SetLicencePolicy(ctx context.Context, request SetLicencePolicyRequestObject) (SetLicencePolicyResponseObject, error)
+	// GetNotificationSettings Read the notification settings.
+	// (GET /api/notifications)
+	GetNotificationSettings(ctx context.Context, request GetNotificationSettingsRequestObject) (GetNotificationSettingsResponseObject, error)
+	// SetNotificationSettings Store the notification settings.
+	// (PUT /api/notifications)
+	SetNotificationSettings(ctx context.Context, request SetNotificationSettingsRequestObject) (SetNotificationSettingsResponseObject, error)
+	// SendTestNotification Send a test message to Slack.
+	// (POST /api/notifications/test)
+	SendTestNotification(ctx context.Context, request SendTestNotificationRequestObject) (SendTestNotificationResponseObject, error)
 	// GetOutdatedStatus Report the outdated-package lookup state.
 	// (GET /api/outdated)
 	GetOutdatedStatus(ctx context.Context, request GetOutdatedStatusRequestObject) (GetOutdatedStatusResponseObject, error)
@@ -9854,6 +10352,85 @@ func (sh *strictHandler) SetLicencePolicy(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetLicencePolicyResponseObject); ok {
 		if err := validResponse.VisitSetLicencePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetNotificationSettings operation middleware
+func (sh *strictHandler) GetNotificationSettings(w http.ResponseWriter, r *http.Request) {
+	var request GetNotificationSettingsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNotificationSettings(ctx, request.(GetNotificationSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNotificationSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetNotificationSettingsResponseObject); ok {
+		if err := validResponse.VisitGetNotificationSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetNotificationSettings operation middleware
+func (sh *strictHandler) SetNotificationSettings(w http.ResponseWriter, r *http.Request) {
+	var request SetNotificationSettingsRequestObject
+
+	var body SetNotificationSettingsJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetNotificationSettings(ctx, request.(SetNotificationSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetNotificationSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetNotificationSettingsResponseObject); ok {
+		if err := validResponse.VisitSetNotificationSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendTestNotification operation middleware
+func (sh *strictHandler) SendTestNotification(w http.ResponseWriter, r *http.Request) {
+	var request SendTestNotificationRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendTestNotification(ctx, request.(SendTestNotificationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendTestNotification")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendTestNotificationResponseObject); ok {
+		if err := validResponse.VisitSendTestNotificationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

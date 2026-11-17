@@ -56,6 +56,8 @@ type pipelineConfig struct {
 	Concurrency int
 	// Events receives scan lifecycle events; nil means none.
 	Events jobs.Publisher
+	// Notify is told after a scan succeeds; nil means no notification.
+	Notify jobs.CompletionListener
 	// Resolve turns an asset into a fetchable target.
 	Resolve jobs.ResolveFunc
 }
@@ -81,6 +83,7 @@ func newScanManager(cfg pipelineConfig) (*jobs.Manager, error) {
 		Options:      func() scanners.Options { return cfg.Options },
 		Concurrency:  cfg.Concurrency,
 		Events:       cfg.Events,
+		Notify:       cfg.Notify,
 		Resolve:      cfg.Resolve,
 	})
 	if err != nil {
@@ -278,7 +281,7 @@ const serverScanShutdownGrace = 10 * time.Second
 // scan can never stay queued forever. bus receives the lifecycle events the
 // SSE endpoint streams. trivyDB is the vulnerability DB manager the scans and
 // the /api/trivy-db endpoints share.
-func newServerScanManager(ctx context.Context, db *sql.DB, paths app.Paths, concurrency int, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager, outdated jobs.OutdatedMatcher, reachability jobs.ReachabilityEnricher, sast *opengrep.Service) (*jobs.Manager, error) {
+func newServerScanManager(ctx context.Context, db *sql.DB, paths app.Paths, concurrency int, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager, outdated jobs.OutdatedMatcher, reachability jobs.ReachabilityEnricher, sast *opengrep.Service, notify jobs.CompletionListener) (*jobs.Manager, error) {
 	hmacKey, err := secrets.LocalKey(secretStore)
 	if err != nil {
 		// Only secret fingerprints need the key; everything else still works,
@@ -311,6 +314,7 @@ func newServerScanManager(ctx context.Context, db *sql.DB, paths app.Paths, conc
 		Reachability: reachability,
 		Concurrency:  concurrency,
 		Events:       bus,
+		Notify:       notify,
 		Resolve:      newRepoResolver(db, tokens, version),
 	})
 	if err != nil {

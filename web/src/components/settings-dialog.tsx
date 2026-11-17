@@ -3,6 +3,11 @@ import { useState } from 'react'
 
 import { epssQuery, useSetEPSSEnabled } from '../api/epss'
 import { licencePolicyQuery } from '../api/licence-policy'
+import {
+  notificationsQuery,
+  useSetNotificationSettings,
+  useTestNotification,
+} from '../api/notifications'
 import { outdatedQuery, useSetOutdatedEnabled } from '../api/outdated'
 import { reachabilityQuery, useSetReachabilityEnabled } from '../api/reachability'
 import { sastQuery, useSetSASTEnabled } from '../api/sast'
@@ -13,9 +18,10 @@ import { useDrawerFocus } from './drawer-focus'
 import { LicencePolicyEditor } from './licence-policy-card'
 import { SettingSection } from './setting-section'
 import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
 import { Tabs, type TabItem } from './ui/tabs'
 
-type ConfigurationTab = 'modules' | 'appearance'
+type ConfigurationTab = 'modules' | 'notifications' | 'appearance'
 
 /**
  * SettingsDialog is the Configuration modal (#139, #142, #143): the opt-in
@@ -30,6 +36,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<ConfigurationTab>('modules')
   const configurationTabs: TabItem<ConfigurationTab>[] = [
     { value: 'modules', label: t('settings.tabs.modules') },
+    { value: 'notifications', label: t('settings.tabs.notifications') },
     { value: 'appearance', label: t('settings.tabs.appearance') },
   ]
 
@@ -75,6 +82,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         >
           {tab === 'appearance' ? (
             <AppearanceSettings />
+          ) : tab === 'notifications' ? (
+            <NotificationsSection />
           ) : (
             <div className="flex flex-col gap-3">
               <EPSSToggle />
@@ -287,6 +296,151 @@ function SASTToggle() {
         on={data.enabled}
         pending={toggle.isPending}
         onChange={(enabled) => toggle.mutate(enabled)}
+      />
+    </SettingSection>
+  )
+}
+
+function NotificationsSection() {
+  const t = useT()
+  const { data } = useQuery(notificationsQuery)
+  const save = useSetNotificationSettings()
+  const test = useTestNotification()
+  const [webhook, setWebhook] = useState('')
+  const [feedback, setFeedback] = useState<'idle' | 'sent' | 'failed'>('idle')
+
+  if (!data) {
+    return null
+  }
+
+  function saveWebhook() {
+    const value = webhook.trim()
+    if (value === '') {
+      return
+    }
+    setFeedback('idle')
+    save.mutate({ slack_webhook: value }, { onSuccess: () => setWebhook('') })
+  }
+
+  return (
+    <SettingSection title={t('settings.notifications.title')} on={data.enabled}>
+      <p className="text-[0.6875rem] leading-relaxed text-muted">
+        {t('settings.notifications.body')}
+      </p>
+
+      <label
+        htmlFor="notifications-threshold"
+        className="mt-1 text-[0.6875rem] text-muted"
+      >
+        {t('settings.notifications.threshold')}
+      </label>
+      <select
+        id="notifications-threshold"
+        aria-label={t('settings.notifications.threshold')}
+        value={data.threshold}
+        onChange={(event) =>
+          save.mutate({
+            threshold: event.target.value as 'high' | 'critical',
+          })
+        }
+        className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg"
+      >
+        <option value="high">
+          {t('settings.notifications.threshold.high')}
+        </option>
+        <option value="critical">
+          {t('settings.notifications.threshold.critical')}
+        </option>
+      </select>
+
+      <label className="mt-1 flex items-center gap-2 text-[0.6875rem] text-muted">
+        <Checkbox
+          checked={data.slack_enabled}
+          onChange={(event) =>
+            save.mutate({ slack_enabled: event.target.checked })
+          }
+        />
+        {t('settings.notifications.slack')}
+      </label>
+
+      <label
+        htmlFor="notifications-webhook"
+        className="mt-1 text-[0.6875rem] text-muted"
+      >
+        {t('settings.notifications.webhook')}
+      </label>
+      <p className="text-[0.6875rem] text-faint">
+        {data.slack_configured
+          ? t('settings.notifications.configured')
+          : t('settings.notifications.notConfigured')}
+      </p>
+      <input
+        id="notifications-webhook"
+        type="password"
+        autoComplete="off"
+        value={webhook}
+        placeholder={t('settings.notifications.webhookPlaceholder')}
+        onChange={(event) => setWebhook(event.target.value)}
+        className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint"
+      />
+      <div className="mt-1 flex flex-wrap gap-1.5">
+        <Button
+          type="button"
+          size="sm"
+          disabled={webhook.trim() === '' || save.isPending}
+          onClick={saveWebhook}
+        >
+          {t('settings.notifications.save')}
+        </Button>
+        {data.slack_configured ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={save.isPending}
+            onClick={() => save.mutate({ clear_slack_webhook: true })}
+          >
+            {t('settings.notifications.clear')}
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={!data.slack_configured || test.isPending}
+          onClick={() => {
+            setFeedback('idle')
+            test.mutate(undefined, {
+              onSuccess: () => setFeedback('sent'),
+              onError: () => setFeedback('failed'),
+            })
+          }}
+        >
+          {test.isPending
+            ? t('settings.notifications.testing')
+            : t('settings.notifications.test')}
+        </Button>
+      </div>
+      {feedback === 'sent' ? (
+        <p className="text-[0.6875rem] text-muted">
+          {t('settings.notifications.testSent')}
+        </p>
+      ) : feedback === 'failed' ? (
+        <p className="text-[0.6875rem] text-critical">
+          {t('settings.notifications.testFailed')}
+        </p>
+      ) : null}
+      {save.isError ? (
+        <p className="text-[0.6875rem] text-critical">
+          {t('settings.notifications.saveFailed')}
+        </p>
+      ) : null}
+
+      <ToggleButton
+        title={t('settings.notifications.title')}
+        on={data.enabled}
+        pending={save.isPending}
+        onChange={(enabled) => save.mutate({ enabled })}
       />
     </SettingSection>
   )

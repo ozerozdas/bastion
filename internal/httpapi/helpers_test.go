@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -27,6 +28,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
+	"github.com/ozerozdas/bastion/internal/notifications"
 	"github.com/ozerozdas/bastion/internal/preferences"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/scanners/depsdev"
@@ -281,6 +283,16 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 	if err != nil {
 		t.Fatalf("preferences.NewService: %v", err)
 	}
+	notificationsService, err := notifications.New(notifications.Config{
+		DataDir: t.TempDir(),
+		DB:      db,
+		Secrets: secretStore,
+		Reports: reportService,
+		BaseURL: "http://127.0.0.1:" + strconv.Itoa(port),
+	})
+	if err != nil {
+		t.Fatalf("notifications.New: %v", err)
+	}
 
 	// No sources or scanners: a queued scan fails its pipeline quickly, which
 	// is all the API tests need (the endpoint contract, not scanning).
@@ -330,6 +342,7 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 		SAST:          sastService,
 		LicencePolicy: licencePolicyService,
 		Preferences:   preferencesService,
+		Notifications: notificationsService,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

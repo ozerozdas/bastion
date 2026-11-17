@@ -106,6 +106,14 @@ tags:
       dashboard dismissals. They are keyed by the localStorage key the UI uses,
       so the browser cache and the server copy stay interchangeable. The
       whitelist is fixed: an unknown key is rejected rather than stored.
+  - name: notifications
+    description: |
+      Scan notifications (#44/#45). After a scan succeeds, bastion diffs it
+      against the asset's previous succeeded scan and posts the new counts to
+      every enabled notifier when at least one new finding meets the threshold.
+      The first scan of an asset sends nothing. The Slack webhook is stored in
+      the OS keyring and is never returned: the API only reports whether one is
+      configured.
   - name: reports
     description: |
       Aggregates for the Dashboard (PROJECT_SPEC.md §7.1). Every number counts
@@ -1632,6 +1640,102 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/notifications:
+    get:
+      operationId: getNotificationSettings
+      summary: Read the notification settings.
+      description: |
+        Returns the master switch, the threshold and whether Slack is enabled,
+        plus whether a webhook is configured. The webhook URL itself is never
+        returned; it lives in the OS keyring.
+      tags: [notifications]
+      responses:
+        "200":
+          description: The stored notification settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationSettings"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setNotificationSettings
+      summary: Store the notification settings.
+      description: |
+        Writes only the fields the body carries; every other stored setting is
+        left untouched. `slack_webhook` sets the webhook (write-only, must be an
+        https URL on hooks.slack.com) and `clear_slack_webhook` removes it.
+        Sending both, an invalid threshold or an invalid webhook is a 400.
+      tags: [notifications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetNotificationSettingsRequest"
+      responses:
+        "200":
+          description: The settings were stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationSettings"
+        "400":
+          description: |
+            The body is missing, the threshold is not `high` or `critical`, the
+            webhook is not an https URL on hooks.slack.com, or both
+            `slack_webhook` and `clear_slack_webhook` are sent.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/notifications/test:
+    post:
+      operationId: sendTestNotification
+      summary: Send a test message to Slack.
+      description: |
+        Posts a sample message through the stored Slack webhook, regardless of
+        whether Slack notifications are enabled. With no webhook configured it
+        answers 400; a webhook Slack rejects is a 502. The webhook is never
+        included in the response.
+      tags: [notifications]
+      responses:
+        "204":
+          description: Slack accepted the test message.
+        "400":
+          description: No Slack webhook is configured.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "502":
+          description: Slack rejected the message or could not be reached.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/reports/dashboard:
     get:
       operationId: getDashboard
@@ -2088,6 +2192,63 @@ components:
       additionalProperties:
         type: string
         maxLength: 64
+    NotificationThreshold:
+      type: string
+      title: NotificationThreshold
+      description: |
+        The lowest severity that makes a new finding notify. `high` counts
+        critical and high findings; `critical` counts only critical ones.
+      enum: [high, critical]
+    NotificationSettings:
+      type: object
+      title: NotificationSettings
+      description: |
+        The stored notification choices. The Slack webhook is absent by design:
+        the API reports only whether one is configured.
+      additionalProperties: false
+      required: [enabled, threshold, slack_enabled, slack_configured]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            The master switch. With it off no notifier is called after a scan.
+        threshold:
+          $ref: "#/components/schemas/NotificationThreshold"
+        slack_enabled:
+          type: boolean
+          description: Whether the Slack notifier is called after a scan.
+        slack_configured:
+          type: boolean
+          description: |
+            Whether a Slack webhook is stored in the OS keyring. The URL itself
+            is never returned.
+    SetNotificationSettingsRequest:
+      type: object
+      title: SetNotificationSettingsRequest
+      description: |
+        The settable notification fields. Omitted fields are left untouched;
+        `slack_webhook` is write-only and `clear_slack_webhook` removes the
+        stored webhook.
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        threshold:
+          $ref: "#/components/schemas/NotificationThreshold"
+        slack_enabled:
+          type: boolean
+        slack_webhook:
+          type: string
+          writeOnly: true
+          maxLength: 512
+          description: |
+            An https incoming-webhook URL on hooks.slack.com. Stored in the OS
+            keyring, never in SQLite and never returned.
+        clear_slack_webhook:
+          type: boolean
+          description: |
+            Removes the stored webhook. Cannot be combined with
+            `slack_webhook`.
     LicencePolicyAction:
       type: string
       title: LicencePolicyAction

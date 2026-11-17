@@ -15,6 +15,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
+	"github.com/ozerozdas/bastion/internal/notifications"
 	"github.com/ozerozdas/bastion/internal/preferences"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/scanners/depsdev"
@@ -41,12 +42,13 @@ type serverServices struct {
 	sast         *opengrep.Service
 	licence      *licencepolicy.Service
 	preferences  *preferences.Service
+	notify       *notifications.Service
 }
 
 // newServerServices opens the database and builds every service a server-mode
 // process needs. The caller closes the result once, which stops the worker
 // pool before releasing the database and the Trivy handles.
-func newServerServices(ctx context.Context, paths app.Paths, concurrency int, deps serveDeps) (*serverServices, error) {
+func newServerServices(ctx context.Context, paths app.Paths, port, concurrency int, deps serveDeps) (*serverServices, error) {
 	if paths.DataDir == "" {
 		return nil, errors.New("serve: data directory is not resolved")
 	}
@@ -102,6 +104,20 @@ func newServerServices(ctx context.Context, paths app.Paths, concurrency int, de
 		return nil, fmt.Errorf("create reports service: %w", err)
 	}
 
+	// Notifications diff a succeeded scan against the previous one and post
+	// the new counts to enabled notifiers (#44/#45). The Slack webhook lives
+	// in the keyring; the link points back at this serve instance.
+	services.notify, err = notifications.New(notifications.Config{
+		DataDir: paths.DataDir,
+		DB:      db,
+		Secrets: secretStore,
+		Reports: services.reports,
+		BaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create notifications service: %w", err)
+	}
+
 	// The licence policy is stored in SQLite and applied at read time (#39).
 	services.licence, err = licencepolicy.NewService(db)
 	if err != nil {
@@ -122,7 +138,7 @@ func newServerServices(ctx context.Context, paths app.Paths, concurrency int, de
 	services.trivyDB = trivy.NewManager(paths.TrivyCacheDir())
 	services.scanManager, err = newServerScanManager(ctx, db, paths, concurrency,
 		services.connections, secretStore, services.events, services.trivyDB,
-		services.outdated, services.reachability, services.sast)
+		services.outdated, services.reachability, services.sast, services.notify)
 	if err != nil {
 		return nil, err
 	}

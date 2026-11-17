@@ -27,6 +27,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
+	"github.com/ozerozdas/bastion/internal/notifications"
 	"github.com/ozerozdas/bastion/internal/preferences"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/scanners/depsdev"
@@ -108,6 +109,10 @@ type Config struct {
 	// Preferences serves GET and PUT /api/preferences (#150). serve wires the
 	// SQLite-backed service; nil answers those endpoints with 500.
 	Preferences *preferences.Service
+	// Notifications serves GET and PUT /api/notifications and the test-send
+	// endpoint (#44/#45). serve wires the keyring-backed service; nil answers
+	// those endpoints with 500.
+	Notifications *notifications.Service
 }
 
 // Server serves the bastion API and UI. Create it with New, take its handler
@@ -166,6 +171,10 @@ type Server struct {
 	// nil-means-unavailable contract.
 	preferences *preferences.Service
 
+	// notifications backs the notification settings and the test-send endpoint
+	// (#44/#45), with the same nil-means-unavailable contract.
+	notifications *notifications.Service
+
 	// token arrives once, in the browser URL. session is the cookie value that
 	// replaces it. They are distinct values: a token that leaked into shell
 	// history or a proxy log can never be replayed as a cookie.
@@ -211,6 +220,7 @@ func New(cfg Config) (*Server, error) {
 		sast:          cfg.SAST,
 		licencePolicy: cfg.LicencePolicy,
 		preferences:   cfg.Preferences,
+		notifications: cfg.Notifications,
 		token:         token,
 		session:       session,
 	}
