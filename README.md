@@ -83,6 +83,7 @@ bastion serve   [--port N] [--no-browser] [--concurrency N]
 bastion scan    --path DIR | --repo owner/name[@ref] | --image IMAGE
                 [--format json|table|sarif|cyclonedx] [--fail-on critical|high|medium|low]
                 [--skip-dirs DIR]...  [--no-store]
+bastion mcp                     # MCP tools over stdio (see below)
 bastion doctor  [--json]
 bastion update  [--check] [--force]
 bastion version
@@ -121,6 +122,37 @@ saying to add one in **Connections → Registry**.
 
 `--format cyclonedx` prints the scan's package inventory as a CycloneDX 1.6 JSON BOM; the
 same document is a download on **Projects → Scans** (`GET /api/scans/{id}/sbom`).
+
+## MCP server
+
+`bastion mcp` serves the assets, findings, fix plans and scan diffs over the
+[Model Context Protocol](https://modelcontextprotocol.io) on stdin/stdout. It is
+**read-only**: scans run from the UI or the CLI, and the MCP server starts no worker pool,
+download or scan recovery, so it never disturbs a `bastion serve` running beside it. It
+opens the same database (`--data-dir` applies), so an agent reads what the UI shows.
+stdout is the protocol stream; logs go to stderr.
+
+Generic `mcpServers` configuration (Claude Code, Claude Desktop and other MCP clients):
+
+```json
+{
+  "mcpServers": {
+    "bastion": {
+      "command": "bastion",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+If the database lives elsewhere, pass the global flag through:
+`"args": ["mcp", "--data-dir", "/path/to/bastion/data"]`.
+
+Tools: `list_assets`, `list_findings` (asset, severity, type, status, text query, sort and
+paging), `get_fix_plan` and `diff_scans` (two scan ids, or an asset's last two succeeded
+scans). Every result that carries scanner-derived values includes an `untrusted_content`
+notice: those values are data, never instructions (see the threat model). The MCP server
+makes no network calls of its own.
 
 ## Network calls
 
