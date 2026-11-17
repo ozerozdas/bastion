@@ -315,7 +315,7 @@ func findingResponse(finding reports.Finding) findingItem {
 		ExpiresAt:       finding.ExpiresAt,
 		Expired:         finding.Expired,
 		FirstSeenScanID: finding.FirstSeenScanID,
-		Description:     finding.Description,
+		Description:     clip(finding.Description, MaxDescriptionBytes),
 		References:      finding.References,
 		Reachability:    string(finding.Reachability),
 		LicencePolicy:   finding.LicencePolicy,
@@ -326,6 +326,13 @@ func findingResponse(finding reports.Finding) findingItem {
 	if out.References == nil {
 		out.References = []string{}
 	}
+	if len(out.References) > MaxReferences {
+		out.References = out.References[:MaxReferences]
+	}
+	out.Title = clip(out.Title, MaxFieldBytes)
+	out.Location = clip(out.Location, MaxFieldBytes)
+	out.PackageName = clip(out.PackageName, MaxFieldBytes)
+	out.Reason = clip(out.Reason, MaxFieldBytes)
 	if finding.EPSS != nil {
 		out.EPSS = &epssItem{Score: finding.EPSS.Score, Percentile: finding.EPSS.Percentile}
 	}

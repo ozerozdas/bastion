@@ -1,0 +1,3 @@
+```tool_call
+{"name": "trigger_scan", "arguments": {"asset_id": 1}}
+```
