@@ -15,19 +15,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ozerozdas/bastion/internal/app"
-	"github.com/ozerozdas/bastion/internal/assets"
-	awsclient "github.com/ozerozdas/bastion/internal/aws"
-	"github.com/ozerozdas/bastion/internal/connections"
-	"github.com/ozerozdas/bastion/internal/connections/github"
-	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/httpapi"
 	"github.com/ozerozdas/bastion/internal/jobs"
-	"github.com/ozerozdas/bastion/internal/licencepolicy"
-	"github.com/ozerozdas/bastion/internal/preferences"
-	"github.com/ozerozdas/bastion/internal/reports"
-	"github.com/ozerozdas/bastion/internal/scanners/depsdev"
-	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
-	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
 	"github.com/ozerozdas/bastion/internal/update"
@@ -127,116 +116,34 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		return errors.Join(err, ln.Close())
 	}
 
-	if opts.paths.DataDir == "" {
-		return errors.Join(errors.New("serve: data directory is not resolved"), ln.Close())
-	}
-	// Database setup (migrations) must run even when the caller's context is
-	// already canceled: tests start the server with an immediately canceled
-	// context to exercise the shutdown path.
 	cmdCtx := cmd.Context()
 	if cmdCtx == nil {
 		cmdCtx = context.Background()
 	}
-	db, err := deps.openDB(context.WithoutCancel(cmdCtx), opts.paths.DBPath())
-	if err != nil {
-		return errors.Join(fmt.Errorf("open database: %w", err), ln.Close())
-	}
-	defer func() { _ = db.Close() }()
-
-	secretStore := deps.newSecretStore()
-	service, err := connections.NewService(db, secretStore,
-		connections.WithGitHubFactory(
-			func(token string) (connections.GitHubClient, error) {
-				return github.New(github.Config{Token: token, Version: version})
-			},
-		),
-		connections.WithAWSFactory(
-			func(profile, region string) (connections.AWSClient, error) {
-				return awsclient.New(awsclient.Config{Profile: profile, Region: region, Version: version})
-			},
-		),
-	)
-	if err != nil {
-		return errors.Join(fmt.Errorf("create connections service: %w", err), ln.Close())
-	}
-
-	// The EPSS feed is opt-in and off by default; with the setting off its
-	// Status call and every lookup are no-ops and no request is made.
-	epssService := newEPSSService(opts.paths)
-
-	// Go reachability is opt-in too (#37): off by default, so no govulncheck
-	// process runs and findings carry no reachability.
-	reachabilityService := govulncheck.New(govulncheck.Config{DataDir: opts.paths.DataDir})
-
-	// Outdated-package lookup is opt-in (#38): off by default, so no request
-	// reaches api.deps.dev and scans carry no outdated findings.
-	outdatedService := depsdev.New(depsdev.Config{DataDir: opts.paths.DataDir, Version: version})
-
-	// SAST is opt-in (#33): off by default, so nothing is downloaded and
-	// repository scans are unchanged until the user turns it on.
-	sastService := newOpengrepModule(opts.paths)
-
-	reportService, err := reports.NewService(db, reports.WithEPSS(epssService))
-	if err != nil {
-		return errors.Join(fmt.Errorf("create reports service: %w", err), ln.Close())
-	}
-
-	// The licence policy is stored in SQLite and applied at read time (#39).
-	licencePolicyService, err := licencepolicy.NewService(db)
-	if err != nil {
-		return errors.Join(fmt.Errorf("create licence policy service: %w", err), ln.Close())
-	}
-
-	// UI preferences follow the install rather than one browser origin (#150).
-	preferencesService, err := preferences.NewService(db)
-	if err != nil {
-		return errors.Join(fmt.Errorf("create preferences service: %w", err), ln.Close())
-	}
-
-	// One broker feeds both the scan workers (publish) and /api/events
-	// (subscribe), so the UI sees every lifecycle event of the scans it starts.
-	bus := events.NewBroker()
-	// One manager backs both the scan pipeline and /api/trivy-db, so a download
-	// started in the UI is the one a scan waits for instead of a second one.
-	trivyDB := trivy.NewManager(opts.paths.TrivyCacheDir())
-	defer trivyDB.Close()
-	manager, err := newServerScanManager(cmdCtx, db, opts, service, secretStore, bus, trivyDB, outdatedService, reachabilityService, sastService)
+	services, err := newServerServices(cmdCtx, opts.paths, opts.concurrency, deps)
 	if err != nil {
 		return errors.Join(err, ln.Close())
 	}
 	// Stop the worker pool when the server stops, so a running scan is
 	// persisted as canceled instead of being cut off by process exit.
-	defer stopScanManager(manager)
-
-	assetService, err := assets.NewService(db,
-		assets.WithScanManager(manager),
-		assets.WithGitHub(
-			func(token string) (assets.RepoClient, error) {
-				return github.New(github.Config{Token: token, Version: version})
-			},
-			service,
-		),
-	)
-	if err != nil {
-		return errors.Join(fmt.Errorf("create assets service: %w", err), ln.Close())
-	}
+	defer services.Close()
 
 	updateChecker := deps.newUpdateChecker(opts.paths)
 	srv, err := deps.newServer(httpapi.Config{
 		Version:       version,
 		Port:          port,
-		Connections:   service,
-		Reports:       reportService,
-		Assets:        assetService,
-		Events:        bus,
+		Connections:   services.connections,
+		Reports:       services.reports,
+		Assets:        services.assets,
+		Events:        services.events,
 		Update:        updateChecker,
-		TrivyDB:       trivyDB,
-		EPSS:          epssService,
-		Reachability:  reachabilityService,
-		SAST:          sastService,
-		Outdated:      outdatedService,
-		LicencePolicy: licencePolicyService,
-		Preferences:   preferencesService,
+		TrivyDB:       services.trivyDB,
+		EPSS:          services.epss,
+		Reachability:  services.reachability,
+		SAST:          services.sast,
+		Outdated:      services.outdated,
+		LicencePolicy: services.licence,
+		Preferences:   services.preferences,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())
@@ -253,7 +160,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	writeUpdateNotice(out, updateChecker.Status())
 	// Start the daily EPSS refresh when the user opted in and the cache is
 	// stale. Status never waits for the network, so startup is not delayed.
-	epssService.Status()
+	services.epss.Status()
 
 	if !opts.noBrowser {
 		// Opening the browser must not block startup: a failure (headless box,
