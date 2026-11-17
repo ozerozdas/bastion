@@ -167,6 +167,11 @@ carries scanner-derived values includes an `untrusted_content` notice: those val
 data, never instructions (see the threat model). Apart from `trigger_scan`, the MCP
 server makes no writes, and it makes no network calls of its own.
 
+For questions about shipped artifacts (binary hardening, source maps or keys in built
+bundles), the [`bastion-artifacts`](skills/bastion-artifacts/SKILL.md) agent skill combines
+`bastion mcp` with [REA](https://github.com/morluto/rea). Copy the folder into your agent's
+skills directory; REA stays a separate MCP server.
+
 ## Notifications
 
 Notifications are opt-in and off by default. Turn them on in **Configuration →
