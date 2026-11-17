@@ -1329,6 +1329,12 @@ type ReachabilityStatus struct {
 	Error *string `json:"error,omitempty"`
 }
 
+// RenameConnectionRequest defines model for RenameConnectionRequest.
+type RenameConnectionRequest struct {
+	// Name New user-chosen name, unique per kind.
+	Name string `json:"name"`
+}
+
 // SASTState State of the downloaded Opengrep module. `not_installed` is normal
 // before the first download; `checksum_bad` means the file on disk does
 // not match the pinned digest and will not run.
@@ -1793,6 +1799,9 @@ type SetAssetLinkJSONRequestBody = SetAssetLinkRequest
 // CreateConnectionJSONRequestBody defines body for CreateConnection for application/json ContentType.
 type CreateConnectionJSONRequestBody = CreateConnectionRequest
 
+// RenameConnectionJSONRequestBody defines body for RenameConnection for application/json ContentType.
+type RenameConnectionJSONRequestBody = RenameConnectionRequest
+
 // SetEPSSEnabledJSONRequestBody defines body for SetEPSSEnabled for application/json ContentType.
 type SetEPSSEnabledJSONRequestBody = SetEPSSEnabledRequest
 
@@ -1986,6 +1995,9 @@ type ServerInterface interface {
 	// DeleteConnection Remove a connection and its stored secret.
 	// (DELETE /api/connections/{id})
 	DeleteConnection(w http.ResponseWriter, r *http.Request, id ConnectionID)
+	// RenameConnection Rename a connection.
+	// (PATCH /api/connections/{id})
+	RenameConnection(w http.ResponseWriter, r *http.Request, id ConnectionID)
 	// DiscoverConnectionRepos List what the connection can add.
 	// (GET /api/connections/{id}/discover)
 	DiscoverConnectionRepos(w http.ResponseWriter, r *http.Request, id ConnectionID)
@@ -2261,6 +2273,32 @@ func (siw *ServerInterfaceWrapper) DeleteConnection(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteConnection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameConnection operation middleware
+func (siw *ServerInterfaceWrapper) RenameConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ConnectionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameConnection(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3175,6 +3213,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections", wrapper.ListConnections)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections", wrapper.CreateConnection)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/connections/{id}", wrapper.DeleteConnection)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/connections/{id}", wrapper.RenameConnection)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/connections/{id}/test", wrapper.TestConnection)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/connections/{id}/discover", wrapper.DiscoverConnectionRepos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/docker/images", wrapper.GetDockerImages)
@@ -4430,6 +4469,182 @@ type DeleteConnection500ApplicationProblemPlusJSONResponse struct {
 }
 
 func (response DeleteConnection500ApplicationProblemPlusJSONResponse) VisitDeleteConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameConnectionRequestObject struct {
+	Id   ConnectionID `json:"id"`
+	Body *RenameConnectionJSONRequestBody
+}
+
+type RenameConnectionResponseObject interface {
+	VisitRenameConnectionResponse(w http.ResponseWriter) error
+}
+
+type RenameConnection200JSONResponse Connection
+
+func (response RenameConnection200JSONResponse) VisitRenameConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameConnection400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response RenameConnection400ApplicationProblemPlusJSONResponse) VisitRenameConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameConnection401ResponseHeaders struct {
+	ContentType *string
+}
+
+type RenameConnection401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers RenameConnection401ResponseHeaders
+}
+
+func (response RenameConnection401ApplicationProblemPlusJSONResponse) VisitRenameConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameConnection403ResponseHeaders struct {
+	ContentType *string
+}
+
+type RenameConnection403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers RenameConnection403ResponseHeaders
+}
+
+func (response RenameConnection403ApplicationProblemPlusJSONResponse) VisitRenameConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameConnection404ResponseHeaders struct {
+	ContentType *string
+}
+
+type RenameConnection404ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers RenameConnection404ResponseHeaders
+}
+
+func (response RenameConnection404ApplicationProblemPlusJSONResponse) VisitRenameConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameConnection409ApplicationProblemPlusJSONResponse Problem
+
+func (response RenameConnection409ApplicationProblemPlusJSONResponse) VisitRenameConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameConnection421ResponseHeaders struct {
+	ContentType *string
+}
+
+type RenameConnection421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers RenameConnection421ResponseHeaders
+}
+
+func (response RenameConnection421ApplicationProblemPlusJSONResponse) VisitRenameConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenameConnection500ResponseHeaders struct {
+	ContentType *string
+}
+
+type RenameConnection500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers RenameConnection500ResponseHeaders
+}
+
+func (response RenameConnection500ApplicationProblemPlusJSONResponse) VisitRenameConnectionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -8343,6 +8558,9 @@ type StrictServerInterface interface {
 	// DeleteConnection Remove a connection and its stored secret.
 	// (DELETE /api/connections/{id})
 	DeleteConnection(ctx context.Context, request DeleteConnectionRequestObject) (DeleteConnectionResponseObject, error)
+	// RenameConnection Rename a connection.
+	// (PATCH /api/connections/{id})
+	RenameConnection(ctx context.Context, request RenameConnectionRequestObject) (RenameConnectionResponseObject, error)
 	// DiscoverConnectionRepos List what the connection can add.
 	// (GET /api/connections/{id}/discover)
 	DiscoverConnectionRepos(ctx context.Context, request DiscoverConnectionReposRequestObject) (DiscoverConnectionReposResponseObject, error)
@@ -8711,6 +8929,39 @@ func (sh *strictHandler) DeleteConnection(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DeleteConnectionResponseObject); ok {
 		if err := validResponse.VisitDeleteConnectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RenameConnection operation middleware
+func (sh *strictHandler) RenameConnection(w http.ResponseWriter, r *http.Request, id ConnectionID) {
+	var request RenameConnectionRequestObject
+
+	request.Id = id
+
+	var body RenameConnectionJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RenameConnection(ctx, request.(RenameConnectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RenameConnection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RenameConnectionResponseObject); ok {
+		if err := validResponse.VisitRenameConnectionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

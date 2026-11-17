@@ -8,6 +8,7 @@ import {
   connectionsQuery,
   useCreateConnection,
   useDeleteConnection,
+  useRenameConnection,
   useTestConnection,
   type Connection,
   type ConnectionStatus,
@@ -135,14 +136,15 @@ function RegistryPanel() {
   return (
     <>
       <AWSPanel />
+      <AddAWSForm />
       <DockerPanel />
     </>
   )
 }
 
 /**
- * AWSPanel is the AWS source: the connections, their form, and the reminder
- * that bastion keeps no AWS credential of its own.
+ * AWSPanel is the AWS source: the connections and the reminder that bastion
+ * keeps no AWS credential of its own.
  */
 function AWSPanel() {
   const t = useT()
@@ -188,8 +190,6 @@ function AWSPanel() {
           ))}
         </ul>
       ) : null}
-
-      <AddAWSForm />
     </section>
   )
 }
@@ -200,6 +200,7 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
   const test = useTestConnection()
   const remove = useDeleteConnection()
   const [confirming, setConfirming] = useState(false)
+  const [renaming, setRenaming] = useState(false)
   const status = statusView[connection.status]
   const archived = connection.ecr_asset_count
   const archiveWarning =
@@ -210,7 +211,14 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
   return (
     <li className="-mx-2 flex flex-col gap-2 rounded px-2 py-3 first:pt-0 last:pb-0 hover:bg-hover">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{connection.name}</span>
+        {renaming ? (
+          <RenameForm
+            connection={connection}
+            onDone={() => setRenaming(false)}
+          />
+        ) : (
+          <span className="font-medium">{connection.name}</span>
+        )}
         <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
         {connection.region ? (
           <span className="font-mono text-xs text-muted">{connection.region}</span>
@@ -229,7 +237,7 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
           {lastCheckedLabel(connection.last_checked_at)}
         </span>
 
-        {confirming ? null : (
+        {confirming || renaming ? null : (
           <div className="ml-auto flex items-center gap-1.5">
             <Button
               type="button"
@@ -239,6 +247,17 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
               disabled={test.isPending}
             >
               {test.isPending ? t('connections.testing') : t('connections.test')}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                test.reset()
+                setRenaming(true)
+              }}
+            >
+              {t('connections.rename')}
             </Button>
             <Button
               type="button"
@@ -350,12 +369,12 @@ function AddAWSForm() {
   return (
     <form
       onSubmit={submit}
-      className="flex flex-col gap-3 rounded-md border border-border-subtle bg-bg p-3"
+      className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
     >
       <div className="flex flex-col gap-0.5">
-        <h3 className="text-[0.8125rem] font-semibold">
+        <h2 className="text-[0.8125rem] font-semibold">
           {t('connections.aws.addTitle')}
-        </h3>
+        </h2>
         <p className="text-xs text-muted">
           {t('connections.aws.addBodyBefore')}{' '}
           <span className="font-mono">aws sso login --profile work</span>
@@ -471,12 +490,20 @@ function ConnectionRow({ connection }: { connection: Connection }) {
   const test = useTestConnection()
   const remove = useDeleteConnection()
   const [confirming, setConfirming] = useState(false)
+  const [renaming, setRenaming] = useState(false)
   const status = statusView[connection.status]
 
   return (
     <li className="-mx-2 flex flex-col gap-2 rounded px-2 py-3 first:pt-0 last:pb-0 hover:bg-hover">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{connection.name}</span>
+        {renaming ? (
+          <RenameForm
+            connection={connection}
+            onDone={() => setRenaming(false)}
+          />
+        ) : (
+          <span className="font-medium">{connection.name}</span>
+        )}
         <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
         {connection.login ? (
           <span className="font-mono text-xs text-muted">@{connection.login}</span>
@@ -485,7 +512,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
           {lastCheckedLabel(connection.last_checked_at)}
         </span>
 
-        {confirming ? null : (
+        {confirming || renaming ? null : (
           <div className="ml-auto flex items-center gap-1.5">
             <Button
               type="button"
@@ -495,6 +522,17 @@ function ConnectionRow({ connection }: { connection: Connection }) {
               disabled={test.isPending}
             >
               {test.isPending ? t('connections.testing') : t('connections.test')}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                test.reset()
+                setRenaming(true)
+              }}
+            >
+              {t('connections.rename')}
             </Button>
             <Button
               type="button"
@@ -557,6 +595,83 @@ function ConnectionRow({ connection }: { connection: Connection }) {
         />
       ) : null}
     </li>
+  )
+}
+
+/**
+ * RenameForm is the inline name editor both tabs use: Enter (or Save) commits,
+ * Escape (or Cancel) reverts to the stored name. A blank or unchanged name just
+ * closes the editor.
+ */
+function RenameForm({
+  connection,
+  onDone,
+}: {
+  connection: Connection
+  onDone: () => void
+}) {
+  const t = useT()
+  const rename = useRenameConnection()
+  const [name, setName] = useState(connection.name)
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const trimmed = name.trim()
+    if (trimmed === '' || trimmed === connection.name) {
+      onDone()
+      return
+    }
+    rename.mutate(
+      { id: connection.id, name: trimmed },
+      { onSuccess: onDone },
+    )
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-wrap items-center gap-1.5">
+      <div className="w-52">
+        <input
+          aria-label={t('connections.renameInput')}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              onDone()
+            }
+          }}
+          autoComplete="off"
+          autoFocus
+          className={inputClass}
+        />
+      </div>
+      <Button
+        type="submit"
+        size="sm"
+        variant="outline"
+        disabled={rename.isPending || name.trim() === ''}
+      >
+        {t('connections.save')}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          rename.reset()
+          onDone()
+        }}
+      >
+        {t('connections.cancel')}
+      </Button>
+      {rename.isError ? (
+        <span className="w-full">
+          <ErrorNote
+            error={rename.error}
+            fix={t('connections.renameErrorFix')}
+          />
+        </span>
+      ) : null}
+    </form>
   )
 }
 

@@ -38,6 +38,22 @@ SET status = sqlc.arg(status),
 WHERE id = sqlc.arg(id)
 RETURNING *;
 
+-- name: RenameConnection :one
+-- A name is unique per kind. The guard turns a taken name into no rows instead
+-- of a driver-level UNIQUE error; the service maps that to ErrConflict once the
+-- id is known to exist.
+UPDATE connections
+SET name = sqlc.arg(name)
+WHERE connections.id = sqlc.arg(id)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM connections AS other
+    WHERE other.kind = connections.kind
+      AND other.name = sqlc.arg(name)
+      AND other.id <> connections.id
+  )
+RETURNING *;
+
 -- name: DeleteConnection :execrows
 DELETE FROM connections WHERE id = sqlc.arg(id);
 
