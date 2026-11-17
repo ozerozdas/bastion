@@ -125,16 +125,51 @@ WITH scan_counts AS (
 )
 SELECT
     sqlc.embed(s),
+    -- The sort is a whitelisted key, not SQL: sort_key names a fixed ORDER BY
+    -- expression and sort_order picks its direction. sqlc only generates
+    -- arguments it sees in the SELECT list, so both travel as columns.
+    CAST(sqlc.arg(sort) AS INTEGER) AS sort_key,
+    CAST(sqlc.arg(order) AS INTEGER) AS sort_order,
     CAST(COALESCE(sc.critical_count, 0) AS INTEGER) AS critical_count,
     CAST(COALESCE(sc.high_count, 0) AS INTEGER) AS high_count,
     CAST(COALESCE(sc.medium_count, 0) AS INTEGER) AS medium_count,
     CAST(COALESCE(sc.low_count, 0) AS INTEGER) AS low_count,
     CAST(COALESCE(sc.unknown_count, 0) AS INTEGER) AS unknown_count
 FROM scans s
+JOIN assets a ON a.id = s.asset_id
 LEFT JOIN scan_counts sc ON sc.scan_id = s.id
 WHERE (sqlc.narg(asset_id) IS NULL OR s.asset_id = sqlc.narg(asset_id))
-ORDER BY s.id DESC
--- A nil window means no page: SQLite has no NULL LIMIT, so -1 stands in.
+ORDER BY
+    -- A requested column sorts first. SQLite cannot parameterize ASC/DESC, so
+    -- each direction is its own CASE; the unused direction is NULL for every
+    -- row and does not constrain the order. sort_key only ever picks one of
+    -- these fixed expressions, so no caller text reaches the SQL.
+    CASE WHEN sort_order = 0 THEN CASE sort_key
+        WHEN 1 THEN COALESCE(s.started_at, '')
+        WHEN 2 THEN lower(s.status)
+        WHEN 3 THEN lower(a.display_name)
+        WHEN 4 THEN CASE
+            WHEN s.started_at IS NULL OR s.finished_at IS NULL THEN 0
+            ELSE julianday(s.finished_at) - julianday(s.started_at)
+        END
+        WHEN 5 THEN COALESCE(sc.critical_count, 0) + COALESCE(sc.high_count, 0)
+            + COALESCE(sc.medium_count, 0) + COALESCE(sc.low_count, 0)
+            + COALESCE(sc.unknown_count, 0)
+    END END ASC,
+    CASE WHEN sort_order = 1 THEN CASE sort_key
+        WHEN 1 THEN COALESCE(s.started_at, '')
+        WHEN 2 THEN lower(s.status)
+        WHEN 3 THEN lower(a.display_name)
+        WHEN 4 THEN CASE
+            WHEN s.started_at IS NULL OR s.finished_at IS NULL THEN 0
+            ELSE julianday(s.finished_at) - julianday(s.started_at)
+        END
+        WHEN 5 THEN COALESCE(sc.critical_count, 0) + COALESCE(sc.high_count, 0)
+            + COALESCE(sc.medium_count, 0) + COALESCE(sc.low_count, 0)
+            + COALESCE(sc.unknown_count, 0)
+    END END DESC,
+    -- Stable tiebreaker: newest first, matching the default order.
+    s.id DESC
 LIMIT CASE WHEN sqlc.narg(limit) IS NULL THEN -1 ELSE sqlc.narg(limit) END
 OFFSET CASE WHEN sqlc.narg(offset) IS NULL THEN 0 ELSE sqlc.narg(offset) END;
 

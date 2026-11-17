@@ -1,5 +1,6 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 
+import type { FindingsSort, SortOrder } from '../lib/urls'
 import { api } from './client'
 import type { components } from './schema'
 
@@ -29,6 +30,10 @@ export type FindingsQuery = FindingFilter & {
   view?: 'single' | 'grouped'
   limit?: number
   offset?: number
+  /** A whitelisted column the server orders the page by. */
+  sort?: FindingsSort
+  /** Direction of sort; ascending when absent. */
+  order?: SortOrder
 }
 
 export const findingsKey = ['findings'] as const
@@ -48,6 +53,8 @@ export function filterParams(f: FindingFilter): string {
 function findingsParams(f: FindingsQuery): string {
   const params = new URLSearchParams(filterParams(f))
   if (f.view) params.set('view', f.view)
+  if (f.sort) params.set('sort', f.sort)
+  if (f.order) params.set('order', f.order)
   if (f.limit !== undefined) params.set('limit', String(f.limit))
   if (f.offset !== undefined) params.set('offset', String(f.offset))
   return `?${params.toString()}`

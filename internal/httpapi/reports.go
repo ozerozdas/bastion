@@ -56,6 +56,13 @@ func (s *Server) ListFindings(ctx context.Context, request gen.ListFindingsReque
 		offset = int(*request.Params.Offset)
 	}
 	page := reports.Page{Limit: limit, Offset: offset}
+	by := reports.Sort{}
+	if request.Params.Sort != nil {
+		by.Column = string(*request.Params.Sort)
+	}
+	if request.Params.Order != nil {
+		by.Order = string(*request.Params.Order)
+	}
 
 	out := gen.FindingList{
 		Findings:      make([]gen.Finding, 0),
@@ -68,7 +75,7 @@ func (s *Server) ListFindings(ctx context.Context, request gen.ListFindingsReque
 
 	switch view {
 	case gen.FindingsListViewQueryGrouped:
-		grouped, err := s.reports.GroupedFindings(ctx, filter, page)
+		grouped, err := s.reports.GroupedFindings(ctx, filter, page, by)
 		if err != nil {
 			return listFindingsProblem(s, err)
 		}
@@ -79,7 +86,7 @@ func (s *Server) ListFindings(ctx context.Context, request gen.ListFindingsReque
 		out.Total = grouped.Total
 		out.TotalFindings = grouped.TotalFindings
 	default:
-		list, total, err := s.reports.FindingsPage(ctx, filter, page)
+		list, total, err := s.reports.FindingsPage(ctx, filter, page, by)
 		if err != nil {
 			return listFindingsProblem(s, err)
 		}

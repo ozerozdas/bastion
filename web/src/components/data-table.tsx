@@ -11,6 +11,16 @@ import {
 import { cn } from '../lib/utils'
 import { Checkbox } from './ui/checkbox'
 
+/** SortDirection is the direction a sortable header asks for. */
+export type SortDirection = 'asc' | 'desc'
+
+/** DataTableSort is the column and direction a table is ordered by. */
+export type DataTableSort = {
+  /** The column's sortKey, or its id when it has none. */
+  columnId: string
+  direction: SortDirection
+}
+
 export type DataTableColumn<T> = {
   /** Stable id for React keys; not shown. */
   id: string
@@ -26,6 +36,18 @@ export type DataTableColumn<T> = {
   cellClassName?: string
   /** A title for the body cell, for values that truncate. */
   cellTitle?: (row: T) => string | undefined
+  /**
+   * Makes the header a button that reports a new sort through onSortChange.
+   * A column with sortValue is ordered in the browser; one without is ordered
+   * by the caller (the server, for a paginated list).
+   */
+  sortable?: boolean
+  /** The API's name for the column when it differs from id. */
+  sortKey?: string
+  /** The direction the first activation asks for; ascending by default. */
+  defaultSortDirection?: SortDirection
+  /** The value browser sorting compares. */
+  sortValue?: (row: T) => string | number
 }
 
 export type DataTableRowSelection = {
@@ -66,6 +88,12 @@ export type DataTableProps<T> = {
   renderRow?: (row: T, index: number) => ReactNode
   /** The tbody, so a page can restore focus after it removes a row (issue #75). */
   bodyRef?: Ref<HTMLTableSectionElement>
+  /** The current sort; sortable headers render a button and aria-sort. */
+  sort?: DataTableSort
+  /** Reports the sort a header activation asks for. */
+  onSortChange?: (sort: DataTableSort) => void
+  /** Orders rows in the browser by the active column's sortValue. */
+  clientSort?: boolean
 }
 
 /** DataTable is the shared table shell: header, optional selection, body. */
@@ -77,7 +105,14 @@ export function DataTable<T>({
   onRowActivate,
   renderRow,
   bodyRef,
+  sort,
+  onSortChange,
+  clientSort,
 }: DataTableProps<T>) {
+  const ordered = clientSort && sort !== undefined
+    ? sortTableRows(rows, columns, sort)
+    : rows
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-[0.8125rem]">
@@ -94,18 +129,47 @@ export function DataTable<T>({
                 />
               </th>
             ) : null}
-            {columns.map((column) => (
-              <th
-                key={column.id}
-                className={cn('pb-2 font-medium', column.headerClassName)}
-              >
-                {column.header}
-              </th>
-            ))}
+            {columns.map((column) => {
+              const sortable = column.sortable === true && onSortChange !== undefined
+              const active = sort?.columnId === columnSortKey(column)
+              return (
+                <th
+                  key={column.id}
+                  aria-sort={
+                    sortable
+                      ? active
+                        ? sort?.direction === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : 'none'
+                      : undefined
+                  }
+                  className={cn('pb-2 font-medium', column.headerClassName)}
+                >
+                  {sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => onSortChange(nextTableSort(sort, column))}
+                      className="-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 text-left hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
+                    >
+                      {column.header}
+                      <span
+                        aria-hidden="true"
+                        className={active ? 'text-fg' : 'opacity-50'}
+                      >
+                        {active ? (sort?.direction === 'asc' ? '↑' : '↓') : '↕'}
+                      </span>
+                    </button>
+                  ) : (
+                    column.header
+                  )}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody ref={bodyRef} className="divide-y divide-border-subtle">
-          {rows.map((row, index) => (
+          {ordered.map((row, index) => (
             <Fragment key={rowKey(row)}>
               {renderRow ? (
                 renderRow(row, index)
@@ -133,6 +197,68 @@ export function DataTable<T>({
       </table>
     </div>
   )
+}
+
+/** columnSortKey is the name a header reports: sortKey when set, id otherwise. */
+function columnSortKey<T>(column: DataTableColumn<T>): string {
+  return column.sortKey ?? column.id
+}
+
+/** nextTableSort flips an active column and starts a new one in its own direction. */
+export function nextTableSort<T>(
+  current: DataTableSort | undefined,
+  column: DataTableColumn<T>,
+): DataTableSort {
+  const columnId = columnSortKey(column)
+  if (current?.columnId === columnId) {
+    return { columnId, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+  }
+  return { columnId, direction: column.defaultSortDirection ?? 'asc' }
+}
+
+/**
+ * sortTableRows orders rows in the browser by the active column's sortValue.
+ * Numbers compare numerically and text case-insensitively, matching the
+ * server's COLLATE NOCASE; a column without a comparator keeps the given order.
+ */
+export function sortTableRows<T>(
+  rows: readonly T[],
+  columns: readonly DataTableColumn<T>[],
+  sort: DataTableSort,
+): T[] {
+  const column = columns.find(
+    (candidate) => columnSortKey(candidate) === sort.columnId,
+  )
+  const value = column?.sortValue
+  if (value === undefined) return [...rows]
+  const direction = sort.direction === 'asc' ? 1 : -1
+  return [...rows].sort(
+    (left, right) => direction * compareSortValues(value(left), value(right)),
+  )
+}
+
+/** compareSortValues orders two cell values; text ignores case. */
+function compareSortValues(
+  left: string | number,
+  right: string | number,
+): number {
+  if (typeof left === 'number' && typeof right === 'number') {
+    return left - right
+  }
+  const a = String(left).toLowerCase()
+  const b = String(right).toLowerCase()
+  if (a < b) return -1
+  if (a > b) return 1
+  return 0
+}
+
+/** useTableSort holds a table's sort state for tables sorted in the browser. */
+export function useTableSort(defaultSort?: DataTableSort): {
+  sort: DataTableSort | undefined
+  onSortChange: (sort: DataTableSort) => void
+} {
+  const [sort, setSort] = useState<DataTableSort | undefined>(defaultSort)
+  return { sort, onSortChange: setSort }
 }
 
 /** DataTableRow is the row shell, exported for callers that render rows themselves. */

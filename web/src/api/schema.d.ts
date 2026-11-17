@@ -2077,6 +2077,20 @@ export interface components {
         FindingsLimitQuery: number;
         /** @description Rows to skip before the page. */
         OffsetQuery: number;
+        /** @description Direction of `sort`; ignored when no `sort` is given. `asc` when absent. */
+        SortOrderQuery: "asc" | "desc";
+        /**
+         * @description Column to order the latest findings by. Omitted keeps the default, most
+         *     severe first. `severity` orders by its rank, not alphabetically. In
+         *     grouped view `project` orders by the number of projects the group
+         *     reaches.
+         */
+        FindingsSortQuery: "severity" | "title" | "package" | "project" | "type";
+        /**
+         * @description Column to order the scan list by. Omitted keeps the default, newest
+         *     first. `duration` and `findings` read the same values the list shows.
+         */
+        ScanSortQuery: "started" | "status" | "project" | "duration" | "findings";
         /**
          * @description `single` returns one row per finding; `grouped` folds one row per rule
          *     and type across projects.
@@ -2933,6 +2947,13 @@ export interface operations {
                 limit?: components["parameters"]["ScanLimitQuery"];
                 /** @description Rows to skip before the page. */
                 offset?: components["parameters"]["OffsetQuery"];
+                /**
+                 * @description Column to order the scan list by. Omitted keeps the default, newest
+                 *     first. `duration` and `findings` read the same values the list shows.
+                 */
+                sort?: components["parameters"]["ScanSortQuery"];
+                /** @description Direction of `sort`; ignored when no `sort` is given. `asc` when absent. */
+                order?: components["parameters"]["SortOrderQuery"];
             };
             header?: never;
             path?: never;
@@ -3403,6 +3424,15 @@ export interface operations {
                 limit?: components["parameters"]["FindingsLimitQuery"];
                 /** @description Rows to skip before the page. */
                 offset?: components["parameters"]["OffsetQuery"];
+                /**
+                 * @description Column to order the latest findings by. Omitted keeps the default, most
+                 *     severe first. `severity` orders by its rank, not alphabetically. In
+                 *     grouped view `project` orders by the number of projects the group
+                 *     reaches.
+                 */
+                sort?: components["parameters"]["FindingsSortQuery"];
+                /** @description Direction of `sort`; ignored when no `sort` is given. `asc` when absent. */
+                order?: components["parameters"]["SortOrderQuery"];
             };
             header?: never;
             path?: never;

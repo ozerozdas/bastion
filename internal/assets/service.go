@@ -38,6 +38,61 @@ const (
 // ScanTriggerUI is the scans.trigger value for a scan queued from the UI/API.
 const ScanTriggerUI = "ui"
 
+// Scan sort columns the list accepts. The SQL maps these names onto fixed
+// ORDER BY keys, so the column is never interpolated into the query.
+const (
+	ScanSortStarted  = "started"
+	ScanSortStatus   = "status"
+	ScanSortProject  = "project"
+	ScanSortDuration = "duration"
+	ScanSortFindings = "findings"
+)
+
+// ScanSort orders the scan list. The zero value keeps the default, newest
+// first. Order is "asc" or "desc"; empty means ascending.
+type ScanSort struct {
+	Column string
+	Order  string
+}
+
+// validate rejects a column or direction the list cannot answer.
+func (s ScanSort) validate() error {
+	switch s.Column {
+	case "", ScanSortStarted, ScanSortStatus, ScanSortProject, ScanSortDuration, ScanSortFindings:
+	default:
+		return fmt.Errorf("%w: sort %q is not one of %s, %s, %s, %s, %s", ErrInvalid,
+			s.Column, ScanSortStarted, ScanSortStatus, ScanSortProject, ScanSortDuration, ScanSortFindings)
+	}
+	if s.Column != "" && s.Order != "" && s.Order != "asc" && s.Order != "desc" {
+		return fmt.Errorf("%w: order %q is not one of asc, desc", ErrInvalid, s.Order)
+	}
+	return nil
+}
+
+// params converts the sort to the query's numeric key and direction: 0 keeps
+// the default order, and the keys match ListScans' ORDER BY.
+func (s ScanSort) params() (key, order int64, err error) {
+	if err := s.validate(); err != nil {
+		return 0, 0, err
+	}
+	switch s.Column {
+	case ScanSortStarted:
+		key = 1
+	case ScanSortStatus:
+		key = 2
+	case ScanSortProject:
+		key = 3
+	case ScanSortDuration:
+		key = 4
+	case ScanSortFindings:
+		key = 5
+	}
+	if s.Order == "desc" {
+		order = 1
+	}
+	return key, order, nil
+}
+
 var (
 	// ErrNotFound means the asset or scan id does not exist.
 	ErrNotFound = errors.New("assets: not found")
@@ -708,7 +763,7 @@ type ScanPage struct {
 // Scans lists scans newest first, optionally narrowed to one asset. assetID 0
 // means every asset; limit must be between 1 and MaxScanLimit and offset must
 // be 0 or greater.
-func (s *Service) Scans(ctx context.Context, assetID int64, limit, offset int) (ScanPage, error) {
+func (s *Service) Scans(ctx context.Context, assetID int64, limit, offset int, by ScanSort) (ScanPage, error) {
 	if assetID < 0 {
 		return ScanPage{}, fmt.Errorf("%w: asset_id must be positive", ErrInvalid)
 	}
@@ -718,8 +773,12 @@ func (s *Service) Scans(ctx context.Context, assetID int64, limit, offset int) (
 	if offset < 0 {
 		return ScanPage{}, fmt.Errorf("%w: offset must be 0 or greater", ErrInvalid)
 	}
+	key, direction, err := by.params()
+	if err != nil {
+		return ScanPage{}, err
+	}
 	queries := sqlcdb.New(s.db)
-	params := sqlcdb.ListScansParams{Limit: int64(limit), Offset: int64(offset)}
+	params := sqlcdb.ListScansParams{Limit: int64(limit), Offset: int64(offset), Sort: key, Order: direction}
 	if assetID > 0 {
 		params.AssetID = assetID
 	}

@@ -979,3 +979,51 @@ func TestSetFindingStateExpiry(t *testing.T) {
 		t.Errorf("state = %v, want accepted_risk", got.State)
 	}
 }
+
+// TestScanListSort covers the scan list's sort and order parameters: the
+// findings count orders numerically, the pages keep the same total, and an
+// unknown column or direction is a problem detail.
+func TestScanListSort(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+	asset := pathAsset(t, ts, cookie)
+
+	one := func(fingerprint string) findings.Finding {
+		return findings.Finding{
+			Fingerprint: fingerprint, Type: findings.TypeVulnerability,
+			Severity: findings.SeverityMedium, Title: fingerprint,
+			Scanner: "trivy", Occurrences: 1,
+		}
+	}
+	first := seedSucceededScan(t, ts, asset.Id, one("fp-one"))
+	second := seedSucceededScan(t, ts, asset.Id, one("fp-two-a"), one("fp-two-b"))
+	third := seedSucceededScan(t, ts, asset.Id)
+
+	desc := scanList(t, ts, cookie, "?asset_id="+itoa(asset.Id)+"&sort=findings&order=desc")
+	if desc.Total != 3 || len(desc.Scans) != 3 {
+		t.Fatalf("list = total %d with %d scans, want 3", desc.Total, len(desc.Scans))
+	}
+	if desc.Scans[0].Id != second || desc.Scans[1].Id != first || desc.Scans[2].Id != third {
+		t.Errorf("findings desc = %+v, want scans %d, %d, %d", desc.Scans, second, first, third)
+	}
+
+	asc := scanList(t, ts, cookie, "?asset_id="+itoa(asset.Id)+"&sort=findings&order=asc")
+	if asc.Scans[0].Id != third || asc.Scans[2].Id != second {
+		t.Errorf("findings asc = %+v, want scans %d, %d, %d", asc.Scans, third, first, second)
+	}
+
+	for _, tc := range []struct{ query, detail string }{
+		{query: "?sort=bogus", detail: "sort"},
+		{query: "?sort=started&order=sideways", detail: "order"},
+	} {
+		resp := ts.do(t, http.MethodGet, "/api/scans"+tc.query, withCookie(cookie))
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want %d", tc.query, resp.StatusCode, http.StatusBadRequest)
+			continue
+		}
+		problem := readProblem(t, resp)
+		if problem.Detail == nil || !strings.Contains(*problem.Detail, tc.detail) {
+			t.Errorf("%s: detail = %v, want it to mention %q", tc.query, problem.Detail, tc.detail)
+		}
+	}
+}

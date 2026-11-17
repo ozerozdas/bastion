@@ -469,7 +469,12 @@ SELECT
     fs.reason AS reason,
     fs.expires_at AS expires_at,
     CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(?1 AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
-    f.created_at
+    f.created_at,
+    -- The sort is a whitelisted key, not SQL: sort_key names a fixed ORDER BY
+    -- expression and sort_order picks its direction. sqlc only generates
+    -- arguments it sees in the SELECT list, so both travel as columns.
+    CAST(?2 AS INTEGER) AS sort_key,
+    CAST(?3 AS INTEGER) AS sort_order
 FROM findings f
 JOIN scans s ON s.id = f.scan_id
 JOIN assets a ON a.id = f.asset_id
@@ -486,38 +491,70 @@ WHERE a.archived_at IS NULL
       FROM scans s2
       WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
   )
-  AND (?2 IS NULL OR f.asset_id = ?2)
-  AND (?3 IS NULL OR f.type = ?3)
-  AND (?4 IS NULL OR CAST(CASE
+  AND (?4 IS NULL OR f.asset_id = ?4)
+  AND (?5 IS NULL OR f.type = ?5)
+  AND (?6 IS NULL OR CAST(CASE
         WHEN f.type = 'license'
              AND COALESCE(lpa.action, lpg.action) = 'deny'
              AND f.severity IN ('low', 'medium', 'unknown') THEN 'high'
         ELSE f.severity
-    END AS TEXT) = ?4)
-  AND (?5 IS NULL OR CAST(CASE
+    END AS TEXT) = ?6)
+  AND (?7 IS NULL OR CAST(CASE
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT) THEN f.status
         ELSE 'ignored'
-    END AS TEXT) = ?5)
+    END AS TEXT) = ?7)
   AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 ORDER BY
-    CASE
-        WHEN f.type = 'license'
-             AND COALESCE(lpa.action, lpg.action) = 'deny'
-             AND f.severity IN ('low', 'medium', 'unknown') THEN 1
-        WHEN f.severity = 'critical' THEN 0
-        WHEN f.severity = 'high' THEN 1
-        WHEN f.severity = 'medium' THEN 2
-        WHEN f.severity = 'low' THEN 3
+    -- A requested column sorts first. SQLite cannot parameterize ASC/DESC, so
+    -- each direction is its own CASE; the unused direction is NULL for every
+    -- row and does not constrain the order. sort_key only ever picks one of
+    -- these fixed expressions, so no caller text reaches the SQL.
+    CASE WHEN sort_order = 0 THEN CASE sort_key
+        WHEN 1 THEN CASE severity
+            WHEN 'critical' THEN 5
+            WHEN 'high' THEN 4
+            WHEN 'medium' THEN 3
+            WHEN 'low' THEN 2
+            ELSE 1
+        END
+        WHEN 2 THEN lower(f.title)
+        WHEN 3 THEN lower(f.package_name)
+        WHEN 4 THEN lower(a.display_name)
+        WHEN 5 THEN lower(f.type)
+    END END ASC,
+    CASE WHEN sort_order = 1 THEN CASE sort_key
+        WHEN 1 THEN CASE severity
+            WHEN 'critical' THEN 5
+            WHEN 'high' THEN 4
+            WHEN 'medium' THEN 3
+            WHEN 'low' THEN 2
+            ELSE 1
+        END
+        WHEN 2 THEN lower(f.title)
+        WHEN 3 THEN lower(f.package_name)
+        WHEN 4 THEN lower(a.display_name)
+        WHEN 5 THEN lower(f.type)
+    END END DESC,
+    -- No sort requested: the default order, most severe first. A requested
+    -- column leaves these NULL for every row, so only the id tiebreaker applies.
+    CASE WHEN sort_key = 0 THEN CASE severity
+        WHEN 'critical' THEN 0
+        WHEN 'high' THEN 1
+        WHEN 'medium' THEN 2
+        WHEN 'low' THEN 3
         ELSE 4
-    END,
-    f.asset_id,
-    f.fingerprint
-LIMIT CASE WHEN ?7 IS NULL THEN -1 ELSE ?7 END
-OFFSET CASE WHEN ?6 IS NULL THEN 0 ELSE ?6 END
+    END END ASC,
+    CASE WHEN sort_key = 0 THEN f.asset_id END ASC,
+    -- Stable tiebreaker: every page and direction ends in one deterministic order.
+    f.id ASC
+LIMIT CASE WHEN ?9 IS NULL THEN -1 ELSE ?9 END
+OFFSET CASE WHEN ?8 IS NULL THEN 0 ELSE ?8 END
 `
 
 type ListLatestFindingsParams struct {
 	Now      string
+	Sort     int64
+	Order    int64
 	AssetID  interface{}
 	Type     interface{}
 	Severity interface{}
@@ -556,6 +593,8 @@ type ListLatestFindingsRow struct {
 	ExpiresAt       sql.NullString
 	Expired         int64
 	CreatedAt       string
+	SortKey         int64
+	SortOrder       int64
 }
 
 // Findings of the most recent succeeded scan of every non-archived asset, so
@@ -563,10 +602,11 @@ type ListLatestFindingsRow struct {
 // scans are skipped: when the newest scan failed, its asset still reports the
 // previous succeeded scan. Filters and the effective status match
 // ListFindingsByScan.
-// A nil window means no page: SQLite has no NULL LIMIT, so -1 stands in.
 func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindingsParams) ([]ListLatestFindingsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listLatestFindings,
 		arg.Now,
+		arg.Sort,
+		arg.Order,
 		arg.AssetID,
 		arg.Type,
 		arg.Severity,
@@ -611,6 +651,8 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 			&i.ExpiresAt,
 			&i.Expired,
 			&i.CreatedAt,
+			&i.SortKey,
+			&i.SortOrder,
 		); err != nil {
 			return nil, err
 		}
