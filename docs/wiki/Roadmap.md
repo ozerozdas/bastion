@@ -8,10 +8,10 @@ Each phase ends with a tagged release. Every item below is a GitHub issue under 
 |---|---|---|---|
 | 0 | — | Skeleton: Trivy + Gitleaks as libraries in one pure-Go binary | Done |
 | 1 | v0.1 | Core MVP: GitHub, scans, reports, CLI with SARIF | Done (v0.1.0) |
-| 2a | v0.2 | Diff & OSV | [Planned](https://github.com/ozerozdas/bastion/milestone/1) |
-| 2b | v0.3 | Containers & links | [Planned](https://github.com/ozerozdas/bastion/milestone/4) |
-| 3 | v0.4 | Actionable output | [Planned](https://github.com/ozerozdas/bastion/milestone/2) |
-| 4 | v0.5 | AI & automation | [Planned](https://github.com/ozerozdas/bastion/milestone/3) |
+| 2a | v0.2 | Diff & OSV | Done (v0.2.0) |
+| 2b | v0.3 | Containers & links | Done (v0.3.0) |
+| 3 | v0.4 | Actionable output | Done (v0.4.0) |
+| 4 | v0.5 | AI & automation | Done (v0.5.0) |
 | 5 | later | Scale-out | [Ideas](https://github.com/ozerozdas/bastion/milestone/6) |
 
 Patch releases (v0.1.x, v0.2.x, …) carry fixes and small chores only; see the open
