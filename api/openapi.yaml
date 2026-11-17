@@ -905,6 +905,89 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/assets/{id}/fix-plan/pull-request:
+    post:
+      operationId: openFixPlanPullRequest
+      summary: Open a GitHub pull request for one fix plan step.
+      description: |
+        Manifest only (#47): bastion edits `go.mod` or `package.json` through
+        the GitHub REST API, on a new branch, and opens a pull request against
+        the repository's default branch. It never clones the repository and
+        never runs a package manager. The lockfile is left untouched, so it
+        must be regenerated (`go mod tidy` / `npm install`) before merging.
+
+        The request is refused unless `confirm` is `true`: nothing is written to
+        GitHub without an explicit confirmation. `ecosystem`, `package` and
+        `target` must match a step of the asset's current fix plan exactly;
+        bastion recomputes the plan and never trusts a client-supplied version.
+
+        `{id}` must be a repository asset with a GitHub connection whose token
+        may write contents and pull requests (classic `repo`, or fine-grained
+        *Contents: write* and *Pull requests: write*). A package that appears
+        only in the lockfile is a transitive dependency: the step is refused
+        with `422` instead of guessing which manifest entry to bump.
+      tags: [findings]
+      parameters:
+        - $ref: "#/components/parameters/AssetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FixPlanPullRequestRequest"
+      responses:
+        "201":
+          description: The pull request that was opened.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FixPlanPullRequestResult"
+        "400":
+          description: |
+            `confirm` is not true, a field is empty, the asset id is not a
+            positive integer, or no step of the current plan matches
+            `ecosystem`, `package` and `target`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: The asset does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: |
+            The branch already exists. `pr_url` carries the URL of the open
+            pull request for it when there is one.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "422":
+          description: |
+            The asset cannot get a pull request (not a repository, no GitHub
+            connection, unsupported ecosystem), the package is only a
+            transitive dependency, or its location names no supported manifest.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "502":
+          description: GitHub failed the request; the detail carries the hint.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/assets/{id}/link:
     put:
       operationId: setAssetLink
@@ -3053,6 +3136,8 @@ components:
             type: integer
             format: int64
             minimum: 1
+        pull_request:
+          $ref: "#/components/schemas/FixPlanPullRequest"
         max_epss:
           $ref: "#/components/schemas/EPSSScore"
         score:
@@ -3071,6 +3156,32 @@ components:
             the ordering is explainable.
           items:
             $ref: "#/components/schemas/FixPlanFactor"
+    FixPlanPullRequest:
+      type: object
+      title: FixPlanPullRequest
+      description: |
+        The pull request bastion opened for one fix plan step (#47). Present
+        only when one was recorded, so the UI shows its state instead of
+        offering the same bump again. `merged` means the change landed and the
+        next scan confirms it.
+      additionalProperties: false
+      required: [number, url, state]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+          description: The repository's pull request number.
+        url:
+          type: string
+          format: uri
+          description: The pull request's web URL.
+        state:
+          type: string
+          enum: [open, merged]
+          description: |
+            `open` while GitHub reports the pull request open; `merged` once it
+            landed. A pull request closed without merging is not reported: its
+            record is deleted and the step offers the action again.
     FixPlanFactor:
       type: object
       title: FixPlanFactor
@@ -3121,6 +3232,59 @@ components:
             type: integer
             format: int64
             minimum: 1
+    FixPlanPullRequestRequest:
+      type: object
+      title: FixPlanPullRequestRequest
+      description: |
+        One confirmed fix plan step to open a pull request for (#47). The three
+        identifiers must match a step of the asset's current plan; `confirm`
+        is the user's explicit go-ahead.
+      additionalProperties: false
+      required: [ecosystem, package, target, confirm]
+      properties:
+        ecosystem:
+          type: string
+          description: |
+            The step's ecosystem. Only `go` (`go.mod`) and `npm`
+            (`package.json`) manifests are supported in this version.
+          enum: [go, npm]
+        package:
+          type: string
+          minLength: 1
+          examples: ["lodash"]
+        target:
+          type: string
+          minLength: 1
+          description: The step's exact target version.
+          examples: ["4.17.21"]
+        confirm:
+          type: boolean
+          description: |
+            Must be `true`. A false or absent value is refused with `400`, so no
+            branch or pull request is created without an explicit confirmation.
+    FixPlanPullRequestResult:
+      type: object
+      title: FixPlanPullRequestResult
+      description: The pull request opened for one fix plan step.
+      additionalProperties: false
+      required: [url, number, branch, manifest]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: The pull request's web URL.
+        number:
+          type: integer
+          minimum: 1
+          description: The repository's pull request number.
+        branch:
+          type: string
+          description: The head branch bastion created, `bastion/bump-…`.
+        manifest:
+          type: string
+          description: |
+            The repository-relative manifest the pull request changed, such as
+            `package.json` or `services/api/go.mod`.
     Dashboard:
       type: object
       title: Dashboard
@@ -3769,6 +3933,12 @@ components:
           description: |
             Fingerprints a bulk decision named that the asset has no finding
             for. Present only on that 404; nothing was written.
+        pr_url:
+          type: string
+          format: uri
+          description: |
+            The open pull request that already uses the branch. Present only on
+            the fix plan pull request `409`; nothing was written.
     ScanEvent:
       type: object
       title: ScanEvent

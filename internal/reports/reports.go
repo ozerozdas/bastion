@@ -33,6 +33,10 @@ type Service struct {
 	// now decides whether a finding_states decision has expired (#32). Tests
 	// pin it; the queries receive its value, never the database clock.
 	now func() time.Time
+	// newGitHub and tokens back the fix plan pull request endpoint (#47). Both
+	// nil means the endpoint answers "not configured".
+	newGitHub PullRequestClientFactory
+	tokens    GitTokenSource
 }
 
 // EPSSLookup resolves a CVE to its EPSS prediction. *epss.Service implements

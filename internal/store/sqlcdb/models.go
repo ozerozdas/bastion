@@ -77,6 +77,19 @@ type FindingState struct {
 	ExpiresAt   sql.NullString
 }
 
+type FixPlanPullRequest struct {
+	ID        int64
+	AssetID   int64
+	Ecosystem string
+	Package   string
+	Target    string
+	Branch    string
+	Number    int64
+	Url       string
+	Manifest  string
+	CreatedAt string
+}
+
 type LicencePolicy struct {
 	ID        int64
 	AssetID   sql.NullInt64

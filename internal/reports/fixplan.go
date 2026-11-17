@@ -93,6 +93,9 @@ func (s *Service) FixPlan(ctx context.Context, assetID int64) (fixplan.Plan, err
 		step.Factors = scored.Factors
 	}
 	fixplan.SortByScore(plan.Steps)
+	// Attach the pull requests bastion already opened (#47). This is best
+	// effort: a GitHub failure never fails the plan read.
+	s.attachPullRequests(ctx, asset, &plan)
 	return plan, nil
 }
 

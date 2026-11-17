@@ -318,7 +318,13 @@ func (c *Client) get(ctx context.Context, op string, u *url.URL, accept string, 
 
 // request builds a GET carrying the headers every ADR-005 call sets.
 func (c *Client) request(ctx context.Context, op string, u *url.URL, accept string) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	return c.newRequest(ctx, op, http.MethodGet, u, accept, nil)
+}
+
+// newRequest builds one call with the headers every ADR-005 call sets. The
+// write side (write.go) uses it with a method and body; reads pass GET and nil.
+func (c *Client) newRequest(ctx context.Context, op, method string, u *url.URL, accept string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
 		// url.Error embeds the URL, which may one day carry a query string,
 		// so the cause is deliberately not wrapped.
