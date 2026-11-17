@@ -85,16 +85,17 @@ runs:
         SKIP_DIRS: ${{ inputs.skip-dirs }}
         SARIF_FILE: ${{ inputs.sarif-file }}
       run: |
-        set -uo pipefail
+        set -euo pipefail
         # Secret findings carry an HMAC; runners have no keyring, so use a per-run key.
         export BASTION_HMAC_KEY="${BASTION_HMAC_KEY:-$(openssl rand -base64 32)}"
         args=(scan --path "$SCAN_PATH" --no-store --quiet --format sarif)
-        [ -n "$FAIL_ON" ] && args+=(--fail-on "$FAIL_ON")
+        if [ -n "$FAIL_ON" ]; then args+=(--fail-on "$FAIL_ON"); fi
         while IFS= read -r dir; do
-          [ -n "$dir" ] && args+=(--skip-dirs "$dir")
+          if [ -n "$dir" ]; then args+=(--skip-dirs "$dir"); fi
         done <<< "$SKIP_DIRS"
-        bastion "${args[@]}" > "$SARIF_FILE"
-        code=$?
+        # The shell runs with -e; capture the exit code instead of aborting on 2.
+        code=0
+        bastion "${args[@]}" > "$SARIF_FILE" || code=$?
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
         # Exit 2 means the threshold was reached; fail after the upload step.
         if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then
