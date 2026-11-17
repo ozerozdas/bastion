@@ -2104,6 +2104,12 @@ export interface components {
         FindingTypeQuery: components["schemas"]["FindingType"];
         /** @description Only findings with this effective status. */
         FindingStatusQuery: components["schemas"]["FindingStatus"];
+        /**
+         * @description Case-insensitive substring to search for in the finding title, rule id
+         *     (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
+         *     value applies no filter. `%` and `_` are matched literally.
+         */
+        FindingsSearchQuery: string;
         /** @description The download format. */
         FindingsExportFormatQuery: "csv" | "xlsx" | "json";
         /**
@@ -3420,6 +3426,12 @@ export interface operations {
                 type?: components["parameters"]["FindingTypeQuery"];
                 /** @description Only findings with this effective status. */
                 status?: components["parameters"]["FindingStatusQuery"];
+                /**
+                 * @description Case-insensitive substring to search for in the finding title, rule id
+                 *     (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
+                 *     value applies no filter. `%` and `_` are matched literally.
+                 */
+                q?: components["parameters"]["FindingsSearchQuery"];
                 /** @description Rows per page. In grouped view a row is one rule and type. */
                 limit?: components["parameters"]["FindingsLimitQuery"];
                 /** @description Rows to skip before the page. */
@@ -3451,7 +3463,7 @@ export interface operations {
             };
             /**
              * @description A query parameter is not a valid asset id, enum value, limit or
-             *     offset.
+             *     offset, or `q` is longer than 200 characters.
              */
             400: {
                 headers: {
@@ -3485,6 +3497,12 @@ export interface operations {
                 type?: components["parameters"]["FindingTypeQuery"];
                 /** @description Only findings with this effective status. */
                 status?: components["parameters"]["FindingStatusQuery"];
+                /**
+                 * @description Case-insensitive substring to search for in the finding title, rule id
+                 *     (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
+                 *     value applies no filter. `%` and `_` are matched literally.
+                 */
+                q?: components["parameters"]["FindingsSearchQuery"];
             };
             header?: never;
             path?: never;
@@ -3512,7 +3530,8 @@ export interface operations {
             };
             /**
              * @description `format` or `view` is not one of the accepted values, `asset_id` is
-             *     not a positive integer, or a filter is not a valid enum value.
+             *     not a positive integer, a filter is not a valid enum value, or `q`
+             *     is longer than 200 characters.
              */
             400: {
                 headers: {

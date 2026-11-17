@@ -49,6 +49,7 @@ func (s *Server) handleFindingsExport(w http.ResponseWriter, r *http.Request) {
 		Severity: strings.TrimSpace(query.Get("severity")),
 		Type:     strings.TrimSpace(query.Get("type")),
 		Status:   strings.TrimSpace(query.Get("status")),
+		Query:    query.Get("q"),
 	}
 	if raw := strings.TrimSpace(query.Get("asset_id")); raw != "" {
 		id, err := strconv.ParseInt(raw, 10, 64)

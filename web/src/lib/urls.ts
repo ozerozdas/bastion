@@ -97,14 +97,18 @@ export type FindingsSearch = {
   sort?: FindingsSort
   /** ?order=desc reverses the sort; absent is ascending. */
   order?: SortOrder
+  /** ?q= is a text search over title, rule, package and path; absent is none. */
+  q?: string
 }
 
 /**
- * parseFindingsSearch reads ?view=single, ?asset=<id>, ?tab=fix-plan, ?page=<n>
- * and ?size=<n> from the Findings route. Without an asset the view defaults to
- * grouped (#106), so its URL is the bare path; an unknown view falls back to
- * that default. ?asset= forces single and drops any view. A page below 2 or a
- * size that is not offered is dropped, so the URL stays canonical.
+ * parseFindingsSearch reads ?view=single, ?asset=<id>, ?tab=fix-plan, ?page=<n>,
+ * ?size=<n> and ?q=<text> from the Findings route. Without an asset the view
+ * defaults to grouped (#106), so its URL is the bare path; an unknown view falls
+ * back to that default. ?asset= forces single and drops any view. A page below 2
+ * or a size that is not offered is dropped, so the URL stays canonical. ?q= is
+ * trimmed and capped, and the fix plan tab, which is not a findings list, drops
+ * it.
  */
 export function parseFindingsSearch(
   search: Record<string, unknown>,
@@ -114,11 +118,13 @@ export function parseFindingsSearch(
   const size = parsePageSize(search.size)
   const sort = parseSortColumn(search.sort, findingsSortColumns)
   const order = sort === undefined ? undefined : parseSortOrder(search.order)
-  const paging: Pick<FindingsSearch, 'page' | 'size' | 'sort' | 'order'> = {
+  const q = parseSearchQuery(search.q)
+  const paging: Pick<FindingsSearch, 'page' | 'size' | 'sort' | 'order' | 'q'> = {
     ...(page !== undefined && page > 1 ? { page } : {}),
     ...(size !== undefined && size !== defaultFindingsPageSize ? { size } : {}),
     ...(sort === undefined ? {} : { sort }),
     ...(order === undefined ? {} : { order }),
+    ...(q === undefined ? {} : { q }),
   }
   if (search.tab === 'fix-plan') {
     return { tab: 'fix-plan', ...asset }
@@ -129,6 +135,19 @@ export function parseFindingsSearch(
   return search.view === 'single'
     ? { view: 'single', ...paging }
     : { ...paging }
+}
+
+/** MaxSearchQueryLength caps the findings search, like the API's q parameter. */
+const maxSearchQueryLength = 200
+
+/**
+ * parseSearchQuery keeps a trimmed, non-empty search, cut to the length the API
+ * accepts so a long shared link still lists findings instead of failing.
+ */
+function parseSearchQuery(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  const query = [...raw.trim()].slice(0, maxSearchQueryLength).join('')
+  return query === '' ? undefined : query
 }
 
 /** parsePositiveInt reads a positive integer from a search value. */

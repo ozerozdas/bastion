@@ -22,6 +22,8 @@ export type FindingFilter = {
   type?: FindingType
   severity?: Severity
   status?: FindingStatus
+  /** Case-insensitive text search; the latest list and its export honour it. */
+  q?: string
 }
 
 /** FindingsQuery is the filter plus the view and the page window. */
@@ -45,6 +47,7 @@ export function filterParams(f: FindingFilter): string {
   if (f.type) params.set('type', f.type)
   if (f.severity) params.set('severity', f.severity)
   if (f.status) params.set('status', f.status)
+  if (f.q) params.set('q', f.q)
   const query = params.toString()
   return query ? `?${query}` : ''
 }
@@ -104,6 +107,7 @@ export function exportFindingsUrl(
   if (f.type) params.set('type', f.type)
   if (f.severity) params.set('severity', f.severity)
   if (f.status) params.set('status', f.status)
+  if (f.q) params.set('q', f.q)
   params.set('format', f.format)
   params.set('view', f.view)
   return `/api/findings/export?${params.toString()}`

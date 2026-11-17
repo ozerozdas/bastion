@@ -42,6 +42,9 @@ func (s *Server) ListFindings(ctx context.Context, request gen.ListFindingsReque
 	if request.Params.Status != nil {
 		filter.Status = string(*request.Params.Status)
 	}
+	if request.Params.Q != nil {
+		filter.Query = *request.Params.Q
+	}
 
 	view := gen.FindingsListViewQuerySingle
 	if request.Params.View != nil {

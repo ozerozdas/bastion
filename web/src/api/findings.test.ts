@@ -25,6 +25,10 @@ describe('filterParams', () => {
   it('skips unset filters', () => {
     expect(filterParams({ severity: 'critical' })).toBe('?severity=critical')
   })
+
+  it('carries the text search', () => {
+    expect(filterParams({ q: 'CVE-2026' })).toBe('?q=CVE-2026')
+  })
 })
 
 describe('exportFindingsUrl', () => {
@@ -41,11 +45,12 @@ describe('exportFindingsUrl', () => {
         type: 'secret',
         severity: 'high',
         status: 'open',
+        q: 'CVE-2026',
         format: 'xlsx',
         view: 'single',
       }),
     ).toBe(
-      '/api/findings/export?asset_id=7&type=secret&severity=high&status=open&format=xlsx&view=single',
+      '/api/findings/export?asset_id=7&type=secret&severity=high&status=open&q=CVE-2026&format=xlsx&view=single',
     )
   })
 })

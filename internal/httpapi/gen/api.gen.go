@@ -1851,6 +1851,9 @@ type FindingsLimitQuery = int
 // FindingsListViewQuery defines model for FindingsListViewQuery.
 type FindingsListViewQuery string
 
+// FindingsSearchQuery defines model for FindingsSearchQuery.
+type FindingsSearchQuery = string
+
 // FindingsSortQuery defines model for FindingsSortQuery.
 type FindingsSortQuery string
 
@@ -1898,6 +1901,11 @@ type ListFindingsParams struct {
 
 	// Status Only findings with this effective status.
 	Status *FindingStatusQuery `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Case-insensitive substring to search for in the finding title, rule id
+	// (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
+	// value applies no filter. `%` and `_` are matched literally.
+	Q *FindingsSearchQuery `form:"q,omitempty" json:"q,omitempty"`
 
 	// Limit Rows per page. In grouped view a row is one rule and type.
 	Limit *FindingsLimitQuery `form:"limit,omitempty" json:"limit,omitempty"`
@@ -2671,6 +2679,19 @@ func (siw *ServerInterfaceWrapper) ListFindings(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
 		}
 		return
 	}
