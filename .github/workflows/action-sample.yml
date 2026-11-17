@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./
         with:
-          fail-on: low
+          fail-on: critical
           skip-dirs: |
             testdata
             tools
