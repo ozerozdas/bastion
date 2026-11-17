@@ -925,6 +925,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/llm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the local-model settings.
+         * @description Returns the master switch, the endpoint and the model name. The
+         *     endpoint is loopback-only and there is no credential.
+         */
+        get: operations["getLLMSettings"];
+        /**
+         * Store the local-model settings.
+         * @description Writes only the fields the body carries; every other stored setting is
+         *     left untouched. The endpoint must be an http(s) URL whose host is a
+         *     loopback IP literal or `localhost`; a name is never resolved. Any other
+         *     endpoint, a model name that is too long, or a malformed URL is a 422.
+         */
+        put: operations["setLLMSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assets/{assetId}/findings/{fingerprint}/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Explain one finding with the optional local model.
+         * @description Sends the finding to the configured local OpenAI-compatible endpoint
+         *     (`POST {endpoint}/chat/completions`) and returns the model's answer as
+         *     Markdown. The finding's text is sent as delimited untrusted data and
+         *     the answer is advisory: this endpoint never changes a finding, a scan
+         *     or any other state. It answers 400 when the feature is off or no model
+         *     is configured, 404 when the asset has no such finding, and 502 when
+         *     the local endpoint fails.
+         */
+        post: operations["explainFinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reports/dashboard": {
         parameters: {
             query?: never;
@@ -1266,6 +1320,57 @@ export interface components {
              *     `email_password`.
              */
             clear_email_password?: boolean;
+        };
+        /**
+         * LLMSettings
+         * @description The stored local-model choices (ADR-003, #48). The endpoint is an
+         *     OpenAI-compatible base URL on the loopback interface; there is no
+         *     credential.
+         */
+        LLMSettings: {
+            /**
+             * @description The master switch. With it off no request reaches a model server
+             *     and the finding drawer shows no Explain action.
+             */
+            enabled: boolean;
+            /**
+             * @description The base URL, for example `http://127.0.0.1:11434/v1` (Ollama).
+             *     Only http(s) on a loopback IP literal or `localhost` is accepted;
+             *     a name is never resolved.
+             */
+            endpoint: string;
+            /**
+             * @description The model name the server expects, for example `llama3.1`. Empty
+             *     until the user chooses one; an explanation requires it.
+             */
+            model: string;
+        };
+        /**
+         * SetLLMSettingsRequest
+         * @description The settable local-model fields. Omitted fields are left untouched.
+         */
+        SetLLMSettingsRequest: {
+            enabled?: boolean;
+            /**
+             * @description An http(s) base URL on a loopback IP literal or `localhost`. Any
+             *     other host, a non-http scheme, embedded credentials, a query or a
+             *     fragment is refused.
+             */
+            endpoint?: string;
+            /** @description The model name, for example `llama3.1`. */
+            model?: string;
+        };
+        /**
+         * ExplainFindingResponse
+         * @description The local model's explanation, as Markdown. It is advisory only: no
+         *     state was changed to produce it. `model` labels the answer even if the
+         *     setting changes while the drawer is open.
+         */
+        ExplainFindingResponse: {
+            /** @description The explanation, capped at 8 KiB. */
+            text: string;
+            /** @description The model that produced the answer. */
+            model: string;
         };
         /**
          * LicencePolicyAction
@@ -4269,6 +4374,138 @@ export interface operations {
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
             /** @description A channel rejected the message or could not be reached. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getLLMSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stored local-model settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMSettings"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setLLMSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetLLMSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description The settings were stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMSettings"];
+                };
+            };
+            /** @description The body is missing or malformed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            /**
+             * @description The endpoint is not loopback http(s), or the model name is longer
+             *     than 200 characters. Nothing was stored.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            500: components["responses"]["Problem"];
+        };
+    };
+    explainFinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The asset the finding belongs to. */
+                assetId: number;
+                /** @description Stable finding fingerprint within one asset. */
+                fingerprint: components["parameters"]["Fingerprint"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The model's explanation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplainFindingResponse"];
+                };
+            };
+            /**
+             * @description The local model is disabled, no model is configured, or the stored
+             *     endpoint is no longer valid.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description The asset or its finding does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+            /** @description The local model endpoint failed or returned no answer. */
             502: {
                 headers: {
                     [name: string]: unknown;

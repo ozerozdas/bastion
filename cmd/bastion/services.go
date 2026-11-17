@@ -15,6 +15,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/events"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
+	"github.com/ozerozdas/bastion/internal/localllm"
 	"github.com/ozerozdas/bastion/internal/notifications"
 	"github.com/ozerozdas/bastion/internal/preferences"
 	"github.com/ozerozdas/bastion/internal/reports"
@@ -45,6 +46,7 @@ type serverServices struct {
 	licence      *licencepolicy.Service
 	preferences  *preferences.Service
 	notify       *notifications.Service
+	llm          *localllm.Service
 }
 
 // newServerServices opens the database and builds every service a server-mode
@@ -149,6 +151,13 @@ func newServerServices(ctx context.Context, paths app.Paths, port, concurrency i
 	services.preferences, err = preferences.NewService(db)
 	if err != nil {
 		return nil, fmt.Errorf("create preferences service: %w", err)
+	}
+
+	// The optional local model is off by default and only ever reaches a
+	// loopback endpoint (ADR-003, #48).
+	services.llm, err = localllm.New(localllm.Config{DataDir: paths.DataDir})
+	if err != nil {
+		return nil, fmt.Errorf("create local model service: %w", err)
 	}
 
 	// One broker feeds both the scan workers (publish) and the subscribers

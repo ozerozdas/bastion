@@ -28,6 +28,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
+	"github.com/ozerozdas/bastion/internal/localllm"
 	"github.com/ozerozdas/bastion/internal/notifications"
 	"github.com/ozerozdas/bastion/internal/preferences"
 	"github.com/ozerozdas/bastion/internal/reports"
@@ -312,6 +313,10 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 	if err != nil {
 		t.Fatalf("notifications.New: %v", err)
 	}
+	llmService, err := localllm.New(localllm.Config{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("localllm.New: %v", err)
+	}
 
 	// No sources or scanners: a queued scan fails its pipeline quickly, which
 	// is all the API tests need (the endpoint contract, not scanning).
@@ -362,6 +367,7 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 		LicencePolicy: licencePolicyService,
 		Preferences:   preferencesService,
 		Notifications: notificationsService,
+		LLM:           llmService,
 		MCP: MCPSetup{
 			Command: "/opt/bastion/bin/bastion",
 			Args:    []string{"mcp", "--data-dir", filepath.Join(t.TempDir(), "data")},
