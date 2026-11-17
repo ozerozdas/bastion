@@ -346,6 +346,10 @@
   "finding.applies": "Applies to later scans of this project too.",
   "finding.errorFix": "Add a reason and try again.",
   "finding.references": "References",
+  "finding.showMore": "Show more",
+  "finding.showLess": "Show less",
+  "finding.showAllReferences": "Show all {count}",
+  "finding.technical": "Technical details",
 
   "group.close": "Close",
   "group.findings.one": "{count} finding in {projects}",

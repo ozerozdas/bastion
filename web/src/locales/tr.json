@@ -346,6 +346,10 @@
   "finding.applies": "Bu projenin sonraki taramaları için de geçerli.",
   "finding.errorFix": "Bir gerekçe ekleyip yeniden deneyin.",
   "finding.references": "Referanslar",
+  "finding.showMore": "Devamını göster",
+  "finding.showLess": "Daha az göster",
+  "finding.showAllReferences": "Tümünü göster ({count})",
+  "finding.technical": "Teknik ayrıntılar",
 
   "group.close": "Kapat",
   "group.findings.one": "{projects} içinde {count} bulgu",
