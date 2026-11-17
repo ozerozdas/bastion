@@ -58,7 +58,7 @@ function projectColumns(): DataTableColumn<Asset>[] {
     {
       id: 'last-scan',
       header: t('repos.column.lastScan'),
-      headerClassName: 'pl-3',
+      headerClassName: 'status-cell-wide pl-3',
     },
     {
       id: 'open-findings',
@@ -343,7 +343,7 @@ function ProjectRow({
             </span>
           )}
         </td>
-        <td className="py-2 pl-3 align-top whitespace-nowrap">
+        <td className="status-cell-wide py-2 pl-3 align-top whitespace-nowrap">
           {status ? (
             <Badge tone={statusView[status].tone}>
               {t(statusView[status].labelKey)}
@@ -351,7 +351,7 @@ function ProjectRow({
           ) : (
             <Badge>{t('scanStatus.neverScanned')}</Badge>
           )}
-          <span className="ml-2 text-xs text-faint">
+          <span className="ml-2 text-xs text-faint tabular-nums">
             {scanWhen(lastScan, running)}
           </span>
           {liveActive && live ? (
@@ -829,7 +829,7 @@ function RepoOption({
   const t = useT()
   const id = `repo-${repo.full_name}`
   return (
-    <li className="py-1.5 first:pt-0 last:pb-0">
+    <li className="rounded py-1.5 first:pt-0 last:pb-0 hover:bg-hover">
       <label
         htmlFor={id}
         className={`flex items-center gap-2 text-[0.8125rem] ${

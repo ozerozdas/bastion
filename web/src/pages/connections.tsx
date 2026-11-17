@@ -208,7 +208,7 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
       : ''
 
   return (
-    <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+    <li className="-mx-2 flex flex-col gap-2 rounded px-2 py-3 first:pt-0 last:pb-0 hover:bg-hover">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{connection.name}</span>
         <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
@@ -474,7 +474,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
   const status = statusView[connection.status]
 
   return (
-    <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+    <li className="-mx-2 flex flex-col gap-2 rounded px-2 py-3 first:pt-0 last:pb-0 hover:bg-hover">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{connection.name}</span>
         <Badge tone={status.tone}>{t(status.labelKey)}</Badge>

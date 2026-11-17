@@ -161,8 +161,8 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
     {
       id: 'status',
       header: t('scans.column.status'),
-      headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3',
+      headerClassName: 'status-cell pl-3',
+      cellClassName: 'status-cell py-2 pl-3',
       cell: (scan) => {
         const status = statusView[scan.status]
         return <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
