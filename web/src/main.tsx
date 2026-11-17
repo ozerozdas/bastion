@@ -4,6 +4,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { installI18n } from './lib/i18n'
+import { installPreferences } from './lib/preferences'
 import { installAppearance } from './lib/theme'
 import { router } from './router'
 import './styles.css'
@@ -12,6 +13,8 @@ import './styles.css'
 // applied here, before the first render.
 installAppearance()
 installI18n()
+// The server copy wins once it arrives; localStorage was the first paint.
+installPreferences()
 
 const queryClient = new QueryClient({
   defaultOptions: {

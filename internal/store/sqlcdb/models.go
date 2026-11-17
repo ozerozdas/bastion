@@ -96,6 +96,12 @@ type Package struct {
 	Direct    sql.NullInt64
 }
 
+type Preference struct {
+	Key       string
+	Value     string
+	UpdatedAt string
+}
+
 type Scan struct {
 	ID         int64
 	AssetID    int64

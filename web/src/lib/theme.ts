@@ -3,8 +3,18 @@
  * font family and the font size. They live in localStorage and are applied to
  * <html> as data-theme, data-mode, data-font and data-font-size; styles.css
  * keys every palette on [data-theme][data-mode], so the whole app follows
- * without a component knowing about it.
+ * without a component knowing about it. The same values are stored on the
+ * server (#150) and win once installPreferences has fetched them.
  */
+import {
+  fontFamilyPreference as fontFamilyKey,
+  fontSizePreference as fontSizeKey,
+  modePreference as modeKey,
+  setPreference,
+  subscribePreferences,
+  themePreference as themeKey,
+  type PreferenceKey,
+} from './preferences'
 
 /** ThemeOption is one palette family in the Appearance tab. */
 export type ThemeOption = {
@@ -74,11 +84,6 @@ export const fontSizeOptions = [
   { value: 'large', labelKey: 'fontSize.large' },
   { value: 'xlarge', labelKey: 'fontSize.xlarge' },
 ] as const satisfies readonly { value: FontSize; labelKey: string }[]
-
-const themeKey = 'bastion-theme'
-const modeKey = 'bastion-mode'
-const fontFamilyKey = 'bastion-font-family'
-const fontSizeKey = 'bastion-font-size'
 
 type Option<T extends string> = readonly { value: T }[]
 
@@ -155,8 +160,10 @@ function notify(): void {
   }
 }
 
-function save(key: string, value: string): void {
-  localStorage.setItem(key, value)
+function save(key: PreferenceKey, value: string): void {
+  // setPreference writes localStorage and sends the same value to the server
+  // (#150); the cache stays the first-paint copy.
+  setPreference(key, value)
   applyAppearance()
   notify()
 }
@@ -183,6 +190,12 @@ export function setFontSize(size: FontSize): void {
  */
 export function installAppearance(): void {
   applyAppearance()
+  // installPreferences (#150) overwrites the cache when the server copy
+  // arrives; re-apply it then, so the page follows without a reload.
+  subscribePreferences(() => {
+    applyAppearance()
+    notify()
+  })
   const media = window.matchMedia('(prefers-color-scheme: dark)')
   media.addEventListener('change', () => {
     if (storedMode() === 'system') {

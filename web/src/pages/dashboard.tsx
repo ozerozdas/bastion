@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useSyncExternalStore } from 'react'
 
 import { assetsQuery } from '../api/assets'
 import { ApiError } from '../api/client'
@@ -19,14 +19,18 @@ import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import {
-  dismissGetStarted,
   getStartedState,
   isCliStepDone,
   isGetStartedDismissed,
-  markCliStepDone,
   type GetStartedState,
 } from '../lib/get-started'
 import { useT } from '../lib/i18n'
+import {
+  cliDonePreference,
+  dismissedPreference,
+  setPreference,
+  subscribePreferences,
+} from '../lib/preferences'
 import { formatDateTime, relativeTime } from '../lib/time'
 
 /** severityTiles is the fixed order of the four severity totals (§7.1). */
@@ -70,10 +74,12 @@ export function DashboardPage() {
   const connections = useQuery(connectionsQuery)
   const assets = useQuery(assetsQuery)
   const scans = useQuery(scansQuery())
-  const [cliDone, setCliDone] = useState(() =>
+  // The dismissals live in localStorage and on the server (#150); subscribing
+  // makes a value that arrives from the startup fetch re-render the card.
+  const cliDone = useSyncExternalStore(subscribePreferences, () =>
     isCliStepDone(window.localStorage),
   )
-  const [dismissed, setDismissed] = useState(() =>
+  const dismissed = useSyncExternalStore(subscribePreferences, () =>
     isGetStartedDismissed(window.localStorage),
   )
 
@@ -93,13 +99,11 @@ export function DashboardPage() {
       : undefined
 
   const dismissChecklist = () => {
-    dismissGetStarted(window.localStorage)
-    setDismissed(true)
+    setPreference(dismissedPreference, '1')
   }
 
   const markCliStep = () => {
-    markCliStepDone(window.localStorage)
-    setCliDone(true)
+    setPreference(cliDonePreference, '1')
   }
 
   if (dashboard.status === 'pending') {

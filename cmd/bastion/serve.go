@@ -23,6 +23,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/httpapi"
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
+	"github.com/ozerozdas/bastion/internal/preferences"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/scanners/depsdev"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
@@ -186,6 +187,12 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		return errors.Join(fmt.Errorf("create licence policy service: %w", err), ln.Close())
 	}
 
+	// UI preferences follow the install rather than one browser origin (#150).
+	preferencesService, err := preferences.NewService(db)
+	if err != nil {
+		return errors.Join(fmt.Errorf("create preferences service: %w", err), ln.Close())
+	}
+
 	// One broker feeds both the scan workers (publish) and /api/events
 	// (subscribe), so the UI sees every lifecycle event of the scans it starts.
 	bus := events.NewBroker()
@@ -229,6 +236,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		SAST:          sastService,
 		Outdated:      outdatedService,
 		LicencePolicy: licencePolicyService,
+		Preferences:   preferencesService,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())

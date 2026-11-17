@@ -782,6 +782,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the per-install UI preferences.
+         * @description Returns every stored preference as a flat object of string values. A
+         *     key without a value is absent, which lets the UI tell "the server has
+         *     no copy" from a stored default and migrate the localStorage value up.
+         */
+        get: operations["getPreferences"];
+        /**
+         * Merge UI preferences.
+         * @description Writes only the keys the body carries; every other stored preference is
+         *     left untouched. A key outside the whitelist or a value longer than 64
+         *     characters is a 400. The response is the full stored set after the
+         *     merge.
+         */
+        put: operations["setPreferences"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reports/dashboard": {
         parameters: {
             query?: never;
@@ -993,6 +1022,15 @@ export interface components {
          * @enum {string}
          */
         Reachability: "reachable" | "unreachable" | "unknown";
+        /**
+         * Preferences
+         * @description Per-install UI preferences, keyed by the localStorage key the UI uses.
+         *     The whitelist is fixed (theme, mode, font family, font size, language
+         *     and the two dashboard dismissals); a value is at most 64 characters.
+         */
+        Preferences: {
+            [key: string]: string;
+        };
         /**
          * LicencePolicyAction
          * @description The effective rule that matched a licence finding (#39). `allow`
@@ -3641,6 +3679,70 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stored preferences, keyed by localStorage key. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preferences"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Preferences"];
+            };
+        };
+        responses: {
+            /** @description The preferences were merged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Preferences"];
+                };
+            };
+            /**
+             * @description The body is missing, a key is not whitelisted, or a value is longer
+             *     than 64 characters.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
