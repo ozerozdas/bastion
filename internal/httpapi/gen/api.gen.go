@@ -1445,6 +1445,19 @@ type LicencePolicy struct {
 // rule applies.
 type LicencePolicyAction string
 
+// MCPSetup How to start `bastion mcp` for this install: the running binary's real
+// path (symlinks resolved) and the arguments that point it at the same
+// data directory as `bastion serve`.
+type MCPSetup struct {
+	// Args Arguments that follow the command to start the MCP server.
+	//
+	// Examples: ["mcp","--data-dir","/home/me/.config/bastion"]
+	Args []string `json:"args"`
+
+	// Command Absolute path of the running bastion binary.
+	Command string `json:"command"`
+}
+
 // NotificationSettings The stored notification choices. The Slack webhook and the SMTP
 // password are absent by design: the API reports only whether each is
 // configured.
@@ -2363,6 +2376,9 @@ type ServerInterface interface {
 	// SetLicencePolicy Replace the licence allow/deny policy.
 	// (PUT /api/licence-policy)
 	SetLicencePolicy(w http.ResponseWriter, r *http.Request, params SetLicencePolicyParams)
+	// GetMCPSetup Report the command that starts the MCP server.
+	// (GET /api/mcp)
+	GetMCPSetup(w http.ResponseWriter, r *http.Request)
 	// GetNotificationSettings Read the notification settings.
 	// (GET /api/notifications)
 	GetNotificationSettings(w http.ResponseWriter, r *http.Request)
@@ -3058,6 +3074,20 @@ func (siw *ServerInterfaceWrapper) SetLicencePolicy(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetMCPSetup operation middleware
+func (siw *ServerInterfaceWrapper) GetMCPSetup(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMCPSetup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetNotificationSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetNotificationSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -3677,6 +3707,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/mcp", wrapper.GetMCPSetup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/update", wrapper.GetUpdateStatus)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/update/consent", wrapper.SetUpdateConsent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/trivy-db", wrapper.GetTrivyDB)
@@ -6793,6 +6824,118 @@ func (response SetLicencePolicy500ApplicationProblemPlusJSONResponse) VisitSetLi
 	return err
 }
 
+type GetMCPSetupRequestObject struct {
+}
+
+type GetMCPSetupResponseObject interface {
+	VisitGetMCPSetupResponse(w http.ResponseWriter) error
+}
+
+type GetMCPSetup200JSONResponse MCPSetup
+
+func (response GetMCPSetup200JSONResponse) VisitGetMCPSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMCPSetup401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetMCPSetup401ApplicationProblemPlusJSONResponse) VisitGetMCPSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMCPSetup403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetMCPSetup403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetMCPSetup403ResponseHeaders
+}
+
+func (response GetMCPSetup403ApplicationProblemPlusJSONResponse) VisitGetMCPSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMCPSetup421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetMCPSetup421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetMCPSetup421ResponseHeaders
+}
+
+func (response GetMCPSetup421ApplicationProblemPlusJSONResponse) VisitGetMCPSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMCPSetup500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetMCPSetup500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetMCPSetup500ResponseHeaders
+}
+
+func (response GetMCPSetup500ApplicationProblemPlusJSONResponse) VisitGetMCPSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetNotificationSettingsRequestObject struct {
 }
 
@@ -9693,6 +9836,9 @@ type StrictServerInterface interface {
 	// SetLicencePolicy Replace the licence allow/deny policy.
 	// (PUT /api/licence-policy)
 	SetLicencePolicy(ctx context.Context, request SetLicencePolicyRequestObject) (SetLicencePolicyResponseObject, error)
+	// GetMCPSetup Report the command that starts the MCP server.
+	// (GET /api/mcp)
+	GetMCPSetup(ctx context.Context, request GetMCPSetupRequestObject) (GetMCPSetupResponseObject, error)
 	// GetNotificationSettings Read the notification settings.
 	// (GET /api/notifications)
 	GetNotificationSettings(ctx context.Context, request GetNotificationSettingsRequestObject) (GetNotificationSettingsResponseObject, error)
@@ -10404,6 +10550,30 @@ func (sh *strictHandler) SetLicencePolicy(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetLicencePolicyResponseObject); ok {
 		if err := validResponse.VisitSetLicencePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMCPSetup operation middleware
+func (sh *strictHandler) GetMCPSetup(w http.ResponseWriter, r *http.Request) {
+	var request GetMCPSetupRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMCPSetup(ctx, request.(GetMCPSetupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMCPSetup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMCPSetupResponseObject); ok {
+		if err := validResponse.VisitGetMCPSetupResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -113,6 +113,10 @@ type Config struct {
 	// endpoint (#44/#45). serve wires the keyring-backed service; nil answers
 	// those endpoints with 500.
 	Notifications *notifications.Service
+	// MCP serves GET /api/mcp (#163): the command that starts `bastion mcp`
+	// for this install. serve resolves it from the running binary; the zero
+	// value answers the endpoint with 500.
+	MCP MCPSetup
 }
 
 // Server serves the bastion API and UI. Create it with New, take its handler
@@ -175,6 +179,10 @@ type Server struct {
 	// (#44/#45), with the same nil-means-unavailable contract.
 	notifications *notifications.Service
 
+	// mcp backs GET /api/mcp (#163). The zero value means serve did not resolve
+	// the running binary, and the endpoint answers 500.
+	mcp MCPSetup
+
 	// token arrives once, in the browser URL. session is the cookie value that
 	// replaces it. They are distinct values: a token that leaked into shell
 	// history or a proxy log can never be replayed as a cookie.
@@ -221,6 +229,7 @@ func New(cfg Config) (*Server, error) {
 		licencePolicy: cfg.LicencePolicy,
 		preferences:   cfg.Preferences,
 		notifications: cfg.Notifications,
+		mcp:           cfg.MCP,
 		token:         token,
 		session:       session,
 	}

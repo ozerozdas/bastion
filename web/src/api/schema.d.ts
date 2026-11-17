@@ -25,6 +25,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the command that starts the MCP server.
+         * @description Returns the absolute path of the running binary and the arguments that
+         *     start `bastion mcp` against the same data directory as this server.
+         *     The Configuration modal renders the command as copy-ready snippets for
+         *     the supported MCP clients. Nothing is written and no process starts.
+         */
+        get: operations["getMCPSetup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/update": {
         parameters: {
             query?: never;
@@ -945,6 +968,25 @@ export interface components {
              * @example 0.1.0
              */
             version: string;
+        };
+        /**
+         * MCPSetup
+         * @description How to start `bastion mcp` for this install: the running binary's real
+         *     path (symlinks resolved) and the arguments that point it at the same
+         *     data directory as `bastion serve`.
+         */
+        MCPSetup: {
+            /** @description Absolute path of the running bastion binary. */
+            command: string;
+            /**
+             * @description Arguments that follow the command to start the MCP server.
+             * @example [
+             *       "mcp",
+             *       "--data-dir",
+             *       "/home/me/.config/bastion"
+             *     ]
+             */
+            args: string[];
         };
         /**
          * UpdateConsent
@@ -2337,6 +2379,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getMCPSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The command and arguments to start the MCP server. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MCPSetup"];
                 };
             };
             401: components["responses"]["Problem"];

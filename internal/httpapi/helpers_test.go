@@ -343,6 +343,10 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 		LicencePolicy: licencePolicyService,
 		Preferences:   preferencesService,
 		Notifications: notificationsService,
+		MCP: MCPSetup{
+			Command: "/opt/bastion/bin/bastion",
+			Args:    []string{"mcp", "--data-dir", filepath.Join(t.TempDir(), "data")},
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

@@ -16,12 +16,13 @@ import { formatNumber, useT } from '../lib/i18n'
 import { AppearanceSettings } from './appearance-settings'
 import { useDrawerFocus } from './drawer-focus'
 import { LicencePolicyEditor } from './licence-policy-card'
+import { MCPSettings } from './mcp-settings'
 import { SettingSection } from './setting-section'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { Tabs, type TabItem } from './ui/tabs'
 
-type ConfigurationTab = 'modules' | 'notifications' | 'appearance'
+type ConfigurationTab = 'modules' | 'notifications' | 'mcp' | 'appearance'
 
 /**
  * SettingsDialog is the Configuration modal (#139, #142, #143): the opt-in
@@ -37,6 +38,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const configurationTabs: TabItem<ConfigurationTab>[] = [
     { value: 'modules', label: t('settings.tabs.modules') },
     { value: 'notifications', label: t('settings.tabs.notifications') },
+    { value: 'mcp', label: t('settings.tabs.mcp') },
     { value: 'appearance', label: t('settings.tabs.appearance') },
   ]
 
@@ -84,6 +86,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <AppearanceSettings />
           ) : tab === 'notifications' ? (
             <NotificationsSection />
+          ) : tab === 'mcp' ? (
+            <MCPSettings />
           ) : (
             <div className="flex flex-col gap-3">
               <EPSSToggle />

@@ -66,6 +66,15 @@ test('opens Configuration from the sidebar and closes with Escape', async ({
     dialog.getByRole('tab', { name: 'Notifications', exact: true }),
   ).toBeFocused()
   await page.keyboard.press('ArrowRight')
+  await expect(
+    dialog.getByRole('tab', { name: 'MCP', exact: true }),
+  ).toBeFocused()
+  await expect(
+    dialog.getByRole('tab', { name: 'MCP', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true')
+  // The default client is Claude Code and names the running binary.
+  await expect(dialog.getByText(/mcp --data-dir/)).toBeVisible()
+  await page.keyboard.press('ArrowRight')
   await expect(appearanceTab).toBeFocused()
   await expect(appearanceTab).toHaveAttribute('aria-selected', 'true')
   await expect(
