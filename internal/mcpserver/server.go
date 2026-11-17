@@ -154,13 +154,10 @@ func New(cfg Config) (*Server, error) {
 // database, so a token would not protect anything a loopback-only bind does
 // not. ponytail: loopback only; a token comes with any non-loopback bind.
 func (s *Server) HTTPHandler(logger *slog.Logger) http.Handler {
-	return mcp.NewStreamableHTTPHandler(
+	return http.NewCrossOriginProtection().Handler(mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return s.mcp },
-		&mcp.StreamableHTTPOptions{
-			CrossOriginProtection: http.NewCrossOriginProtection(),
-			Logger:                logger,
-		},
-	)
+		&mcp.StreamableHTTPOptions{Logger: logger},
+	))
 }
 
 // Run serves MCP over transport until the client disconnects or ctx is
