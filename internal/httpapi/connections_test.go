@@ -222,6 +222,105 @@ func TestConnectionLifecycle(t *testing.T) {
 	}
 }
 
+// TestConnectionRename: PATCH /api/connections/{id} changes the name, trims
+// it, and leaves the rest of the connection alone. An empty name is a 400 and
+// a missing id a 404, both as problem+json.
+func TestConnectionRename(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+
+	created := decodeConnection(t, readBody(t, doJSON(t, ts, http.MethodPost, "/api/connections",
+		gen.CreateConnectionRequest{
+			Kind:  gen.CreateConnectionRequestKindGithub,
+			Name:  "work",
+			Token: stringPtr("ghp_rename"),
+		}, withBastion(cookie))))
+
+	renamed := doJSON(t, ts, http.MethodPatch,
+		fmt.Sprintf("/api/connections/%d", created.Id),
+		gen.RenameConnectionRequest{Name: "  personal  "}, withBastion(cookie))
+	if renamed.StatusCode != http.StatusOK {
+		t.Fatalf("rename status = %d, want %d", renamed.StatusCode, http.StatusOK)
+	}
+	updated := decodeConnection(t, readBody(t, renamed))
+	if updated.Name != "personal" {
+		t.Errorf("renamed.name = %q, want %q (trimmed)", updated.Name, "personal")
+	}
+	if updated.Id != created.Id || updated.Kind != created.Kind || updated.Status != created.Status {
+		t.Errorf("renamed = %+v, want the same id, kind and status as %+v", updated, created)
+	}
+	if updated.Login == nil || *updated.Login != "octocat" {
+		t.Errorf("renamed.login = %v, want the recorded identity", updated.Login)
+	}
+
+	// The new name is persisted, not just echoed.
+	list := decodeConnectionList(t, readBody(t, ts.do(t, http.MethodGet, "/api/connections", withCookie(cookie))))
+	if len(list.Connections) != 1 || list.Connections[0].Name != "personal" {
+		t.Fatalf("list = %+v, want one connection named personal", list.Connections)
+	}
+
+	// A blank name is refused before SQL and changes nothing.
+	blank := doJSON(t, ts, http.MethodPatch,
+		fmt.Sprintf("/api/connections/%d", created.Id),
+		gen.RenameConnectionRequest{Name: "   "}, withBastion(cookie))
+	if blank.StatusCode != http.StatusBadRequest {
+		t.Fatalf("blank rename status = %d, want %d", blank.StatusCode, http.StatusBadRequest)
+	}
+	readProblem(t, blank)
+	if conn, err := ts.connections.Get(t.Context(), created.Id); err != nil || conn.Name != "personal" {
+		t.Errorf("connection after blank rename = %+v, %v; want it still named personal", conn, err)
+	}
+
+	// A missing connection is a 404 problem, not a silent success.
+	missing := doJSON(t, ts, http.MethodPatch,
+		fmt.Sprintf("/api/connections/%d", created.Id+1000),
+		gen.RenameConnectionRequest{Name: "personal"}, withBastion(cookie))
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing rename status = %d, want %d", missing.StatusCode, http.StatusNotFound)
+	}
+	readProblem(t, missing)
+}
+
+// TestConnectionRenameConflict: a name another connection of the same kind
+// already uses is a 409, and the original row keeps its name.
+func TestConnectionRenameConflict(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+
+	first := decodeConnection(t, readBody(t, doJSON(t, ts, http.MethodPost, "/api/connections",
+		gen.CreateConnectionRequest{
+			Kind:  gen.CreateConnectionRequestKindGithub,
+			Name:  "work",
+			Token: stringPtr("ghp_first"),
+		}, withBastion(cookie))))
+	second := decodeConnection(t, readBody(t, doJSON(t, ts, http.MethodPost, "/api/connections",
+		gen.CreateConnectionRequest{
+			Kind:  gen.CreateConnectionRequestKindGithub,
+			Name:  "personal",
+			Token: stringPtr("ghp_second"),
+		}, withBastion(cookie))))
+
+	resp := doJSON(t, ts, http.MethodPatch,
+		fmt.Sprintf("/api/connections/%d", second.Id),
+		gen.RenameConnectionRequest{Name: "work"}, withBastion(cookie))
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("conflicting rename status = %d, want %d", resp.StatusCode, http.StatusConflict)
+	}
+	readProblem(t, resp)
+
+	if conn, err := ts.connections.Get(t.Context(), second.Id); err != nil || conn.Name != "personal" {
+		t.Errorf("connection after refused rename = %+v, %v; want it still named personal", conn, err)
+	}
+	// Renaming a connection to its own name is not a conflict.
+	same := doJSON(t, ts, http.MethodPatch,
+		fmt.Sprintf("/api/connections/%d", first.Id),
+		gen.RenameConnectionRequest{Name: "work"}, withBastion(cookie))
+	if same.StatusCode != http.StatusOK {
+		t.Fatalf("same-name rename status = %d, want %d", same.StatusCode, http.StatusOK)
+	}
+	readBody(t, same)
+}
+
 // TestConnectionTestRecordsGitHubFailure: a 401 is a connection status, not an
 // API error. The hint is the ADR-005 explanation.
 func TestConnectionTestRecordsGitHubFailure(t *testing.T) {

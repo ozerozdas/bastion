@@ -48,6 +48,15 @@ async function fakeConnectionsApi(page: Page, created: unknown = awsConnection) 
   )
 
   await page.route('**/api/connections/1', (route) => {
+    if (route.request().method() === 'PATCH') {
+      const { name } = route.request().postDataJSON() as { name: string }
+      connections = [{ ...awsConnection, name }]
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(connections[0]),
+      })
+    }
     connections = []
     return route.fulfill({ status: 204, body: '' })
   })
@@ -110,6 +119,18 @@ test('AWS connections are created, tested and removed on the Registry tab', asyn
       'Connection added; authenticated to AWS account 123456789012.',
     ),
   ).toBeVisible()
+
+  // Rename edits the name in place: Enter commits and sends only the name.
+  await page.getByRole('button', { name: 'Rename' }).click()
+  const renameRequest = page.waitForRequest(
+    (request) =>
+      request.url().endsWith('/api/connections/1') &&
+      request.method() === 'PATCH',
+  )
+  await page.getByLabel('Connection name').fill('production')
+  await page.keyboard.press('Enter')
+  expect((await renameRequest).postDataJSON()).toEqual({ name: 'production' })
+  await expect(page.getByText('production', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Test', exact: true }).click()
   await expect(

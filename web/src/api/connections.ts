@@ -81,3 +81,13 @@ export function useDeleteConnection() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: connectionsKey }),
   })
 }
+
+/** useRenameConnection changes a connection's user-chosen name in place. */
+export function useRenameConnection() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, name }: { id: number; name: string }) =>
+      api.patch<Connection>(`/api/connections/${id}`, { name }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: connectionsKey }),
+  })
+}
