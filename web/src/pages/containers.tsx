@@ -243,14 +243,14 @@ function DockerPanel({
       id: 'size',
       header: t('containers.column.size'),
       headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      cellClassName: 'pl-3 align-top whitespace-nowrap tabular-nums',
       cell: (row) => <span className="text-muted">{formatSize(row.image.size_bytes)}</span>,
     },
     {
       id: 'created',
       header: t('containers.column.created'),
       headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      cellClassName: 'pl-3 align-top whitespace-nowrap tabular-nums',
       cell: (row) => (
         <span className="text-muted">{relativeTime(row.image.created_at)}</span>
       ),
@@ -258,8 +258,8 @@ function DockerPanel({
     {
       id: 'last-scan',
       header: t('containers.column.lastScan'),
-      headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      headerClassName: 'status-cell-wide pl-3',
+      cellClassName: 'status-cell-wide pl-3 align-top whitespace-nowrap',
       cell: (row) => (
         <ScanCell
           asset={row.asset}
@@ -592,7 +592,7 @@ function EcrConnection({
       id: 'pushed',
       header: t('containers.column.pushed'),
       headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      cellClassName: 'pl-3 align-top whitespace-nowrap tabular-nums',
       cell: (row) => (
         <span className="text-muted">{relativeTime(row.tag.pushed_at)}</span>
       ),
@@ -600,8 +600,8 @@ function EcrConnection({
     {
       id: 'last-scan',
       header: t('containers.column.lastScan'),
-      headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      headerClassName: 'status-cell-wide pl-3',
+      cellClassName: 'status-cell-wide pl-3 align-top whitespace-nowrap',
       cell: (row) => (
         <ScanCell
           asset={row.asset}
@@ -934,7 +934,7 @@ function ScanCell({
   return (
     <span className="inline-flex items-center gap-2">
       <Badge tone={statusTone[status]}>{t(`scanStatus.${status}`)}</Badge>
-      <span className="text-xs text-faint">
+      <span className="text-xs text-faint tabular-nums">
         {active
           ? t('scanStatus.inProgress')
           : lastScan?.finished_at

@@ -235,7 +235,7 @@
   --b-fg: #eceff4;
   --b-muted: #c6cedd;
   --b-faint: #b3bdcf;
-  --b-hover: #3b4252;
+  --b-hover: #434c5e;
   --b-active: #454f61;
   --b-accent: #8fbcbb;
   --b-accent-fg: #2e3440;
@@ -369,6 +369,22 @@ body {
 :focus-visible {
   outline: 2px solid var(--b-muted);
   outline-offset: 2px;
+}
+
+/*
+ * Status columns keep one width while a live scan moves between labels such as
+ * queued, running and succeeded (#146). The width fits the longest label, and
+ * the cells never wrap, so rows keep a constant height as well.
+ */
+.status-cell {
+  width: 8.5rem;
+  white-space: nowrap;
+}
+
+/* The same column with the scan's relative time or live stage beside the badge. */
+.status-cell-wide {
+  width: 15rem;
+  white-space: nowrap;
 }
 
 /*
