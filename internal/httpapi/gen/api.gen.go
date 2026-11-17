@@ -1436,6 +1436,11 @@ type OutdatedStatus struct {
 	Enabled bool `json:"enabled"`
 }
 
+// Preferences Per-install UI preferences, keyed by the localStorage key the UI uses.
+// The whitelist is fixed (theme, mode, font family, font size, language
+// and the two dashboard dismissals); a value is at most 64 characters.
+type Preferences map[string]string
+
 // Problem RFC 9457 problem details. Extension members are allowed and may be
 // added later without a breaking change.
 type Problem struct {
@@ -2024,6 +2029,9 @@ type SetLicencePolicyJSONRequestBody = LicencePolicy
 // SetOutdatedEnabledJSONRequestBody defines body for SetOutdatedEnabled for application/json ContentType.
 type SetOutdatedEnabledJSONRequestBody = SetOutdatedEnabledRequest
 
+// SetPreferencesJSONRequestBody defines body for SetPreferences for application/json ContentType.
+type SetPreferencesJSONRequestBody = Preferences
+
 // SetReachabilityEnabledJSONRequestBody defines body for SetReachabilityEnabled for application/json ContentType.
 type SetReachabilityEnabledJSONRequestBody = SetReachabilityEnabledRequest
 
@@ -2247,6 +2255,12 @@ type ServerInterface interface {
 	// SetOutdatedEnabled Store the outdated-package opt-in choice.
 	// (PUT /api/outdated)
 	SetOutdatedEnabled(w http.ResponseWriter, r *http.Request)
+	// GetPreferences Read the per-install UI preferences.
+	// (GET /api/preferences)
+	GetPreferences(w http.ResponseWriter, r *http.Request)
+	// SetPreferences Merge UI preferences.
+	// (PUT /api/preferences)
+	SetPreferences(w http.ResponseWriter, r *http.Request)
 	// GetReachabilityStatus Report the Go reachability enrichment state.
 	// (GET /api/reachability)
 	GetReachabilityStatus(w http.ResponseWriter, r *http.Request)
@@ -2949,6 +2963,34 @@ func (siw *ServerInterfaceWrapper) SetOutdatedEnabled(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetPreferences operation middleware
+func (siw *ServerInterfaceWrapper) GetPreferences(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPreferences(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPreferences operation middleware
+func (siw *ServerInterfaceWrapper) SetPreferences(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPreferences(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetReachabilityStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetReachabilityStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -3507,6 +3549,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/findings", wrapper.ListFindings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/licence-policy", wrapper.GetLicencePolicy)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/licence-policy", wrapper.SetLicencePolicy)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/preferences", wrapper.GetPreferences)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/preferences", wrapper.SetPreferences)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/dashboard", wrapper.GetDashboard)
 
 	return m
@@ -6830,6 +6874,245 @@ func (response SetOutdatedEnabled500ApplicationProblemPlusJSONResponse) VisitSet
 	return err
 }
 
+type GetPreferencesRequestObject struct {
+}
+
+type GetPreferencesResponseObject interface {
+	VisitGetPreferencesResponse(w http.ResponseWriter) error
+}
+
+type GetPreferences200JSONResponse Preferences
+
+func (response GetPreferences200JSONResponse) VisitGetPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPreferences401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetPreferences401ApplicationProblemPlusJSONResponse) VisitGetPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPreferences403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetPreferences403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetPreferences403ResponseHeaders
+}
+
+func (response GetPreferences403ApplicationProblemPlusJSONResponse) VisitGetPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPreferences421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetPreferences421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetPreferences421ResponseHeaders
+}
+
+func (response GetPreferences421ApplicationProblemPlusJSONResponse) VisitGetPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPreferences500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetPreferences500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetPreferences500ResponseHeaders
+}
+
+func (response GetPreferences500ApplicationProblemPlusJSONResponse) VisitGetPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPreferencesRequestObject struct {
+	Body *SetPreferencesJSONRequestBody
+}
+
+type SetPreferencesResponseObject interface {
+	VisitSetPreferencesResponse(w http.ResponseWriter) error
+}
+
+type SetPreferences200JSONResponse Preferences
+
+func (response SetPreferences200JSONResponse) VisitSetPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPreferences400ApplicationProblemPlusJSONResponse Problem
+
+func (response SetPreferences400ApplicationProblemPlusJSONResponse) VisitSetPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPreferences401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetPreferences401ApplicationProblemPlusJSONResponse) VisitSetPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPreferences403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetPreferences403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetPreferences403ResponseHeaders
+}
+
+func (response SetPreferences403ApplicationProblemPlusJSONResponse) VisitSetPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPreferences421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetPreferences421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetPreferences421ResponseHeaders
+}
+
+func (response SetPreferences421ApplicationProblemPlusJSONResponse) VisitSetPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPreferences500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetPreferences500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetPreferences500ResponseHeaders
+}
+
+func (response SetPreferences500ApplicationProblemPlusJSONResponse) VisitSetPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetReachabilityStatusRequestObject struct {
 }
 
@@ -8875,6 +9158,12 @@ type StrictServerInterface interface {
 	// SetOutdatedEnabled Store the outdated-package opt-in choice.
 	// (PUT /api/outdated)
 	SetOutdatedEnabled(ctx context.Context, request SetOutdatedEnabledRequestObject) (SetOutdatedEnabledResponseObject, error)
+	// GetPreferences Read the per-install UI preferences.
+	// (GET /api/preferences)
+	GetPreferences(ctx context.Context, request GetPreferencesRequestObject) (GetPreferencesResponseObject, error)
+	// SetPreferences Merge UI preferences.
+	// (PUT /api/preferences)
+	SetPreferences(ctx context.Context, request SetPreferencesRequestObject) (SetPreferencesResponseObject, error)
 	// GetReachabilityStatus Report the Go reachability enrichment state.
 	// (GET /api/reachability)
 	GetReachabilityStatus(ctx context.Context, request GetReachabilityStatusRequestObject) (GetReachabilityStatusResponseObject, error)
@@ -9620,6 +9909,61 @@ func (sh *strictHandler) SetOutdatedEnabled(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetOutdatedEnabledResponseObject); ok {
 		if err := validResponse.VisitSetOutdatedEnabledResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPreferences operation middleware
+func (sh *strictHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
+	var request GetPreferencesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPreferences(ctx, request.(GetPreferencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPreferences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPreferencesResponseObject); ok {
+		if err := validResponse.VisitGetPreferencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetPreferences operation middleware
+func (sh *strictHandler) SetPreferences(w http.ResponseWriter, r *http.Request) {
+	var request SetPreferencesRequestObject
+
+	var body SetPreferencesJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetPreferences(ctx, request.(SetPreferencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetPreferences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetPreferencesResponseObject); ok {
+		if err := validResponse.VisitSetPreferencesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -11,6 +11,12 @@
  */
 import { useSyncExternalStore } from 'react'
 
+import {
+  languagePreference,
+  setPreference,
+  subscribePreferences,
+} from './preferences'
+
 /** Messages are flat, so a key is the whole path: "nav.findings". */
 export type Messages = Record<string, string>
 
@@ -65,7 +71,7 @@ export const languageOptions: LanguageOption[] = [...locales.entries()]
     return a.value.localeCompare(b.value)
   })
 
-const languageKey = 'bastion-language'
+const languageKey = languagePreference
 
 /** readStoredLanguage returns the saved language when that file still exists. */
 function readStoredLanguage(): string | null {
@@ -121,11 +127,8 @@ export function language(): string {
 /** setLanguage stores the choice, sets <html lang> and re-renders the UI. */
 export function setLanguage(code: string): void {
   if (!locales.has(code)) return
-  try {
-    localStorage.setItem(languageKey, code)
-  } catch {
-    // The choice still applies to this page even if it cannot be remembered.
-  }
+  // setPreference writes the cache and sends the choice to the server (#150).
+  setPreference(languagePreference, code)
   applyLang(code)
   if (code === current) return
   current = code
@@ -138,6 +141,23 @@ export function setLanguage(code: string): void {
 export function installI18n(): void {
   current = detectLanguage()
   applyLang(current)
+  // installPreferences (#150) overwrites the cache when the server copy
+  // arrives; re-detect then, so the UI follows without a reload.
+  subscribePreferences(refreshLanguage)
+}
+
+/**
+ * refreshLanguage re-reads the cache after a server sync and re-renders when
+ * the language changed.
+ */
+function refreshLanguage(): void {
+  const next = detectLanguage()
+  applyLang(next)
+  if (next === current) return
+  current = next
+  for (const listener of listeners) {
+    listener()
+  }
 }
 
 /** applyLang keeps <html lang> in step, which screen readers and CSS use. */

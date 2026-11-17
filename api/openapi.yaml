@@ -100,6 +100,12 @@ tags:
       overrides a global one for the same licence. Matching is exact on the
       licence string as the scanner reports it: `MIT OR Apache-2.0` is its own
       entry, not two rules.
+  - name: preferences
+    description: |
+      Per-install UI preferences (#150): the theme, the language and the
+      dashboard dismissals. They are keyed by the localStorage key the UI uses,
+      so the browser cache and the server copy stay interchangeable. The
+      whitelist is fixed: an unknown key is rejected rather than stored.
   - name: reports
     description: |
       Aggregates for the Dashboard (PROJECT_SPEC.md §7.1). Every number counts
@@ -1564,6 +1570,68 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/preferences:
+    get:
+      operationId: getPreferences
+      summary: Read the per-install UI preferences.
+      description: |
+        Returns every stored preference as a flat object of string values. A
+        key without a value is absent, which lets the UI tell "the server has
+        no copy" from a stored default and migrate the localStorage value up.
+      tags: [preferences]
+      responses:
+        "200":
+          description: The stored preferences, keyed by localStorage key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preferences"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setPreferences
+      summary: Merge UI preferences.
+      description: |
+        Writes only the keys the body carries; every other stored preference is
+        left untouched. A key outside the whitelist or a value longer than 64
+        characters is a 400. The response is the full stored set after the
+        merge.
+      tags: [preferences]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Preferences"
+      responses:
+        "200":
+          description: The preferences were merged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preferences"
+        "400":
+          description: |
+            The body is missing, a key is not whitelisted, or a value is longer
+            than 64 characters.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/reports/dashboard:
     get:
       operationId: getDashboard
@@ -2010,6 +2078,16 @@ components:
         found only at package or module level, and `unknown` means no answer
         (govulncheck did not run, failed, or does not know the advisory).
       enum: [reachable, unreachable, unknown]
+    Preferences:
+      type: object
+      title: Preferences
+      description: |
+        Per-install UI preferences, keyed by the localStorage key the UI uses.
+        The whitelist is fixed (theme, mode, font family, font size, language
+        and the two dashboard dismissals); a value is at most 64 characters.
+      additionalProperties:
+        type: string
+        maxLength: 64
     LicencePolicyAction:
       type: string
       title: LicencePolicyAction
