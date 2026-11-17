@@ -129,6 +129,13 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	defer services.Close()
 
 	updateChecker := deps.newUpdateChecker(opts.paths)
+	// The MCP tab's snippets name the running binary. A resolution failure is
+	// reported and the API answers that endpoint with 500; the server still
+	// starts, since the configuration is advisory.
+	mcpSetup, err := mcpSetupFor(opts.paths)
+	if err != nil {
+		slog.Warn("could not resolve the MCP command", "error", err)
+	}
 	srv, err := deps.newServer(httpapi.Config{
 		Version:       version,
 		Port:          port,
@@ -145,6 +152,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		LicencePolicy: services.licence,
 		Preferences:   services.preferences,
 		Notifications: services.notify,
+		MCP:           mcpSetup,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())

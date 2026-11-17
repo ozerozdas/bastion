@@ -6,12 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
 	"github.com/ozerozdas/bastion/internal/app"
 	"github.com/ozerozdas/bastion/internal/assets"
+	"github.com/ozerozdas/bastion/internal/httpapi"
 	"github.com/ozerozdas/bastion/internal/mcpserver"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/servelock"
@@ -87,6 +90,24 @@ func (s *mcpServices) Close() {
 	if s.db != nil {
 		_ = s.db.Close()
 	}
+}
+
+// mcpSetupFor is what GET /api/mcp advertises (#163): the running binary's
+// real path (symlinks resolved, so a package-manager shim points at the binary
+// it starts) and the arguments that open the same data directory as serve.
+func mcpSetupFor(paths app.Paths) (httpapi.MCPSetup, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return httpapi.MCPSetup{}, fmt.Errorf("resolve executable: %w", err)
+	}
+	resolved, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		return httpapi.MCPSetup{}, fmt.Errorf("resolve executable path: %w", err)
+	}
+	return httpapi.MCPSetup{
+		Command: resolved,
+		Args:    []string{"mcp", "--data-dir", paths.DataDir},
+	}, nil
 }
 
 // runMCP opens the MCP services and blocks until the client disconnects

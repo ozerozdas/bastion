@@ -29,6 +29,12 @@ servers:
 tags:
   - name: system
     description: Process and API liveness.
+  - name: mcp
+    description: |
+      Copy-ready client configuration for `bastion mcp`, the read-only Model
+      Context Protocol server over stdio. The response names the running
+      binary and the arguments that start it against the same data directory
+      as `bastion serve`; it performs no I/O itself.
   - name: update
     description: |
       The opt-in release check (ADR-006). Consent, not the database, decides
@@ -136,6 +142,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/mcp:
+    get:
+      operationId: getMCPSetup
+      summary: Report the command that starts the MCP server.
+      description: |
+        Returns the absolute path of the running binary and the arguments that
+        start `bastion mcp` against the same data directory as this server.
+        The Configuration modal renders the command as copy-ready snippets for
+        the supported MCP clients. Nothing is written and no process starts.
+      tags: [mcp]
+      responses:
+        "200":
+          description: The command and arguments to start the MCP server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPSetup"
         "401":
           $ref: "#/components/responses/Problem"
         "403":
@@ -2034,6 +2065,26 @@ components:
             Build version of the running binary (`dev` for local builds,
             otherwise the release tag).
           examples: ["0.1.0"]
+    MCPSetup:
+      type: object
+      title: MCPSetup
+      description: |
+        How to start `bastion mcp` for this install: the running binary's real
+        path (symlinks resolved) and the arguments that point it at the same
+        data directory as `bastion serve`.
+      additionalProperties: false
+      required: [command, args]
+      properties:
+        command:
+          type: string
+          description: Absolute path of the running bastion binary.
+        args:
+          type: array
+          description: Arguments that follow the command to start the MCP server.
+          items:
+            type: string
+          examples:
+            - ["mcp", "--data-dir", "/home/me/.config/bastion"]
     UpdateConsent:
       type: string
       title: UpdateConsent
