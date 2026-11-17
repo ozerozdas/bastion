@@ -110,7 +110,17 @@ func newServerServices(ctx context.Context, paths app.Paths, port, concurrency i
 	// repository scans are unchanged until the user turns it on.
 	services.sast = newOpengrepModule(paths)
 
-	services.reports, err = reports.NewService(db, reports.WithEPSS(services.epss))
+	services.reports, err = reports.NewService(db,
+		reports.WithEPSS(services.epss),
+		// The fix plan pull request (#47) edits a manifest through the GitHub
+		// REST API with the repository asset's own connection token.
+		reports.WithGitHub(
+			func(token string) (reports.PullRequestClient, error) {
+				return github.New(github.Config{Token: token, Version: version})
+			},
+			services.connections,
+		),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("create reports service: %w", err)
 	}

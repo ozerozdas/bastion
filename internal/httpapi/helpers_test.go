@@ -49,6 +49,9 @@ type fakeGitHub struct {
 	reposErr error
 	repo     github.Repo
 	repoErr  error
+	// pullRequestFactory backs the fix plan pull request endpoint (#47). Nil
+	// leaves the endpoint unconfigured.
+	pullRequestFactory reports.PullRequestClientFactory
 }
 
 func newFakeGitHub() *fakeGitHub {
@@ -149,6 +152,18 @@ func (f *fakeAWS) lastCall() (string, string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.profile, f.region
+}
+
+// fakeGitHubTokens backs the fix plan pull request (#47): a GitHub connection
+// with a token.
+type fakeGitHubTokens struct{}
+
+func (fakeGitHubTokens) ConnectionToken(context.Context, int64) (string, error) {
+	return "test-token", nil
+}
+
+func (fakeGitHubTokens) ConnectionKind(context.Context, int64) (string, error) {
+	return connections.KindGitHub, nil
 }
 
 // fakeTokens answers every credential lookup, so asset creation never needs a
@@ -271,7 +286,11 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 		t.Fatalf("NewService: %v", err)
 	}
 
-	reportService, err := reports.NewService(db, testEPSSOption(feed)...)
+	reportOptions := testEPSSOption(feed)
+	if fake.pullRequestFactory != nil {
+		reportOptions = append(reportOptions, reports.WithGitHub(fake.pullRequestFactory, fakeGitHubTokens{}))
+	}
+	reportService, err := reports.NewService(db, reportOptions...)
 	if err != nil {
 		t.Fatalf("reports.NewService: %v", err)
 	}

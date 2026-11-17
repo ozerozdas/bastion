@@ -3,12 +3,15 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 
 import type { Asset } from '../api/assets'
+import { ApiError } from '../api/client'
 import { epssQuery } from '../api/epss'
 import { allFindingsQuery, type Finding } from '../api/findings'
 import {
   fixPlanQuery,
+  useOpenFixPlanPullRequest,
   type FixPlanFactor,
   type FixPlanNoFix,
+  type FixPlanPullRequestRequest,
   type FixPlanStep,
 } from '../api/fixplan'
 import {
@@ -20,11 +23,14 @@ import { EmptyState } from '../components/empty-state'
 import { ErrorNote } from '../components/error-note'
 import { FilterBar } from '../components/filter-bar'
 import { FindingDrawer } from '../components/finding-drawer'
+import { useDrawerFocus } from '../components/drawer-focus'
 import { SeverityCountBadges } from '../components/severity-counts'
 import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
 import { severityLabel, severityTone } from '../lib/finding-labels'
 import { epssLabel } from '../lib/epss'
 import { t, useT } from '../lib/i18n'
+import { manifestPath } from '../lib/manifests'
 
 /**
  * FixPlanPanel is §7.2's "Fix plan" tab: one project's open vulnerabilities
@@ -42,6 +48,11 @@ export function FixPlanPanel({
   const navigate = useNavigate()
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const [openFingerprint, setOpenFingerprint] = useState<string | null>(null)
+  // The step whose pull request dialog is open. Only a repository asset with a
+  // GitHub connection can open one (#47).
+  const [prStep, setPrStep] = useState<FixPlanStep | null>(null)
+  const canOpenPullRequest =
+    selected?.kind === 'repo' && selected.connection_id !== undefined
 
   const plan = useQuery(fixPlanQuery(selected?.id))
   const epss = useQuery(epssQuery)
@@ -159,7 +170,11 @@ export function FixPlanPanel({
           </div>
           <PlanTable
             rows={plan.data.steps}
-            columns={stepColumns(expanded, epss.data?.enabled === true)}
+            columns={stepColumns(
+              expanded,
+              epss.data?.enabled === true,
+              canOpenPullRequest ? setPrStep : undefined,
+            )}
             rowKey={(step) => planRowKey('step', step.ecosystem, step.package)}
             expanded={expanded}
             onToggle={toggle}
@@ -218,6 +233,15 @@ export function FixPlanPanel({
           onClose={() => setOpenFingerprint(null)}
         />
       ) : null}
+
+      {prStep !== null && selected !== undefined ? (
+        <PullRequestDialog
+          asset={selected}
+          step={prStep}
+          findings={findings.data}
+          onClose={() => setPrStep(null)}
+        />
+      ) : null}
     </>
   )
 }
@@ -231,6 +255,7 @@ function planRowKey(prefix: string, ecosystem: string, pkg: string): string {
 function stepColumns(
   expanded: ReadonlySet<string>,
   showEPSS = false,
+  onOpenPullRequest?: (step: FixPlanStep) => void,
 ): DataTableColumn<FixPlanStep>[] {
   return [
     {
@@ -310,6 +335,17 @@ function stepColumns(
         </span>
       ),
     },
+    ...(onOpenPullRequest !== undefined
+      ? [
+          {
+            id: 'pull-request',
+            header: '',
+            headerClassName: 'pl-3',
+            cellClassName: 'py-2 pl-3 text-right whitespace-nowrap',
+            cell: (step: FixPlanStep) => <StepPullRequestAction step={step} onOpen={onOpenPullRequest} />,
+          } satisfies DataTableColumn<FixPlanStep>,
+        ]
+      : []),
     {
       id: 'details',
       header: '',
@@ -524,5 +560,215 @@ function FindingList({
         </li>
       ))}
     </ul>
+  )
+}
+
+/**
+ * StepPullRequestAction is the step's pull request state: a link once one is
+ * recorded (#47), the action otherwise. A merged pull request never offers the
+ * action again; the next scan is what confirms the bump.
+ */
+function StepPullRequestAction({
+  step,
+  onOpen,
+}: {
+  step: FixPlanStep
+  onOpen: (step: FixPlanStep) => void
+}) {
+  const t = useT()
+  const pullRequest = step.pull_request
+  if (pullRequest !== undefined) {
+    return (
+      <a
+        href={pullRequest.url}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+        className="text-xs whitespace-nowrap underline"
+      >
+        {pullRequest.state === 'merged'
+          ? t('fixPlan.pr.mergedLink', { number: pullRequest.number })
+          : t('fixPlan.pr.openLink', { number: pullRequest.number })}
+      </a>
+    )
+  }
+  if (manifestEcosystem(step.ecosystem) === undefined) return null
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={(event) => {
+        // The row opens its findings on click; the action must not.
+        event.stopPropagation()
+        onOpen(step)
+      }}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {t('fixPlan.pr.action')}
+    </Button>
+  )
+}
+
+/** manifestEcosystem narrows a step's ecosystem to the manifests #47 edits. */
+function manifestEcosystem(
+  ecosystem: string,
+): FixPlanPullRequestRequest['ecosystem'] | undefined {
+  return ecosystem === 'go' || ecosystem === 'npm' ? ecosystem : undefined
+}
+
+/** manifestForStep is the manifest the dialog names, from the step's findings. */
+function manifestForStep(
+  step: FixPlanStep,
+  findings: readonly Finding[] | undefined,
+): string | undefined {
+  const ids = new Set(step.finding_ids)
+  for (const finding of findings ?? []) {
+    if (!ids.has(finding.id) || finding.package_name !== step.package) continue
+    const path = manifestPath(step.ecosystem, finding.location)
+    if (path !== undefined) return path
+  }
+  return undefined
+}
+
+/**
+ * PullRequestDialog is the confirmation #47 requires: it names the package, the
+ * upgrade, the manifest and what bastion will do on GitHub, and no request is
+ * sent until the user confirms.
+ */
+function PullRequestDialog({
+  asset,
+  step,
+  findings,
+  onClose,
+}: {
+  asset: Asset
+  step: FixPlanStep
+  findings: readonly Finding[] | undefined
+  onClose: () => void
+}) {
+  const t = useT()
+  const { panel, onKeyDown } = useDrawerFocus(onClose)
+  const open = useOpenFixPlanPullRequest(asset.id)
+
+  const ecosystem = manifestEcosystem(step.ecosystem)
+  const manifest = manifestForStep(step, findings)
+
+  function confirm() {
+    if (ecosystem === undefined) return
+    open.mutate({
+      ecosystem,
+      package: step.package,
+      target: step.target_version,
+      confirm: true,
+    })
+  }
+
+  const conflictURL =
+    open.error instanceof ApiError &&
+    typeof open.error.problem?.pr_url === 'string'
+      ? open.error.problem.pr_url
+      : undefined
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <div
+        aria-hidden="true"
+        onClick={onClose}
+        className="absolute inset-0 overlay-scrim"
+      />
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="fix-plan-pr-title"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="absolute inset-x-4 top-[12vh] mx-auto flex max-h-[76vh] max-w-[520px] flex-col gap-4 overflow-y-auto rounded-xl border border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
+      >
+        <h2 id="fix-plan-pr-title" className="text-[0.9375rem] font-semibold">
+          {t('fixPlan.pr.title')}
+        </h2>
+
+        {open.isSuccess ? (
+          <>
+            <p className="text-[0.8125rem] text-muted">
+              {t('fixPlan.pr.opened', { number: open.data.number })}
+            </p>
+            <p className="font-mono text-xs text-muted">
+              {t('fixPlan.pr.changed', { manifest: open.data.manifest })}
+            </p>
+            <a
+              href={open.data.url}
+              target="_blank"
+              rel="noreferrer"
+              className="truncate font-mono text-xs text-fg underline"
+            >
+              {open.data.url}
+            </a>
+            <div className="flex justify-end">
+              <Button type="button" onClick={onClose}>
+                {t('common.close')}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[0.8125rem]">
+              <dt className="text-muted">{t('fixPlan.pr.package')}</dt>
+              <dd className="font-mono">{step.package}</dd>
+              <dt className="text-muted">{t('fixPlan.pr.upgrade')}</dt>
+              <dd>
+                <span className="font-mono text-muted">{installed(step)}</span>{' '}
+                <span aria-hidden="true">→</span>{' '}
+                <span className="font-mono font-medium">
+                  {step.target_version}
+                </span>
+              </dd>
+              <dt className="text-muted">{t('fixPlan.pr.manifest')}</dt>
+              <dd className="font-mono">
+                {manifest ?? t('fixPlan.pr.manifestUnknown')}
+              </dd>
+            </dl>
+
+            <p className="text-xs text-muted">{t('fixPlan.pr.branch')}</p>
+            <p className="text-xs text-muted">{t('fixPlan.pr.lockfile')}</p>
+
+            {open.isError ? (
+              <div className="flex flex-col gap-1">
+                <ErrorNote error={open.error} />
+                {conflictURL !== undefined ? (
+                  <a
+                    href={conflictURL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="truncate font-mono text-xs underline"
+                  >
+                    {conflictURL}
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={open.isPending}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button type="button" onClick={confirm} disabled={open.isPending}>
+                {open.isPending
+                  ? t('fixPlan.pr.opening')
+                  : t('fixPlan.pr.confirm')}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   )
 }

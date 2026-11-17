@@ -38,6 +38,25 @@ type Input struct {
 	Severity     findings.Severity
 }
 
+// PullRequestState is the state of the pull request a step already has.
+type PullRequestState string
+
+const (
+	// PullRequestOpen means GitHub reports the pull request as open.
+	PullRequestOpen PullRequestState = "open"
+	// PullRequestMerged means the bump is on the default branch; the next scan
+	// is what confirms it.
+	PullRequestMerged PullRequestState = "merged"
+)
+
+// PullRequest is the pull request bastion opened for one step (#47). It is
+// attached by the caller that has the stored record and the GitHub client.
+type PullRequest struct {
+	Number int
+	URL    string
+	State  PullRequestState
+}
+
 // SeverityCounts is the finding count per severity inside one step.
 type SeverityCounts struct {
 	Critical int
@@ -78,6 +97,9 @@ type Step struct {
 	Score float64
 	// Factors explains Score, in the order it was computed.
 	Factors []Factor
+	// PullRequest is the pull request bastion already opened for this step.
+	// Nil means none is recorded, so the UI offers the action again.
+	PullRequest *PullRequest
 }
 
 // NoFix is a package whose open findings no upgrade closes.
