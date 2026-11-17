@@ -108,12 +108,12 @@ tags:
       whitelist is fixed: an unknown key is rejected rather than stored.
   - name: notifications
     description: |
-      Scan notifications (#44/#45). After a scan succeeds, bastion diffs it
+      Scan notifications (#44/#45/#46). After a scan succeeds, bastion diffs it
       against the asset's previous succeeded scan and posts the new counts to
       every enabled notifier when at least one new finding meets the threshold.
-      The first scan of an asset sends nothing. The Slack webhook is stored in
-      the OS keyring and is never returned: the API only reports whether one is
-      configured.
+      The first scan of an asset sends nothing. The Slack webhook and the SMTP
+      password are stored in the OS keyring and never returned: the API only
+      reports whether each is configured.
   - name: reports
     description: |
       Aggregates for the Dashboard (PROJECT_SPEC.md §7.1). Every number counts
@@ -1645,9 +1645,10 @@ paths:
       operationId: getNotificationSettings
       summary: Read the notification settings.
       description: |
-        Returns the master switch, the threshold and whether Slack is enabled,
-        plus whether a webhook is configured. The webhook URL itself is never
-        returned; it lives in the OS keyring.
+        Returns the master switch, the threshold and whether Slack and email
+        are enabled, plus whether a webhook or SMTP password is configured. The
+        credential values themselves are never returned; they live in the OS
+        keyring.
       tags: [notifications]
       responses:
         "200":
@@ -1670,8 +1671,10 @@ paths:
       description: |
         Writes only the fields the body carries; every other stored setting is
         left untouched. `slack_webhook` sets the webhook (write-only, must be an
-        https URL on hooks.slack.com) and `clear_slack_webhook` removes it.
-        Sending both, an invalid threshold or an invalid webhook is a 400.
+        https URL on hooks.slack.com) and `clear_slack_webhook` removes it;
+        `email_password` sets the SMTP password (write-only) and
+        `clear_email_password` removes it. Sending both a value and its clear
+        flag, an invalid threshold, webhook, host, port or address is a 400.
       tags: [notifications]
       requestBody:
         required: true
@@ -1689,8 +1692,9 @@ paths:
         "400":
           description: |
             The body is missing, the threshold is not `high` or `critical`, the
-            webhook is not an https URL on hooks.slack.com, or both
-            `slack_webhook` and `clear_slack_webhook` are sent.
+            webhook is not an https URL on hooks.slack.com, an SMTP host, port
+            or address is invalid, or a value and its clear flag are sent
+            together.
           content:
             application/problem+json:
               schema:
@@ -1706,18 +1710,21 @@ paths:
   /api/notifications/test:
     post:
       operationId: sendTestNotification
-      summary: Send a test message to Slack.
+      summary: Send a test message to every configured notifier.
       description: |
-        Posts a sample message through the stored Slack webhook, regardless of
-        whether Slack notifications are enabled. With no webhook configured it
-        answers 400; a webhook Slack rejects is a 502. The webhook is never
-        included in the response.
+        Sends a sample message through each configured channel (Slack when a
+        webhook is stored, email when a host, sender and recipients are set),
+        regardless of whether that channel is enabled. With no channel
+        configured it answers 400; a channel that rejects the message or cannot
+        be reached is a 502. Credentials are never included in the response.
       tags: [notifications]
       responses:
         "204":
-          description: Slack accepted the test message.
+          description: Every configured channel accepted the test message.
         "400":
-          description: No Slack webhook is configured.
+          description: |
+            No notification channel is configured, an SMTP username has no
+            stored password, or the stored email settings are invalid.
           content:
             application/problem+json:
               schema:
@@ -1731,7 +1738,7 @@ paths:
         "500":
           $ref: "#/components/responses/Problem"
         "502":
-          description: Slack rejected the message or could not be reached.
+          description: A channel rejected the message or could not be reached.
           content:
             application/problem+json:
               schema:
@@ -2203,10 +2210,14 @@ components:
       type: object
       title: NotificationSettings
       description: |
-        The stored notification choices. The Slack webhook is absent by design:
-        the API reports only whether one is configured.
+        The stored notification choices. The Slack webhook and the SMTP
+        password are absent by design: the API reports only whether each is
+        configured.
       additionalProperties: false
-      required: [enabled, threshold, slack_enabled, slack_configured]
+      required:
+        [enabled, threshold, slack_enabled, slack_configured, email_enabled,
+         smtp_host, smtp_port, smtp_username, from, to,
+         email_password_configured]
       properties:
         enabled:
           type: boolean
@@ -2222,13 +2233,45 @@ components:
           description: |
             Whether a Slack webhook is stored in the OS keyring. The URL itself
             is never returned.
+        email_enabled:
+          type: boolean
+          description: Whether the email notifier is called after a scan.
+        smtp_host:
+          type: string
+          description: |
+            The SMTP submission host. Empty until configured. STARTTLS is
+            required; port 465 implicit TLS is not supported.
+        smtp_port:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 65535
+          description: The SMTP submission port. Defaults to 587.
+        smtp_username:
+          type: string
+          description: |
+            The optional SMTP AUTH PLAIN username. Empty means no
+            authentication is attempted.
+        from:
+          type: string
+          description: The validated sender address.
+        to:
+          type: string
+          description: |
+            One or more validated recipient addresses, comma separated.
+        email_password_configured:
+          type: boolean
+          description: |
+            Whether an SMTP password is stored in the OS keyring. The password
+            itself is never returned.
     SetNotificationSettingsRequest:
       type: object
       title: SetNotificationSettingsRequest
       description: |
         The settable notification fields. Omitted fields are left untouched;
-        `slack_webhook` is write-only and `clear_slack_webhook` removes the
-        stored webhook.
+        `slack_webhook` and `email_password` are write-only and
+        `clear_slack_webhook` and `clear_email_password` remove the stored
+        credential.
       additionalProperties: false
       properties:
         enabled:
@@ -2249,6 +2292,46 @@ components:
           description: |
             Removes the stored webhook. Cannot be combined with
             `slack_webhook`.
+        email_enabled:
+          type: boolean
+        smtp_host:
+          type: string
+          maxLength: 255
+          description: |
+            A hostname or IP literal. A URL or a value with whitespace is
+            refused.
+        smtp_port:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 65535
+          description: The SMTP submission port, for example 587.
+        smtp_username:
+          type: string
+          maxLength: 512
+          description: The optional SMTP AUTH PLAIN username.
+        from:
+          type: string
+          maxLength: 320
+          description: The sender address, validated with net/mail.
+        to:
+          type: string
+          maxLength: 2000
+          description: |
+            One or more recipient addresses, comma separated, each validated
+            with net/mail.
+        email_password:
+          type: string
+          writeOnly: true
+          maxLength: 512
+          description: |
+            The SMTP password. Stored in the OS keyring, never in SQLite and
+            never returned.
+        clear_email_password:
+          type: boolean
+          description: |
+            Removes the stored SMTP password. Cannot be combined with
+            `email_password`.
     LicencePolicyAction:
       type: string
       title: LicencePolicyAction

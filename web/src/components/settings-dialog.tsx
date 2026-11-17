@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { epssQuery, useSetEPSSEnabled } from '../api/epss'
 import { licencePolicyQuery } from '../api/licence-policy'
@@ -308,6 +308,35 @@ function NotificationsSection() {
   const test = useTestNotification()
   const [webhook, setWebhook] = useState('')
   const [feedback, setFeedback] = useState<'idle' | 'sent' | 'failed'>('idle')
+  const [email, setEmail] = useState({
+    host: '',
+    port: '587',
+    username: '',
+    from: '',
+    to: '',
+  })
+  const [password, setPassword] = useState('')
+
+  // Seed the email form from the server; depend on the individual fields so
+  // an unrelated save does not overwrite what the user is typing.
+  useEffect(() => {
+    if (!data) {
+      return
+    }
+    setEmail({
+      host: data.smtp_host,
+      port: String(data.smtp_port),
+      username: data.smtp_username,
+      from: data.from,
+      to: data.to,
+    })
+  }, [
+    data?.smtp_host,
+    data?.smtp_port,
+    data?.smtp_username,
+    data?.from,
+    data?.to,
+  ])
 
   if (!data) {
     return null
@@ -320,6 +349,26 @@ function NotificationsSection() {
     }
     setFeedback('idle')
     save.mutate({ slack_webhook: value }, { onSuccess: () => setWebhook('') })
+  }
+
+  const emailReady =
+    data.smtp_host !== '' && data.from !== '' && data.to !== ''
+  const emailPort = Number(email.port)
+  const emailPortValid =
+    Number.isInteger(emailPort) && emailPort >= 1 && emailPort <= 65535
+
+  function saveEmail() {
+    const port = Number(email.port)
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      return
+    }
+    save.mutate({
+      smtp_host: email.host.trim(),
+      smtp_port: port,
+      smtp_username: email.username.trim(),
+      from: email.from.trim(),
+      to: email.to.trim(),
+    })
   }
 
   return (
@@ -407,7 +456,9 @@ function NotificationsSection() {
           type="button"
           size="sm"
           variant="outline"
-          disabled={!data.slack_configured || test.isPending}
+          disabled={
+            !(data.slack_configured || emailReady) || test.isPending
+          }
           onClick={() => {
             setFeedback('idle')
             test.mutate(undefined, {
@@ -435,6 +486,177 @@ function NotificationsSection() {
           {t('settings.notifications.saveFailed')}
         </p>
       ) : null}
+
+      <div className="mt-2 border-t border-border-subtle pt-2">
+        <label className="flex items-center gap-2 text-[0.6875rem] text-muted">
+          <Checkbox
+            checked={data.email_enabled}
+            onChange={(event) =>
+              save.mutate({ email_enabled: event.target.checked })
+            }
+          />
+          {t('settings.notifications.email')}
+        </label>
+        <p className="mt-0.5 text-[0.6875rem] text-faint">
+          {t('settings.notifications.emailHint')}
+        </p>
+
+        <div className="mt-1 flex gap-1.5">
+          <div className="flex-1">
+            <label
+              htmlFor="notifications-email-host"
+              className="text-[0.6875rem] text-muted"
+            >
+              {t('settings.notifications.emailHost')}
+            </label>
+            <input
+              id="notifications-email-host"
+              type="text"
+              autoComplete="off"
+              value={email.host}
+              placeholder={t('settings.notifications.emailHostPlaceholder')}
+              onChange={(event) =>
+                setEmail({ ...email, host: event.target.value })
+              }
+              className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint"
+            />
+          </div>
+          <div className="w-20">
+            <label
+              htmlFor="notifications-email-port"
+              className="text-[0.6875rem] text-muted"
+            >
+              {t('settings.notifications.emailPort')}
+            </label>
+            <input
+              id="notifications-email-port"
+              type="number"
+              min={1}
+              max={65535}
+              value={email.port}
+              onChange={(event) =>
+                setEmail({ ...email, port: event.target.value })
+              }
+              className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg"
+            />
+          </div>
+        </div>
+
+        <label
+          htmlFor="notifications-email-username"
+          className="mt-1 block text-[0.6875rem] text-muted"
+        >
+          {t('settings.notifications.emailUsername')}
+        </label>
+        <input
+          id="notifications-email-username"
+          type="text"
+          autoComplete="off"
+          value={email.username}
+          onChange={(event) =>
+            setEmail({ ...email, username: event.target.value })
+          }
+          className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg"
+        />
+
+        <label
+          htmlFor="notifications-email-from"
+          className="mt-1 block text-[0.6875rem] text-muted"
+        >
+          {t('settings.notifications.emailFrom')}
+        </label>
+        <input
+          id="notifications-email-from"
+          type="text"
+          autoComplete="off"
+          value={email.from}
+          placeholder={t('settings.notifications.emailFromPlaceholder')}
+          onChange={(event) =>
+            setEmail({ ...email, from: event.target.value })
+          }
+          className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint"
+        />
+
+        <label
+          htmlFor="notifications-email-to"
+          className="mt-1 block text-[0.6875rem] text-muted"
+        >
+          {t('settings.notifications.emailTo')}
+        </label>
+        <input
+          id="notifications-email-to"
+          type="text"
+          autoComplete="off"
+          value={email.to}
+          placeholder={t('settings.notifications.emailToPlaceholder')}
+          onChange={(event) => setEmail({ ...email, to: event.target.value })}
+          className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint"
+        />
+
+        <Button
+          type="button"
+          size="sm"
+          className="mt-1"
+          disabled={
+            email.host.trim() === '' ||
+            email.from.trim() === '' ||
+            email.to.trim() === '' ||
+            !emailPortValid ||
+            save.isPending
+          }
+          onClick={saveEmail}
+        >
+          {t('settings.notifications.emailSave')}
+        </Button>
+
+        <label
+          htmlFor="notifications-email-password"
+          className="mt-2 block text-[0.6875rem] text-muted"
+        >
+          {t('settings.notifications.emailPassword')}
+        </label>
+        <p className="text-[0.6875rem] text-faint">
+          {data.email_password_configured
+            ? t('settings.notifications.configured')
+            : t('settings.notifications.notConfigured')}
+        </p>
+        <input
+          id="notifications-email-password"
+          type="password"
+          autoComplete="off"
+          value={password}
+          placeholder={t('settings.notifications.emailPasswordPlaceholder')}
+          onChange={(event) => setPassword(event.target.value)}
+          className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint"
+        />
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            disabled={password === '' || save.isPending}
+            onClick={() => {
+              setFeedback('idle')
+              save.mutate(
+                { email_password: password },
+                { onSuccess: () => setPassword('') },
+              )
+            }}
+          >
+            {t('settings.notifications.emailSavePassword')}
+          </Button>
+          {data.email_password_configured ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={save.isPending}
+              onClick={() => save.mutate({ clear_email_password: true })}
+            >
+              {t('settings.notifications.emailClear')}
+            </Button>
+          ) : null}
+        </div>
+      </div>
 
       <ToggleButton
         title={t('settings.notifications.title')}

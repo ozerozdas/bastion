@@ -7,6 +7,13 @@ type NotificationSettings = {
   threshold: 'high' | 'critical'
   slack_enabled: boolean
   slack_configured: boolean
+  email_enabled: boolean
+  smtp_host: string
+  smtp_port: number
+  smtp_username: string
+  from: string
+  to: string
+  email_password_configured: boolean
 }
 
 /**
@@ -17,6 +24,7 @@ type NotificationSettings = {
 async function stubNotifications(page: Page, initial: NotificationSettings) {
   let state = initial
   const saved: string[] = []
+  const passwords: string[] = []
 
   await page.route(/\/api\/notifications$/, async (route) => {
     if (route.request().method() === 'GET') {
@@ -29,6 +37,14 @@ async function stubNotifications(page: Page, initial: NotificationSettings) {
       slack_enabled?: boolean
       slack_webhook?: string
       clear_slack_webhook?: boolean
+      email_enabled?: boolean
+      smtp_host?: string
+      smtp_port?: number
+      smtp_username?: string
+      from?: string
+      to?: string
+      email_password?: string
+      clear_email_password?: boolean
     }
     if (body.slack_webhook) {
       saved.push(body.slack_webhook)
@@ -46,6 +62,31 @@ async function stubNotifications(page: Page, initial: NotificationSettings) {
     if (body.slack_enabled !== undefined) {
       state = { ...state, slack_enabled: body.slack_enabled }
     }
+    if (body.email_enabled !== undefined) {
+      state = { ...state, email_enabled: body.email_enabled }
+    }
+    if (body.smtp_host !== undefined) {
+      state = { ...state, smtp_host: body.smtp_host }
+    }
+    if (body.smtp_port !== undefined) {
+      state = { ...state, smtp_port: body.smtp_port }
+    }
+    if (body.smtp_username !== undefined) {
+      state = { ...state, smtp_username: body.smtp_username }
+    }
+    if (body.from !== undefined) {
+      state = { ...state, from: body.from }
+    }
+    if (body.to !== undefined) {
+      state = { ...state, to: body.to }
+    }
+    if (body.email_password) {
+      passwords.push(body.email_password)
+      state = { ...state, email_password_configured: true }
+    }
+    if (body.clear_email_password) {
+      state = { ...state, email_password_configured: false }
+    }
     await route.fulfill({ json: state })
   })
 
@@ -53,7 +94,7 @@ async function stubNotifications(page: Page, initial: NotificationSettings) {
     await route.fulfill({ status: 204 })
   })
 
-  return { saved }
+  return { saved, passwords }
 }
 
 test('Notifications saves a webhook and never renders the URL', async ({
@@ -67,6 +108,13 @@ test('Notifications saves a webhook and never renders the URL', async ({
     threshold: 'high',
     slack_enabled: true,
     slack_configured: false,
+    email_enabled: false,
+    smtp_host: '',
+    smtp_port: 587,
+    smtp_username: '',
+    from: '',
+    to: '',
+    email_password_configured: false,
   })
 
   await page.goto(server.url)
@@ -78,7 +126,9 @@ test('Notifications saves a webhook and never renders the URL', async ({
   await page.getByRole('tab', { name: 'Notifications' }).click()
   const card = page.getByRole('region', { name: 'Notifications' })
   await expect(card).toBeVisible()
-  await expect(card.getByText('Not configured', { exact: true })).toBeVisible()
+  await expect(
+    card.getByText('Not configured', { exact: true }).first(),
+  ).toBeVisible()
 
   const input = card.getByLabel('Slack webhook')
   await expect(input).toHaveAttribute('type', 'password')
@@ -89,6 +139,16 @@ test('Notifications saves a webhook and never renders the URL', async ({
   await expect(input).toHaveValue('')
   await expect(card.getByText(webhook)).toHaveCount(0)
   expect(stub.saved).toEqual([webhook])
+
+  // The email password is write-only too: after saving it the field is empty
+  // and the value never appears in the page.
+  const password = card.getByLabel('SMTP password')
+  await expect(password).toHaveAttribute('type', 'password')
+  await password.fill('smtp-secret')
+  await card.getByRole('button', { name: 'Save password' }).click()
+  await expect(password).toHaveValue('')
+  await expect(card.getByText('smtp-secret')).toHaveCount(0)
+  expect(stub.passwords).toEqual(['smtp-secret'])
 
   await card.getByRole('button', { name: 'Send test' }).click()
   await expect(card.getByText('Test sent.')).toBeVisible()

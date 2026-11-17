@@ -62,10 +62,13 @@ var (
 	// ErrNoWebhook means no Slack webhook is stored, so a test message has
 	// nowhere to go.
 	ErrNoWebhook = errors.New("no Slack webhook is configured")
+	// ErrNotConfigured means the test send found no configured channel.
+	ErrNotConfigured = errors.New("no notification channel is configured")
 )
 
 // Settings are the stored, non-secret notification choices. The Slack webhook
-// itself lives in the OS keyring and is never part of this struct.
+// and the SMTP password live in the OS keyring and are never part of this
+// struct.
 type Settings struct {
 	// Enabled is the master switch. With it off no notifier is called.
 	Enabled bool `json:"enabled"`
@@ -74,12 +77,26 @@ type Settings struct {
 	// SlackEnabled turns the Slack notifier on independently of the master
 	// switch.
 	SlackEnabled bool `json:"slack_enabled"`
+	// EmailEnabled turns the SMTP notifier on independently of the master
+	// switch.
+	EmailEnabled bool `json:"email_enabled"`
+	// SMTPHost is the submission server's hostname or IP.
+	SMTPHost string `json:"smtp_host"`
+	// SMTPPort is the submission port; 587 unless the user changes it.
+	SMTPPort int `json:"smtp_port"`
+	// SMTPUsername is the optional AUTH PLAIN username. With no username the
+	// notifier does not authenticate.
+	SMTPUsername string `json:"smtp_username"`
+	// From is the validated sender address.
+	From string `json:"from"`
+	// To is the validated, comma-separated recipient list.
+	To string `json:"to"`
 }
 
 // DefaultSettings is the state of a fresh install: notifications off, high
-// threshold, Slack off.
+// threshold, Slack off, email off on the submission port.
 func DefaultSettings() Settings {
-	return Settings{Threshold: ThresholdHigh}
+	return Settings{Threshold: ThresholdHigh, SMTPPort: DefaultSMTPPort}
 }
 
 // Summary is what a notifier receives for one qualifying scan.
@@ -113,13 +130,21 @@ type Notifier interface {
 }
 
 // UpdateInput is the settable part of the settings. A nil field is left
-// untouched; SlackWebhook and ClearSlackWebhook are mutually exclusive.
+// untouched; each credential field and its clear flag are mutually exclusive.
 type UpdateInput struct {
-	Enabled           *bool
-	Threshold         *string
-	SlackEnabled      *bool
-	SlackWebhook      *string
-	ClearSlackWebhook bool
+	Enabled            *bool
+	Threshold          *string
+	SlackEnabled       *bool
+	SlackWebhook       *string
+	ClearSlackWebhook  bool
+	EmailEnabled       *bool
+	SMTPHost           *string
+	SMTPPort           *int
+	SMTPUsername       *string
+	From               *string
+	To                 *string
+	EmailPassword      *string
+	ClearEmailPassword bool
 }
 
 // Config wires a Service.
@@ -160,6 +185,7 @@ type Service struct {
 
 	notifiers []Notifier
 	slack     *Slack
+	email     *Email
 }
 
 // New validates cfg and loads the stored settings. A missing or unreadable
@@ -202,11 +228,17 @@ func New(cfg Config) (*Service, error) {
 	notifiers := cfg.Notifiers
 	if notifiers == nil {
 		service.slack = NewSlack(cfg.Secrets, cfg.HTTPClient)
-		notifiers = []Notifier{service.slack}
+		// The settings closure reads the live choices, so a changed host or
+		// credential applies to the next message without a restart.
+		service.email = NewEmail(cfg.Secrets, service.Settings, timeout)
+		notifiers = []Notifier{service.slack, service.email}
 	} else {
 		for _, notifier := range notifiers {
-			if slack, ok := notifier.(*Slack); ok {
-				service.slack = slack
+			switch typed := notifier.(type) {
+			case *Slack:
+				service.slack = typed
+			case *Email:
+				service.email = typed
 			}
 		}
 	}
@@ -228,11 +260,30 @@ func (s *Service) SlackConfigured() bool {
 	return err == nil && webhook != ""
 }
 
+// EmailConfigured reports whether email delivery has the settings a message
+// needs: a host, a sender and at least one recipient. The password is reported
+// separately because authentication is optional.
+func (s *Service) EmailConfigured() bool {
+	settings := s.Settings()
+	return settings.SMTPHost != "" && settings.From != "" && settings.To != ""
+}
+
+// EmailPasswordConfigured reports whether an SMTP password is stored. The
+// value itself never leaves the keyring.
+func (s *Service) EmailPasswordConfigured() bool {
+	password, err := s.secrets.Get(EmailPasswordKey)
+	return err == nil && password != ""
+}
+
 // Update validates in, applies the settable fields and stores them. The Slack
-// webhook is written to the keyring, never to the settings file.
+// webhook and the SMTP password are written to the keyring, never to the
+// settings file.
 func (s *Service) Update(in UpdateInput) (Settings, error) {
 	if in.SlackWebhook != nil && in.ClearSlackWebhook {
 		return Settings{}, fmt.Errorf("%w: set or clear the Slack webhook, not both", ErrInvalid)
+	}
+	if in.EmailPassword != nil && in.ClearEmailPassword {
+		return Settings{}, fmt.Errorf("%w: set or clear the SMTP password, not both", ErrInvalid)
 	}
 
 	webhook := ""
@@ -242,6 +293,16 @@ func (s *Service) Update(in UpdateInput) (Settings, error) {
 			return Settings{}, err
 		}
 		webhook = trimmed
+	}
+
+	// Validate everything before touching the keyring or the file.
+	password := ""
+	if in.EmailPassword != nil {
+		trimmed := strings.TrimSpace(*in.EmailPassword)
+		if err := ValidateEmailPassword(trimmed); err != nil {
+			return Settings{}, err
+		}
+		password = trimmed
 	}
 
 	s.mu.Lock()
@@ -262,8 +323,45 @@ func (s *Service) Update(in UpdateInput) (Settings, error) {
 		}
 		next.Threshold = threshold
 	}
+	if in.EmailEnabled != nil {
+		next.EmailEnabled = *in.EmailEnabled
+	}
+	if in.SMTPHost != nil {
+		host, err := ValidateSMTPHost(*in.SMTPHost)
+		if err != nil {
+			return Settings{}, err
+		}
+		next.SMTPHost = host
+	}
+	if in.SMTPPort != nil {
+		if !ValidSMTPPort(*in.SMTPPort) {
+			return Settings{}, fmt.Errorf("%w: the SMTP port must be between 1 and 65535", ErrInvalid)
+		}
+		next.SMTPPort = *in.SMTPPort
+	}
+	if in.SMTPUsername != nil {
+		username, err := normalizeSMTPUsername(*in.SMTPUsername)
+		if err != nil {
+			return Settings{}, err
+		}
+		next.SMTPUsername = username
+	}
+	if in.From != nil {
+		from, err := normalizeEmailAddress(*in.From, "sender")
+		if err != nil {
+			return Settings{}, err
+		}
+		next.From = from
+	}
+	if in.To != nil {
+		to, err := normalizeEmailAddressList(*in.To)
+		if err != nil {
+			return Settings{}, err
+		}
+		next.To = to
+	}
 
-	// Apply the keyring change first: if it fails, the stored settings stay
+	// Apply the keyring changes first: if one fails, the stored settings stay
 	// exactly as they were.
 	if webhook != "" {
 		if err := s.secrets.Set(SlackWebhookKey, webhook); err != nil {
@@ -273,6 +371,16 @@ func (s *Service) Update(in UpdateInput) (Settings, error) {
 	if in.ClearSlackWebhook {
 		if err := s.secrets.Delete(SlackWebhookKey); err != nil && !errors.Is(err, secrets.ErrNotFound) {
 			return Settings{}, fmt.Errorf("notifications: clear Slack webhook: %w", err)
+		}
+	}
+	if password != "" {
+		if err := s.secrets.Set(EmailPasswordKey, password); err != nil {
+			return Settings{}, fmt.Errorf("notifications: store SMTP password: %w", err)
+		}
+	}
+	if in.ClearEmailPassword {
+		if err := s.secrets.Delete(EmailPasswordKey); err != nil && !errors.Is(err, secrets.ErrNotFound) {
+			return Settings{}, fmt.Errorf("notifications: clear SMTP password: %w", err)
 		}
 	}
 
@@ -330,27 +438,52 @@ func (s *Service) ScanSucceeded(scanID, assetID int64) {
 	}
 }
 
-// SendTest delivers a sample message to the Slack notifier, whether or not the
-// setting is enabled. It is the settings modal's "send test" action.
+// SendTest delivers a sample message to every configured notifier, whether or
+// not its own switch is on. It is the settings modal's "send test" action.
+// Channels with no stored configuration are skipped; when none is configured
+// it returns ErrNotConfigured.
 func (s *Service) SendTest(ctx context.Context) error {
-	if s.slack == nil {
-		return fmt.Errorf("%w: no Slack notifier", ErrUnavailable)
-	}
-	if !s.SlackConfigured() {
-		return ErrNoWebhook
-	}
-
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
+
 	summary := Summary{
 		AssetName: "Bastion",
 		URL:       s.baseURL,
 		Test:      true,
 	}
-	if err := s.slack.Notify(ctx, summary); err != nil {
-		return fmt.Errorf("notifications: send test: %w", err)
+
+	attempts := 0
+	failed := 0
+	var firstErr error
+	send := func(name string, notifier Notifier) {
+		attempts++
+		if err := notifier.Notify(ctx, summary); err != nil {
+			failed++
+			if firstErr == nil {
+				firstErr = err
+			}
+			// A failing channel does not fail the test when another one
+			// accepted the message; the log keeps its name.
+			s.log.Warn("notifications: send test", "notifier", name, "error", err)
+		}
 	}
-	return nil
+	if s.slack != nil && s.SlackConfigured() {
+		send(SlackName, s.slack)
+	}
+	if s.email != nil && s.EmailConfigured() {
+		send(EmailName, s.email)
+	}
+
+	switch {
+	case attempts == 0 && s.slack == nil && s.email == nil:
+		return fmt.Errorf("%w: no notifier", ErrUnavailable)
+	case attempts == 0:
+		return ErrNotConfigured
+	case failed == attempts:
+		return fmt.Errorf("notifications: send test: %w", firstErr)
+	default:
+		return nil
+	}
 }
 
 // assetName looks the display name up directly; a deleted or missing asset
@@ -382,6 +515,9 @@ func (s *Service) readSettings() Settings {
 	}
 	if !ValidThreshold(stored.Threshold) {
 		stored.Threshold = ThresholdHigh
+	}
+	if !ValidSMTPPort(stored.SMTPPort) {
+		stored.SMTPPort = DefaultSMTPPort
 	}
 	return stored
 }
@@ -454,12 +590,16 @@ func countAtOrAbove(counts Counts, threshold string) int {
 	return counts.Critical + counts.High
 }
 
-// enabledFor reports whether one notifier is on. Slack has its own switch;
-// every other notifier follows the master switch, which is what the tests'
-// fake relies on.
+// enabledFor reports whether one notifier is on. Slack and email each have
+// their own switch; every other notifier follows the master switch, which is
+// what the tests' fake relies on.
 func enabledFor(name string, settings Settings) bool {
-	if name == SlackName {
+	switch name {
+	case SlackName:
 		return settings.SlackEnabled
+	case EmailName:
+		return settings.EmailEnabled
+	default:
+		return true
 	}
-	return true
 }
