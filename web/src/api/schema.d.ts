@@ -820,17 +820,20 @@ export interface paths {
         };
         /**
          * Read the notification settings.
-         * @description Returns the master switch, the threshold and whether Slack is enabled,
-         *     plus whether a webhook is configured. The webhook URL itself is never
-         *     returned; it lives in the OS keyring.
+         * @description Returns the master switch, the threshold and whether Slack and email
+         *     are enabled, plus whether a webhook or SMTP password is configured. The
+         *     credential values themselves are never returned; they live in the OS
+         *     keyring.
          */
         get: operations["getNotificationSettings"];
         /**
          * Store the notification settings.
          * @description Writes only the fields the body carries; every other stored setting is
          *     left untouched. `slack_webhook` sets the webhook (write-only, must be an
-         *     https URL on hooks.slack.com) and `clear_slack_webhook` removes it.
-         *     Sending both, an invalid threshold or an invalid webhook is a 400.
+         *     https URL on hooks.slack.com) and `clear_slack_webhook` removes it;
+         *     `email_password` sets the SMTP password (write-only) and
+         *     `clear_email_password` removes it. Sending both a value and its clear
+         *     flag, an invalid threshold, webhook, host, port or address is a 400.
          */
         put: operations["setNotificationSettings"];
         post?: never;
@@ -850,11 +853,12 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Send a test message to Slack.
-         * @description Posts a sample message through the stored Slack webhook, regardless of
-         *     whether Slack notifications are enabled. With no webhook configured it
-         *     answers 400; a webhook Slack rejects is a 502. The webhook is never
-         *     included in the response.
+         * Send a test message to every configured notifier.
+         * @description Sends a sample message through each configured channel (Slack when a
+         *     webhook is stored, email when a host, sender and recipients are set),
+         *     regardless of whether that channel is enabled. With no channel
+         *     configured it answers 400; a channel that rejects the message or cannot
+         *     be reached is a 502. Credentials are never included in the response.
          */
         post: operations["sendTestNotification"];
         delete?: never;
@@ -1092,8 +1096,9 @@ export interface components {
         NotificationThreshold: "high" | "critical";
         /**
          * NotificationSettings
-         * @description The stored notification choices. The Slack webhook is absent by design:
-         *     the API reports only whether one is configured.
+         * @description The stored notification choices. The Slack webhook and the SMTP
+         *     password are absent by design: the API reports only whether each is
+         *     configured.
          */
         NotificationSettings: {
             /** @description The master switch. With it off no notifier is called after a scan. */
@@ -1106,12 +1111,39 @@ export interface components {
              *     is never returned.
              */
             slack_configured: boolean;
+            /** @description Whether the email notifier is called after a scan. */
+            email_enabled: boolean;
+            /**
+             * @description The SMTP submission host. Empty until configured. STARTTLS is
+             *     required; port 465 implicit TLS is not supported.
+             */
+            smtp_host: string;
+            /**
+             * Format: int32
+             * @description The SMTP submission port. Defaults to 587.
+             */
+            smtp_port: number;
+            /**
+             * @description The optional SMTP AUTH PLAIN username. Empty means no
+             *     authentication is attempted.
+             */
+            smtp_username: string;
+            /** @description The validated sender address. */
+            from: string;
+            /** @description One or more validated recipient addresses, comma separated. */
+            to: string;
+            /**
+             * @description Whether an SMTP password is stored in the OS keyring. The password
+             *     itself is never returned.
+             */
+            email_password_configured: boolean;
         };
         /**
          * SetNotificationSettingsRequest
          * @description The settable notification fields. Omitted fields are left untouched;
-         *     `slack_webhook` is write-only and `clear_slack_webhook` removes the
-         *     stored webhook.
+         *     `slack_webhook` and `email_password` are write-only and
+         *     `clear_slack_webhook` and `clear_email_password` remove the stored
+         *     credential.
          */
         SetNotificationSettingsRequest: {
             enabled?: boolean;
@@ -1127,6 +1159,36 @@ export interface components {
              *     `slack_webhook`.
              */
             clear_slack_webhook?: boolean;
+            email_enabled?: boolean;
+            /**
+             * @description A hostname or IP literal. A URL or a value with whitespace is
+             *     refused.
+             */
+            smtp_host?: string;
+            /**
+             * Format: int32
+             * @description The SMTP submission port, for example 587.
+             */
+            smtp_port?: number;
+            /** @description The optional SMTP AUTH PLAIN username. */
+            smtp_username?: string;
+            /** @description The sender address, validated with net/mail. */
+            from?: string;
+            /**
+             * @description One or more recipient addresses, comma separated, each validated
+             *     with net/mail.
+             */
+            to?: string;
+            /**
+             * @description The SMTP password. Stored in the OS keyring, never in SQLite and
+             *     never returned.
+             */
+            email_password?: string;
+            /**
+             * @description Removes the stored SMTP password. Cannot be combined with
+             *     `email_password`.
+             */
+            clear_email_password?: boolean;
         };
         /**
          * LicencePolicyAction
@@ -3892,8 +3954,9 @@ export interface operations {
             };
             /**
              * @description The body is missing, the threshold is not `high` or `critical`, the
-             *     webhook is not an https URL on hooks.slack.com, or both
-             *     `slack_webhook` and `clear_slack_webhook` are sent.
+             *     webhook is not an https URL on hooks.slack.com, an SMTP host, port
+             *     or address is invalid, or a value and its clear flag are sent
+             *     together.
              */
             400: {
                 headers: {
@@ -3918,14 +3981,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Slack accepted the test message. */
+            /** @description Every configured channel accepted the test message. */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description No Slack webhook is configured. */
+            /**
+             * @description No notification channel is configured, an SMTP username has no
+             *     stored password, or the stored email settings are invalid.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3938,7 +4004,7 @@ export interface operations {
             403: components["responses"]["Problem"];
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
-            /** @description Slack rejected the message or could not be reached. */
+            /** @description A channel rejected the message or could not be reached. */
             502: {
                 headers: {
                     [name: string]: unknown;

@@ -1445,11 +1445,22 @@ type LicencePolicy struct {
 // rule applies.
 type LicencePolicyAction string
 
-// NotificationSettings The stored notification choices. The Slack webhook is absent by design:
-// the API reports only whether one is configured.
+// NotificationSettings The stored notification choices. The Slack webhook and the SMTP
+// password are absent by design: the API reports only whether each is
+// configured.
 type NotificationSettings struct {
+	// EmailEnabled Whether the email notifier is called after a scan.
+	EmailEnabled bool `json:"email_enabled"`
+
+	// EmailPasswordConfigured Whether an SMTP password is stored in the OS keyring. The password
+	// itself is never returned.
+	EmailPasswordConfigured bool `json:"email_password_configured"`
+
 	// Enabled The master switch. With it off no notifier is called after a scan.
 	Enabled bool `json:"enabled"`
+
+	// From The validated sender address.
+	From string `json:"from"`
 
 	// SlackConfigured Whether a Slack webhook is stored in the OS keyring. The URL itself
 	// is never returned.
@@ -1458,9 +1469,23 @@ type NotificationSettings struct {
 	// SlackEnabled Whether the Slack notifier is called after a scan.
 	SlackEnabled bool `json:"slack_enabled"`
 
+	// SmtpHost The SMTP submission host. Empty until configured. STARTTLS is
+	// required; port 465 implicit TLS is not supported.
+	SmtpHost string `json:"smtp_host"`
+
+	// SmtpPort The SMTP submission port. Defaults to 587.
+	SmtpPort int32 `json:"smtp_port"`
+
+	// SmtpUsername The optional SMTP AUTH PLAIN username. Empty means no
+	// authentication is attempted.
+	SmtpUsername string `json:"smtp_username"`
+
 	// Threshold The lowest severity that makes a new finding notify. `high` counts
 	// critical and high findings; `critical` counts only critical ones.
 	Threshold NotificationThreshold `json:"threshold"`
+
+	// To One or more validated recipient addresses, comma separated.
+	To string `json:"to"`
 }
 
 // NotificationThreshold The lowest severity that makes a new finding notify. `high` counts
@@ -1747,22 +1772,49 @@ type SetFindingStateRequest struct {
 }
 
 // SetNotificationSettingsRequest The settable notification fields. Omitted fields are left untouched;
-// `slack_webhook` is write-only and `clear_slack_webhook` removes the
-// stored webhook.
+// `slack_webhook` and `email_password` are write-only and
+// `clear_slack_webhook` and `clear_email_password` remove the stored
+// credential.
 type SetNotificationSettingsRequest struct {
+	// ClearEmailPassword Removes the stored SMTP password. Cannot be combined with
+	// `email_password`.
+	ClearEmailPassword *bool `json:"clear_email_password,omitempty"`
+
 	// ClearSlackWebhook Removes the stored webhook. Cannot be combined with
 	// `slack_webhook`.
 	ClearSlackWebhook *bool `json:"clear_slack_webhook,omitempty"`
-	Enabled           *bool `json:"enabled,omitempty"`
-	SlackEnabled      *bool `json:"slack_enabled,omitempty"`
+	EmailEnabled      *bool `json:"email_enabled,omitempty"`
+
+	// EmailPassword The SMTP password. Stored in the OS keyring, never in SQLite and
+	// never returned.
+	EmailPassword *string `json:"email_password,omitempty"`
+	Enabled       *bool   `json:"enabled,omitempty"`
+
+	// From The sender address, validated with net/mail.
+	From         *string `json:"from,omitempty"`
+	SlackEnabled *bool   `json:"slack_enabled,omitempty"`
 
 	// SlackWebhook An https incoming-webhook URL on hooks.slack.com. Stored in the OS
 	// keyring, never in SQLite and never returned.
 	SlackWebhook *string `json:"slack_webhook,omitempty"`
 
+	// SmtpHost A hostname or IP literal. A URL or a value with whitespace is
+	// refused.
+	SmtpHost *string `json:"smtp_host,omitempty"`
+
+	// SmtpPort The SMTP submission port, for example 587.
+	SmtpPort *int32 `json:"smtp_port,omitempty"`
+
+	// SmtpUsername The optional SMTP AUTH PLAIN username.
+	SmtpUsername *string `json:"smtp_username,omitempty"`
+
 	// Threshold The lowest severity that makes a new finding notify. `high` counts
 	// critical and high findings; `critical` counts only critical ones.
 	Threshold *NotificationThreshold `json:"threshold,omitempty"`
+
+	// To One or more recipient addresses, comma separated, each validated
+	// with net/mail.
+	To *string `json:"to,omitempty"`
 }
 
 // SetOutdatedEnabledRequest defines model for SetOutdatedEnabledRequest.
@@ -2317,7 +2369,7 @@ type ServerInterface interface {
 	// SetNotificationSettings Store the notification settings.
 	// (PUT /api/notifications)
 	SetNotificationSettings(w http.ResponseWriter, r *http.Request)
-	// SendTestNotification Send a test message to Slack.
+	// SendTestNotification Send a test message to every configured notifier.
 	// (POST /api/notifications/test)
 	SendTestNotification(w http.ResponseWriter, r *http.Request)
 	// GetOutdatedStatus Report the outdated-package lookup state.
@@ -9647,7 +9699,7 @@ type StrictServerInterface interface {
 	// SetNotificationSettings Store the notification settings.
 	// (PUT /api/notifications)
 	SetNotificationSettings(ctx context.Context, request SetNotificationSettingsRequestObject) (SetNotificationSettingsResponseObject, error)
-	// SendTestNotification Send a test message to Slack.
+	// SendTestNotification Send a test message to every configured notifier.
 	// (POST /api/notifications/test)
 	SendTestNotification(ctx context.Context, request SendTestNotificationRequestObject) (SendTestNotificationResponseObject, error)
 	// GetOutdatedStatus Report the outdated-package lookup state.

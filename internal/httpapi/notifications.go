@@ -14,7 +14,7 @@ import (
 const notificationsUnavailable = "notifications are not configured; start bastion with its database and data directory"
 
 // GetNotificationSettings implements gen.StrictServerInterface. The Slack
-// webhook URL is never part of the response.
+// webhook and the SMTP password are never part of the response.
 func (s *Server) GetNotificationSettings(_ context.Context, _ gen.GetNotificationSettingsRequestObject) (gen.GetNotificationSettingsResponseObject, error) {
 	if s.notifications == nil {
 		return gen.GetNotificationSettings500ApplicationProblemPlusJSONResponse{
@@ -40,12 +40,25 @@ func (s *Server) SetNotificationSettings(_ context.Context, request gen.SetNotif
 
 	body := request.Body
 	in := notifications.UpdateInput{
-		Enabled:      body.Enabled,
-		SlackEnabled: body.SlackEnabled,
-		SlackWebhook: body.SlackWebhook,
+		Enabled:       body.Enabled,
+		SlackEnabled:  body.SlackEnabled,
+		SlackWebhook:  body.SlackWebhook,
+		EmailEnabled:  body.EmailEnabled,
+		SMTPHost:      body.SmtpHost,
+		SMTPUsername:  body.SmtpUsername,
+		From:          body.From,
+		To:            body.To,
+		EmailPassword: body.EmailPassword,
+	}
+	if body.SmtpPort != nil {
+		port := int(*body.SmtpPort)
+		in.SMTPPort = &port
 	}
 	if body.ClearSlackWebhook != nil {
 		in.ClearSlackWebhook = *body.ClearSlackWebhook
+	}
+	if body.ClearEmailPassword != nil {
+		in.ClearEmailPassword = *body.ClearEmailPassword
 	}
 	if body.Threshold != nil {
 		threshold := string(*body.Threshold)
@@ -68,7 +81,8 @@ func (s *Server) SetNotificationSettings(_ context.Context, request gen.SetNotif
 }
 
 // SendTestNotification implements gen.StrictServerInterface. It posts a sample
-// message through the stored webhook, whether or not Slack is enabled.
+// message through every configured channel, whether or not that channel is
+// enabled.
 func (s *Server) SendTestNotification(ctx context.Context, _ gen.SendTestNotificationRequestObject) (gen.SendTestNotificationResponseObject, error) {
 	if s.notifications == nil {
 		return gen.SendTestNotification500ApplicationProblemPlusJSONResponse{
@@ -80,9 +94,12 @@ func (s *Server) SendTestNotification(ctx context.Context, _ gen.SendTestNotific
 	switch {
 	case err == nil:
 		return gen.SendTestNotification204Response{}, nil
-	case errors.Is(err, notifications.ErrNoWebhook):
+	case errors.Is(err, notifications.ErrNoWebhook),
+		errors.Is(err, notifications.ErrNotConfigured),
+		errors.Is(err, notifications.ErrNoEmailPassword),
+		errors.Is(err, notifications.ErrInvalid):
 		return gen.SendTestNotification400ApplicationProblemPlusJSONResponse(
-			newProblem(http.StatusBadRequest, "Bad Request", notifications.ErrNoWebhook.Error()),
+			newProblem(http.StatusBadRequest, "Bad Request", err.Error()),
 		), nil
 	case errors.Is(err, notifications.ErrUnavailable):
 		s.log.Error("send test notification", "error", err)
@@ -91,12 +108,12 @@ func (s *Server) SendTestNotification(ctx context.Context, _ gen.SendTestNotific
 				"could not send the test message; see the server log"),
 		}, nil
 	default:
-		// Slack's status and transport error stay in the log; the webhook URL
-		// is never echoed.
+		// The remote status and transport error stay in the log; credentials
+		// are never echoed.
 		s.log.Warn("send test notification", "error", err)
 		return gen.SendTestNotification502ApplicationProblemPlusJSONResponse(
 			newProblem(http.StatusBadGateway, "Bad Gateway",
-				"Slack did not accept the test message; check the webhook and the server log"),
+				"a notifier did not accept the test message; check its settings and the server log"),
 		), nil
 	}
 }
@@ -105,9 +122,16 @@ func (s *Server) SendTestNotification(ctx context.Context, _ gen.SendTestNotific
 func notificationSettingsResponse(service *notifications.Service) gen.NotificationSettings {
 	settings := service.Settings()
 	return gen.NotificationSettings{
-		Enabled:         settings.Enabled,
-		Threshold:       gen.NotificationThreshold(settings.Threshold),
-		SlackEnabled:    settings.SlackEnabled,
-		SlackConfigured: service.SlackConfigured(),
+		Enabled:                 settings.Enabled,
+		Threshold:               gen.NotificationThreshold(settings.Threshold),
+		SlackEnabled:            settings.SlackEnabled,
+		SlackConfigured:         service.SlackConfigured(),
+		EmailEnabled:            settings.EmailEnabled,
+		SmtpHost:                settings.SMTPHost,
+		SmtpPort:                int32(settings.SMTPPort), //nolint:gosec // validated to 1..65535
+		SmtpUsername:            settings.SMTPUsername,
+		From:                    settings.From,
+		To:                      settings.To,
+		EmailPasswordConfigured: service.EmailPasswordConfigured(),
 	}
 }

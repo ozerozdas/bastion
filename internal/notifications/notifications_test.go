@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -368,6 +369,138 @@ func TestUpdateValidatesAndStores(t *testing.T) {
 		t.Fatal("SlackConfigured = true after clear")
 	}
 }
+
+func TestUpdateEmailSettings(t *testing.T) {
+	dataDir := t.TempDir()
+	service, err := New(Config{
+		DataDir:   dataDir,
+		DB:        newDB(t),
+		Secrets:   secrets.NewMemoryStore(),
+		Reports:   newReports(t),
+		Notifiers: []Notifier{&fakeNotifier{}},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if got := service.Settings().SMTPPort; got != DefaultSMTPPort {
+		t.Fatalf("default SMTPPort = %d, want %d", got, DefaultSMTPPort)
+	}
+
+	email := true
+	host := "smtp.example.com"
+	port := 2525
+	username := "bastion"
+	from := "bastion@example.com"
+	to := "ops@example.com, sec@example.com"
+	password := "s3cret"
+	settings, err := service.Update(UpdateInput{
+		EmailEnabled:  &email,
+		SMTPHost:      &host,
+		SMTPPort:      &port,
+		SMTPUsername:  &username,
+		From:          &from,
+		To:            &to,
+		EmailPassword: &password,
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if !settings.EmailEnabled || settings.SMTPHost != host || settings.SMTPPort != port ||
+		settings.SMTPUsername != username {
+		t.Fatalf("settings = %+v", settings)
+	}
+	if settings.From != "bastion@example.com" {
+		t.Errorf("From = %q, want the canonical address", settings.From)
+	}
+	if settings.To != "ops@example.com, sec@example.com" {
+		t.Errorf("To = %q", settings.To)
+	}
+	if !service.EmailConfigured() || !service.EmailPasswordConfigured() {
+		t.Fatalf("EmailConfigured = %v, EmailPasswordConfigured = %v, want both true",
+			service.EmailConfigured(), service.EmailPasswordConfigured())
+	}
+	stored, err := os.ReadFile(filepath.Join(dataDir, settingsFileName)) //nolint:gosec // the test's own temp dir
+	if err != nil {
+		t.Fatalf("read settings file: %v", err)
+	}
+	if strings.Contains(string(stored), "s3cret") {
+		t.Fatal("the settings file contains the SMTP password")
+	}
+
+	for _, tc := range []struct {
+		name  string
+		input UpdateInput
+	}{
+		{name: "host with a scheme", input: UpdateInput{SMTPHost: ptr("https://smtp.example.com")}},
+		{name: "host with a line break", input: UpdateInput{SMTPHost: ptr("smtp.example.com\r\nX: y")}},
+		{name: "port zero", input: UpdateInput{SMTPPort: ptr(0)}},
+		{name: "port too high", input: UpdateInput{SMTPPort: ptr(70000)}},
+		{name: "invalid from", input: UpdateInput{From: ptr("not an address")}},
+		{name: "invalid to", input: UpdateInput{To: ptr("ops@example.com, nope")}},
+		{name: "empty to", input: UpdateInput{To: ptr(" , ")}},
+		{name: "password with a line break", input: UpdateInput{EmailPassword: ptr("a\r\nb")}},
+		{name: "set and clear password", input: UpdateInput{
+			EmailPassword: ptr("x"), ClearEmailPassword: true,
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := service.Update(tc.input); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("Update error = %v, want ErrInvalid", err)
+			}
+		})
+	}
+
+	if _, err := service.Update(UpdateInput{ClearEmailPassword: true}); err != nil {
+		t.Fatalf("clear password: %v", err)
+	}
+	if service.EmailPasswordConfigured() {
+		t.Fatal("EmailPasswordConfigured = true after clear")
+	}
+}
+
+func TestSendTestSucceedsWhenOneChannelWorks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	store := secrets.NewMemoryStore()
+	if err := store.Set(SlackWebhookKey, server.URL+"/services/T/B/x"); err != nil {
+		t.Fatalf("Set webhook: %v", err)
+	}
+	slack := &Slack{secrets: store, client: server.Client(), validate: func(string) error { return nil }}
+	email := &Email{
+		secrets: store,
+		settings: func() Settings {
+			return Settings{
+				SMTPHost: "127.0.0.1",
+				SMTPPort: 1,
+				From:     "bastion@example.com",
+				To:       "ops@example.com",
+			}
+		},
+		timeout: 200 * time.Millisecond,
+	}
+	service, err := New(Config{
+		DataDir:   t.TempDir(),
+		DB:        newDB(t),
+		Secrets:   store,
+		Reports:   newReports(t),
+		Notifiers: []Notifier{slack, email},
+		Timeout:   time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Slack accepts and email cannot connect; one working channel is enough.
+	if err := service.SendTest(t.Context()); err != nil {
+		t.Fatalf("SendTest: %v", err)
+	}
+}
+
+func ptr[T any](value T) *T { return &value }
 
 // newDB and newReports keep TestUpdateValidatesAndStores small.
 func newDB(t *testing.T) *sql.DB {
