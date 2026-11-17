@@ -87,6 +87,12 @@ WHERE a.archived_at IS NULL
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(?5 AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = ?4)
+  -- Same text search as ListLatestFindings, so the total matches the page.
+  AND (?6 IS NULL OR
+       (f.title LIKE ?6 ESCAPE '\')
+    OR (f.rule_id LIKE ?6 ESCAPE '\')
+    OR (f.package_name LIKE ?6 ESCAPE '\')
+    OR (f.location LIKE ?6 ESCAPE '\'))
   AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 `
 
@@ -96,6 +102,7 @@ type CountLatestFindingsParams struct {
 	Severity interface{}
 	Status   interface{}
 	Now      string
+	Query    interface{}
 }
 
 // Number of rows ListLatestFindings returns for the same filters, ignoring
@@ -107,6 +114,7 @@ func (q *Queries) CountLatestFindings(ctx context.Context, arg CountLatestFindin
 		arg.Severity,
 		arg.Status,
 		arg.Now,
+		arg.Query,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -503,6 +511,15 @@ WHERE a.archived_at IS NULL
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = ?7)
+  -- Text search (#148): a substring of the title, rule id, package or path.
+  -- The caller sends %/_ pre-escaped, so the pattern is literal text; LIKE is
+  -- case-insensitive for ASCII. The parentheses keep the ORs inside this filter
+  -- and are also required by sqlc, which rejects two bare ESCAPE clauses.
+  AND (?8 IS NULL OR
+       (f.title LIKE ?8 ESCAPE '\')
+    OR (f.rule_id LIKE ?8 ESCAPE '\')
+    OR (f.package_name LIKE ?8 ESCAPE '\')
+    OR (f.location LIKE ?8 ESCAPE '\'))
   AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 ORDER BY
     -- A requested column sorts first. SQLite cannot parameterize ASC/DESC, so
@@ -547,8 +564,8 @@ ORDER BY
     CASE WHEN sort_key = 0 THEN f.asset_id END ASC,
     -- Stable tiebreaker: every page and direction ends in one deterministic order.
     f.id ASC
-LIMIT CASE WHEN ?9 IS NULL THEN -1 ELSE ?9 END
-OFFSET CASE WHEN ?8 IS NULL THEN 0 ELSE ?8 END
+LIMIT CASE WHEN ?10 IS NULL THEN -1 ELSE ?10 END
+OFFSET CASE WHEN ?9 IS NULL THEN 0 ELSE ?9 END
 `
 
 type ListLatestFindingsParams struct {
@@ -559,6 +576,7 @@ type ListLatestFindingsParams struct {
 	Type     interface{}
 	Severity interface{}
 	Status   interface{}
+	Query    interface{}
 	Offset   interface{}
 	Limit    interface{}
 }
@@ -611,6 +629,7 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 		arg.Type,
 		arg.Severity,
 		arg.Status,
+		arg.Query,
 		arg.Offset,
 		arg.Limit,
 	)

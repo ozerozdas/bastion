@@ -149,12 +149,17 @@ function respondFindings(rows: StubFinding[], url: URL) {
   const severity = url.searchParams.get('severity')
   const type = url.searchParams.get('type')
   const status = url.searchParams.get('status')
+  const q = url.searchParams.get('q')?.toLowerCase() ?? ''
   const filtered = rows.filter(
     (finding) =>
       (assetId === null || finding.asset_id === Number(assetId)) &&
       (severity === null || finding.severity === severity) &&
       (type === null || finding.type === type) &&
-      (status === null || finding.status === status),
+      (status === null || finding.status === status) &&
+      (q === '' ||
+        [finding.title, finding.rule_id, finding.package_name, finding.location].some(
+          (value) => (value ?? '').toLowerCase().includes(q),
+        )),
   )
   const view = url.searchParams.get('view') ?? 'single'
   const limit = Number(url.searchParams.get('limit') ?? '50')
@@ -598,6 +603,48 @@ test('pages findings server-side and keeps the page in the URL', async ({
   await page.locator('#findings-severity').selectOption('high')
   await expect(page).toHaveURL(`${origin}/findings?size=25`)
   await expect(pager).toContainText('1–25 of 60')
+
+  expect(problems).toEqual([])
+})
+
+test('searches findings by text and keeps the search in the URL', async ({
+  page,
+  server,
+}) => {
+  const problems = watch(page)
+  const requested: URL[] = []
+
+  await page.route('**/api/assets', (route) =>
+    route.fulfill({ json: { assets: [alpha, beta] } }),
+  )
+  await page.route('**/api/findings?**', (route) => {
+    const url = new URL(route.request().url())
+    requested.push(url)
+    return route.fulfill(respondFindings(findings, url))
+  })
+
+  await openDashboard(page, server.url)
+  await page.getByRole('link', { name: /^Findings/ }).click()
+  const origin = new URL(page.url()).origin
+  const rows = page.locator('tbody tr')
+
+  // The search settles into ?q= after the debounce and narrows the list.
+  await page.getByRole('searchbox', { name: 'Search' }).fill('CVE-2022')
+  await expect(page).toHaveURL(`${origin}/findings?q=CVE-2022`)
+  await expect(rows).toHaveCount(1)
+  await expect(rows.nth(0)).toContainText('High in alpha')
+  expect(requested.at(-1)?.searchParams.get('q')).toBe('CVE-2022')
+
+  // Another filter keeps the search: only the search is in the URL, so it
+  // survives a severity change and the page resets.
+  await page.locator('#findings-severity').selectOption('high')
+  await expect(page).toHaveURL(`${origin}/findings?q=CVE-2022`)
+  await expect(rows).toHaveCount(1)
+
+  // Clearing it drops the param and restores the severity-filtered groups.
+  await page.getByRole('searchbox', { name: 'Search' }).fill('')
+  await expect(page).toHaveURL(`${origin}/findings`)
+  await expect(rows).toHaveCount(2)
 
   expect(problems).toEqual([])
 })

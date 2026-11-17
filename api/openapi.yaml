@@ -1378,6 +1378,7 @@ paths:
         - $ref: "#/components/parameters/SeverityQuery"
         - $ref: "#/components/parameters/FindingTypeQuery"
         - $ref: "#/components/parameters/FindingStatusQuery"
+        - $ref: "#/components/parameters/FindingsSearchQuery"
         - $ref: "#/components/parameters/FindingsLimitQuery"
         - $ref: "#/components/parameters/OffsetQuery"
         - $ref: "#/components/parameters/FindingsSortQuery"
@@ -1392,7 +1393,7 @@ paths:
         "400":
           description: |
             A query parameter is not a valid asset id, enum value, limit or
-            offset.
+            offset, or `q` is longer than 200 characters.
           content:
             application/problem+json:
               schema:
@@ -1436,6 +1437,7 @@ paths:
         - $ref: "#/components/parameters/SeverityQuery"
         - $ref: "#/components/parameters/FindingTypeQuery"
         - $ref: "#/components/parameters/FindingStatusQuery"
+        - $ref: "#/components/parameters/FindingsSearchQuery"
       responses:
         "200":
           description: The findings as one downloadable file.
@@ -1463,7 +1465,8 @@ paths:
         "400":
           description: |
             `format` or `view` is not one of the accepted values, `asset_id` is
-            not a positive integer, or a filter is not a valid enum value.
+            not a positive integer, a filter is not a valid enum value, or `q`
+            is longer than 200 characters.
           content:
             application/problem+json:
               schema:
@@ -1789,6 +1792,17 @@ components:
       description: Only findings with this effective status.
       schema:
         $ref: "#/components/schemas/FindingStatus"
+    FindingsSearchQuery:
+      name: q
+      in: query
+      required: false
+      description: |
+        Case-insensitive substring to search for in the finding title, rule id
+        (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
+        value applies no filter. `%` and `_` are matched literally.
+      schema:
+        type: string
+        maxLength: 200
     FindingsExportFormatQuery:
       name: format
       in: query

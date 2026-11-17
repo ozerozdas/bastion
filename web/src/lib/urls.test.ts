@@ -117,6 +117,38 @@ describe('parseFindingsSearch', () => {
     expect(parseFindingsSearch({ size: 'abc' })).toEqual({})
   })
 
+  it('keeps a trimmed text search in the URL', () => {
+    expect(parseFindingsSearch({ q: '  CVE-2026-0001  ' })).toEqual({
+      q: 'CVE-2026-0001',
+    })
+    expect(parseFindingsSearch({ q: '   ' })).toEqual({})
+    expect(parseFindingsSearch({ q: 7 })).toEqual({})
+    expect(parseFindingsSearch({ q: ['cve'] })).toEqual({})
+  })
+
+  it('caps the search at the length the API accepts', () => {
+    expect(parseFindingsSearch({ q: 'a'.repeat(250) })).toEqual({
+      q: 'a'.repeat(200),
+    })
+  })
+
+  it('keeps the search with a view or a page', () => {
+    expect(parseFindingsSearch({ view: 'single', q: 'cve' })).toEqual({
+      view: 'single',
+      q: 'cve',
+    })
+    expect(parseFindingsSearch({ q: 'cve', page: '3' })).toEqual({
+      page: 3,
+      q: 'cve',
+    })
+  })
+
+  it('drops the search on the fix plan tab, which is not the findings list', () => {
+    expect(parseFindingsSearch({ tab: 'fix-plan', q: 'cve' })).toEqual({
+      tab: 'fix-plan',
+    })
+  })
+
   it('does not page the fix plan, which is per project', () => {
     expect(parseFindingsSearch({ tab: 'fix-plan', page: '3', size: '25' })).toEqual(
       { tab: 'fix-plan' },

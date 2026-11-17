@@ -249,6 +249,15 @@ WHERE a.archived_at IS NULL
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = sqlc.narg(status))
+  -- Text search (#148): a substring of the title, rule id, package or path.
+  -- The caller sends %/_ pre-escaped, so the pattern is literal text; LIKE is
+  -- case-insensitive for ASCII. The parentheses keep the ORs inside this filter
+  -- and are also required by sqlc, which rejects two bare ESCAPE clauses.
+  AND (sqlc.narg(query) IS NULL OR
+       (f.title LIKE sqlc.narg(query) ESCAPE '\')
+    OR (f.rule_id LIKE sqlc.narg(query) ESCAPE '\')
+    OR (f.package_name LIKE sqlc.narg(query) ESCAPE '\')
+    OR (f.location LIKE sqlc.narg(query) ESCAPE '\'))
   AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 ORDER BY
     -- A requested column sorts first. SQLite cannot parameterize ASC/DESC, so
@@ -328,4 +337,10 @@ WHERE a.archived_at IS NULL
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = sqlc.narg(status))
+  -- Same text search as ListLatestFindings, so the total matches the page.
+  AND (sqlc.narg(query) IS NULL OR
+       (f.title LIKE sqlc.narg(query) ESCAPE '\')
+    OR (f.rule_id LIKE sqlc.narg(query) ESCAPE '\')
+    OR (f.package_name LIKE sqlc.narg(query) ESCAPE '\')
+    OR (f.location LIKE sqlc.narg(query) ESCAPE '\'))
   AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow');

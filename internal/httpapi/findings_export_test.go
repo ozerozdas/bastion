@@ -168,6 +168,8 @@ func TestFindingsExportFilterParity(t *testing.T) {
 		"?status=ignored",
 		"?status=open",
 		"?type=vulnerability&severity=medium",
+		"?q=gitleaks",
+		"?q=cve-2026-0003",
 	}
 	for _, query := range queries {
 		resp := ts.do(t, http.MethodGet, "/api/findings"+query, withCookie(cookie))
@@ -209,6 +211,7 @@ func TestFindingsExportRejectsBadParams(t *testing.T) {
 		"/api/findings/export?format=csv&severity=urgent",
 		"/api/findings/export?format=csv&type=exploit",
 		"/api/findings/export?format=csv&status=done",
+		"/api/findings/export?format=csv&q=" + strings.Repeat("a", 201),
 	}
 	for _, path := range paths {
 		resp := ts.do(t, http.MethodGet, path, withCookie(cookie))
