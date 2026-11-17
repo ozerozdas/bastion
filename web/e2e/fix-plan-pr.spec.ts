@@ -134,3 +134,50 @@ test('open PR asks for confirmation before any request', async ({
 
   expect(problems).toEqual([])
 })
+
+test('a recorded pull request replaces the Open PR button', async ({
+  page,
+  server,
+}) => {
+  const problems = watch(page)
+  const url = 'https://github.com/acme/app/pull/12'
+
+  await page.route('**/api/assets', (route) =>
+    route.fulfill({ json: { assets: [repo] } }),
+  )
+  await page.route('**/api/assets/1/fix-plan', (route) =>
+    route.fulfill({
+      json: {
+        ...plan,
+        steps: [
+          {
+            ...plan.steps[0],
+            pull_request: { number: 12, url, state: 'open' },
+          },
+        ],
+      },
+    }),
+  )
+  await page.route('**/api/findings?**', (route) =>
+    route.fulfill({
+      json: {
+        findings: [finding],
+        groups: [],
+        total: 1,
+        total_findings: 1,
+        limit: 500,
+        offset: 0,
+      },
+    }),
+  )
+
+  await openFixPlan(page, server.url)
+
+  await expect(page.getByRole('link', { name: 'PR #12 open' })).toHaveAttribute(
+    'href',
+    url,
+  )
+  await expect(page.getByRole('button', { name: 'Open PR' })).toHaveCount(0)
+
+  expect(problems).toEqual([])
+})

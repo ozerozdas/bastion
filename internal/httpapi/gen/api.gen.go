@@ -233,6 +233,24 @@ func (e FixPlanFactorName) Valid() bool {
 	}
 }
 
+// Defines values for FixPlanPullRequestState.
+const (
+	FixPlanPullRequestStateMerged FixPlanPullRequestState = "merged"
+	FixPlanPullRequestStateOpen   FixPlanPullRequestState = "open"
+)
+
+// Valid indicates whether the value is a known member of the FixPlanPullRequestState enum.
+func (e FixPlanPullRequestState) Valid() bool {
+	switch e {
+	case FixPlanPullRequestStateMerged:
+		return true
+	case FixPlanPullRequestStateOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FixPlanPullRequestRequestEcosystem.
 const (
 	Go  FixPlanPullRequestRequestEcosystem = "go"
@@ -1371,6 +1389,28 @@ type FixPlanNoFix struct {
 	SeverityCounts SeverityTotals `json:"severity_counts"`
 }
 
+// FixPlanPullRequest The pull request bastion opened for one fix plan step (#47). Present
+// only when one was recorded, so the UI shows its state instead of
+// offering the same bump again. `merged` means the change landed and the
+// next scan confirms it.
+type FixPlanPullRequest struct {
+	// Number The repository's pull request number.
+	Number int `json:"number"`
+
+	// State `open` while GitHub reports the pull request open; `merged` once it
+	// landed. A pull request closed without merging is not reported: its
+	// record is deleted and the step offers the action again.
+	State FixPlanPullRequestState `json:"state"`
+
+	// Url The pull request's web URL.
+	Url string `json:"url"`
+}
+
+// FixPlanPullRequestState `open` while GitHub reports the pull request open; `merged` once it
+// landed. A pull request closed without merging is not reported: its
+// record is deleted and the step offers the action again.
+type FixPlanPullRequestState string
+
 // FixPlanPullRequestRequest One confirmed fix plan step to open a pull request for (#47). The three
 // identifiers must match a step of the asset's current plan; `confirm`
 // is the user's explicit go-ahead.
@@ -1442,6 +1482,12 @@ type FixPlanStep struct {
 
 	// Package Examples: lodash
 	Package string `json:"package"`
+
+	// PullRequest The pull request bastion opened for one fix plan step (#47). Present
+	// only when one was recorded, so the UI shows its state instead of
+	// offering the same bump again. `merged` means the change landed and the
+	// next scan confirms it.
+	PullRequest *FixPlanPullRequest `json:"pull_request,omitempty"`
 
 	// Score Prioritization score (#29): the step's severity weight sum
 	// (critical 10, high 7, medium 4, low and unknown 1) times its EPSS

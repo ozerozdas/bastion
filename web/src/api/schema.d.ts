@@ -1782,6 +1782,7 @@ export interface components {
             severity_counts: components["schemas"]["SeverityTotals"];
             /** @description The step's findings, by id, in ascending order. */
             finding_ids: number[];
+            pull_request?: components["schemas"]["FixPlanPullRequest"];
             max_epss?: components["schemas"]["EPSSScore"];
             /**
              * Format: double
@@ -1797,6 +1798,29 @@ export interface components {
              *     the ordering is explainable.
              */
             factors: components["schemas"]["FixPlanFactor"][];
+        };
+        /**
+         * FixPlanPullRequest
+         * @description The pull request bastion opened for one fix plan step (#47). Present
+         *     only when one was recorded, so the UI shows its state instead of
+         *     offering the same bump again. `merged` means the change landed and the
+         *     next scan confirms it.
+         */
+        FixPlanPullRequest: {
+            /** @description The repository's pull request number. */
+            number: number;
+            /**
+             * Format: uri
+             * @description The pull request's web URL.
+             */
+            url: string;
+            /**
+             * @description `open` while GitHub reports the pull request open; `merged` once it
+             *     landed. A pull request closed without merging is not reported: its
+             *     record is deleted and the step offers the action again.
+             * @enum {string}
+             */
+            state: "open" | "merged";
         };
         /**
          * FixPlanFactor

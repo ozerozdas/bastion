@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -39,6 +40,8 @@ type FileContent struct {
 type PullRequest struct {
 	Number  int    `json:"number"`
 	HTMLURL string `json:"html_url"`
+	State   string `json:"state"`
+	Merged  bool   `json:"merged"`
 }
 
 // PullRequestInput is one POST /repos/{owner}/{repo}/pulls body.
@@ -257,6 +260,25 @@ func (c *Client) CreatePullRequest(ctx context.Context, in PullRequestInput) (Pu
 	}
 	if pr.HTMLURL == "" || pr.Number <= 0 {
 		return PullRequest{}, &Error{Op: op, Hint: "GitHub did not return the pull request"}
+	}
+	return pr, nil
+}
+
+// PullRequest reads one pull request (GET /repos/{owner}/{repo}/pulls/{number}),
+// which is how the fix plan learns whether a recorded one merged or closed.
+func (c *Client) PullRequest(ctx context.Context, owner, name string, number int) (PullRequest, error) {
+	op, err := repoOp("get pull request", owner, name)
+	if err != nil {
+		return PullRequest{}, err
+	}
+	if number <= 0 {
+		return PullRequest{}, &Error{Op: op, Hint: "invalid pull request number"}
+	}
+	op += "#" + strconv.Itoa(number)
+
+	var pr PullRequest
+	if _, err := c.get(ctx, op, c.apiURL("repos", owner, name, "pulls", strconv.Itoa(number)), acceptJSON, &pr); err != nil {
+		return PullRequest{}, err
 	}
 	return pr, nil
 }

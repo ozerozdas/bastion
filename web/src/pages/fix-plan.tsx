@@ -342,22 +342,7 @@ function stepColumns(
             header: '',
             headerClassName: 'pl-3',
             cellClassName: 'py-2 pl-3 text-right whitespace-nowrap',
-            cell: (step: FixPlanStep) =>
-              manifestEcosystem(step.ecosystem) === undefined ? null : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={(event) => {
-                    // The row opens its findings on click; the action must not.
-                    event.stopPropagation()
-                    onOpenPullRequest(step)
-                  }}
-                  onKeyDown={(event) => event.stopPropagation()}
-                >
-                  {t('fixPlan.pr.action')}
-                </Button>
-              ),
+            cell: (step: FixPlanStep) => <StepPullRequestAction step={step} onOpen={onOpenPullRequest} />,
           } satisfies DataTableColumn<FixPlanStep>,
         ]
       : []),
@@ -575,6 +560,54 @@ function FindingList({
         </li>
       ))}
     </ul>
+  )
+}
+
+/**
+ * StepPullRequestAction is the step's pull request state: a link once one is
+ * recorded (#47), the action otherwise. A merged pull request never offers the
+ * action again; the next scan is what confirms the bump.
+ */
+function StepPullRequestAction({
+  step,
+  onOpen,
+}: {
+  step: FixPlanStep
+  onOpen: (step: FixPlanStep) => void
+}) {
+  const t = useT()
+  const pullRequest = step.pull_request
+  if (pullRequest !== undefined) {
+    return (
+      <a
+        href={pullRequest.url}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+        className="text-xs whitespace-nowrap underline"
+      >
+        {pullRequest.state === 'merged'
+          ? t('fixPlan.pr.mergedLink', { number: pullRequest.number })
+          : t('fixPlan.pr.openLink', { number: pullRequest.number })}
+      </a>
+    )
+  }
+  if (manifestEcosystem(step.ecosystem) === undefined) return null
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={(event) => {
+        // The row opens its findings on click; the action must not.
+        event.stopPropagation()
+        onOpen(step)
+      }}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {t('fixPlan.pr.action')}
+    </Button>
   )
 }
 

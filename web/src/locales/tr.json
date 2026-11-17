@@ -673,6 +673,8 @@
   "fixPlan.pr.confirm": "Pull request aç",
   "fixPlan.pr.opening": "Açılıyor…",
   "fixPlan.pr.changed": "Değişen manifest: {manifest}",
+  "fixPlan.pr.openLink": "PR #{number} açık",
+  "fixPlan.pr.mergedLink": "PR #{number} birleşti — yeniden tarayın",
   "fixPlan.pr.opened": "#{number} numaralı pull request açıldı.",
 
   "diff.title": "Tarama #{id} içindeki değişiklikler",

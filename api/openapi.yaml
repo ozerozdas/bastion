@@ -3136,6 +3136,8 @@ components:
             type: integer
             format: int64
             minimum: 1
+        pull_request:
+          $ref: "#/components/schemas/FixPlanPullRequest"
         max_epss:
           $ref: "#/components/schemas/EPSSScore"
         score:
@@ -3154,6 +3156,32 @@ components:
             the ordering is explainable.
           items:
             $ref: "#/components/schemas/FixPlanFactor"
+    FixPlanPullRequest:
+      type: object
+      title: FixPlanPullRequest
+      description: |
+        The pull request bastion opened for one fix plan step (#47). Present
+        only when one was recorded, so the UI shows its state instead of
+        offering the same bump again. `merged` means the change landed and the
+        next scan confirms it.
+      additionalProperties: false
+      required: [number, url, state]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+          description: The repository's pull request number.
+        url:
+          type: string
+          format: uri
+          description: The pull request's web URL.
+        state:
+          type: string
+          enum: [open, merged]
+          description: |
+            `open` while GitHub reports the pull request open; `merged` once it
+            landed. A pull request closed without merging is not reported: its
+            record is deleted and the step offers the action again.
     FixPlanFactor:
       type: object
       title: FixPlanFactor

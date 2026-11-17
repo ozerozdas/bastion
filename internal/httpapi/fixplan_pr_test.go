@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -35,6 +36,10 @@ type fakeGitHubAPI struct {
 	// failPut makes the contents write answer 500 once, so a test can prove the
 	// branch is deleted after a partial failure.
 	failPut bool
+	// The recorded pull request's state, as GET /pulls/{number} answers it.
+	prState  string
+	prMerged bool
+	prGetErr bool
 }
 
 // newFakeGitHubAPI starts the fake API. The default branch is main, HEAD is a
@@ -67,6 +72,7 @@ func (a *fakeGitHubAPI) handle(w http.ResponseWriter, r *http.Request) {
 		Body:   body,
 	})
 	existingPRURL, refExists, manifest, failPut := a.existingPRURL, a.refExists, a.manifest, a.failPut
+	prState, prMerged, prGetErr := a.prState, a.prMerged, a.prGetErr
 	a.mu.Unlock()
 
 	key := r.Method + " " + r.URL.Path
@@ -87,6 +93,25 @@ func (a *fakeGitHubAPI) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+	case "GET /repos/acme/app/pulls/12", "GET /repos/acme/app/pulls/7":
+		if prGetErr {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "boom"})
+			return
+		}
+		number := 12
+		if strings.HasSuffix(r.URL.Path, "/7") {
+			number = 7
+		}
+		state := prState
+		if state == "" {
+			state = "open"
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"number":   number,
+			"html_url": "https://github.com/acme/app/pull/" + strconv.Itoa(number),
+			"state":    state,
+			"merged":   prMerged,
+		})
 	case "GET /repos/acme/app/pulls":
 		prs := []map[string]any{}
 		if existingPRURL != "" {
@@ -282,6 +307,11 @@ func TestOpenFixPlanPullRequest(t *testing.T) {
 	if pr.Base != "main" || pr.Head != "bastion/bump-lodash-4.17.21" {
 		t.Errorf("pull request = %+v", pr)
 	}
+	pullRequest := fixPlanPullRequest(t, ts, cookie, asset.Id)
+	if pullRequest == nil || pullRequest.Number != 12 || pullRequest.State != gen.FixPlanPullRequestStateOpen {
+		t.Fatalf("plan pull_request = %+v, want #12 open recorded by the create", pullRequest)
+	}
+
 	for _, want := range []string{
 		"Bumps `lodash` to `4.17.21`.",
 		"- `CVE-2021-1111` (critical)",
@@ -394,6 +424,11 @@ func TestOpenFixPlanPullRequestBranchExists(t *testing.T) {
 	if problem.PrUrl == nil || *problem.PrUrl != "https://github.com/acme/app/pull/7" {
 		t.Fatalf("pr_url = %v, want the existing pull request", problem.PrUrl)
 	}
+
+	pullRequest := fixPlanPullRequest(t, ts, cookie, asset.Id)
+	if pullRequest == nil || pullRequest.Number != 7 {
+		t.Fatalf("plan pull_request = %+v, want the existing #7 recorded", pullRequest)
+	}
 }
 
 // TestOpenFixPlanPullRequestRejectsInjectedTarget proves a target that could
@@ -479,5 +514,102 @@ func TestOpenFixPlanPullRequestCleansUpAfterFailure(t *testing.T) {
 	resp = doJSON(t, ts, http.MethodPost, "/api/assets/"+itoa(asset.Id)+"/fix-plan/pull-request", body, withBastion(cookie))
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("retry status = %d, want 201; body = %s", resp.StatusCode, readBody(t, resp))
+	}
+}
+
+// fixPlanPullRequest reads the asset's fix plan and returns the first step's
+// recorded pull request.
+func fixPlanPullRequest(t *testing.T, ts *testServer, cookie *http.Cookie, assetID int64) *gen.FixPlanPullRequest {
+	t.Helper()
+
+	resp := ts.do(t, http.MethodGet, "/api/assets/"+itoa(assetID)+"/fix-plan", withCookie(cookie))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fix plan status = %d, body = %s", resp.StatusCode, readBody(t, resp))
+	}
+	var plan gen.FixPlan
+	if err := json.Unmarshal(readBody(t, resp), &plan); err != nil {
+		t.Fatalf("decode fix plan: %v", err)
+	}
+	if len(plan.Steps) == 0 {
+		t.Fatalf("fix plan has no steps: %+v", plan)
+	}
+	return plan.Steps[0].PullRequest
+}
+
+// recordPullRequest opens the pull request once, so the follow-up reads have a
+// recorded step to refresh.
+func recordPullRequest(t *testing.T, ts *testServer, cookie *http.Cookie, assetID int64) {
+	t.Helper()
+
+	resp := doJSON(t, ts, http.MethodPost, "/api/assets/"+itoa(assetID)+"/fix-plan/pull-request", map[string]any{
+		"ecosystem": "npm",
+		"package":   "lodash",
+		"target":    "4.17.21",
+		"confirm":   true,
+	}, withBastion(cookie))
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("open pull request: status = %d, body = %s", resp.StatusCode, readBody(t, resp))
+	}
+}
+
+// TestFixPlanClosedPullRequestForgetsIt proves a pull request closed without
+// merging is deleted, so the step offers the action again.
+func TestFixPlanClosedPullRequestForgetsIt(t *testing.T) {
+	api, server := newFakeGitHubAPI(t)
+	ts := newPullRequestServer(t, server.URL)
+	cookie := ts.login(t)
+	asset := addRepoAsset(t, ts, cookie)
+	seedReportScan(t, ts.db, asset.Id, "succeeded", reportAt(10),
+		npmFinding(asset.Id, "CVE-2021-1111", "lodash", "4.17.0", "4.17.21", findings.SeverityHigh))
+	recordPullRequest(t, ts, cookie, asset.Id)
+
+	api.mu.Lock()
+	api.prState = "closed"
+	api.mu.Unlock()
+
+	if pullRequest := fixPlanPullRequest(t, ts, cookie, asset.Id); pullRequest != nil {
+		t.Fatalf("plan pull_request = %+v, want none after a close without merge", pullRequest)
+	}
+}
+
+// TestFixPlanMergedPullRequest keeps the record and reports the merged state.
+func TestFixPlanMergedPullRequest(t *testing.T) {
+	api, server := newFakeGitHubAPI(t)
+	ts := newPullRequestServer(t, server.URL)
+	cookie := ts.login(t)
+	asset := addRepoAsset(t, ts, cookie)
+	seedReportScan(t, ts.db, asset.Id, "succeeded", reportAt(10),
+		npmFinding(asset.Id, "CVE-2021-1111", "lodash", "4.17.0", "4.17.21", findings.SeverityHigh))
+	recordPullRequest(t, ts, cookie, asset.Id)
+
+	api.mu.Lock()
+	api.prState = "closed"
+	api.prMerged = true
+	api.mu.Unlock()
+
+	pullRequest := fixPlanPullRequest(t, ts, cookie, asset.Id)
+	if pullRequest == nil || pullRequest.State != gen.FixPlanPullRequestStateMerged {
+		t.Fatalf("plan pull_request = %+v, want merged", pullRequest)
+	}
+}
+
+// TestFixPlanPullRequestGitHubError keeps the last known state, so a GitHub
+// outage never hides the recorded pull request or fails the plan read.
+func TestFixPlanPullRequestGitHubError(t *testing.T) {
+	api, server := newFakeGitHubAPI(t)
+	ts := newPullRequestServer(t, server.URL)
+	cookie := ts.login(t)
+	asset := addRepoAsset(t, ts, cookie)
+	seedReportScan(t, ts.db, asset.Id, "succeeded", reportAt(10),
+		npmFinding(asset.Id, "CVE-2021-1111", "lodash", "4.17.0", "4.17.21", findings.SeverityHigh))
+	recordPullRequest(t, ts, cookie, asset.Id)
+
+	api.mu.Lock()
+	api.prGetErr = true
+	api.mu.Unlock()
+
+	pullRequest := fixPlanPullRequest(t, ts, cookie, asset.Id)
+	if pullRequest == nil || pullRequest.State != gen.FixPlanPullRequestStateOpen {
+		t.Fatalf("plan pull_request = %+v, want #12 kept open", pullRequest)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/connections/github"
@@ -46,10 +47,11 @@ var (
 // and out of the commit message.
 var validTarget = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+_-]*$`)
 
-// PullRequestConflict reports an existing branch. URL is the open pull request
-// for it, empty when there is none.
+// PullRequestConflict reports an existing branch. URL and Number name the open
+// pull request for it; URL is empty when there is none.
 type PullRequestConflict struct {
 	Branch string
+	Number int
 	URL    string
 }
 
@@ -75,6 +77,7 @@ type PullRequestClient interface {
 	File(ctx context.Context, owner, name, path, ref string) (github.File, error)
 	CreateRef(ctx context.Context, owner, name, branch, sha string) error
 	DeleteRef(ctx context.Context, owner, name, branch string) error
+	PullRequest(ctx context.Context, owner, name string, number int) (github.PullRequest, error)
 	PutFile(ctx context.Context, in github.PutFileInput) (github.File, error)
 	CreatePullRequest(ctx context.Context, in github.PullRequestInput) (github.PullRequest, error)
 	PullRequestsForHead(ctx context.Context, owner, name, head string) ([]github.PullRequest, error)
@@ -222,9 +225,39 @@ func (s *Service) OpenFixPlanPullRequest(ctx context.Context, assetID int64, in 
 		Ecosystem: ecosystem,
 	})
 	if err != nil {
+		// A 409 that names an open pull request is the same fact a successful
+		// create records: the step is already bumped, so remember it.
+		var conflict *PullRequestConflict
+		if errors.As(err, &conflict) && conflict.URL != "" && conflict.Number > 0 {
+			s.recordPullRequest(ctx, assetID, ecosystem, pkg, target, conflict.Branch, conflict.Number, conflict.URL, manifest)
+		}
 		return PullRequestResult{}, err
 	}
+	s.recordPullRequest(ctx, assetID, ecosystem, pkg, target, result.Branch, result.Number, result.URL, result.Manifest)
 	return result, nil
+}
+
+// recordPullRequest stores the pull request a step now has, so a reloaded page
+// shows it instead of offering the same bump again. A failed write is logged,
+// never returned: the pull request already exists on GitHub.
+func (s *Service) recordPullRequest(ctx context.Context, assetID int64, ecosystem, pkg, target, branch string, number int, url, manifest string) {
+	if number <= 0 || url == "" {
+		return
+	}
+	err := sqlcdb.New(s.db).UpsertFixPlanPullRequest(ctx, sqlcdb.UpsertFixPlanPullRequestParams{
+		AssetID:   assetID,
+		Ecosystem: ecosystem,
+		Package:   pkg,
+		Target:    target,
+		Branch:    branch,
+		Number:    int64(number),
+		Url:       url,
+		Manifest:  manifest,
+		CreatedAt: s.now().UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		slog.Warn("could not record the fix plan pull request", "asset", assetID, "url", url, "error", err)
+	}
 }
 
 // pullRequestPlan carries what the GitHub flow writes.
@@ -321,7 +354,7 @@ func conflictWith(ctx context.Context, client PullRequestClient, owner, name, br
 	conflict := &PullRequestConflict{Branch: branch}
 	for _, pr := range prs {
 		if pr.HTMLURL != "" {
-			conflict.URL = pr.HTMLURL
+			conflict.URL, conflict.Number = pr.HTMLURL, pr.Number
 			break
 		}
 	}

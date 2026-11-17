@@ -233,6 +233,7 @@ func openPullRequestProblem(s *Server, err error) (gen.OpenFixPlanPullRequestRes
 			newProblem(http.StatusUnprocessableEntity, "Unprocessable Content", err.Error()),
 		), nil
 	case errors.Is(err, connections.ErrUpstream):
+		s.log.Warn("open fix plan pull request: GitHub call failed", "error", err)
 		return gen.OpenFixPlanPullRequest502ApplicationProblemPlusJSONResponse(
 			newProblem(http.StatusBadGateway, "Bad Gateway", connections.Hint(err)),
 		), nil
@@ -335,7 +336,7 @@ func fixPlanResponse(plan fixplan.Plan) gen.FixPlan {
 		if ids == nil {
 			ids = []int64{}
 		}
-		steps = append(steps, gen.FixPlanStep{
+		out := gen.FixPlanStep{
 			Ecosystem:         step.Ecosystem,
 			Package:           step.Package,
 			InstalledVersions: installed,
@@ -347,7 +348,15 @@ func fixPlanResponse(plan fixplan.Plan) gen.FixPlan {
 			MaxEpss:           epssScorePointer(step.MaxEPSS),
 			Score:             step.Score,
 			Factors:           fixPlanFactors(step.Factors),
-		})
+		}
+		if step.PullRequest != nil {
+			out.PullRequest = &gen.FixPlanPullRequest{
+				Number: step.PullRequest.Number,
+				Url:    step.PullRequest.URL,
+				State:  gen.FixPlanPullRequestState(step.PullRequest.State),
+			}
+		}
+		steps = append(steps, out)
 	}
 
 	noFix := make([]gen.FixPlanNoFix, 0, len(plan.NoFix))
