@@ -120,7 +120,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	if cmdCtx == nil {
 		cmdCtx = context.Background()
 	}
-	services, err := newServerServices(cmdCtx, opts.paths, opts.concurrency, deps)
+	services, err := newServerServices(cmdCtx, opts.paths, port, opts.concurrency, deps)
 	if err != nil {
 		return errors.Join(err, ln.Close())
 	}
@@ -144,6 +144,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		Outdated:      services.outdated,
 		LicencePolicy: services.licence,
 		Preferences:   services.preferences,
+		Notifications: services.notify,
 	})
 	if err != nil {
 		return errors.Join(fmt.Errorf("create server: %w", err), ln.Close())

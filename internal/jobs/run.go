@@ -338,4 +338,11 @@ func (m *Manager) finish(job *scanJob, res store.ScanResult, targetRef, status, 
 		Status:  status,
 		Error:   errMsg,
 	})
+	// Notify only once the final row is durable. The listener runs on its own
+	// goroutine so an external service never delays the worker, and it gets no
+	// scan context: the job's context is canceled as soon as the worker moves
+	// on.
+	if status == store.ScanStatusSucceeded && m.notify != nil {
+		go m.notify.ScanSucceeded(job.scanID, job.asset.ID)
+	}
 }

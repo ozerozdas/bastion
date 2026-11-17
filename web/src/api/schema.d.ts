@@ -811,6 +811,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the notification settings.
+         * @description Returns the master switch, the threshold and whether Slack is enabled,
+         *     plus whether a webhook is configured. The webhook URL itself is never
+         *     returned; it lives in the OS keyring.
+         */
+        get: operations["getNotificationSettings"];
+        /**
+         * Store the notification settings.
+         * @description Writes only the fields the body carries; every other stored setting is
+         *     left untouched. `slack_webhook` sets the webhook (write-only, must be an
+         *     https URL on hooks.slack.com) and `clear_slack_webhook` removes it.
+         *     Sending both, an invalid threshold or an invalid webhook is a 400.
+         */
+        put: operations["setNotificationSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test message to Slack.
+         * @description Posts a sample message through the stored Slack webhook, regardless of
+         *     whether Slack notifications are enabled. With no webhook configured it
+         *     answers 400; a webhook Slack rejects is a 502. The webhook is never
+         *     included in the response.
+         */
+        post: operations["sendTestNotification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reports/dashboard": {
         parameters: {
             query?: never;
@@ -1030,6 +1082,51 @@ export interface components {
          */
         Preferences: {
             [key: string]: string;
+        };
+        /**
+         * NotificationThreshold
+         * @description The lowest severity that makes a new finding notify. `high` counts
+         *     critical and high findings; `critical` counts only critical ones.
+         * @enum {string}
+         */
+        NotificationThreshold: "high" | "critical";
+        /**
+         * NotificationSettings
+         * @description The stored notification choices. The Slack webhook is absent by design:
+         *     the API reports only whether one is configured.
+         */
+        NotificationSettings: {
+            /** @description The master switch. With it off no notifier is called after a scan. */
+            enabled: boolean;
+            threshold: components["schemas"]["NotificationThreshold"];
+            /** @description Whether the Slack notifier is called after a scan. */
+            slack_enabled: boolean;
+            /**
+             * @description Whether a Slack webhook is stored in the OS keyring. The URL itself
+             *     is never returned.
+             */
+            slack_configured: boolean;
+        };
+        /**
+         * SetNotificationSettingsRequest
+         * @description The settable notification fields. Omitted fields are left untouched;
+         *     `slack_webhook` is write-only and `clear_slack_webhook` removes the
+         *     stored webhook.
+         */
+        SetNotificationSettingsRequest: {
+            enabled?: boolean;
+            threshold?: components["schemas"]["NotificationThreshold"];
+            slack_enabled?: boolean;
+            /**
+             * @description An https incoming-webhook URL on hooks.slack.com. Stored in the OS
+             *     keyring, never in SQLite and never returned.
+             */
+            slack_webhook?: string;
+            /**
+             * @description Removes the stored webhook. Cannot be combined with
+             *     `slack_webhook`.
+             */
+            clear_slack_webhook?: boolean;
         };
         /**
          * LicencePolicyAction
@@ -3745,6 +3842,111 @@ export interface operations {
             403: components["responses"]["Problem"];
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
+        };
+    };
+    getNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stored notification settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetNotificationSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description The settings were stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            /**
+             * @description The body is missing, the threshold is not `high` or `critical`, the
+             *     webhook is not an https URL on hooks.slack.com, or both
+             *     `slack_webhook` and `clear_slack_webhook` are sent.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    sendTestNotification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Slack accepted the test message. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No Slack webhook is configured. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+            /** @description Slack rejected the message or could not be reached. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     getDashboard: {

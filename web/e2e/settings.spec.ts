@@ -62,6 +62,10 @@ test('opens Configuration from the sidebar and closes with Escape', async ({
   // The tabs follow the WAI-ARIA pattern the page tabs use.
   await modulesTab.focus()
   await page.keyboard.press('ArrowRight')
+  await expect(
+    dialog.getByRole('tab', { name: 'Notifications', exact: true }),
+  ).toBeFocused()
+  await page.keyboard.press('ArrowRight')
   await expect(appearanceTab).toBeFocused()
   await expect(appearanceTab).toHaveAttribute('aria-selected', 'true')
   await expect(

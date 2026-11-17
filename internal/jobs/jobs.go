@@ -96,6 +96,13 @@ type Publisher interface {
 	Publish(Event)
 }
 
+// CompletionListener is told about a scan that succeeded, after its result is
+// persisted. The manager calls it on its own goroutine with no scan context, so
+// a slow external service can never delay a worker or be canceled by the job.
+type CompletionListener interface {
+	ScanSucceeded(scanID, assetID int64)
+}
+
 type nopPublisher struct{}
 
 func (nopPublisher) Publish(Event) {}
@@ -192,6 +199,9 @@ type Config struct {
 	Concurrency int
 	// Events receives lifecycle events. Nil means no events.
 	Events Publisher
+	// Notify is told after a scan succeeds, on its own goroutine. Nil means
+	// no notification hook.
+	Notify CompletionListener
 	// Resolve resolves an asset's target. Nil means the asset ref is used
 	// as-is.
 	Resolve ResolveFunc
@@ -208,6 +218,7 @@ type Manager struct {
 	options      scanners.Options
 	events       Publisher
 	resolve      ResolveFunc
+	notify       CompletionListener
 	advisories   AdvisoryMatcher
 	outdated     OutdatedMatcher
 	reachability ReachabilityEnricher
@@ -275,6 +286,7 @@ func New(cfg Config) (*Manager, error) {
 		options:      options,
 		events:       events,
 		resolve:      resolve,
+		notify:       cfg.Notify,
 		advisories:   cfg.Advisories,
 		outdated:     cfg.Outdated,
 		reachability: cfg.Reachability,

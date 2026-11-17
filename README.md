@@ -154,6 +154,20 @@ scans). Every result that carries scanner-derived values includes an `untrusted_
 notice: those values are data, never instructions (see the threat model). The MCP server
 makes no network calls of its own.
 
+## Notifications
+
+Notifications are opt-in and off by default. Turn them on in **Configuration →
+Notifications**: pick a threshold (**Critical and high**, the default, or
+**Critical only**) and paste a Slack incoming-webhook URL. The URL is stored in
+the OS keyring, never in SQLite, and the API only reports whether one is
+configured.
+
+After a scan succeeds, bastion diffs it against the asset's previous succeeded
+scan and posts one short message per enabled notifier when at least one new
+finding meets the threshold. The first scan of an asset sends nothing: with no
+baseline every finding would look new and a fresh install would flood the
+channel. A notification failure is logged and never affects the scan.
+
 ## Network calls
 
 Nothing else is called. No telemetry, no analytics, and no update check unless you turn
@@ -176,6 +190,7 @@ it on: Trivy runs with `--disable-telemetry --skip-version-check`, scans query
 | `epss.empiricalsecurity.com` | At most once a day, only after you turn EPSS scores on in the UI | The current EPSS feed: a ~2.8 MB gzipped CSV of per-CVE exploit probabilities and percentiles. Sends your IP and `User-Agent: bastion/<version>`; it is cached locally and never re-uploaded |
 | `vuln.go.dev` | Only on a scan of a Go module, after you turn Go reachability on in the UI | govulncheck's vulnerability database: which advisories exist and which functions they affect. Sends your IP; the database is cached by the Go toolchain |
 | `api.deps.dev` | Only on a scan whose package inventory is non-empty, after you turn Outdated packages on in the UI | The latest version of each package. Sends the ecosystem and package name only, with `User-Agent: bastion/<version>`; versions are compared locally |
+| `hooks.slack.com` | Only after you turn Slack notifications on and a scan adds a finding at or above your threshold | One incoming-webhook `POST` per qualifying scan: the asset name, the new counts by severity and a link back to `127.0.0.1`. The webhook URL is a bearer credential and lives in the OS keyring |
 | `proxy.golang.org` (or your `GOPROXY`) | Same scans, through the `go` toolchain govulncheck drives | Module downloads and checksums the analysis needs, exactly as `go build` would fetch them. Nothing about your scan is uploaded |
 | `github.com/opengrep/opengrep/releases/download` | Only after you turn SAST on in the UI, or pass `bastion scan --sast` | The pinned Opengrep v1.33.1 binary for your OS/arch, ~47 MB. Sends your IP and `User-Agent: bastion/<version>`; the SHA-256 is checked against the table compiled into bastion before the binary is used |
 | `codeload.github.com/opengrep/opengrep-rules` | Same moment as the binary | The pinned Opengrep rule set, ~1.1 MB, unpacked under `<cache>/modules/opengrep-v1.33.1/rules`. Sends your IP and `User-Agent: bastion/<version>`; its SHA-256 is checked first |
