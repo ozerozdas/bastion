@@ -71,7 +71,7 @@ export function GroupDrawer({
       <div
         aria-hidden="true"
         onClick={onClose}
-        className="absolute inset-0 bg-black/20"
+        className="absolute inset-0 overlay-scrim"
       />
       <div
         ref={panel}
