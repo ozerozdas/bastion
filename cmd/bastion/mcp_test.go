@@ -55,7 +55,7 @@ func TestMCPLeavesRunningScansUntouched(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
-	if err := runMCP(cmd, paths, defaultServeDeps(), stopTransport{}); err == nil {
+	if err := runMCP(cmd, paths, defaultServeDeps(), stdioServe(stopTransport{})); err == nil {
 		t.Fatal("runMCP returned nil, want the transport's stop error")
 	}
 

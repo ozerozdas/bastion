@@ -5,9 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -25,7 +29,9 @@ import (
 // but it never starts a scan pipeline of its own. Its only write is
 // trigger_scan, which queues a scan row for a running serve to run.
 func newMCPCmd(root *rootOptions) *cobra.Command {
-	return &cobra.Command{
+	var useHTTP bool
+	var port int
+	cmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Serve MCP tools over stdio for AI agents",
 		Long: "Serve bastion's assets, findings, fix plans and scan diffs over the\n" +
@@ -35,11 +41,58 @@ func newMCPCmd(root *rootOptions) *cobra.Command {
 			"--data-dir and database as `bastion serve`. trigger_scan only records a\n" +
 			"queued scan for that server, which runs it and shows it in the UI; the\n" +
 			"tool fails when no serve holds the data directory's lock. stdout carries\n" +
-			"the protocol, so logs go to stderr.",
+			"the protocol, so logs go to stderr.\n\n" +
+			"--http serves the same tools over streamable HTTP on 127.0.0.1 instead,\n" +
+			"for clients that only speak HTTP. It never binds another interface.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runMCP(cmd, root.paths, defaultServeDeps(), &mcp.StdioTransport{})
+			if !useHTTP {
+				return runMCP(cmd, root.paths, defaultServeDeps(), stdioServe(&mcp.StdioTransport{}))
+			}
+			if port < 0 || port > 65535 {
+				return errors.New("--port must be 0-65535 (0 picks a free port)")
+			}
+			ln, err := httpapi.Listen(port)
+			if err != nil {
+				return fmt.Errorf("mcp: %w", err)
+			}
+			return runMCP(cmd, root.paths, defaultServeDeps(), httpServe(ln, cmd.ErrOrStderr()))
 		},
+	}
+	cmd.Flags().BoolVar(&useHTTP, "http", false, "serve MCP over HTTP on 127.0.0.1 instead of stdio")
+	cmd.Flags().IntVar(&port, "port", 0, "loopback port for --http (0 picks a free port)")
+	return cmd
+}
+
+// mcpServeFunc runs a built MCP server until ctx ends.
+type mcpServeFunc func(ctx context.Context, server *mcpserver.Server) error
+
+func stdioServe(transport mcp.Transport) mcpServeFunc {
+	return func(ctx context.Context, server *mcpserver.Server) error {
+		// stderr only: stdout is the protocol stream.
+		slog.Info("bastion mcp serving over stdio")
+		return server.Run(ctx, transport)
+	}
+}
+
+// httpServe serves MCP on ln, which httpapi.Listen bound to 127.0.0.1 only.
+func httpServe(ln net.Listener, out io.Writer) mcpServeFunc {
+	return func(ctx context.Context, server *mcpserver.Server) error {
+		srv := &http.Server{
+			Handler:           server.HTTPHandler(slog.Default()),
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+		_, _ = fmt.Fprintf(out, "bastion mcp is serving at http://%s/\n", ln.Addr())
+		errc := make(chan error, 1)
+		go func() { errc <- srv.Serve(ln) }()
+		select {
+		case err := <-errc:
+			return err
+		case <-ctx.Done():
+			shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			return srv.Shutdown(shutdown)
+		}
 	}
 }
 
@@ -112,7 +165,7 @@ func mcpSetupFor(paths app.Paths) (httpapi.MCPSetup, error) {
 
 // runMCP opens the MCP services and blocks until the client disconnects
 // or the process is interrupted.
-func runMCP(cmd *cobra.Command, paths app.Paths, deps serveDeps, transport mcp.Transport) error {
+func runMCP(cmd *cobra.Command, paths app.Paths, deps serveDeps, serve mcpServeFunc) error {
 	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
@@ -139,9 +192,7 @@ func runMCP(cmd *cobra.Command, paths app.Paths, deps serveDeps, transport mcp.T
 	ctx, stop := deps.notifyContext(ctx)
 	defer stop()
 
-	// stderr only: stdout is the protocol stream.
-	slog.Info("bastion mcp serving over stdio", "data_dir", paths.DataDir)
-	if err := server.Run(ctx, transport); err != nil {
+	if err := serve(ctx, server); err != nil {
 		return fmt.Errorf("mcp: %w", err)
 	}
 	return nil

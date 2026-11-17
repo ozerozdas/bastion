@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -143,6 +144,20 @@ func New(cfg Config) (*Server, error) {
 	}, server.triggerScan)
 
 	return server, nil
+}
+
+// HTTPHandler serves MCP over the streamable HTTP transport (#42). The SDK
+// rejects requests that reach a loopback listener with a non-loopback Host
+// header (DNS rebinding), and CrossOriginProtection rejects cross-site
+// browser requests, so a web page cannot drive the tools. There is no token:
+// any local process can already run `bastion mcp` over stdio against the same
+// database, so a token would not protect anything a loopback-only bind does
+// not. ponytail: loopback only; a token comes with any non-loopback bind.
+func (s *Server) HTTPHandler(logger *slog.Logger) http.Handler {
+	return http.NewCrossOriginProtection().Handler(mcp.NewStreamableHTTPHandler(
+		func(*http.Request) *mcp.Server { return s.mcp },
+		&mcp.StreamableHTTPOptions{Logger: logger},
+	))
 }
 
 // Run serves MCP over transport until the client disconnects or ctx is

@@ -167,6 +167,11 @@ carries scanner-derived values includes an `untrusted_content` notice: those val
 data, never instructions (see the threat model). Apart from `trigger_scan`, the MCP
 server makes no writes, and it makes no network calls of its own.
 
+For clients that only speak HTTP, `bastion mcp --http --port 7778` serves the same tools
+over streamable HTTP at `http://127.0.0.1:7778/`. It binds loopback only and needs no
+token; requests with a foreign Host header (DNS rebinding) or from another website are
+refused.
+
 For questions about shipped artifacts (binary hardening, source maps or keys in built
 bundles), the [`bastion-artifacts`](skills/bastion-artifacts/SKILL.md) agent skill combines
 `bastion mcp` with [REA](https://github.com/morluto/rea). Copy the folder into your agent's
