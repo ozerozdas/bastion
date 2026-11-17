@@ -263,7 +263,7 @@ export function DashboardPage() {
                 <th className="pb-2 font-medium">
                   {t('dashboard.column.project')}
                 </th>
-                <th className="pb-2 font-medium">
+                <th className="status-cell pb-2 font-medium">
                   {t('dashboard.column.status')}
                 </th>
                 <th className="pb-2 text-right font-medium">
@@ -285,7 +285,7 @@ export function DashboardPage() {
                         {scan.display_name}
                       </Link>
                     </td>
-                    <td className="py-2 pr-3">
+                    <td className="status-cell py-2 pr-3">
                       <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
                     </td>
                     <td

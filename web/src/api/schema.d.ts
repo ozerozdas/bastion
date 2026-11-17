@@ -282,7 +282,14 @@ export interface paths {
         delete: operations["deleteConnection"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Rename a connection.
+         * @description Changes the user-chosen name. The name is trimmed and must not be empty
+         *     or already used by another connection of the same kind. Nothing else
+         *     about the connection changes: its kind, status, identity and credential
+         *     stay as they were.
+         */
+        patch: operations["renameConnection"];
         trace?: never;
     };
     "/api/connections/{id}/test": {
@@ -1216,6 +1223,11 @@ export interface components {
              *     connections.
              */
             region?: string;
+        };
+        /** RenameConnectionRequest */
+        RenameConnectionRequest: {
+            /** @description New user-chosen name, unique per kind. */
+            name: string;
         };
         /** DiscoverReposResponse */
         DiscoverReposResponse: {
@@ -2527,6 +2539,48 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    renameConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Connection id. */
+                id: components["parameters"]["ConnectionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description The connection with its new name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Connection"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description A connection with the same kind and name already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };

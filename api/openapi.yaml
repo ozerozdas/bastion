@@ -531,6 +531,48 @@ paths:
         "500":
           $ref: "#/components/responses/Problem"
   /api/connections/{id}:
+    patch:
+      operationId: renameConnection
+      summary: Rename a connection.
+      description: |
+        Changes the user-chosen name. The name is trimmed and must not be empty
+        or already used by another connection of the same kind. Nothing else
+        about the connection changes: its kind, status, identity and credential
+        stay as they were.
+      tags: [connections]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameConnectionRequest"
+      responses:
+        "200":
+          description: The connection with its new name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Connection"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: A connection with the same kind and name already exists.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
     delete:
       operationId: deleteConnection
       summary: Remove a connection and its stored secret.
@@ -2238,6 +2280,16 @@ components:
           description: |
             AWS region, for example `eu-central-1`. Required for AWS
             connections.
+    RenameConnectionRequest:
+      type: object
+      title: RenameConnectionRequest
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: New user-chosen name, unique per kind.
     DiscoverReposResponse:
       type: object
       title: DiscoverReposResponse

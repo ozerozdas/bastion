@@ -503,6 +503,40 @@ func (s *Service) record(ctx context.Context, row sqlcdb.Connection, status, hin
 	return conn, nil
 }
 
+// Rename changes a connection's user-chosen name. The name is trimmed and must
+// be non-empty, like Create; a name another connection of the same kind already
+// uses is a conflict. Everything else about the connection is untouched.
+func (s *Service) Rename(ctx context.Context, id int64, name string) (Connection, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Connection{}, fmt.Errorf("%w: name is required", ErrInvalid)
+	}
+	// Read first so a missing id is a 404 and the conflict message can name
+	// the kind; the update itself is a single guarded statement.
+	row, err := s.row(ctx, id)
+	if err != nil {
+		return Connection{}, err
+	}
+	updated, err := sqlcdb.New(s.db).RenameConnection(ctx, sqlcdb.RenameConnectionParams{
+		Name: name,
+		ID:   id,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return Connection{}, fmt.Errorf("%w: a %s connection named %q already exists", ErrConflict, row.Kind, name)
+	}
+	if err != nil {
+		return Connection{}, fmt.Errorf("connections: rename %d: %w", id, err)
+	}
+	conn, err := connectionFromRow(updated)
+	if err != nil {
+		return Connection{}, err
+	}
+	if err := s.fillECRAssetCount(ctx, &conn); err != nil {
+		return Connection{}, err
+	}
+	return conn, nil
+}
+
 // Delete removes the keyring entry first, then the row. An AWS connection's
 // ECR image assets are archived in the same transaction as the delete, so a
 // removal never leaves findings counted for images the Containers page can no

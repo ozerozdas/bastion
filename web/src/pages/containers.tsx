@@ -248,7 +248,7 @@ function DockerPanel({
       id: 'size',
       header: t('containers.column.size'),
       headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      cellClassName: 'pl-3 align-top whitespace-nowrap tabular-nums',
       sortable: true,
       defaultSortDirection: 'desc',
       sortValue: (row) => row.image.size_bytes,
@@ -258,7 +258,7 @@ function DockerPanel({
       id: 'created',
       header: t('containers.column.created'),
       headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      cellClassName: 'pl-3 align-top whitespace-nowrap tabular-nums',
       sortable: true,
       defaultSortDirection: 'desc',
       sortValue: (row) => row.image.created_at,
@@ -269,8 +269,8 @@ function DockerPanel({
     {
       id: 'last-scan',
       header: t('containers.column.lastScan'),
-      headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      headerClassName: 'status-cell-wide pl-3',
+      cellClassName: 'status-cell-wide pl-3 align-top whitespace-nowrap',
       sortable: true,
       defaultSortDirection: 'desc',
       sortValue: (row) => row.asset?.last_scan?.finished_at ?? '',
@@ -627,7 +627,7 @@ function EcrConnection({
       id: 'pushed',
       header: t('containers.column.pushed'),
       headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      cellClassName: 'pl-3 align-top whitespace-nowrap tabular-nums',
       sortable: true,
       defaultSortDirection: 'desc',
       sortValue: (row) => row.tag.pushed_at,
@@ -638,8 +638,8 @@ function EcrConnection({
     {
       id: 'last-scan',
       header: t('containers.column.lastScan'),
-      headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap',
+      headerClassName: 'status-cell-wide pl-3',
+      cellClassName: 'status-cell-wide pl-3 align-top whitespace-nowrap',
       sortable: true,
       defaultSortDirection: 'desc',
       sortValue: (row) => row.asset?.last_scan?.finished_at ?? '',
@@ -984,7 +984,7 @@ function ScanCell({
   return (
     <span className="inline-flex items-center gap-2">
       <Badge tone={statusTone[status]}>{t(`scanStatus.${status}`)}</Badge>
-      <span className="text-xs text-faint">
+      <span className="text-xs text-faint tabular-nums">
         {active
           ? t('scanStatus.inProgress')
           : lastScan?.finished_at

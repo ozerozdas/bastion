@@ -90,6 +90,40 @@ func (s *Server) CreateConnection(ctx context.Context, request gen.CreateConnect
 	return gen.CreateConnection201JSONResponse(connectionResponse(conn)), nil
 }
 
+// RenameConnection implements gen.StrictServerInterface.
+func (s *Server) RenameConnection(ctx context.Context, request gen.RenameConnectionRequestObject) (gen.RenameConnectionResponseObject, error) {
+	if s.connections == nil {
+		return gen.RenameConnection500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error", unavailable),
+		}, nil
+	}
+	if request.Body == nil {
+		return gen.RenameConnection400ApplicationProblemPlusJSONResponse{
+			ProblemApplicationProblemPlusJSONResponse: gen.ProblemApplicationProblemPlusJSONResponse{
+				Body: newProblem(http.StatusBadRequest, "Bad Request", "the request body is required"),
+			},
+		}, nil
+	}
+	conn, err := s.connections.Rename(ctx, request.Id, request.Body.Name)
+	if err != nil {
+		s.log.Error("rename connection", "id", request.Id, "error", err)
+		status, problem := connectionProblem(err, request.Id)
+		switch status {
+		case http.StatusBadRequest:
+			return gen.RenameConnection400ApplicationProblemPlusJSONResponse{
+				ProblemApplicationProblemPlusJSONResponse: gen.ProblemApplicationProblemPlusJSONResponse{Body: problem},
+			}, nil
+		case http.StatusNotFound:
+			return gen.RenameConnection404ApplicationProblemPlusJSONResponse{Body: problem}, nil
+		case http.StatusConflict:
+			return gen.RenameConnection409ApplicationProblemPlusJSONResponse(problem), nil
+		default:
+			return gen.RenameConnection500ApplicationProblemPlusJSONResponse{Body: problem}, nil
+		}
+	}
+	return gen.RenameConnection200JSONResponse(connectionResponse(conn)), nil
+}
+
 // DeleteConnection implements gen.StrictServerInterface.
 func (s *Server) DeleteConnection(ctx context.Context, request gen.DeleteConnectionRequestObject) (gen.DeleteConnectionResponseObject, error) {
 	if s.connections == nil {

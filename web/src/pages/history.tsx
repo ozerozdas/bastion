@@ -212,8 +212,8 @@ function ScanTable({
     {
       id: 'status',
       header: t('scans.column.status'),
-      headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3',
+      headerClassName: 'status-cell pl-3',
+      cellClassName: 'status-cell py-2 pl-3',
       sortable: true,
       cell: (scan) => {
         const status = statusView[scan.status]

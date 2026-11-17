@@ -140,6 +140,44 @@ func (q *Queries) ListRepoAssetRefs(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const renameConnection = `-- name: RenameConnection :one
+UPDATE connections
+SET name = ?1
+WHERE connections.id = ?2
+  AND NOT EXISTS (
+    SELECT 1
+    FROM connections AS other
+    WHERE other.kind = connections.kind
+      AND other.name = ?1
+      AND other.id <> connections.id
+  )
+RETURNING id, kind, name, config_json, secret_ref, status, last_checked_at, created_at
+`
+
+type RenameConnectionParams struct {
+	Name string
+	ID   int64
+}
+
+// A name is unique per kind. The guard turns a taken name into no rows instead
+// of a driver-level UNIQUE error; the service maps that to ErrConflict once the
+// id is known to exist.
+func (q *Queries) RenameConnection(ctx context.Context, arg RenameConnectionParams) (Connection, error) {
+	row := q.db.QueryRowContext(ctx, renameConnection, arg.Name, arg.ID)
+	var i Connection
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Name,
+		&i.ConfigJSON,
+		&i.SecretRef,
+		&i.Status,
+		&i.LastCheckedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const setConnectionConfig = `-- name: SetConnectionConfig :one
 UPDATE connections
 SET config_json = ?1
