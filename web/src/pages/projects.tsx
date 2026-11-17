@@ -562,7 +562,7 @@ function AddProjectDialog({
       ref={dialog}
       aria-labelledby="add-repositories"
       onClose={onClose}
-      className="m-auto w-[min(760px,92vw)] max-h-[90vh] overflow-y-auto rounded-card border border-border-subtle bg-surface p-0 text-fg backdrop:bg-black/40"
+      className="m-auto w-[min(760px,92vw)] max-h-[90vh] overflow-y-auto rounded-card border border-border-subtle bg-surface p-0 text-fg"
     >
       {open ? <AddProjects onDone={onClose} /> : null}
     </dialog>

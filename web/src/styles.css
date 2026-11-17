@@ -461,3 +461,11 @@ body {
   --sw-dark-bg: #002b36;
   --sw-dark-accent: #5fc4b8;
 }
+
+/* Modal and drawer backdrop: dim strongly so text behind does not mix in,
+   blur only a touch so the page stays glanceable. */
+.overlay-scrim,
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(1.5px);
+}
