@@ -105,6 +105,67 @@ func GroupFindings(findings []Finding) []FindingGroup {
 	return out
 }
 
+// sortGroups orders folded groups by a requested column. Severity compares by
+// rank (critical worst); the fold's own order is the stable tiebreaker.
+func sortGroups(groups []FindingGroup, by Sort) {
+	if by.Column == "" {
+		return
+	}
+	sort.SliceStable(groups, func(i, j int) bool {
+		value := compareGroups(groups[i], groups[j], by.Column)
+		if by.Order == "desc" {
+			return value > 0
+		}
+		return value < 0
+	})
+}
+
+// compareGroups compares two groups by one of the list's sort columns. A
+// grouped row has no asset name or scanner, so project compares the number of
+// projects the group reaches.
+func compareGroups(a, b FindingGroup, column string) int {
+	switch column {
+	case SortSeverity:
+		return compareInt(severityWeight(a.Severity), severityWeight(b.Severity))
+	case SortTitle:
+		return compareText(a.Title, b.Title)
+	case SortPackage:
+		return compareText(firstOrEmpty(a.Packages), firstOrEmpty(b.Packages))
+	case SortProject:
+		return compareInt(a.ProjectCount, b.ProjectCount)
+	case SortType:
+		return compareText(a.Type, b.Type)
+	}
+	return 0
+}
+
+// severityWeight makes critical the largest value, so a descending sort shows
+// it first.
+func severityWeight(severity string) int {
+	return len(severityRank) - rank(severity)
+}
+
+func compareInt(a, b int) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
+}
+
+func compareText(a, b string) int {
+	return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+}
+
+func firstOrEmpty(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
 // rank is a severity's order; an unknown value sorts last like the API does.
 func rank(severity string) int {
 	if value, ok := severityRank[severity]; ok {

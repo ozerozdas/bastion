@@ -901,6 +901,8 @@ paths:
         - $ref: "#/components/parameters/AssetIDQuery"
         - $ref: "#/components/parameters/ScanLimitQuery"
         - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/ScanSortQuery"
+        - $ref: "#/components/parameters/SortOrderQuery"
       responses:
         "200":
           description: One page of scans after the filters, with the total count.
@@ -1336,6 +1338,8 @@ paths:
         - $ref: "#/components/parameters/FindingStatusQuery"
         - $ref: "#/components/parameters/FindingsLimitQuery"
         - $ref: "#/components/parameters/OffsetQuery"
+        - $ref: "#/components/parameters/FindingsSortQuery"
+        - $ref: "#/components/parameters/SortOrderQuery"
       responses:
         "200":
           description: One page of the latest findings, after the filters.
@@ -1671,6 +1675,38 @@ components:
         type: integer
         minimum: 0
         default: 0
+    SortOrderQuery:
+      name: order
+      in: query
+      required: false
+      description: |
+        Direction of `sort`; ignored when no `sort` is given. `asc` when absent.
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: asc
+    FindingsSortQuery:
+      name: sort
+      in: query
+      required: false
+      description: |
+        Column to order the latest findings by. Omitted keeps the default, most
+        severe first. `severity` orders by its rank, not alphabetically. In
+        grouped view `project` orders by the number of projects the group
+        reaches.
+      schema:
+        type: string
+        enum: [severity, title, package, project, type]
+    ScanSortQuery:
+      name: sort
+      in: query
+      required: false
+      description: |
+        Column to order the scan list by. Omitted keeps the default, newest
+        first. `duration` and `findings` read the same values the list shows.
+      schema:
+        type: string
+        enum: [started, status, project, duration, findings]
     FindingsListViewQuery:
       name: view
       in: query

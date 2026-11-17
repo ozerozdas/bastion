@@ -1,5 +1,6 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 
+import type { ScanSort, SortOrder } from '../lib/urls'
 import { assetsKey } from './assets'
 import { api } from './client'
 import type { components } from './schema'
@@ -15,15 +16,23 @@ type ScanQueueResult = components['schemas']['ScanQueueResult']
 
 export const scansKey = ['scans'] as const
 
-/** scansQuery lists scans newest first, optionally for one asset. */
-export function scansQuery(assetId?: number, limit = 50, offset = 0) {
+/** scansQuery lists scans newest first, optionally for one asset and sort. */
+export function scansQuery(
+  assetId?: number,
+  limit = 50,
+  offset = 0,
+  sort?: ScanSort,
+  order?: SortOrder,
+) {
   const params = new URLSearchParams({
     limit: String(limit),
     offset: String(offset),
   })
   if (assetId !== undefined) params.set('asset_id', String(assetId))
+  if (sort !== undefined) params.set('sort', sort)
+  if (order !== undefined) params.set('order', order)
   return queryOptions({
-    queryKey: [...scansKey, 'list', assetId ?? null, limit, offset],
+    queryKey: [...scansKey, 'list', assetId ?? null, limit, offset, sort ?? null, order ?? null],
     queryFn: async () => (await api.get<ScanList>(`/api/scans?${params}`)).scans,
   })
 }

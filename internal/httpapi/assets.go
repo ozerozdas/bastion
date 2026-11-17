@@ -166,7 +166,15 @@ func (s *Server) ListScans(ctx context.Context, request gen.ListScansRequestObje
 		offset = int(*request.Params.Offset)
 	}
 
-	page, err := s.assets.Scans(ctx, assetID, limit, offset)
+	by := assets.ScanSort{}
+	if request.Params.Sort != nil {
+		by.Column = string(*request.Params.Sort)
+	}
+	if request.Params.Order != nil {
+		by.Order = string(*request.Params.Order)
+	}
+
+	page, err := s.assets.Scans(ctx, assetID, limit, offset, by)
 	if err != nil {
 		if errors.Is(err, assets.ErrInvalid) {
 			return gen.ListScans400ApplicationProblemPlusJSONResponse(

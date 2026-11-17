@@ -24,6 +24,7 @@ import {
   useRowRemovalFocus,
   type DataTableColumn,
   type DataTableSelection,
+  type DataTableSort,
 } from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
 import { ErrorNote } from '../components/error-note'
@@ -44,6 +45,7 @@ import {
   defaultFindingsPageSize,
   type FindingsPageSize,
   type FindingsSearch,
+  type FindingsSort,
   type FindingsView,
 } from '../lib/urls'
 import { cn } from '../lib/utils'
@@ -84,6 +86,8 @@ export function findingColumns(
       header: t('findings.column.severity'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pr-3 pl-3',
+      sortable: true,
+      defaultSortDirection: 'desc',
       cell: (finding) => (
         <Badge tone={severityTone[finding.severity]}>
           {severityLabel(finding.severity)}
@@ -146,6 +150,7 @@ export function findingColumns(
       header: t('findings.column.project'),
       headerClassName: 'pl-3',
       cellClassName: 'max-w-[22ch] py-2 pl-3',
+      sortable: true,
       cellTitle: projectName,
       cell: (finding) => (
         <span className="block truncate">{projectName(finding)}</span>
@@ -156,6 +161,7 @@ export function findingColumns(
       header: t('findings.column.type'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 whitespace-nowrap',
+      sortable: true,
       cell: (finding) => (
         <>
           {t(typeLabels[finding.type])}
@@ -194,6 +200,7 @@ export function findingColumns(
       header: t('findings.column.package'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
+      sortable: true,
       cell: (finding) => {
         const packageLabel =
           finding.package_name === undefined
@@ -229,6 +236,8 @@ export function findingColumns(
       header: t('findings.column.finding'),
       headerClassName: 'pl-3',
       cellClassName: 'max-w-[38ch] py-2 pl-3',
+      sortable: true,
+      sortKey: 'title',
       cell: (finding) => (
         <>
           <span className="block">{finding.title}</span>
@@ -267,6 +276,8 @@ function groupedColumns(
       header: t('findings.column.severity'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pr-3 pl-3 whitespace-nowrap',
+      sortable: true,
+      defaultSortDirection: 'desc',
       cell: (group) => (
         <Badge tone={severityTone[group.severity]}>
           {severityLabel(group.severity)}
@@ -278,6 +289,8 @@ function groupedColumns(
       header: t('findings.column.finding'),
       headerClassName: 'pl-3',
       cellClassName: 'max-w-[46ch] py-2 pl-3',
+      sortable: true,
+      sortKey: 'title',
       cell: (group) => (
         <>
           <span className="block">{group.title}</span>
@@ -295,6 +308,9 @@ function groupedColumns(
       header: t('findings.column.projects'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 whitespace-nowrap',
+      sortable: true,
+      sortKey: 'project',
+      defaultSortDirection: 'desc',
       cellTitle: (group) =>
         group.asset_ids
           .map(
@@ -461,6 +477,11 @@ export function FindingsPage() {
 
   const page = search.page ?? 1
   const pageSize = search.size ?? defaultFindingsPageSize
+  // The URL owns the sort, so a reload or a shared link keeps it.
+  const sortState: DataTableSort | undefined =
+    search.sort === undefined
+      ? undefined
+      : { columnId: search.sort, direction: search.order ?? 'asc' }
 
   const findings = useQuery({
     ...latestFindingsQuery({
@@ -471,6 +492,8 @@ export function FindingsPage() {
       view: grouped ? 'grouped' : 'single',
       limit: pageSize,
       offset: (page - 1) * pageSize,
+      sort: search.sort,
+      order: search.order,
     }),
     // While the project list loads, a URL with an id may still name a project
     // that exists; asking for all findings first would be the wrong question.
@@ -622,8 +645,10 @@ export function FindingsPage() {
   function pageSearch(next: {
     page?: number
     size?: FindingsPageSize
+    sort?: DataTableSort
   }): FindingsSearch {
     const size = next.size ?? search.size
+    const sort = next.sort ?? sortState
     return {
       ...(search.view === undefined ? {} : { view: search.view }),
       ...(search.asset === undefined ? {} : { asset: search.asset }),
@@ -633,6 +658,10 @@ export function FindingsPage() {
       ...(next.page === undefined || next.page <= 1
         ? {}
         : { page: next.page }),
+      ...(sort === undefined
+        ? {}
+        : { sort: sort.columnId as FindingsSort }),
+      ...(sort?.direction === 'desc' ? { order: 'desc' as const } : {}),
     }
   }
 
@@ -649,6 +678,16 @@ export function FindingsPage() {
     void navigate({
       to: '/findings',
       search: pageSearch({ size }),
+      replace: true,
+    })
+    clearSelection()
+  }
+
+  // A new sort goes back to page 1: the old page may not exist in the new order.
+  function changeSort(next: DataTableSort) {
+    void navigate({
+      to: '/findings',
+      search: pageSearch({ sort: next }),
       replace: true,
     })
     clearSelection()
@@ -671,6 +710,8 @@ export function FindingsPage() {
       search: {
         ...(next === 'single' ? { view: 'single' as const } : {}),
         ...(search.size === undefined ? {} : { size: search.size }),
+        ...(search.sort === undefined ? {} : { sort: search.sort }),
+        ...(search.order === undefined ? {} : { order: search.order }),
       },
       replace: true,
     })
@@ -691,6 +732,8 @@ export function FindingsPage() {
           : {
               ...(search.asset === undefined ? {} : { asset: search.asset }),
               ...(search.size === undefined ? {} : { size: search.size }),
+              ...(search.sort === undefined ? {} : { sort: search.sort }),
+              ...(search.order === undefined ? {} : { order: search.order }),
             },
       replace: true,
     })
@@ -717,6 +760,8 @@ export function FindingsPage() {
           search: {
             ...(value === '' ? {} : { asset: Number(value) }),
             ...(search.size === undefined ? {} : { size: search.size }),
+            ...(search.sort === undefined ? {} : { sort: search.sort }),
+            ...(search.order === undefined ? {} : { order: search.order }),
           },
           replace: true,
         })
@@ -988,6 +1033,8 @@ export function FindingsPage() {
               columns={groupColumns}
               rowKey={(group) => group.key}
               selection={groupSelection}
+              sort={sortState}
+              onSortChange={changeSort}
               onRowActivate={(group, index) => {
                 openedGroupAt.current = index
                 setOpenGroupKey(group.key)
@@ -1000,6 +1047,8 @@ export function FindingsPage() {
               columns={columns}
               rowKey={(finding) => finding.fingerprint}
               selection={selection}
+              sort={sortState}
+              onSortChange={changeSort}
               onRowActivate={(finding, index) => {
                 openedAt.current = index
                 setOpenFingerprint(finding.fingerprint)

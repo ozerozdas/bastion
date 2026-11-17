@@ -11,10 +11,12 @@ import {
   type DiscoveredRepo,
 } from '../api/connections'
 import { useScanEvents, type LiveScan } from '../api/events'
+import { openFindingTotal } from '../api/reports'
 import { scansQuery, useCancelScan, useStartScans, type Scan } from '../api/scans'
 import {
   DataTable,
   DataTableRow,
+  useTableSort,
   type DataTableColumn,
   type DataTableSelection,
 } from '../components/data-table'
@@ -52,18 +54,40 @@ const statusView: Record<
  */
 function projectColumns(): DataTableColumn<Asset>[] {
   return [
-    { id: 'project', header: t('repos.column.repository') },
-    { id: 'ref', header: t('repos.column.ref'), headerClassName: 'pl-3' },
-    { id: 'images', header: t('repos.column.images'), headerClassName: 'pl-3' },
+    {
+      id: 'project',
+      header: t('repos.column.repository'),
+      sortable: true,
+      sortValue: (asset) => asset.display_name,
+    },
+    {
+      id: 'ref',
+      header: t('repos.column.ref'),
+      headerClassName: 'pl-3',
+      sortable: true,
+      sortValue: (asset) => asset.ref,
+    },
+    {
+      id: 'images',
+      header: t('repos.column.images'),
+      headerClassName: 'pl-3',
+      sortable: true,
+      sortValue: (asset) => asset.linked_images.length,
+    },
     {
       id: 'last-scan',
       header: t('repos.column.lastScan'),
       headerClassName: 'pl-3',
+      sortable: true,
+      sortValue: (asset) => asset.last_scan?.finished_at ?? '',
     },
     {
       id: 'open-findings',
       header: t('repos.column.openFindings'),
       headerClassName: 'pl-3',
+      sortable: true,
+      defaultSortDirection: 'desc',
+      sortValue: (asset) => openFindingTotal(asset.open_counts),
     },
     {
       id: 'actions',
@@ -181,6 +205,7 @@ function ProjectsTable({
 }) {
   const t = useT()
   const start = useStartScans()
+  const tableSort = useTableSort()
   const [selected, setSelected] = useState<Set<number>>(() => new Set())
   const selectedIds = assets
     .filter((asset) => selected.has(asset.id))
@@ -262,6 +287,9 @@ function ProjectsTable({
         columns={projectColumns()}
         rowKey={(asset) => String(asset.id)}
         selection={selection}
+        clientSort
+        sort={tableSort.sort}
+        onSortChange={tableSort.onSortChange}
         renderRow={(asset) => (
           <ProjectRow asset={asset} live={live.get(asset.id)} selection={selection} />
         )}

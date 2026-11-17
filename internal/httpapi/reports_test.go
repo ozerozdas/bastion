@@ -423,3 +423,79 @@ func TestGetDashboard(t *testing.T) {
 func itoa(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
+
+// TestListFindingsSort covers the sort and order parameters: severity orders by
+// rank (not alphabetically), a text column orders case-insensitively, the
+// grouped view folds and then sorts, and an unknown column or direction is a
+// problem detail.
+func TestListFindingsSort(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+	seedFindingsFixture(t, ts)
+
+	read := func(query string) gen.FindingList {
+		t.Helper()
+		resp := ts.do(t, http.MethodGet, "/api/findings"+query, withCookie(cookie))
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /api/findings%s: status = %d, want %d: %s",
+				query, resp.StatusCode, http.StatusOK, readBody(t, resp))
+		}
+		return decodeFindings(t, readBody(t, resp))
+	}
+
+	// Descending severity is worst first, so the order matches the default.
+	worst := read("?sort=severity&order=desc")
+	if got := len(worst.Findings); got != 3 {
+		t.Fatalf("findings = %d, want 3", got)
+	}
+	if worst.Findings[0].Severity != gen.SeverityHigh ||
+		worst.Findings[1].Severity != gen.SeverityMedium ||
+		worst.Findings[2].Severity != gen.SeverityLow {
+		t.Errorf("severity desc = %+v, want high, medium, low", worst.Findings)
+	}
+
+	// Ascending severity is the reverse, which alphabetical order would not give.
+	mildest := read("?sort=severity&order=asc")
+	if mildest.Findings[0].Severity != gen.SeverityLow ||
+		mildest.Findings[2].Severity != gen.SeverityHigh {
+		t.Errorf("severity asc = %+v, want low first and high last", mildest.Findings)
+	}
+
+	// Titles compare case-insensitively: CVE, gitleaks, MIT.
+	titles := read("?sort=title")
+	wantTitles := []string{
+		"example finding CVE-2026-0003",
+		"example finding gitleaks-generic-api-key",
+		"example finding MIT",
+	}
+	for i, want := range wantTitles {
+		if titles.Findings[i].Title != want {
+			t.Errorf("title order = %+v, want %q at %d", titles.Findings, want, i)
+			break
+		}
+	}
+
+	// The grouped view folds first, then orders the groups by the same column.
+	grouped := read("?view=grouped&sort=title")
+	if len(grouped.Groups) != 3 {
+		t.Fatalf("groups = %+v, want 3", grouped.Groups)
+	}
+	if grouped.Groups[0].Title != "example finding CVE-2026-0003" {
+		t.Errorf("first group = %+v, want the CVE group", grouped.Groups[0])
+	}
+
+	for _, tc := range []struct{ query, detail string }{
+		{query: "?sort=bogus", detail: "sort"},
+		{query: "?sort=severity&order=sideways", detail: "order"},
+	} {
+		resp := ts.do(t, http.MethodGet, "/api/findings"+tc.query, withCookie(cookie))
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want %d", tc.query, resp.StatusCode, http.StatusBadRequest)
+			continue
+		}
+		problem := readProblem(t, resp)
+		if problem.Detail == nil || !strings.Contains(*problem.Detail, tc.detail) {
+			t.Errorf("%s: detail = %v, want it to mention %q", tc.query, problem.Detail, tc.detail)
+		}
+	}
+}

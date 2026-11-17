@@ -24,6 +24,45 @@ export function parseAssetSearch(search: Record<string, unknown>): AssetSearch {
   return {}
 }
 
+/** SortOrder is the direction of a server-side sort. */
+export type SortOrder = 'asc' | 'desc'
+
+/** FindingsSort is a column the API can order the latest findings by. */
+export type FindingsSort = 'severity' | 'title' | 'package' | 'project' | 'type'
+
+const findingsSortColumns: readonly FindingsSort[] = [
+  'severity',
+  'title',
+  'package',
+  'project',
+  'type',
+]
+
+/** ScanSort is a column the API can order the scan list by. */
+export type ScanSort = 'started' | 'status' | 'project' | 'duration' | 'findings'
+
+const scanSortColumns: readonly ScanSort[] = [
+  'started',
+  'status',
+  'project',
+  'duration',
+  'findings',
+]
+
+/** parseSortColumn keeps only a column the API's sort enum accepts. */
+function parseSortColumn<T extends string>(
+  raw: unknown,
+  columns: readonly T[],
+): T | undefined {
+  if (typeof raw !== 'string') return undefined
+  return columns.find((column) => column === raw)
+}
+
+/** parseSortOrder keeps descending; ascending is the canonical default. */
+function parseSortOrder(raw: unknown): SortOrder | undefined {
+  return raw === 'desc' ? 'desc' : undefined
+}
+
 /** FindingsView names the two ways the Findings page lists rows (#90). */
 export type FindingsView = 'single' | 'grouped'
 
@@ -54,6 +93,10 @@ export type FindingsSearch = {
   page?: number
   /** ?size=<n> is one of findingsPageSizes; absent is 50. */
   size?: FindingsPageSize
+  /** ?sort=<column> orders the list server-side; absent keeps the default. */
+  sort?: FindingsSort
+  /** ?order=desc reverses the sort; absent is ascending. */
+  order?: SortOrder
 }
 
 /**
@@ -69,9 +112,13 @@ export function parseFindingsSearch(
   const asset = parseAssetSearch(search)
   const page = parsePositiveInt(search.page)
   const size = parsePageSize(search.size)
-  const paging: Pick<FindingsSearch, 'page' | 'size'> = {
+  const sort = parseSortColumn(search.sort, findingsSortColumns)
+  const order = sort === undefined ? undefined : parseSortOrder(search.order)
+  const paging: Pick<FindingsSearch, 'page' | 'size' | 'sort' | 'order'> = {
     ...(page !== undefined && page > 1 ? { page } : {}),
     ...(size !== undefined && size !== defaultFindingsPageSize ? { size } : {}),
+    ...(sort === undefined ? {} : { sort }),
+    ...(order === undefined ? {} : { order }),
   }
   if (search.tab === 'fix-plan') {
     return { tab: 'fix-plan', ...asset }
@@ -133,6 +180,10 @@ export type ProjectsSearch = {
   tab?: 'scans'
   /** The Scans tab's project filter (#54); only kept on that tab. */
   asset?: number
+  /** ?sort=<column> orders the scan list server-side; absent keeps the default. */
+  sort?: ScanSort
+  /** ?order=desc reverses the sort; absent is ascending. */
+  order?: SortOrder
 }
 
 /**
@@ -146,7 +197,14 @@ export function parseProjectsTabSearch(
   search: Record<string, unknown>,
 ): ProjectsSearch {
   if (search.tab !== 'scans') return {}
-  return { tab: 'scans', ...parseAssetSearch(search) }
+  const sort = parseSortColumn(search.sort, scanSortColumns)
+  const order = sort === undefined ? undefined : parseSortOrder(search.order)
+  return {
+    tab: 'scans',
+    ...parseAssetSearch(search),
+    ...(sort === undefined ? {} : { sort }),
+    ...(order === undefined ? {} : { order }),
+  }
 }
 
 /**

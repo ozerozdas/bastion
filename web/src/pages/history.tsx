@@ -5,7 +5,11 @@ import { useEffect, useMemo } from 'react'
 import { assetsQuery, type Asset } from '../api/assets'
 import { ApiError } from '../api/client'
 import { scansQuery, type Scan } from '../api/scans'
-import { DataTable, type DataTableColumn } from '../components/data-table'
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableSort,
+} from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
 import { FilterBar } from '../components/filter-bar'
 import { SeverityCountBadges } from '../components/severity-counts'
@@ -13,6 +17,7 @@ import { Badge } from '../components/ui/badge'
 import { buttonVariants } from '../components/ui/button'
 import { t, useT } from '../lib/i18n'
 import { formatDateTime, relativeTime, scanDuration } from '../lib/time'
+import type { ProjectsSearch, ScanSort } from '../lib/urls'
 
 /** statusView maps a scan status to its badge text and tone (§7.5). */
 const statusView: Record<
@@ -36,14 +41,44 @@ const triggerLabels: Record<Scan['trigger'], string> = {
 /** ScansPanel is the Repositories page's Scans tab: every scan of every asset. */
 export function ScansPanel() {
   const t = useT()
-  // The project filter lives in the URL (#54), so a filtered view can be
-  // reloaded, bookmarked and shared.
-  const assetId = useSearch({ from: '/repositories' }).asset
+  // The project filter and the sort live in the URL (#54), so a filtered view
+  // can be reloaded, bookmarked and shared.
+  const search = useSearch({ from: '/repositories' })
+  const assetId = search.asset
   const navigate = useNavigate()
+  const sortState: DataTableSort | undefined =
+    search.sort === undefined
+      ? undefined
+      : { columnId: search.sort, direction: search.order ?? 'asc' }
+
+  // sortSearch keeps the sort in the URL; ascending is the canonical default.
+  function sortSearch(sort: DataTableSort | undefined): Pick<ProjectsSearch, 'sort' | 'order'> {
+    return {
+      ...(sort === undefined ? {} : { sort: sort.columnId as ScanSort }),
+      ...(sort?.direction === 'desc' ? { order: 'desc' as const } : {}),
+    }
+  }
+
   const setAssetId = (asset: number | undefined) => {
     void navigate({
       to: '/repositories',
-      search: asset === undefined ? { tab: 'scans' } : { tab: 'scans', asset },
+      search: {
+        tab: 'scans',
+        ...(asset === undefined ? {} : { asset }),
+        ...sortSearch(sortState),
+      },
+      replace: true,
+    })
+  }
+
+  function changeSort(next: DataTableSort) {
+    void navigate({
+      to: '/repositories',
+      search: {
+        tab: 'scans',
+        ...(assetId === undefined ? {} : { asset: assetId }),
+        ...sortSearch(next),
+      },
       replace: true,
     })
   }
@@ -59,7 +94,7 @@ export function ScansPanel() {
   // Poll while any scan in the list is still queued or running, so the status
   // and duration fill in without a manual reload.
   const scans = useQuery({
-    ...scansQuery(assetId),
+    ...scansQuery(assetId, 50, 0, search.sort, search.order),
     refetchInterval: (query) =>
       query.state.data?.some(
         (scan) => scan.status === 'queued' || scan.status === 'running',
@@ -125,7 +160,12 @@ export function ScansPanel() {
               {t('scans.emptyFiltered')}
             </p>
           ) : (
-            <ScanTable scans={scans.data} assets={assets.data ?? []} />
+            <ScanTable
+              scans={scans.data}
+              assets={assets.data ?? []}
+              sort={sortState}
+              onSortChange={changeSort}
+            />
           )
         ) : null}
       </section>
@@ -134,7 +174,17 @@ export function ScansPanel() {
 }
 
 /** ScanTable lists scans with the one link that matters: open the report. */
-function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
+function ScanTable({
+  scans,
+  assets,
+  sort,
+  onSortChange,
+}: {
+  scans: Scan[]
+  assets: Asset[]
+  sort: DataTableSort | undefined
+  onSortChange: (sort: DataTableSort) => void
+}) {
   const t = useT()
   const names = useMemo(() => assetNames(assets), [assets])
   const columns: DataTableColumn<Scan>[] = [
@@ -142,6 +192,7 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
       id: 'project',
       header: t('scans.column.project'),
       cellClassName: 'max-w-[22ch] truncate py-2 pr-3',
+      sortable: true,
       cell: (scan) => {
         const project =
           names.get(scan.asset_id) ??
@@ -163,6 +214,7 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
       header: t('scans.column.status'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
+      sortable: true,
       cell: (scan) => {
         const status = statusView[scan.status]
         return <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
@@ -173,6 +225,8 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
       header: t('scans.column.findings'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
+      sortable: true,
+      defaultSortDirection: 'desc',
       cell: (scan) => <SeverityCountBadges counts={scan.counts} />,
     },
     {
@@ -188,6 +242,8 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
       headerClassName: 'pl-3 text-right',
       cellClassName:
         'py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums',
+      sortable: true,
+      defaultSortDirection: 'desc',
       cellTitle: (scan) =>
         scan.started_at ? formatDateTime(scan.started_at) : undefined,
       cell: (scan) => relativeTime(scan.started_at),
@@ -198,6 +254,8 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
       headerClassName: 'pl-3 text-right',
       cellClassName:
         'py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums',
+      sortable: true,
+      defaultSortDirection: 'desc',
       cell: (scan) => scanDuration(scan),
     },
     {
@@ -259,6 +317,8 @@ function ScanTable({ scans, assets }: { scans: Scan[]; assets: Asset[] }) {
       rows={scans}
       columns={columns}
       rowKey={(scan) => String(scan.id)}
+      sort={sort}
+      onSortChange={onSortChange}
     />
   )
 }

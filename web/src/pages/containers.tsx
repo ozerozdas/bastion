@@ -19,10 +19,12 @@ import {
   type EcrTag,
 } from '../api/ecr'
 import { useScanEvents, type LiveScan } from '../api/events'
+import { openFindingTotal } from '../api/reports'
 import { useStartScans, type Scan } from '../api/scans'
 import {
   DataTable,
   DataTableRow,
+  useTableSort,
   type DataTableColumn,
 } from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
@@ -192,6 +194,7 @@ function DockerPanel({
   const scanImage = useScanDockerImage()
   const start = useStartScans()
   const archive = useArchiveAsset()
+  const tableSort = useTableSort()
   const [confirmingID, setConfirmingID] = useState<number | null>(null)
 
   const rows: ContainerRow[] =
@@ -225,6 +228,8 @@ function DockerPanel({
     {
       id: 'image',
       header: t('containers.column.image'),
+      sortable: true,
+      sortValue: (row) => row.image.reference,
       cell: (row) => (
         <div className="max-w-[32ch]">
           <span
@@ -244,6 +249,9 @@ function DockerPanel({
       header: t('containers.column.size'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
+      sortable: true,
+      defaultSortDirection: 'desc',
+      sortValue: (row) => row.image.size_bytes,
       cell: (row) => <span className="text-muted">{formatSize(row.image.size_bytes)}</span>,
     },
     {
@@ -251,6 +259,9 @@ function DockerPanel({
       header: t('containers.column.created'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
+      sortable: true,
+      defaultSortDirection: 'desc',
+      sortValue: (row) => row.image.created_at,
       cell: (row) => (
         <span className="text-muted">{relativeTime(row.image.created_at)}</span>
       ),
@@ -260,6 +271,9 @@ function DockerPanel({
       header: t('containers.column.lastScan'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
+      sortable: true,
+      defaultSortDirection: 'desc',
+      sortValue: (row) => row.asset?.last_scan?.finished_at ?? '',
       cell: (row) => (
         <ScanCell
           asset={row.asset}
@@ -272,6 +286,8 @@ function DockerPanel({
       header: t('containers.column.repository'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top',
+      sortable: true,
+      sortValue: (row) => row.asset?.display_name ?? '',
       cell: (row) => <LinkCell asset={row.asset} repos={repos} />,
     },
     {
@@ -279,6 +295,10 @@ function DockerPanel({
       header: t('containers.column.openFindings'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top',
+      sortable: true,
+      defaultSortDirection: 'desc',
+      sortValue: (row) =>
+        row.asset === undefined ? -1 : openFindingTotal(row.asset.open_counts),
       cell: (row) =>
         row.asset ? (
           <SeverityCountBadges counts={row.asset.open_counts} />
@@ -372,6 +392,9 @@ function DockerPanel({
             rows={rows}
             columns={columns}
             rowKey={(row) => `${row.image.reference}-${row.image.id}`}
+            clientSort
+            sort={tableSort.sort}
+            onSortChange={tableSort.onSortChange}
             renderRow={(row) => {
               const asset = row.asset
               return (
@@ -453,11 +476,14 @@ function AWSHint() {
 function OrphanedImages({ assets }: { assets: Asset[] }) {
   const t = useT()
   const archive = useArchiveAsset()
+  const tableSort = useTableSort()
 
   const columns: DataTableColumn<Asset>[] = [
     {
       id: 'image',
       header: t('containers.column.image'),
+      sortable: true,
+      sortValue: (asset) => asset.display_name,
       cell: (asset) => (
         <div className="max-w-[40ch]">
           <span
@@ -477,6 +503,9 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
       header: t('containers.column.openFindings'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top',
+      sortable: true,
+      defaultSortDirection: 'desc',
+      sortValue: (asset) => openFindingTotal(asset.open_counts),
       cell: (asset) => <SeverityCountBadges counts={asset.open_counts} />,
     },
     {
@@ -519,6 +548,9 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
           rows={assets}
           columns={columns}
           rowKey={(asset) => String(asset.id)}
+          clientSort
+          sort={tableSort.sort}
+          onSortChange={tableSort.onSortChange}
         />
       </section>
     </section>
@@ -548,6 +580,7 @@ function EcrConnection({
   const discover = useQuery(ecrDiscoverQuery(connection.id))
   const scan = useScanEcrImage(connection.id)
   const archive = useArchiveAsset()
+  const tableSort = useTableSort()
   const [confirmingID, setConfirmingID] = useState<number | null>(null)
 
   const rows: EcrRow[] = (discover.data ?? []).flatMap((repository) =>
@@ -568,6 +601,8 @@ function EcrConnection({
     {
       id: 'image',
       header: t('containers.column.image'),
+      sortable: true,
+      sortValue: (row) => `${row.repository.name}:${row.tag.tags[0] ?? ''}`,
       cell: (row) => {
         const primary = row.tag.tags[0] ?? ''
         return (
@@ -593,6 +628,9 @@ function EcrConnection({
       header: t('containers.column.pushed'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
+      sortable: true,
+      defaultSortDirection: 'desc',
+      sortValue: (row) => row.tag.pushed_at,
       cell: (row) => (
         <span className="text-muted">{relativeTime(row.tag.pushed_at)}</span>
       ),
@@ -602,6 +640,9 @@ function EcrConnection({
       header: t('containers.column.lastScan'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top whitespace-nowrap',
+      sortable: true,
+      defaultSortDirection: 'desc',
+      sortValue: (row) => row.asset?.last_scan?.finished_at ?? '',
       cell: (row) => (
         <ScanCell
           asset={row.asset}
@@ -614,6 +655,8 @@ function EcrConnection({
       header: t('containers.column.repository'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top',
+      sortable: true,
+      sortValue: (row) => row.asset?.display_name ?? '',
       cell: (row) => <LinkCell asset={row.asset} repos={repos} />,
     },
     {
@@ -621,6 +664,10 @@ function EcrConnection({
       header: t('containers.column.openFindings'),
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top',
+      sortable: true,
+      defaultSortDirection: 'desc',
+      sortValue: (row) =>
+        row.asset === undefined ? -1 : openFindingTotal(row.asset.open_counts),
       cell: (row) =>
         row.asset ? (
           <SeverityCountBadges counts={row.asset.open_counts} />
@@ -716,6 +763,9 @@ function EcrConnection({
             rows={rows}
             columns={columns}
             rowKey={(row) => row.tag.ref}
+            clientSort
+            sort={tableSort.sort}
+            onSortChange={tableSort.onSortChange}
             renderRow={(row) => {
               const asset = row.asset
               return (

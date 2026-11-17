@@ -43,7 +43,7 @@ func TestFindingsPageAndGroupedPaging(t *testing.T) {
 	}
 
 	// The second row (offset 1) starts at the beta critical, then alpha's high.
-	page, total, err := service.FindingsPage(ctx, reports.Filter{}, reports.Page{Limit: 2, Offset: 1})
+	page, total, err := service.FindingsPage(ctx, reports.Filter{}, reports.Page{Limit: 2, Offset: 1}, reports.Sort{})
 	if err != nil {
 		t.Fatalf("FindingsPage: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestFindingsPageAndGroupedPaging(t *testing.T) {
 	}
 
 	// The last page may be short; the total does not change.
-	last, total, err := service.FindingsPage(ctx, reports.Filter{}, reports.Page{Limit: 2, Offset: 4})
+	last, total, err := service.FindingsPage(ctx, reports.Filter{}, reports.Page{Limit: 2, Offset: 4}, reports.Sort{})
 	if err != nil {
 		t.Fatalf("FindingsPage(last): %v", err)
 	}
@@ -71,7 +71,7 @@ func TestFindingsPageAndGroupedPaging(t *testing.T) {
 
 	// Grouped: CVE-2026-0001 folds across projects, so four groups hold five
 	// findings; the page cuts groups, not findings.
-	grouped, err := service.GroupedFindings(ctx, reports.Filter{}, reports.Page{Limit: 2, Offset: 1})
+	grouped, err := service.GroupedFindings(ctx, reports.Filter{}, reports.Page{Limit: 2, Offset: 1}, reports.Sort{})
 	if err != nil {
 		t.Fatalf("GroupedFindings: %v", err)
 	}
@@ -90,10 +90,10 @@ func TestFindingsPageAndGroupedPaging(t *testing.T) {
 
 	// A window outside the documented bounds is refused, not clamped silently.
 	for _, window := range []reports.Page{{Limit: 0}, {Limit: reports.MaxFindingLimit + 1}, {Limit: 50, Offset: -1}} {
-		if _, _, err := service.FindingsPage(ctx, reports.Filter{}, window); !errors.Is(err, reports.ErrInvalid) {
+		if _, _, err := service.FindingsPage(ctx, reports.Filter{}, window, reports.Sort{}); !errors.Is(err, reports.ErrInvalid) {
 			t.Errorf("FindingsPage(%+v) error = %v, want ErrInvalid", window, err)
 		}
-		if _, err := service.GroupedFindings(ctx, reports.Filter{}, window); !errors.Is(err, reports.ErrInvalid) {
+		if _, err := service.GroupedFindings(ctx, reports.Filter{}, window, reports.Sort{}); !errors.Is(err, reports.ErrInvalid) {
 			t.Errorf("GroupedFindings(%+v) error = %v, want ErrInvalid", window, err)
 		}
 	}

@@ -84,6 +84,61 @@ const (
 	MaxFindingLimit = 500
 )
 
+// Sort columns the latest-findings list accepts. The SQL maps these names onto
+// fixed ORDER BY keys, so the column is never interpolated into the query.
+const (
+	SortSeverity = "severity"
+	SortTitle    = "title"
+	SortPackage  = "package"
+	SortProject  = "project"
+	SortType     = "type"
+)
+
+// Sort orders the latest findings. The zero value keeps the default order, most
+// severe first. Order is "asc" or "desc"; empty means ascending.
+type Sort struct {
+	Column string
+	Order  string
+}
+
+// Validate rejects a column or direction the list cannot answer.
+func (s Sort) Validate() error {
+	switch s.Column {
+	case "", SortSeverity, SortTitle, SortPackage, SortProject, SortType:
+	default:
+		return fmt.Errorf("%w: sort %q is not one of %s, %s, %s, %s, %s", ErrInvalid,
+			s.Column, SortSeverity, SortTitle, SortPackage, SortProject, SortType)
+	}
+	if s.Column != "" && s.Order != "" && s.Order != "asc" && s.Order != "desc" {
+		return fmt.Errorf("%w: order %q is not one of asc, desc", ErrInvalid, s.Order)
+	}
+	return nil
+}
+
+// params converts the sort to the query's numeric key and direction: 0 keeps
+// the default order, and the keys match ListLatestFindings' ORDER BY.
+func (s Sort) params() (key, order int64, err error) {
+	if err := s.Validate(); err != nil {
+		return 0, 0, err
+	}
+	switch s.Column {
+	case SortSeverity:
+		key = 1
+	case SortTitle:
+		key = 2
+	case SortPackage:
+		key = 3
+	case SortProject:
+		key = 4
+	case SortType:
+		key = 5
+	}
+	if s.Order == "desc" {
+		order = 1
+	}
+	return key, order, nil
+}
+
 // Page is a limit/offset window over the latest-findings list.
 type Page struct {
 	Limit  int
@@ -118,13 +173,16 @@ type GroupPage struct {
 // finding_states decision for the same asset and fingerprint reports the
 // finding as ignored and fills State and Reason.
 func (s *Service) Findings(ctx context.Context, filter Filter) ([]Finding, error) {
-	return s.listFindings(ctx, filter, allRows, 0)
+	return s.listFindings(ctx, filter, Sort{}, allRows, 0)
 }
 
 // FindingsPage lists one page of the latest findings and the number of rows the
 // filters match, ignoring the window.
-func (s *Service) FindingsPage(ctx context.Context, filter Filter, page Page) ([]Finding, int, error) {
+func (s *Service) FindingsPage(ctx context.Context, filter Filter, page Page, by Sort) ([]Finding, int, error) {
 	if err := page.Validate(); err != nil {
+		return nil, 0, err
+	}
+	if err := by.Validate(); err != nil {
 		return nil, 0, err
 	}
 
@@ -137,7 +195,7 @@ func (s *Service) FindingsPage(ctx context.Context, filter Filter, page Page) ([
 		return nil, 0, fmt.Errorf("reports: count findings: %w", err)
 	}
 
-	findings, err := s.listFindings(ctx, filter, int64(page.Limit), int64(page.Offset))
+	findings, err := s.listFindings(ctx, filter, by, int64(page.Limit), int64(page.Offset))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -146,8 +204,11 @@ func (s *Service) FindingsPage(ctx context.Context, filter Filter, page Page) ([
 
 // GroupedFindings folds the latest findings into one row per rule and type and
 // cuts the requested window from the groups.
-func (s *Service) GroupedFindings(ctx context.Context, filter Filter, page Page) (GroupPage, error) {
+func (s *Service) GroupedFindings(ctx context.Context, filter Filter, page Page, by Sort) (GroupPage, error) {
 	if err := page.Validate(); err != nil {
+		return GroupPage{}, err
+	}
+	if err := by.Validate(); err != nil {
 		return GroupPage{}, err
 	}
 
@@ -161,6 +222,7 @@ func (s *Service) GroupedFindings(ctx context.Context, filter Filter, page Page)
 		return GroupPage{}, err
 	}
 	groups := GroupFindings(all)
+	sortGroups(groups, by)
 
 	start := page.Offset
 	if start > len(groups) {
@@ -179,8 +241,8 @@ func (s *Service) GroupedFindings(ctx context.Context, filter Filter, page Page)
 }
 
 // listFindings reads the latest findings with the window limit and offset.
-func (s *Service) listFindings(ctx context.Context, filter Filter, limit, offset int64) ([]Finding, error) {
-	params, err := filter.params(s.expiryNow(), limit, offset)
+func (s *Service) listFindings(ctx context.Context, filter Filter, by Sort, limit, offset int64) ([]Finding, error) {
+	params, err := filter.params(s.expiryNow(), by, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -251,11 +313,16 @@ func (s *Service) enrich(finding *Finding) {
 // params validates the filter and converts it to the query's nullable
 // arguments: a nil interface means "no filter" in ListLatestFindings. now is
 // the clock the query compares a decision's expiry with.
-func (f Filter) params(now string, limit, offset int64) (sqlcdb.ListLatestFindingsParams, error) {
+func (f Filter) params(now string, by Sort, limit, offset int64) (sqlcdb.ListLatestFindingsParams, error) {
 	params := sqlcdb.ListLatestFindingsParams{Now: now, Limit: limit, Offset: offset}
 	if err := f.validate(); err != nil {
 		return params, err
 	}
+	key, order, err := by.params()
+	if err != nil {
+		return params, err
+	}
+	params.Sort, params.Order = key, order
 
 	if f.AssetID > 0 {
 		params.AssetID = f.AssetID

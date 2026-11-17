@@ -533,6 +533,33 @@ func (e FindingsListViewQuery) Valid() bool {
 	}
 }
 
+// Defines values for FindingsSortQuery.
+const (
+	FindingsSortQueryPackage  FindingsSortQuery = "package"
+	FindingsSortQueryProject  FindingsSortQuery = "project"
+	FindingsSortQuerySeverity FindingsSortQuery = "severity"
+	FindingsSortQueryTitle    FindingsSortQuery = "title"
+	FindingsSortQueryType     FindingsSortQuery = "type"
+)
+
+// Valid indicates whether the value is a known member of the FindingsSortQuery enum.
+func (e FindingsSortQuery) Valid() bool {
+	switch e {
+	case FindingsSortQueryPackage:
+		return true
+	case FindingsSortQueryProject:
+		return true
+	case FindingsSortQuerySeverity:
+		return true
+	case FindingsSortQueryTitle:
+		return true
+	case FindingsSortQueryType:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FindingsViewQuery.
 const (
 	FindingsViewQueryGrouped FindingsViewQuery = "grouped"
@@ -551,6 +578,51 @@ func (e FindingsViewQuery) Valid() bool {
 	}
 }
 
+// Defines values for ScanSortQuery.
+const (
+	ScanSortQueryDuration ScanSortQuery = "duration"
+	ScanSortQueryFindings ScanSortQuery = "findings"
+	ScanSortQueryProject  ScanSortQuery = "project"
+	ScanSortQueryStarted  ScanSortQuery = "started"
+	ScanSortQueryStatus   ScanSortQuery = "status"
+)
+
+// Valid indicates whether the value is a known member of the ScanSortQuery enum.
+func (e ScanSortQuery) Valid() bool {
+	switch e {
+	case ScanSortQueryDuration:
+		return true
+	case ScanSortQueryFindings:
+		return true
+	case ScanSortQueryProject:
+		return true
+	case ScanSortQueryStarted:
+		return true
+	case ScanSortQueryStatus:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SortOrderQuery.
+const (
+	SortOrderQueryAsc  SortOrderQuery = "asc"
+	SortOrderQueryDesc SortOrderQuery = "desc"
+)
+
+// Valid indicates whether the value is a known member of the SortOrderQuery enum.
+func (e SortOrderQuery) Valid() bool {
+	switch e {
+	case SortOrderQueryAsc:
+		return true
+	case SortOrderQueryDesc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListFindingsParamsView.
 const (
 	ListFindingsParamsViewGrouped ListFindingsParamsView = "grouped"
@@ -563,6 +635,96 @@ func (e ListFindingsParamsView) Valid() bool {
 	case ListFindingsParamsViewGrouped:
 		return true
 	case ListFindingsParamsViewSingle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListFindingsParamsSort.
+const (
+	ListFindingsParamsSortPackage  ListFindingsParamsSort = "package"
+	ListFindingsParamsSortProject  ListFindingsParamsSort = "project"
+	ListFindingsParamsSortSeverity ListFindingsParamsSort = "severity"
+	ListFindingsParamsSortTitle    ListFindingsParamsSort = "title"
+	ListFindingsParamsSortType     ListFindingsParamsSort = "type"
+)
+
+// Valid indicates whether the value is a known member of the ListFindingsParamsSort enum.
+func (e ListFindingsParamsSort) Valid() bool {
+	switch e {
+	case ListFindingsParamsSortPackage:
+		return true
+	case ListFindingsParamsSortProject:
+		return true
+	case ListFindingsParamsSortSeverity:
+		return true
+	case ListFindingsParamsSortTitle:
+		return true
+	case ListFindingsParamsSortType:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListFindingsParamsOrder.
+const (
+	ListFindingsParamsOrderAsc  ListFindingsParamsOrder = "asc"
+	ListFindingsParamsOrderDesc ListFindingsParamsOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListFindingsParamsOrder enum.
+func (e ListFindingsParamsOrder) Valid() bool {
+	switch e {
+	case ListFindingsParamsOrderAsc:
+		return true
+	case ListFindingsParamsOrderDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListScansParamsSort.
+const (
+	ListScansParamsSortDuration ListScansParamsSort = "duration"
+	ListScansParamsSortFindings ListScansParamsSort = "findings"
+	ListScansParamsSortProject  ListScansParamsSort = "project"
+	ListScansParamsSortStarted  ListScansParamsSort = "started"
+	ListScansParamsSortStatus   ListScansParamsSort = "status"
+)
+
+// Valid indicates whether the value is a known member of the ListScansParamsSort enum.
+func (e ListScansParamsSort) Valid() bool {
+	switch e {
+	case ListScansParamsSortDuration:
+		return true
+	case ListScansParamsSortFindings:
+		return true
+	case ListScansParamsSortProject:
+		return true
+	case ListScansParamsSortStarted:
+		return true
+	case ListScansParamsSortStatus:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListScansParamsOrder.
+const (
+	ListScansParamsOrderAsc  ListScansParamsOrder = "asc"
+	ListScansParamsOrderDesc ListScansParamsOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListScansParamsOrder enum.
+func (e ListScansParamsOrder) Valid() bool {
+	switch e {
+	case ListScansParamsOrderAsc:
+		return true
+	case ListScansParamsOrderDesc:
 		return true
 	default:
 		return false
@@ -1683,6 +1845,9 @@ type FindingsLimitQuery = int
 // FindingsListViewQuery defines model for FindingsListViewQuery.
 type FindingsListViewQuery string
 
+// FindingsSortQuery defines model for FindingsSortQuery.
+type FindingsSortQuery string
+
 // FindingsViewQuery defines model for FindingsViewQuery.
 type FindingsViewQuery string
 
@@ -1701,8 +1866,14 @@ type ScanID = int64
 // ScanLimitQuery defines model for ScanLimitQuery.
 type ScanLimitQuery = int
 
+// ScanSortQuery defines model for ScanSortQuery.
+type ScanSortQuery string
+
 // SeverityQuery Normalized severity scale (`unknown` when a scanner gave no usable level).
 type SeverityQuery = Severity
+
+// SortOrderQuery defines model for SortOrderQuery.
+type SortOrderQuery string
 
 // ListFindingsParams defines parameters for ListFindings.
 type ListFindingsParams struct {
@@ -1727,10 +1898,25 @@ type ListFindingsParams struct {
 
 	// Offset Rows to skip before the page.
 	Offset *OffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Sort Column to order the latest findings by. Omitted keeps the default, most
+	// severe first. `severity` orders by its rank, not alphabetically. In
+	// grouped view `project` orders by the number of projects the group
+	// reaches.
+	Sort *ListFindingsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Order Direction of `sort`; ignored when no `sort` is given. `asc` when absent.
+	Order *ListFindingsParamsOrder `form:"order,omitempty" json:"order,omitempty"`
 }
 
 // ListFindingsParamsView defines parameters for ListFindings.
 type ListFindingsParamsView string
+
+// ListFindingsParamsSort defines parameters for ListFindings.
+type ListFindingsParamsSort string
+
+// ListFindingsParamsOrder defines parameters for ListFindings.
+type ListFindingsParamsOrder string
 
 // ClearFindingStateParams defines parameters for ClearFindingState.
 type ClearFindingStateParams struct {
@@ -1760,7 +1946,20 @@ type ListScansParams struct {
 
 	// Offset Rows to skip before the page.
 	Offset *OffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Sort Column to order the scan list by. Omitted keeps the default, newest
+	// first. `duration` and `findings` read the same values the list shows.
+	Sort *ListScansParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Order Direction of `sort`; ignored when no `sort` is given. `asc` when absent.
+	Order *ListScansParamsOrder `form:"order,omitempty" json:"order,omitempty"`
 }
+
+// ListScansParamsSort defines parameters for ListScans.
+type ListScansParamsSort string
+
+// ListScansParamsOrder defines parameters for ListScans.
+type ListScansParamsOrder string
 
 // GetScanDiffParams defines parameters for GetScanDiff.
 type GetScanDiffParams struct {
@@ -2464,6 +2663,32 @@ func (siw *ServerInterfaceWrapper) ListFindings(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "order", r.URL.Query(), &params.Order, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "order"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "order", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListFindings(w, r, params)
 	}))
@@ -2779,6 +3004,32 @@ func (siw *ServerInterfaceWrapper) ListScans(w http.ResponseWriter, r *http.Requ
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "order", r.URL.Query(), &params.Order, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "order"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "order", Err: err})
 		}
 		return
 	}
