@@ -18,8 +18,13 @@ import { useT } from '../lib/i18n'
 import { isHttpsUrl } from '../lib/urls'
 import { useDrawerFocus } from './drawer-focus'
 import { ErrorNote } from './error-note'
+import { MarkdownText } from './markdown-text'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+
+const factsClass =
+  'grid grid-cols-[7rem_1fr] items-baseline gap-x-3 gap-y-1.5 text-[0.8125rem]'
+const referenceLimit = 5
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
@@ -58,6 +63,10 @@ export function FindingDrawer({
   const [reason, setReason] = useState('')
   const [expiryChoice, setExpiryChoice] = useState<ExpiryChoice>('none')
   const [expiryDay, setExpiryDay] = useState('')
+  const [expanded, setExpanded] = useState(false)
+  const [allReferences, setAllReferences] = useState(false)
+  // ponytail: length is a rough stand-in for rendered height; good enough to decide on a toggle.
+  const longDescription = (finding.description?.length ?? 0) > 600
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -99,7 +108,7 @@ export function FindingDrawer({
         onKeyDown={onKeyDown}
         className="absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col gap-4 overflow-y-auto border-l border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
       >
-        <div className="flex items-start gap-3">
+        <div className="sticky -top-5 z-10 -mx-5 -mt-5 flex items-start gap-3 border-b border-border-subtle bg-surface px-5 pt-5 pb-3">
           <div className="flex min-w-0 flex-col gap-1.5">
             <h2 id="finding-title" className="text-[0.9375rem] font-semibold break-words">
               {finding.title}
@@ -143,20 +152,7 @@ export function FindingDrawer({
           </Button>
         </div>
 
-        {finding.description ? (
-          <p className="text-[0.8125rem] break-words whitespace-pre-wrap text-muted">
-            {finding.description}
-          </p>
-        ) : (
-          <p className="text-xs text-faint">{t('finding.noDescription')}</p>
-        )}
-
-        <dl className="grid grid-cols-[7rem_1fr] items-baseline gap-x-3 gap-y-1.5 text-[0.8125rem]">
-          <dt className="text-muted">{t('finding.scanner')}</dt>
-          <dd className="font-mono text-xs">
-            {(finding.scanners?.length ? finding.scanners : [finding.scanner]).join(', ')}
-          </dd>
-
+        <dl className={factsClass}>
           {finding.rule_id ? (
             <>
               <dt className="text-muted">{t('finding.rule')}</dt>
@@ -190,9 +186,6 @@ export function FindingDrawer({
             </>
           ) : null}
 
-          <dt className="text-muted">{t('finding.occurrences')}</dt>
-          <dd className="tabular-nums">{finding.occurrences}</dd>
-
           {finding.epss ? (
             <>
               <dt className="text-muted">{t('finding.epss')}</dt>
@@ -221,20 +214,32 @@ export function FindingDrawer({
             </>
           ) : null}
 
-          {finding.first_seen_scan_id !== undefined ? (
-            <>
-              <dt className="text-muted">{t('finding.firstSeen')}</dt>
-              <dd className="tabular-nums">
-                {t('finding.scanId', { id: finding.first_seen_scan_id })}
-              </dd>
-            </>
-          ) : null}
-
-          <dt className="text-muted">{t('finding.fingerprint')}</dt>
-          <dd className="font-mono text-[0.6875rem] break-all text-muted">
-            {finding.fingerprint}
-          </dd>
         </dl>
+
+        {finding.description ? (
+          <section className="flex flex-col gap-1.5">
+            <div
+              className={
+                longDescription && !expanded
+                  ? 'relative max-h-48 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]'
+                  : undefined
+              }
+            >
+              <MarkdownText source={finding.description} />
+            </div>
+            {longDescription ? (
+              <button
+                type="button"
+                onClick={() => setExpanded((value) => !value)}
+                className="self-start text-xs font-medium text-muted underline underline-offset-2 hover:text-fg"
+              >
+                {expanded ? t('finding.showLess') : t('finding.showMore')}
+              </button>
+            ) : null}
+          </section>
+        ) : (
+          <p className="text-xs text-faint">{t('finding.noDescription')}</p>
+        )}
 
         {readOnly ? (
           <p className="rounded-md border border-border-subtle bg-bg p-3 text-xs text-muted">
@@ -394,10 +399,16 @@ export function FindingDrawer({
         {finding.references.length > 0 ? (
           <section className="flex flex-col gap-1.5">
             <h3 className="text-[0.8125rem] font-semibold">
-              {t('finding.references')}
+              {t('finding.references')}{' '}
+              <span className="font-normal text-faint tabular-nums">
+                {finding.references.length}
+              </span>
             </h3>
             <ul className="flex flex-col gap-1 text-xs">
-              {finding.references.map((reference, index) => (
+              {(allReferences
+                ? finding.references
+                : finding.references.slice(0, referenceLimit)
+              ).map((reference, index) => (
                 <li key={`${String(index)}-${reference}`} className="break-all">
                   {isHttpsUrl(reference) ? (
                     <a
@@ -414,8 +425,46 @@ export function FindingDrawer({
                 </li>
               ))}
             </ul>
+            {!allReferences && finding.references.length > referenceLimit ? (
+              <button
+                type="button"
+                onClick={() => setAllReferences(true)}
+                className="self-start text-xs font-medium text-muted underline underline-offset-2 hover:text-fg"
+              >
+                {t('finding.showAllReferences', { count: finding.references.length })}
+              </button>
+            ) : null}
           </section>
         ) : null}
+
+        <details className="group text-[0.8125rem]">
+          <summary className="cursor-pointer text-[0.8125rem] font-semibold select-none">
+            {t('finding.technical')}
+          </summary>
+          <dl className={`${factsClass} mt-2`}>
+            <dt className="text-muted">{t('finding.scanner')}</dt>
+            <dd className="font-mono text-xs">
+              {(finding.scanners?.length ? finding.scanners : [finding.scanner]).join(', ')}
+            </dd>
+
+            <dt className="text-muted">{t('finding.occurrences')}</dt>
+            <dd className="tabular-nums">{finding.occurrences}</dd>
+
+            {finding.first_seen_scan_id !== undefined ? (
+              <>
+                <dt className="text-muted">{t('finding.firstSeen')}</dt>
+                <dd className="tabular-nums">
+                  {t('finding.scanId', { id: finding.first_seen_scan_id })}
+                </dd>
+              </>
+            ) : null}
+
+            <dt className="text-muted">{t('finding.fingerprint')}</dt>
+            <dd className="font-mono text-[0.6875rem] break-all text-muted">
+              {finding.fingerprint}
+            </dd>
+          </dl>
+        </details>
       </div>
     </div>
   )
