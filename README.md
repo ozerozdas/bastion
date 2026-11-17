@@ -58,10 +58,13 @@ first scan additionally downloads a ~1.7 GB vulnerability DB into the cache dire
 
 1. Run `./bin/bastion`. The server binds `127.0.0.1` on a random port, prints the URL and
    opens your browser. Use `bastion serve --port 8080 --no-browser` to control that.
-2. **Connections** → add a GitHub token. It must be read-only: a fine-grained PAT with
-   *Contents: read* and *Metadata: read*, or a classic PAT with the `repo` scope for
-   private repositories. The token goes into the OS keychain and is never stored in the
-   database or shown again.
+2. **Connections** → add a GitHub token. Scanning needs read-only access: a fine-grained
+   PAT with *Contents: read* and *Metadata: read*, or a classic PAT with the `repo` scope
+   for private repositories. Opening a fix-plan pull request (**Fix plan** → **Open PR**)
+   writes one manifest file and a pull request, so that action also needs *Contents: write*
+   and *Pull requests: write* (fine-grained), which the classic `repo` scope already
+   covers. The token goes into the OS keychain and is never stored in the database or shown
+   again.
 3. **Projects** → **List repositories** → tick repositories → add them → **Scan**. Scans
    run locally, at most `--concurrency` (default 2) at a time; progress streams into the
    project row.
@@ -197,7 +200,7 @@ it on: Trivy runs with `--disable-telemetry --skip-version-check`, scans query
 | `mirror.gcr.io/aquasec/trivy-java-db`, `ghcr.io/aquasecurity/trivy-java-db` | Scan containing Java artifacts | Java index DB, needed to map `.jar` files to artifacts |
 | `mirror.gcr.io/aquasec/trivy-checks:2` | When misconfiguration scanning runs | IaC checks bundle, ~2.6 MB |
 | `api.osv.dev` | Every scan whose package inventory is non-empty | `POST /v1/querybatch` and `GET /v1/vulns/{id}` for the advisories it reports. Sends package name, version and ecosystem only, with `User-Agent: bastion/<version>` |
-| `api.github.com` | Only on user action: test connection, discover repos, add asset, scan | `GET /user`, `GET /user/repos`, `GET /repos/{owner}/{repo}`, `GET /repos/{owner}/{repo}/commits/{branch}`, `GET /repos/{owner}/{repo}/tarball/{sha}` |
+| `api.github.com` | Only on user action: test connection, discover repos, add asset, scan, or confirm **Open PR** on a fix plan step (#47) | `GET /user`, `GET /user/repos`, `GET /repos/{owner}/{repo}`, `GET /repos/{owner}/{repo}/commits/{branch}`, `GET /repos/{owner}/{repo}/tarball/{sha}`, and for a confirmed pull request `GET /repos/{owner}/{repo}/git/ref/heads/{branch}`, `GET /repos/{owner}/{repo}/pulls`, `GET /repos/{owner}/{repo}/contents/{path}`, `POST /repos/{owner}/{repo}/git/refs`, `PUT /repos/{owner}/{repo}/contents/{path}` (one manifest file) and `POST /repos/{owner}/{repo}/pulls`. Nothing is written without the confirmation dialog |
 | `codeload.github.com` | Redirect target of the tarball call | The repository archive itself |
 | `sts.<region>.amazonaws.com` | Only on user action: test an AWS connection | `GetCallerIdentity`, signed with the credentials of the AWS profile you chose; the account id and ARN come back |
 | `ecr.<region>.amazonaws.com` | Only on user action: discover ECR repositories, or start an ECR image scan | `DescribeRepositories`, `DescribeImages` and `GetAuthorizationToken`, signed with the credentials of the AWS profile you chose; repository names, tag names, digests and push times come back |

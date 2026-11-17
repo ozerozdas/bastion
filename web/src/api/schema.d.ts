@@ -479,6 +479,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assets/{id}/fix-plan/pull-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open a GitHub pull request for one fix plan step.
+         * @description Manifest only (#47): bastion edits `go.mod` or `package.json` through
+         *     the GitHub REST API, on a new branch, and opens a pull request against
+         *     the repository's default branch. It never clones the repository and
+         *     never runs a package manager. The lockfile is left untouched, so it
+         *     must be regenerated (`go mod tidy` / `npm install`) before merging.
+         *
+         *     The request is refused unless `confirm` is `true`: nothing is written to
+         *     GitHub without an explicit confirmation. `ecosystem`, `package` and
+         *     `target` must match a step of the asset's current fix plan exactly;
+         *     bastion recomputes the plan and never trusts a client-supplied version.
+         *
+         *     `{id}` must be a repository asset with a GitHub connection whose token
+         *     may write contents and pull requests (classic `repo`, or fine-grained
+         *     *Contents: write* and *Pull requests: write*). A package that appears
+         *     only in the lockfile is a transitive dependency: the step is refused
+         *     with `422` instead of guessing which manifest entry to bump.
+         */
+        post: operations["openFixPlanPullRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assets/{id}/link": {
         parameters: {
             query?: never;
@@ -1809,6 +1844,52 @@ export interface components {
             finding_ids: number[];
         };
         /**
+         * FixPlanPullRequestRequest
+         * @description One confirmed fix plan step to open a pull request for (#47). The three
+         *     identifiers must match a step of the asset's current plan; `confirm`
+         *     is the user's explicit go-ahead.
+         */
+        FixPlanPullRequestRequest: {
+            /**
+             * @description The step's ecosystem. Only `go` (`go.mod`) and `npm`
+             *     (`package.json`) manifests are supported in this version.
+             * @enum {string}
+             */
+            ecosystem: "go" | "npm";
+            /** @example lodash */
+            package: string;
+            /**
+             * @description The step's exact target version.
+             * @example 4.17.21
+             */
+            target: string;
+            /**
+             * @description Must be `true`. A false or absent value is refused with `400`, so no
+             *     branch or pull request is created without an explicit confirmation.
+             */
+            confirm: boolean;
+        };
+        /**
+         * FixPlanPullRequestResult
+         * @description The pull request opened for one fix plan step.
+         */
+        FixPlanPullRequestResult: {
+            /**
+             * Format: uri
+             * @description The pull request's web URL.
+             */
+            url: string;
+            /** @description The repository's pull request number. */
+            number: number;
+            /** @description The head branch bastion created, `bastion/bump-…`. */
+            branch: string;
+            /**
+             * @description The repository-relative manifest the pull request changed, such as
+             *     `package.json` or `services/api/go.mod`.
+             */
+            manifest: string;
+        };
+        /**
          * Dashboard
          * @description Aggregates for §7.1. Every number counts open findings of each
          *     non-archived asset's latest succeeded scan.
@@ -2250,6 +2331,12 @@ export interface components {
              *     for. Present only on that 404; nothing was written.
              */
             fingerprints?: string[];
+            /**
+             * Format: uri
+             * @description The open pull request that already uses the branch. Present only on
+             *     the fix plan pull request `409`; nothing was written.
+             */
+            pr_url?: string;
         } & {
             [key: string]: unknown;
         };
@@ -3121,6 +3208,93 @@ export interface operations {
             };
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
+        };
+    };
+    openFixPlanPullRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Asset id. */
+                id: components["parameters"]["AssetID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FixPlanPullRequestRequest"];
+            };
+        };
+        responses: {
+            /** @description The pull request that was opened. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FixPlanPullRequestResult"];
+                };
+            };
+            /**
+             * @description `confirm` is not true, a field is empty, the asset id is not a
+             *     positive integer, or no step of the current plan matches
+             *     `ecosystem`, `package` and `target`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description The asset does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description The branch already exists. `pr_url` carries the URL of the open
+             *     pull request for it when there is one.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            /**
+             * @description The asset cannot get a pull request (not a repository, no GitHub
+             *     connection, unsupported ecosystem), the package is only a
+             *     transitive dependency, or its location names no supported manifest.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            500: components["responses"]["Problem"];
+            /** @description GitHub failed the request; the detail carries the hint. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     setAssetLink: {

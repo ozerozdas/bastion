@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/ozerozdas/bastion/internal/connections"
 	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/fixplan"
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
@@ -172,6 +173,79 @@ func (s *Server) GetAssetFixPlan(ctx context.Context, request gen.GetAssetFixPla
 		}, nil
 	}
 	return gen.GetAssetFixPlan200JSONResponse(fixPlanResponse(plan)), nil
+}
+
+// OpenFixPlanPullRequest implements gen.StrictServerInterface. The UI only
+// offers the action for a repository asset with a GitHub connection, but the
+// endpoint enforces that itself: it recomputes the plan, refuses a target it
+// did not produce, and writes nothing unless the request confirmed it.
+func (s *Server) OpenFixPlanPullRequest(ctx context.Context, request gen.OpenFixPlanPullRequestRequestObject) (gen.OpenFixPlanPullRequestResponseObject, error) {
+	if s.reports == nil {
+		return gen.OpenFixPlanPullRequest500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error", reportsUnavailable),
+		}, nil
+	}
+	if request.Body == nil {
+		return gen.OpenFixPlanPullRequest400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "the request body is required"),
+		), nil
+	}
+
+	result, err := s.reports.OpenFixPlanPullRequest(ctx, int64(request.Id), reports.PullRequestInput{
+		Ecosystem: string(request.Body.Ecosystem),
+		Package:   request.Body.Package,
+		Target:    request.Body.Target,
+		Confirm:   request.Body.Confirm,
+	})
+	if err != nil {
+		return openPullRequestProblem(s, err)
+	}
+	return gen.OpenFixPlanPullRequest201JSONResponse(gen.FixPlanPullRequestResult{
+		Url:      result.URL,
+		Number:   result.Number,
+		Branch:   result.Branch,
+		Manifest: result.Manifest,
+	}), nil
+}
+
+// openPullRequestProblem maps the service's errors onto the endpoint's problem
+// responses. A branch conflict carries the existing pull request's URL as an
+// RFC 9457 extension member.
+func openPullRequestProblem(s *Server, err error) (gen.OpenFixPlanPullRequestResponseObject, error) {
+	var conflict *reports.PullRequestConflict
+	switch {
+	case errors.As(err, &conflict):
+		problem := newProblem(http.StatusConflict, "Conflict", conflict.Error())
+		if conflict.URL != "" {
+			problem.PrUrl = &conflict.URL
+		}
+		return gen.OpenFixPlanPullRequest409ApplicationProblemPlusJSONResponse(problem), nil
+	case errors.Is(err, reports.ErrInvalid), errors.Is(err, reports.ErrPullRequestStep):
+		return gen.OpenFixPlanPullRequest400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", err.Error()),
+		), nil
+	case errors.Is(err, reports.ErrNotFound):
+		return gen.OpenFixPlanPullRequest404ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusNotFound, "Not Found", err.Error()),
+		), nil
+	case errors.Is(err, reports.ErrPullRequestUnsupported), errors.Is(err, reports.ErrTransitiveDependency):
+		return gen.OpenFixPlanPullRequest422ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusUnprocessableEntity, "Unprocessable Content", err.Error()),
+		), nil
+	case errors.Is(err, connections.ErrUpstream):
+		return gen.OpenFixPlanPullRequest502ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadGateway, "Bad Gateway", connections.Hint(err)),
+		), nil
+	case errors.Is(err, reports.ErrPullRequestUnavailable):
+		return gen.OpenFixPlanPullRequest500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error", err.Error()),
+		}, nil
+	}
+	s.log.Error("open fix plan pull request", "error", err)
+	return gen.OpenFixPlanPullRequest500ApplicationProblemPlusJSONResponse{
+		Body: newProblem(http.StatusInternalServerError, "Internal Server Error",
+			"could not open the pull request; see the server log"),
+	}, nil
 }
 
 // GetDashboard implements gen.StrictServerInterface.
