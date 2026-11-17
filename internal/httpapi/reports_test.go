@@ -133,6 +133,8 @@ func TestListFindingsFilters(t *testing.T) {
 		{name: "status open", query: "?status=open", want: 2},
 		{name: "type and severity", query: "?type=vulnerability&severity=medium", want: 1},
 		{name: "unknown asset", query: "?asset_id=999", want: 0},
+		{name: "search by rule", query: "?q=cve-2026-0003", want: 1},
+		{name: "search is case-insensitive", query: "?q=GITLEAKS", want: 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -325,6 +327,7 @@ func TestListFindingsRejectsBadEnums(t *testing.T) {
 		{query: "?type=bogus", detail: "type"},
 		{query: "?status=muted", detail: "status"},
 		{query: "?asset_id=-1", detail: "asset_id"},
+		{query: "?q=" + strings.Repeat("a", 201), detail: "q"},
 	}
 	for _, tc := range cases {
 		t.Run(url.QueryEscape(tc.query), func(t *testing.T) {

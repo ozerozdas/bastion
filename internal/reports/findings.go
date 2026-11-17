@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/ozerozdas/bastion/internal/epss"
 	"github.com/ozerozdas/bastion/internal/findings"
@@ -22,13 +24,20 @@ const (
 var ErrInvalid = errors.New("reports: invalid filter")
 
 // Filter narrows the latest-findings list. The zero value means every asset and
-// every enum value; AssetID 0 means "all assets".
+// every enum value; AssetID 0 means "all assets". Query is a case-insensitive
+// substring of the title, rule id, package name or file path; empty matches
+// everything.
 type Filter struct {
 	AssetID  int64
 	Severity string
 	Type     string
 	Status   string
+	Query    string
 }
+
+// MaxQueryLength caps the search text. Longer input is refused rather than
+// truncated, so the caller knows the search it sees is the search it sent.
+const MaxQueryLength = 200
 
 // Finding is one normalized finding of an asset's latest succeeded scan. Unset
 // optional fields stay empty strings, so the API can omit them.
@@ -330,6 +339,7 @@ func (f Filter) params(now string, by Sort, limit, offset int64) (sqlcdb.ListLat
 	params.Severity = nullable(f.Severity)
 	params.Type = nullable(f.Type)
 	params.Status = nullable(f.Status)
+	params.Query = f.likePattern()
 
 	return params, nil
 }
@@ -348,6 +358,7 @@ func (f Filter) countParams(now string) (sqlcdb.CountLatestFindingsParams, error
 	params.Severity = nullable(f.Severity)
 	params.Type = nullable(f.Type)
 	params.Status = nullable(f.Status)
+	params.Query = f.likePattern()
 
 	return params, nil
 }
@@ -357,7 +368,22 @@ func (f Filter) validate() error {
 	if f.AssetID < 0 {
 		return fmt.Errorf("%w: asset_id must be positive", ErrInvalid)
 	}
+	if utf8.RuneCountInString(strings.TrimSpace(f.Query)) > MaxQueryLength {
+		return fmt.Errorf("%w: q must be at most %d characters", ErrInvalid, MaxQueryLength)
+	}
 	return validateEnums(f.Severity, f.Type, f.Status)
+}
+
+// likePattern turns the search text into a LIKE pattern, or nil for no filter.
+// The text is trimmed, then % and _ (and the escape character itself) are
+// escaped so the caller searches for them literally.
+func (f Filter) likePattern() interface{} {
+	query := strings.TrimSpace(f.Query)
+	if query == "" {
+		return nil
+	}
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
+	return "%" + escaped + "%"
 }
 
 // validateEnums rejects an enum value no filter accepts. The message names the

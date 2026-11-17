@@ -3,6 +3,7 @@ package reports_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/ozerozdas/bastion/internal/findings"
@@ -96,5 +97,104 @@ func TestFindingsPageAndGroupedPaging(t *testing.T) {
 		if _, err := service.GroupedFindings(ctx, reports.Filter{}, window, reports.Sort{}); !errors.Is(err, reports.ErrInvalid) {
 			t.Errorf("GroupedFindings(%+v) error = %v, want ErrInvalid", window, err)
 		}
+	}
+}
+
+// TestFindingsSearch covers the q filter (#148): the same substring is matched
+// against title, rule id, package name and file path, case-insensitively, in
+// the list, its count and the grouped view. LIKE wildcards in the query are
+// literal text, so a search for "%" finds the percent sign, not every row.
+func TestFindingsSearch(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	service, err := reports.NewService(db)
+	if err != nil {
+		t.Fatalf("reports.NewService: %v", err)
+	}
+
+	alpha := seedAsset(t, db, findings.AssetKindPath, "/tmp/alpha", "Alpha")
+	beta := seedAsset(t, db, findings.AssetKindRepo, "octo/beta", "Beta")
+
+	alphaVuln := newFinding(alpha.ID, findings.TypeVulnerability, "CVE-2026-0001", findings.SeverityCritical)
+	alphaVuln.Title = "Remote code execution in lodash"
+	alphaVuln.PackageName = "lodash"
+	alphaVuln.Location = "package-lock.json:1"
+	alphaSecret := newFinding(alpha.ID, findings.TypeSecret, "generic-api-key", findings.SeverityHigh)
+	alphaSecret.Title = "Generic API key"
+	alphaSecret.Location = ".env:4"
+
+	betaVuln := newFinding(beta.ID, findings.TypeVulnerability, "CVE-2026-0001", findings.SeverityHigh)
+	betaVuln.Title = "Remote code execution in lodash"
+	betaVuln.PackageName = "lodash"
+	betaVuln.Location = "go.sum:2"
+	betaOdd := newFinding(beta.ID, findings.TypeMisconfig, "CUSTOM-1", findings.SeverityLow)
+	betaOdd.Title = "Coverage 100% of unsafe_test"
+	betaOdd.Location = "src/foo_bar.go:9"
+
+	seedScan(t, db, alpha.ID, "succeeded", at(10), alphaVuln, alphaSecret)
+	seedScan(t, db, beta.ID, "succeeded", at(11), betaVuln, betaOdd)
+
+	cases := []struct {
+		name  string
+		query string
+		want  int // findings; the two CVE-2026-0001 rows are one group
+	}{
+		{"cve id", "cve-2026-0001", 2},
+		{"package, upper case", "LODASH", 2},
+		{"title", "REMOTE CODE", 2},
+		{"rule id", "generic-api-key", 1},
+		{"file path", "package-lock", 1},
+		{"trimmed", "  lodash  ", 2},
+		{"literal percent", "100%", 1},
+		{"literal underscore", "unsafe_test", 1},
+		{"wildcard percent is not a wildcard", "%", 1},
+		{"wildcard underscore is not a wildcard", "_", 1},
+		{"no match", "no-such-finding", 0},
+		{"empty means no filter", "", 4},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			list, err := service.Findings(ctx, reports.Filter{Query: tc.query})
+			if err != nil {
+				t.Fatalf("Findings(%q): %v", tc.query, err)
+			}
+			if len(list) != tc.want {
+				t.Fatalf("Findings(%q) = %d rows, want %d", tc.query, len(list), tc.want)
+			}
+
+			page, total, err := service.FindingsPage(ctx, reports.Filter{Query: tc.query},
+				reports.Page{Limit: reports.DefaultFindingLimit}, reports.Sort{})
+			if err != nil {
+				t.Fatalf("FindingsPage(%q): %v", tc.query, err)
+			}
+			if total != tc.want || len(page) != tc.want {
+				t.Errorf("FindingsPage(%q) = %d rows (total %d), want %d", tc.query, len(page), total, tc.want)
+			}
+
+			grouped, err := service.GroupedFindings(ctx, reports.Filter{Query: tc.query},
+				reports.Page{Limit: reports.DefaultFindingLimit}, reports.Sort{})
+			if err != nil {
+				t.Fatalf("GroupedFindings(%q): %v", tc.query, err)
+			}
+			if grouped.TotalFindings != tc.want {
+				t.Errorf("GroupedFindings(%q) total findings = %d, want %d", tc.query, grouped.TotalFindings, tc.want)
+			}
+		})
+	}
+
+	// The two CVE-2026-0001 findings fold into one group, so the group count
+	// narrows with the search too.
+	grouped, err := service.GroupedFindings(ctx, reports.Filter{Query: "lodash"},
+		reports.Page{Limit: reports.DefaultFindingLimit}, reports.Sort{})
+	if err != nil {
+		t.Fatalf("GroupedFindings(lodash): %v", err)
+	}
+	if grouped.Total != 1 || len(grouped.Groups) != 1 || grouped.Groups[0].RuleID != "CVE-2026-0001" {
+		t.Errorf("grouped lodash = %+v, want the one CVE group", grouped)
+	}
+
+	// A query beyond the cap is refused with ErrInvalid, not silently cut.
+	if _, err := service.Findings(ctx, reports.Filter{Query: strings.Repeat("a", reports.MaxQueryLength+1)}); !errors.Is(err, reports.ErrInvalid) {
+		t.Errorf("oversized query error = %v, want ErrInvalid", err)
 	}
 }

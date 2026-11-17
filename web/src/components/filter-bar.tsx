@@ -5,6 +5,8 @@ import { cn } from '../lib/utils'
 export type FilterOption = {
   value: string
   label: string
+  /** Consecutive options with the same group share one <optgroup>. */
+  group?: string
 }
 
 export type FilterField = {
@@ -12,6 +14,10 @@ export type FilterField = {
   label: string
   value: string
   onChange: (value: string) => void
+  /** select (the default) or a free-text search box. */
+  kind?: 'select' | 'search'
+  /** Placeholder of a search box. */
+  placeholder?: string
   options: readonly FilterOption[]
   /** Extra classes for the field wrapper, usually a width. */
   className?: string
@@ -33,6 +39,33 @@ const stackedInput =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
 const inlineSelect =
   'h-8 rounded-md border border-border-strong bg-surface px-2 text-[0.8125rem] text-fg'
+
+/** optionNodes renders options, folding consecutive same-group ones into an optgroup. */
+function optionNodes(options: readonly FilterOption[]): ReactNode[] {
+  const nodes: ReactNode[] = []
+  let start = 0
+  while (start < options.length) {
+    const group = options[start].group
+    let end = start + 1
+    while (end < options.length && options[end].group === group) end += 1
+    const items = options.slice(start, end).map((option) => (
+      <option key={option.value} value={option.value}>
+        {option.label}
+      </option>
+    ))
+    nodes.push(
+      group === undefined ? (
+        items
+      ) : (
+        <optgroup key={group} label={group}>
+          {items}
+        </optgroup>
+      ),
+    )
+    start = end
+  }
+  return nodes
+}
 
 /**
  * FilterBar is the shared filter row. Callers pass only the fields they need,
@@ -60,11 +93,30 @@ export function FilterBar({
       )}
     >
       {fields.map((field) => {
-        const options = field.options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))
+        const control =
+          field.kind === 'search' ? (
+            <input
+              id={field.id}
+              type="search"
+              value={field.value}
+              onChange={(event) => field.onChange(event.target.value)}
+              placeholder={field.placeholder}
+              autoComplete="off"
+              spellCheck={false}
+              // The API refuses a q above 200 characters; keep the box inside it.
+              maxLength={200}
+              className={stacked ? stackedInput : inlineSelect}
+            />
+          ) : (
+            <select
+              id={field.id}
+              value={field.value}
+              onChange={(event) => field.onChange(event.target.value)}
+              className={stacked ? stackedInput : inlineSelect}
+            >
+              {optionNodes(field.options)}
+            </select>
+          )
 
         if (!stacked) {
           return (
@@ -72,14 +124,7 @@ export function FilterBar({
               <label htmlFor={field.id} className="text-xs text-muted">
                 {field.label}
               </label>
-              <select
-                id={field.id}
-                value={field.value}
-                onChange={(event) => field.onChange(event.target.value)}
-                className={inlineSelect}
-              >
-                {options}
-              </select>
+              {control}
             </Fragment>
           )
         }
@@ -89,14 +134,7 @@ export function FilterBar({
             <label htmlFor={field.id} className="text-xs font-medium text-muted">
               {field.label}
             </label>
-            <select
-              id={field.id}
-              value={field.value}
-              onChange={(event) => field.onChange(event.target.value)}
-              className={stackedInput}
-            >
-              {options}
-            </select>
+            {control}
           </div>
         )
       })}

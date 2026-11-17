@@ -66,6 +66,9 @@ const typeOptions: FindingType[] = [
 
 const severityOptions: Severity[] = ['critical', 'high', 'medium', 'low', 'unknown']
 
+/** searchDebounceMs keeps a search from querying the API on every keystroke. */
+const searchDebounceMs = 300
+
 /**
  * findingColumns builds the table for the projects on screen. The Project
  * column needs the asset names, which the findings themselves do not carry.
@@ -442,6 +445,10 @@ export function FindingsPage() {
   const [type, setType] = useState<FindingType | ''>('')
   const [severity, setSeverity] = useState<Severity | ''>('')
   const [status, setStatus] = useState<FindingStatus>('open')
+  // The search box is local while typing and debounces into ?q=; the ref holds
+  // the value the URL already has, so a URL-driven change can be told apart.
+  const [queryInput, setQueryInput] = useState(search.q ?? '')
+  const committedQuery = useRef(search.q ?? '')
   const [openFingerprint, setOpenFingerprint] = useState<string | null>(null)
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(null)
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set())
@@ -470,10 +477,51 @@ export function FindingsPage() {
     if (assets.data.some((asset) => asset.id === search.asset)) return
     void navigate({
       to: '/findings',
-      search: search.tab === 'fix-plan' ? { tab: 'fix-plan' } : {},
+      search:
+        search.tab === 'fix-plan'
+          ? { tab: 'fix-plan', ...(search.q === undefined ? {} : { q: search.q }) }
+          : search.q === undefined
+            ? {}
+            : { q: search.q },
       replace: true,
     })
-  }, [assets.data, navigate, search.asset, search.tab])
+  }, [assets.data, navigate, search.asset, search.q, search.tab])
+
+  // The URL drives q: back/forward or a shared link replaces what is typed.
+  useEffect(() => {
+    const next = search.q ?? ''
+    if (committedQuery.current === next) return
+    committedQuery.current = next
+    setQueryInput(next)
+  }, [search.q])
+
+  // Typing settles into the URL after a pause, so each keystroke does not query
+  // the API. A different q starts at page 1, like every other filter.
+  useEffect(() => {
+    const next = queryInput.trim()
+    if (next === committedQuery.current) return
+    const timer = setTimeout(() => {
+      committedQuery.current = next
+      clearSelection()
+      void navigate({
+        to: '/findings',
+        search: pageSearch({ page: 1, q: next }),
+        replace: true,
+      })
+    }, searchDebounceMs)
+    return () => clearTimeout(timer)
+    // pageSearch is rebuilt every render; the params it reads are the deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    queryInput,
+    search.q,
+    search.view,
+    search.asset,
+    search.size,
+    search.sort,
+    search.order,
+    navigate,
+  ])
 
   const page = search.page ?? 1
   const pageSize = search.size ?? defaultFindingsPageSize
@@ -489,6 +537,7 @@ export function FindingsPage() {
       type: type === '' ? undefined : type,
       severity: severity === '' ? undefined : severity,
       status,
+      q: search.q,
       view: grouped ? 'grouped' : 'single',
       limit: pageSize,
       offset: (page - 1) * pageSize,
@@ -597,7 +646,7 @@ export function FindingsPage() {
     grouped ? groups?.flatMap((group) => group.findings) : pageFindings
   )?.find((finding) => finding.fingerprint === openFingerprint)
   const openGroup = groups?.find((group) => group.key === openGroupKey)
-  const filtered = type !== '' || severity !== ''
+  const filtered = type !== '' || severity !== '' || search.q !== undefined
   // Grouped mode selects groups; a group stands for every member finding, so
   // the bulk bar and the drawer act on all of them across projects.
   const checkedGroupRows = (groups ?? []).filter((group) =>
@@ -646,9 +695,11 @@ export function FindingsPage() {
     page?: number
     size?: FindingsPageSize
     sort?: DataTableSort
+    q?: string
   }): FindingsSearch {
     const size = next.size ?? search.size
     const sort = next.sort ?? sortState
+    const q = next.q ?? search.q
     return {
       ...(search.view === undefined ? {} : { view: search.view }),
       ...(search.asset === undefined ? {} : { asset: search.asset }),
@@ -662,6 +713,7 @@ export function FindingsPage() {
         ? {}
         : { sort: sort.columnId as FindingsSort }),
       ...(sort?.direction === 'desc' ? { order: 'desc' as const } : {}),
+      ...(q === undefined || q === '' ? {} : { q }),
     }
   }
 
@@ -709,6 +761,7 @@ export function FindingsPage() {
       to: '/findings',
       search: {
         ...(next === 'single' ? { view: 'single' as const } : {}),
+        ...(search.q === undefined ? {} : { q: search.q }),
         ...(search.size === undefined ? {} : { size: search.size }),
         ...(search.sort === undefined ? {} : { sort: search.sort }),
         ...(search.order === undefined ? {} : { order: search.order }),
@@ -731,6 +784,7 @@ export function FindingsPage() {
             }
           : {
               ...(search.asset === undefined ? {} : { asset: search.asset }),
+              ...(search.q === undefined ? {} : { q: search.q }),
               ...(search.size === undefined ? {} : { size: search.size }),
               ...(search.sort === undefined ? {} : { sort: search.sort }),
               ...(search.order === undefined ? {} : { order: search.order }),
@@ -742,16 +796,37 @@ export function FindingsPage() {
 
   const filters: FilterField[] = [
     {
+      id: 'findings-search',
+      label: t('findings.filter.search'),
+      kind: 'search',
+      placeholder: t('findings.filter.searchPlaceholder'),
+      value: queryInput,
+      className: 'w-64',
+      options: [],
+      onChange: setQueryInput,
+    },
+    {
       id: 'findings-project',
       label: t('findings.filter.project'),
       value: selected === undefined ? '' : String(selected.id),
       className: 'w-64',
       options: [
         { value: '', label: t('findings.filter.allProjects') },
-        ...assetList.map((asset) => ({
-          value: String(asset.id),
-          label: asset.display_name,
-        })),
+        // Grouped by asset kind, so images are not mixed into repositories.
+        ...assetList
+          .filter((asset) => asset.kind !== 'image')
+          .map((asset) => ({
+            value: String(asset.id),
+            label: asset.display_name,
+            group: t('findings.filter.group.repositories'),
+          })),
+        ...assetList
+          .filter((asset) => asset.kind === 'image')
+          .map((asset) => ({
+            value: String(asset.id),
+            label: asset.display_name,
+            group: t('findings.filter.group.images'),
+          })),
       ],
       onChange: (value) => {
         // A project filter forces single, so the view leaves the URL with it.
@@ -759,6 +834,7 @@ export function FindingsPage() {
           to: '/findings',
           search: {
             ...(value === '' ? {} : { asset: Number(value) }),
+            ...(search.q === undefined ? {} : { q: search.q }),
             ...(search.size === undefined ? {} : { size: search.size }),
             ...(search.sort === undefined ? {} : { sort: search.sort }),
             ...(search.order === undefined ? {} : { order: search.order }),
@@ -886,6 +962,7 @@ export function FindingsPage() {
               type: type === '' ? undefined : type,
               severity: severity === '' ? undefined : severity,
               status,
+              q: search.q,
             }}
             view={grouped ? 'grouped' : 'single'}
           />
