@@ -1071,6 +1071,53 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/assets/{id}/schedule:
+    put:
+      operationId: setAssetSchedule
+      summary: Set how often an asset is scanned.
+      description: |
+        `{id}` is the asset. The schedule is `off` (never on a schedule),
+        `daily` (every 24 hours) or `weekly` (every 7 days), and runs only while
+        `bastion serve` is open. Missed runs are not backfilled: the server
+        checks once at startup and then every five minutes, so a run missed
+        while it was closed happens once at the next start. Notifications apply
+        as for any scan.
+      tags: [assets]
+      parameters:
+        - $ref: "#/components/parameters/AssetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetAssetScheduleRequest"
+      responses:
+        "200":
+          description: The asset with its new schedule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        "400":
+          description: The schedule is not one of `off`, `daily` or `weekly`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: The asset does not exist or is archived.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/scans:
     get:
       operationId: listScans
@@ -3723,7 +3770,7 @@ components:
       title: Asset
       description: One tracked repository, path or image.
       additionalProperties: false
-      required: [id, kind, display_name, ref, created_at, open_counts, linked_images]
+      required: [id, kind, display_name, ref, created_at, scan_schedule, open_counts, linked_images]
       properties:
         id:
           type: integer
@@ -3754,6 +3801,8 @@ components:
         created_at:
           type: string
           format: date-time
+        scan_schedule:
+          $ref: "#/components/schemas/AssetScanSchedule"
         last_scan:
           $ref: "#/components/schemas/AssetLastScan"
         open_counts:
@@ -3810,6 +3859,24 @@ components:
           type: integer
           format: int64
           minimum: 1
+
+    AssetScanSchedule:
+      type: string
+      title: AssetScanSchedule
+      description: |
+        How often bastion scans the asset while `bastion serve` runs: `off`
+        (never on a schedule), `daily` (every 24 hours) or `weekly` (every 7
+        days). A missed run happens once at the next start.
+      enum: [off, daily, weekly]
+    SetAssetScheduleRequest:
+      type: object
+      title: SetAssetScheduleRequest
+      description: The asset's scan schedule.
+      additionalProperties: false
+      required: [schedule]
+      properties:
+        schedule:
+          $ref: "#/components/schemas/AssetScanSchedule"
 
     AssetLastScan:
       type: object

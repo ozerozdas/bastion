@@ -12,7 +12,7 @@ import (
 
 const archiveAsset = `-- name: ArchiveAsset :one
 UPDATE assets SET archived_at = ?1 WHERE id = ?2
-RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at
+RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at, scan_schedule
 `
 
 type ArchiveAssetParams struct {
@@ -34,6 +34,7 @@ func (q *Queries) ArchiveAsset(ctx context.Context, arg ArchiveAssetParams) (Ass
 		&i.MetadataJSON,
 		&i.CreatedAt,
 		&i.ArchivedAt,
+		&i.ScanSchedule,
 	)
 	return i, err
 }
@@ -128,7 +129,7 @@ VALUES (
     ?6,
     ?7
 )
-RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at
+RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at, scan_schedule
 `
 
 type CreateAssetParams struct {
@@ -162,12 +163,13 @@ func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset
 		&i.MetadataJSON,
 		&i.CreatedAt,
 		&i.ArchivedAt,
+		&i.ScanSchedule,
 	)
 	return i, err
 }
 
 const getAsset = `-- name: GetAsset :one
-SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at FROM assets WHERE id = ?1
+SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at, scan_schedule FROM assets WHERE id = ?1
 `
 
 func (q *Queries) GetAsset(ctx context.Context, id int64) (Asset, error) {
@@ -183,12 +185,13 @@ func (q *Queries) GetAsset(ctx context.Context, id int64) (Asset, error) {
 		&i.MetadataJSON,
 		&i.CreatedAt,
 		&i.ArchivedAt,
+		&i.ScanSchedule,
 	)
 	return i, err
 }
 
 const getAssetByKindRef = `-- name: GetAssetByKindRef :one
-SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at FROM assets WHERE kind = ?1 AND ref = ?2
+SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at, scan_schedule FROM assets WHERE kind = ?1 AND ref = ?2
 `
 
 type GetAssetByKindRefParams struct {
@@ -209,6 +212,7 @@ func (q *Queries) GetAssetByKindRef(ctx context.Context, arg GetAssetByKindRefPa
 		&i.MetadataJSON,
 		&i.CreatedAt,
 		&i.ArchivedAt,
+		&i.ScanSchedule,
 	)
 	return i, err
 }
@@ -228,7 +232,7 @@ ON CONFLICT (kind, ref) DO UPDATE SET
     display_name   = excluded.display_name,
     connection_id  = COALESCE(excluded.connection_id, assets.connection_id),
     default_branch = COALESCE(excluded.default_branch, assets.default_branch)
-RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at
+RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at, scan_schedule
 `
 
 type GetOrCreateAssetParams struct {
@@ -266,12 +270,13 @@ func (q *Queries) GetOrCreateAsset(ctx context.Context, arg GetOrCreateAssetPara
 		&i.MetadataJSON,
 		&i.CreatedAt,
 		&i.ArchivedAt,
+		&i.ScanSchedule,
 	)
 	return i, err
 }
 
 const getRepoAssetByRefFold = `-- name: GetRepoAssetByRefFold :one
-SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at FROM assets WHERE kind = 'repo' AND ref = ?1 COLLATE NOCASE
+SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at, scan_schedule FROM assets WHERE kind = 'repo' AND ref = ?1 COLLATE NOCASE
 `
 
 // The repo asset a source URL names, matched without regard to case: GitHub
@@ -290,6 +295,7 @@ func (q *Queries) GetRepoAssetByRefFold(ctx context.Context, ref string) (Asset,
 		&i.MetadataJSON,
 		&i.CreatedAt,
 		&i.ArchivedAt,
+		&i.ScanSchedule,
 	)
 	return i, err
 }
@@ -313,6 +319,69 @@ func (q *Queries) ListAssetRefsByKind(ctx context.Context, kind string) ([]strin
 			return nil, err
 		}
 		items = append(items, ref)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAssetScheduleTargets = `-- name: ListAssetScheduleTargets :many
+WITH newest_scan AS (
+    SELECT s.asset_id, s.id AS scan_id,
+           COALESCE(s.started_at, s.finished_at) AS last_scan_at
+    FROM scans s
+    WHERE s.id = (
+        SELECT MAX(s2.id)
+        FROM scans s2
+        WHERE s2.asset_id = s.asset_id
+    )
+)
+SELECT
+    a.id,
+    a.scan_schedule,
+    ns.scan_id,
+    ns.last_scan_at
+FROM assets a
+LEFT JOIN newest_scan ns ON ns.asset_id = a.id
+WHERE a.archived_at IS NULL
+  AND a.scan_schedule <> 'off'
+ORDER BY a.id
+`
+
+type ListAssetScheduleTargetsRow struct {
+	ID           int64
+	ScanSchedule string
+	ScanID       sql.NullInt64
+	LastScanAt   sql.NullString
+}
+
+// Assets that have a schedule, with the timestamp of their newest scan of any
+// status. scans has no created_at column, so the newest row (MAX(id)) is timed
+// by its start, falling back to its finish: a scan canceled while still queued
+// never started. A NULL last_scan_at with a scan_id means the newest scan has
+// neither timestamp; a NULL scan_id means the asset was never scanned.
+func (q *Queries) ListAssetScheduleTargets(ctx context.Context) ([]ListAssetScheduleTargetsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAssetScheduleTargets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAssetScheduleTargetsRow
+	for rows.Next() {
+		var i ListAssetScheduleTargetsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ScanSchedule,
+			&i.ScanID,
+			&i.LastScanAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -398,6 +467,7 @@ SELECT
     a.default_branch,
     a.metadata_json,
     a.created_at,
+    a.scan_schedule,
     ns.scan_id AS last_scan_id,
     ns.status AS last_scan_status,
     ns.finished_at AS last_scan_finished_at,
@@ -422,6 +492,7 @@ type ListAssetSummariesRow struct {
 	DefaultBranch      sql.NullString
 	MetadataJSON       string
 	CreatedAt          string
+	ScanSchedule       string
 	LastScanID         sql.NullInt64
 	LastScanStatus     sql.NullString
 	LastScanFinishedAt sql.NullString
@@ -454,6 +525,7 @@ func (q *Queries) ListAssetSummaries(ctx context.Context, now string) ([]ListAss
 			&i.DefaultBranch,
 			&i.MetadataJSON,
 			&i.CreatedAt,
+			&i.ScanSchedule,
 			&i.LastScanID,
 			&i.LastScanStatus,
 			&i.LastScanFinishedAt,
@@ -477,7 +549,7 @@ func (q *Queries) ListAssetSummaries(ctx context.Context, now string) ([]ListAss
 }
 
 const listAssets = `-- name: ListAssets :many
-SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at FROM assets WHERE archived_at IS NULL ORDER BY display_name, id
+SELECT id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at, scan_schedule FROM assets WHERE archived_at IS NULL ORDER BY display_name, id
 `
 
 func (q *Queries) ListAssets(ctx context.Context) ([]Asset, error) {
@@ -499,6 +571,7 @@ func (q *Queries) ListAssets(ctx context.Context) ([]Asset, error) {
 			&i.MetadataJSON,
 			&i.CreatedAt,
 			&i.ArchivedAt,
+			&i.ScanSchedule,
 		); err != nil {
 			return nil, err
 		}
@@ -513,9 +586,42 @@ func (q *Queries) ListAssets(ctx context.Context) ([]Asset, error) {
 	return items, nil
 }
 
+const setAssetScanSchedule = `-- name: SetAssetScanSchedule :one
+UPDATE assets
+SET scan_schedule = ?1
+WHERE id = ?2 AND archived_at IS NULL
+RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at, scan_schedule
+`
+
+type SetAssetScanScheduleParams struct {
+	ScanSchedule string
+	ID           int64
+}
+
+// Set one asset's schedule. An archived asset is not updatable: the query
+// returns no row and the service reports it as not found, the same answer an
+// unknown id gets.
+func (q *Queries) SetAssetScanSchedule(ctx context.Context, arg SetAssetScanScheduleParams) (Asset, error) {
+	row := q.db.QueryRowContext(ctx, setAssetScanSchedule, arg.ScanSchedule, arg.ID)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.ConnectionID,
+		&i.DisplayName,
+		&i.Ref,
+		&i.DefaultBranch,
+		&i.MetadataJSON,
+		&i.CreatedAt,
+		&i.ArchivedAt,
+		&i.ScanSchedule,
+	)
+	return i, err
+}
+
 const unarchiveAsset = `-- name: UnarchiveAsset :one
 UPDATE assets SET archived_at = NULL WHERE id = ?1
-RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at
+RETURNING id, kind, connection_id, display_name, ref, default_branch, metadata_json, created_at, archived_at, scan_schedule
 `
 
 // Re-adding an archived asset revives its row, so its historical scans and
@@ -533,6 +639,7 @@ func (q *Queries) UnarchiveAsset(ctx context.Context, id int64) (Asset, error) {
 		&i.MetadataJSON,
 		&i.CreatedAt,
 		&i.ArchivedAt,
+		&i.ScanSchedule,
 	)
 	return i, err
 }

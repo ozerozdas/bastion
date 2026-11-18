@@ -1,3 +1,4 @@
+import { ScanScheduleSelect } from '../components/scan-schedule'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { Fragment, useState } from 'react'
@@ -302,6 +303,18 @@ function DockerPanel({
       cell: (row) =>
         row.asset ? (
           <SeverityCountBadges counts={row.asset.open_counts} />
+        ) : (
+          <span className="text-faint">—</span>
+        ),
+    },
+    {
+      id: 'schedule',
+      header: t('containers.column.schedule'),
+      headerClassName: 'pl-3',
+      cellClassName: 'pl-3 align-top',
+      cell: (row) =>
+        row.asset ? (
+          <ScanScheduleSelect asset={row.asset} />
         ) : (
           <span className="text-faint">—</span>
         ),
@@ -671,6 +684,18 @@ function EcrConnection({
       cell: (row) =>
         row.asset ? (
           <SeverityCountBadges counts={row.asset.open_counts} />
+        ) : (
+          <span className="text-faint">—</span>
+        ),
+    },
+    {
+      id: 'schedule',
+      header: t('containers.column.schedule'),
+      headerClassName: 'pl-3',
+      cellClassName: 'pl-3 align-top',
+      cell: (row) =>
+        row.asset ? (
+          <ScanScheduleSelect asset={row.asset} />
         ) : (
           <span className="text-faint">—</span>
         ),

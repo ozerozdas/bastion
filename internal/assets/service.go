@@ -38,6 +38,15 @@ const (
 // ScanTriggerUI is the scans.trigger value for a scan queued from the UI/API.
 const ScanTriggerUI = "ui"
 
+// Scan schedule values, matching the assets.scan_schedule CHECK. Scheduled
+// scans are enqueued with ScanTriggerUI: the API trigger belongs to the MCP
+// handoff poller, which would claim a row it did not create.
+const (
+	ScheduleOff    = "off"
+	ScheduleDaily  = "daily"
+	ScheduleWeekly = "weekly"
+)
+
 // scanStatusQueued is the status of a scan waiting for a worker. The MCP
 // handoff writes it itself because no scan manager exists in that process.
 const scanStatusQueued = "queued"
@@ -172,6 +181,16 @@ func WithGitHub(factory RepoClientFactory, tokens TokenSource) Option {
 	}
 }
 
+// WithClock replaces the clock the scheduled-scan due rule and the stored
+// timestamps read. Tests pin it; serve leaves the default.
+func WithClock(now func() time.Time) Option {
+	return func(s *Service) {
+		if now != nil {
+			s.now = now
+		}
+	}
+}
+
 // Service implements the assets, scans and finding-state API. It is safe for
 // concurrent use: *sql.DB is, and jobs.Manager is.
 type Service struct {
@@ -204,8 +223,11 @@ type Asset struct {
 	DefaultBranch string
 	// ECRRegistry is the registry an image was added from, read from its
 	// metadata; empty for other kinds and for an image added without one.
-	ECRRegistry    string
-	CreatedAt      time.Time
+	ECRRegistry string
+	CreatedAt   time.Time
+	// ScanSchedule is "off", "daily" or "weekly": the cadence the scheduled
+	// scan loop uses while `bastion serve` runs.
+	ScanSchedule   string
 	LastScan       *LastScan
 	OpenSeverities SeverityCounts
 	// LinkedRepo is the repository an image links to; nil for other kinds and
@@ -742,6 +764,32 @@ func (s *Service) SetLink(ctx context.Context, imageID, repoID int64) (Asset, er
 	return s.byID(ctx, imageID)
 }
 
+// SetSchedule stores one asset's scan cadence and returns the asset. An
+// unknown or archived asset is not found: the query itself filters archived
+// rows out, so the two cases cannot diverge.
+func (s *Service) SetSchedule(ctx context.Context, id int64, schedule string) (Asset, error) {
+	if id <= 0 {
+		return Asset{}, fmt.Errorf("%w: asset id must be positive", ErrInvalid)
+	}
+	switch schedule {
+	case ScheduleOff, ScheduleDaily, ScheduleWeekly:
+	default:
+		return Asset{}, fmt.Errorf("%w: schedule %q is not one of %s, %s, %s", ErrInvalid,
+			schedule, ScheduleOff, ScheduleDaily, ScheduleWeekly)
+	}
+	row, err := sqlcdb.New(s.db).SetAssetScanSchedule(ctx, sqlcdb.SetAssetScanScheduleParams{
+		ScanSchedule: schedule,
+		ID:           id,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return Asset{}, fmt.Errorf("%w: asset %d", ErrNotFound, id)
+	}
+	if err != nil {
+		return Asset{}, fmt.Errorf("assets: set schedule of %d: %w", id, err)
+	}
+	return s.byID(ctx, row.ID)
+}
+
 // ClearLink removes an image's repository link, whichever source made it.
 // Clearing an unlinked image is not an error.
 func (s *Service) ClearLink(ctx context.Context, imageID int64) error {
@@ -1182,6 +1230,7 @@ func assetSummary(row sqlcdb.ListAssetSummariesRow) Asset {
 		Ref:           row.Ref,
 		DefaultBranch: row.DefaultBranch.String,
 		CreatedAt:     createdAt,
+		ScanSchedule:  row.ScanSchedule,
 		OpenSeverities: SeverityCounts{
 			Critical: int(row.OpenCritical),
 			High:     int(row.OpenHigh),

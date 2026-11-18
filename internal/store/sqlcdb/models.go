@@ -18,6 +18,7 @@ type Asset struct {
 	MetadataJSON  string
 	CreatedAt     string
 	ArchivedAt    sql.NullString
+	ScanSchedule  string
 }
 
 type AssetLink struct {

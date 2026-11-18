@@ -762,5 +762,13 @@
   "epss.percentile": "{ordinal} pct",
 
   "error.requestFailed": "Request failed with status {status}",
-  "error.ecrNoTag": "the ECR image has no tag"
+  "error.ecrNoTag": "the ECR image has no tag",
+  "repos.column.schedule": "Schedule",
+  "containers.column.schedule": "Schedule",
+  "schedule.aria": "Scan schedule for {name}",
+  "schedule.off": "Off",
+  "schedule.daily": "Daily",
+  "schedule.weekly": "Weekly",
+  "schedule.hint": "Scheduled scans run only while bastion is open. A missed scan runs once at the next start.",
+  "schedule.failed": "Could not save the schedule."
 }

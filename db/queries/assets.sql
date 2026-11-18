@@ -71,6 +71,42 @@ WHERE kind = 'image'
 -- name: ListAssets :many
 SELECT * FROM assets WHERE archived_at IS NULL ORDER BY display_name, id;
 
+-- name: SetAssetScanSchedule :one
+-- Set one asset's schedule. An archived asset is not updatable: the query
+-- returns no row and the service reports it as not found, the same answer an
+-- unknown id gets.
+UPDATE assets
+SET scan_schedule = sqlc.arg(scan_schedule)
+WHERE id = sqlc.arg(id) AND archived_at IS NULL
+RETURNING *;
+
+-- name: ListAssetScheduleTargets :many
+-- Assets that have a schedule, with the timestamp of their newest scan of any
+-- status. scans has no created_at column, so the newest row (MAX(id)) is timed
+-- by its start, falling back to its finish: a scan canceled while still queued
+-- never started. A NULL last_scan_at with a scan_id means the newest scan has
+-- neither timestamp; a NULL scan_id means the asset was never scanned.
+WITH newest_scan AS (
+    SELECT s.asset_id, s.id AS scan_id,
+           COALESCE(s.started_at, s.finished_at) AS last_scan_at
+    FROM scans s
+    WHERE s.id = (
+        SELECT MAX(s2.id)
+        FROM scans s2
+        WHERE s2.asset_id = s.asset_id
+    )
+)
+SELECT
+    a.id,
+    a.scan_schedule,
+    ns.scan_id,
+    ns.last_scan_at
+FROM assets a
+LEFT JOIN newest_scan ns ON ns.asset_id = a.id
+WHERE a.archived_at IS NULL
+  AND a.scan_schedule <> 'off'
+ORDER BY a.id;
+
 -- name: GetAssetByKindRef :one
 SELECT * FROM assets WHERE kind = sqlc.arg(kind) AND ref = sqlc.arg(ref);
 
@@ -170,6 +206,7 @@ SELECT
     a.default_branch,
     a.metadata_json,
     a.created_at,
+    a.scan_schedule,
     ns.scan_id AS last_scan_id,
     ns.status AS last_scan_status,
     ns.finished_at AS last_scan_finished_at,

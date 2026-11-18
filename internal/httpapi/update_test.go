@@ -87,7 +87,7 @@ func TestGetUpdateStatusWithUnsetConsentMakesNoRequest(t *testing.T) {
 
 	status := readUpdateStatus(t, ts.do(t, http.MethodGet, "/api/update", withCookie(cookie)))
 
-	if got, want := status.Consent, gen.Unset; got != want {
+	if got, want := status.Consent, gen.UpdateConsentUnset; got != want {
 		t.Errorf("consent = %q, want %q", got, want)
 	}
 	if status.UpdateAvailable {
@@ -143,7 +143,7 @@ func TestSetUpdateConsent(t *testing.T) {
 	cookie := ts.login(t)
 
 	on := readUpdateStatus(t, ts.doJSON(t, http.MethodPut, "/api/update/consent", `{"enabled":true}`, cookie, true))
-	if got, want := on.Consent, gen.On; got != want {
+	if got, want := on.Consent, gen.UpdateConsentOn; got != want {
 		t.Errorf("consent after enable = %q, want %q", got, want)
 	}
 	if got := checker.Consent(); got != update.ConsentOn {
@@ -151,7 +151,7 @@ func TestSetUpdateConsent(t *testing.T) {
 	}
 
 	off := readUpdateStatus(t, ts.doJSON(t, http.MethodPut, "/api/update/consent", `{"enabled":false}`, cookie, true))
-	if got, want := off.Consent, gen.Off; got != want {
+	if got, want := off.Consent, gen.UpdateConsentOff; got != want {
 		t.Errorf("consent after disable = %q, want %q", got, want)
 	}
 	if got := checker.Consent(); got != update.ConsentOff {
@@ -197,7 +197,7 @@ func TestGetUpdateStatusReportsCachedRelease(t *testing.T) {
 
 	status := readUpdateStatus(t, ts.do(t, http.MethodGet, "/api/update", withCookie(cookie)))
 
-	if got, want := status.Consent, gen.On; got != want {
+	if got, want := status.Consent, gen.UpdateConsentOn; got != want {
 		t.Errorf("consent = %q, want %q", got, want)
 	}
 	if !status.UpdateAvailable {

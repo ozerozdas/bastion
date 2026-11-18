@@ -542,6 +542,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assets/{id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set how often an asset is scanned.
+         * @description `{id}` is the asset. The schedule is `off` (never on a schedule),
+         *     `daily` (every 24 hours) or `weekly` (every 7 days), and runs only while
+         *     `bastion serve` is open. Missed runs are not backfilled: the server
+         *     checks once at startup and then every five minutes, so a run missed
+         *     while it was closed happens once at the next start. Notifications apply
+         *     as for any scan.
+         */
+        put: operations["setAssetSchedule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans": {
         parameters: {
             query?: never;
@@ -2183,6 +2208,7 @@ export interface components {
             ecr_registry?: string;
             /** Format: date-time */
             created_at: string;
+            scan_schedule: components["schemas"]["AssetScanSchedule"];
             last_scan?: components["schemas"]["AssetLastScan"];
             open_counts: components["schemas"]["SeverityTotals"];
             linked_repo?: components["schemas"]["AssetLink"];
@@ -2227,6 +2253,21 @@ export interface components {
         SetAssetLinkRequest: {
             /** Format: int64 */
             repo_asset_id: number;
+        };
+        /**
+         * AssetScanSchedule
+         * @description How often bastion scans the asset while `bastion serve` runs: `off`
+         *     (never on a schedule), `daily` (every 24 hours) or `weekly` (every 7
+         *     days). A missed run happens once at the next start.
+         * @enum {string}
+         */
+        AssetScanSchedule: "off" | "daily" | "weekly";
+        /**
+         * SetAssetScheduleRequest
+         * @description The asset's scan schedule.
+         */
+        SetAssetScheduleRequest: {
+            schedule: components["schemas"]["AssetScanSchedule"];
         };
         /**
          * AssetLastScan
@@ -3506,6 +3547,55 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setAssetSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Asset id. */
+                id: components["parameters"]["AssetID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAssetScheduleRequest"];
+            };
+        };
+        responses: {
+            /** @description The asset with its new schedule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Asset"];
+                };
+            };
+            /** @description The schedule is not one of `off`, `daily` or `weekly`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description The asset does not exist or is archived. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };

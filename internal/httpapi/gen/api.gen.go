@@ -56,6 +56,27 @@ func (e AssetLinkSource) Valid() bool {
 	}
 }
 
+// Defines values for AssetScanSchedule.
+const (
+	AssetScanScheduleDaily  AssetScanSchedule = "daily"
+	AssetScanScheduleOff    AssetScanSchedule = "off"
+	AssetScanScheduleWeekly AssetScanSchedule = "weekly"
+)
+
+// Valid indicates whether the value is a known member of the AssetScanSchedule enum.
+func (e AssetScanSchedule) Valid() bool {
+	switch e {
+	case AssetScanScheduleDaily:
+		return true
+	case AssetScanScheduleOff:
+		return true
+	case AssetScanScheduleWeekly:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConnectionKind.
 const (
 	ConnectionKindAws    ConnectionKind = "aws"
@@ -529,19 +550,19 @@ func (e TrivyDBStatusTrigger) Valid() bool {
 
 // Defines values for UpdateConsent.
 const (
-	Off   UpdateConsent = "off"
-	On    UpdateConsent = "on"
-	Unset UpdateConsent = "unset"
+	UpdateConsentOff   UpdateConsent = "off"
+	UpdateConsentOn    UpdateConsent = "on"
+	UpdateConsentUnset UpdateConsent = "unset"
 )
 
 // Valid indicates whether the value is a known member of the UpdateConsent enum.
 func (e UpdateConsent) Valid() bool {
 	switch e {
-	case Off:
+	case UpdateConsentOff:
 		return true
-	case On:
+	case UpdateConsentOn:
 		return true
-	case Unset:
+	case UpdateConsentUnset:
 		return true
 	default:
 		return false
@@ -822,6 +843,11 @@ type Asset struct {
 	// Ref Canonical reference: `owner/repo` for repositories, the absolute
 	// directory for paths, the image reference for images.
 	Ref string `json:"ref"`
+
+	// ScanSchedule How often bastion scans the asset while `bastion serve` runs: `off`
+	// (never on a schedule), `daily` (every 24 hours) or `weekly` (every 7
+	// days). A missed run happens once at the next start.
+	ScanSchedule AssetScanSchedule `json:"scan_schedule"`
 }
 
 // AssetKind What the asset is.
@@ -880,6 +906,11 @@ type AssetRisk struct {
 	Medium int       `json:"medium"`
 	Score  int       `json:"score"`
 }
+
+// AssetScanSchedule How often bastion scans the asset while `bastion serve` runs: `off`
+// (never on a schedule), `daily` (every 24 hours) or `weekly` (every 7
+// days). A missed run happens once at the next start.
+type AssetScanSchedule string
 
 // AssetTrend One asset's trend series.
 type AssetTrend struct {
@@ -1898,6 +1929,14 @@ type SetAssetLinkRequest struct {
 	RepoAssetId int64 `json:"repo_asset_id"`
 }
 
+// SetAssetScheduleRequest The asset's scan schedule.
+type SetAssetScheduleRequest struct {
+	// Schedule How often bastion scans the asset while `bastion serve` runs: `off`
+	// (never on a schedule), `daily` (every 24 hours) or `weekly` (every 7
+	// days). A missed run happens once at the next start.
+	Schedule AssetScanSchedule `json:"schedule"`
+}
+
 // SetEPSSEnabledRequest defines model for SetEPSSEnabledRequest.
 type SetEPSSEnabledRequest struct {
 	// Enabled True opts in to the daily FIRST.org download; false turns it off and
@@ -2286,6 +2325,9 @@ type OpenFixPlanPullRequestJSONRequestBody = FixPlanPullRequestRequest
 // SetAssetLinkJSONRequestBody defines body for SetAssetLink for application/json ContentType.
 type SetAssetLinkJSONRequestBody = SetAssetLinkRequest
 
+// SetAssetScheduleJSONRequestBody defines body for SetAssetSchedule for application/json ContentType.
+type SetAssetScheduleJSONRequestBody = SetAssetScheduleRequest
+
 // CreateConnectionJSONRequestBody defines body for CreateConnection for application/json ContentType.
 type CreateConnectionJSONRequestBody = CreateConnectionRequest
 
@@ -2506,6 +2548,9 @@ type ServerInterface interface {
 	// SetAssetLink Link an image to the repository it was built from.
 	// (PUT /api/assets/{id}/link)
 	SetAssetLink(w http.ResponseWriter, r *http.Request, id AssetID)
+	// SetAssetSchedule Set how often an asset is scanned.
+	// (PUT /api/assets/{id}/schedule)
+	SetAssetSchedule(w http.ResponseWriter, r *http.Request, id AssetID)
 	// ListConnections List configured connections.
 	// (GET /api/connections)
 	ListConnections(w http.ResponseWriter, r *http.Request)
@@ -2824,6 +2869,32 @@ func (siw *ServerInterfaceWrapper) SetAssetLink(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetAssetLink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAssetSchedule operation middleware
+func (siw *ServerInterfaceWrapper) SetAssetSchedule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id AssetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAssetSchedule(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4007,6 +4078,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assets/{id}/fix-plan/pull-request", wrapper.OpenFixPlanPullRequest)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/assets/{id}/link", wrapper.ClearAssetLink)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/assets/{id}/link", wrapper.SetAssetLink)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/assets/{id}/schedule", wrapper.SetAssetSchedule)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans", wrapper.ListScans)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans", wrapper.CreateScans)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/{id}", wrapper.GetScan)
@@ -5207,6 +5279,148 @@ type SetAssetLink500ApplicationProblemPlusJSONResponse struct {
 }
 
 func (response SetAssetLink500ApplicationProblemPlusJSONResponse) VisitSetAssetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetScheduleRequestObject struct {
+	Id   AssetID `json:"id"`
+	Body *SetAssetScheduleJSONRequestBody
+}
+
+type SetAssetScheduleResponseObject interface {
+	VisitSetAssetScheduleResponse(w http.ResponseWriter) error
+}
+
+type SetAssetSchedule200JSONResponse Asset
+
+func (response SetAssetSchedule200JSONResponse) VisitSetAssetScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetSchedule400ApplicationProblemPlusJSONResponse Problem
+
+func (response SetAssetSchedule400ApplicationProblemPlusJSONResponse) VisitSetAssetScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetSchedule401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetAssetSchedule401ApplicationProblemPlusJSONResponse) VisitSetAssetScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetSchedule403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetAssetSchedule403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetAssetSchedule403ResponseHeaders
+}
+
+func (response SetAssetSchedule403ApplicationProblemPlusJSONResponse) VisitSetAssetScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetSchedule404ApplicationProblemPlusJSONResponse Problem
+
+func (response SetAssetSchedule404ApplicationProblemPlusJSONResponse) VisitSetAssetScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetSchedule421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetAssetSchedule421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetAssetSchedule421ResponseHeaders
+}
+
+func (response SetAssetSchedule421ApplicationProblemPlusJSONResponse) VisitSetAssetScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAssetSchedule500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetAssetSchedule500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetAssetSchedule500ResponseHeaders
+}
+
+func (response SetAssetSchedule500ApplicationProblemPlusJSONResponse) VisitSetAssetScheduleResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -10664,6 +10878,9 @@ type StrictServerInterface interface {
 	// SetAssetLink Link an image to the repository it was built from.
 	// (PUT /api/assets/{id}/link)
 	SetAssetLink(ctx context.Context, request SetAssetLinkRequestObject) (SetAssetLinkResponseObject, error)
+	// SetAssetSchedule Set how often an asset is scanned.
+	// (PUT /api/assets/{id}/schedule)
+	SetAssetSchedule(ctx context.Context, request SetAssetScheduleRequestObject) (SetAssetScheduleResponseObject, error)
 	// ListConnections List configured connections.
 	// (GET /api/connections)
 	ListConnections(ctx context.Context, request ListConnectionsRequestObject) (ListConnectionsResponseObject, error)
@@ -11047,6 +11264,39 @@ func (sh *strictHandler) SetAssetLink(w http.ResponseWriter, r *http.Request, id
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetAssetLinkResponseObject); ok {
 		if err := validResponse.VisitSetAssetLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetAssetSchedule operation middleware
+func (sh *strictHandler) SetAssetSchedule(w http.ResponseWriter, r *http.Request, id AssetID) {
+	var request SetAssetScheduleRequestObject
+
+	request.Id = id
+
+	var body SetAssetScheduleJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetAssetSchedule(ctx, request.(SetAssetScheduleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetAssetSchedule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetAssetScheduleResponseObject); ok {
+		if err := validResponse.VisitSetAssetScheduleResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
