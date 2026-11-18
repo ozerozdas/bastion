@@ -36,12 +36,12 @@ permissions:
 
 steps:
   - uses: actions/checkout@v7
-  - uses: ozerozdas/bastion@v0.5.0
+  - uses: ozerozdas/bastion@v0.5.1
     with:
       fail-on: critical        # empty: never fail on findings
       skip-dirs: |
         testdata
-      # version: v0.5.0       # bastion release to install
+      # version: v0.5.1       # bastion release to install
       # upload-sarif: "true"  # false: only write bastion.sarif
 ```
 
