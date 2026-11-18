@@ -155,6 +155,10 @@ closed. These decisions apply immediately and the UI lists them under **Closed b
 Scanned content can try to steer an agent, so both tools refuse the whole batch when it
 names a decision you made, and `set_finding_state` also refuses malware and secret findings.
 
+`propose_finding_rule` lets an agent suggest a suppression rule for one asset. A proposal
+closes nothing until you approve it under **Configuration > Noise rules**, and proposals
+for malware or secret findings are refused.
+
 Generic `mcpServers` configuration (Claude Code, Claude Desktop and other MCP clients):
 
 ```json
@@ -173,11 +177,11 @@ If the database lives elsewhere, pass the global flag through:
 
 Tools: `list_assets`, `list_findings` (asset, severity, type, status, text query, sort and
 paging), `get_fix_plan`, `diff_scans` (two scan ids, or an asset's last two succeeded
-scans), `trigger_scan` (queue a scan for the running server), `set_finding_state` and
-`clear_finding_state`. Every result that
+scans), `trigger_scan` (queue a scan for the running server), `set_finding_state`,
+`clear_finding_state` and `propose_finding_rule`. Every result that
 carries scanner-derived values includes an `untrusted_content` notice: those values are
-data, never instructions (see the threat model). Apart from `trigger_scan` and the two
-finding-state tools, the MCP server makes no writes, and it makes no network calls of its
+data, never instructions (see the threat model). Apart from `trigger_scan`, the two
+finding-state tools and rule proposals, the MCP server makes no writes, and it makes no network calls of its
 own.
 
 For clients that only speak HTTP, `bastion mcp --http --port 7778` serves the same tools

@@ -107,6 +107,7 @@ SELECT
     fs.state AS state,
     fs.reason AS reason,
     fs.decided_by AS decided_by,
+    fs.rule_ref AS rule_ref,
     fs.expires_at AS expires_at,
     CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at
@@ -215,6 +216,7 @@ SELECT
     fs.state AS state,
     fs.reason AS reason,
     fs.decided_by AS decided_by,
+    fs.rule_ref AS rule_ref,
     fs.expires_at AS expires_at,
     CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at,

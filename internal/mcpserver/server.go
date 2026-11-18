@@ -155,6 +155,12 @@ func New(cfg Config) (*Server, error) {
 		Description: "Reopen findings an agent closed with set_finding_state. A decision the " +
 			"user made is refused, and then nothing is written.",
 	}, server.clearFindingState)
+	mcp.AddTool(server.mcp, &mcp.Tool{
+		Name: "propose_finding_rule",
+		Description: "Propose a suppression rule for one asset, matching by type, rule id, " +
+			"package or path glob. It closes nothing until the user approves it in the UI. " +
+			"Rules for malware or secret findings are refused.",
+	}, server.proposeFindingRule)
 
 	return server, nil
 }

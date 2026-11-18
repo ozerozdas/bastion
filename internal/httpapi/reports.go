@@ -303,6 +303,7 @@ func findingResponse(finding reports.Finding) gen.Finding {
 		State:           findingStatePointer(finding.State),
 		Reason:          stringPointer(finding.Reason),
 		DecidedBy:       findingDeciderPointer(finding.DecidedBy),
+		RuleRef:         ruleRefPointer(finding.RuleRef),
 		ExpiresAt:       stringPointer(finding.ExpiresAt),
 		FirstSeenScanId: finding.FirstSeenScanID,
 		Description:     stringPointer(finding.Description),
@@ -540,6 +541,14 @@ func findingStatePointer(state string) *gen.FindingState {
 	}
 	mapped := gen.FindingState(state)
 	return &mapped
+}
+
+// ruleRefPointer omits rule_ref from a finding no rule closed.
+func ruleRefPointer(id int64) *int64 {
+	if id == 0 {
+		return nil
+	}
+	return &id
 }
 
 // findingDeciderPointer omits decided_by from a finding without a decision.

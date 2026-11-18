@@ -49,7 +49,7 @@ func (q *Queries) DeleteFindingState(ctx context.Context, arg DeleteFindingState
 }
 
 const getFindingState = `-- name: GetFindingState :one
-SELECT id, asset_id, fingerprint, state, reason, created_at, expires_at, decided_by FROM finding_states
+SELECT id, asset_id, fingerprint, state, reason, created_at, expires_at, decided_by, rule_ref FROM finding_states
 WHERE asset_id = ?1 AND fingerprint = ?2
 `
 
@@ -70,6 +70,7 @@ func (q *Queries) GetFindingState(ctx context.Context, arg GetFindingStateParams
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.DecidedBy,
+		&i.RuleRef,
 	)
 	return i, err
 }
@@ -123,7 +124,7 @@ func (q *Queries) ListAgentRestrictedFingerprints(ctx context.Context, arg ListA
 }
 
 const listFindingStatesByAsset = `-- name: ListFindingStatesByAsset :many
-SELECT id, asset_id, fingerprint, state, reason, created_at, expires_at, decided_by FROM finding_states
+SELECT id, asset_id, fingerprint, state, reason, created_at, expires_at, decided_by, rule_ref FROM finding_states
 WHERE asset_id = ?1
 ORDER BY fingerprint
 `
@@ -146,6 +147,7 @@ func (q *Queries) ListFindingStatesByAsset(ctx context.Context, assetID int64) (
 			&i.CreatedAt,
 			&i.ExpiresAt,
 			&i.DecidedBy,
+			&i.RuleRef,
 		); err != nil {
 			return nil, err
 		}
@@ -275,7 +277,8 @@ ON CONFLICT (asset_id, fingerprint) DO UPDATE SET
     state      = excluded.state,
     reason     = excluded.reason,
     expires_at = excluded.expires_at,
-    decided_by = excluded.decided_by
+    decided_by = excluded.decided_by,
+    rule_ref   = NULL
 `
 
 type UpsertFindingStateParams struct {

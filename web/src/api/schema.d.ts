@@ -796,6 +796,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/finding-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List suppression rules and agent proposals. */
+        get: operations["listFindingRules"];
+        put?: never;
+        /**
+         * Create a suppression rule and apply it.
+         * @description The rule closes matching findings now and in later scans. An existing
+         *     decision wins. Malware is never closed by a rule, and a secret only by
+         *     a rule whose `finding_type` is `secret`.
+         */
+        post: operations["createFindingRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/finding-rules/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a rule an agent proposed. */
+        post: operations["approveFindingRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/finding-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a rule or reject a proposal.
+         * @description Findings the rule closed open again.
+         */
+        delete: operations["deleteFindingRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/findings": {
         parameters: {
             query?: never;
@@ -1228,6 +1288,56 @@ export interface components {
              *     stops every future request.
              */
             enabled: boolean;
+        };
+        /**
+         * FindingRuleStatus
+         * @enum {string}
+         */
+        FindingRuleStatus: "active" | "proposed";
+        /** CreateFindingRuleRequest */
+        CreateFindingRuleRequest: {
+            /**
+             * Format: int64
+             * @description The one asset the rule covers; absent covers every asset.
+             */
+            asset_id?: number;
+            finding_type?: components["schemas"]["FindingType"];
+            rule_id?: string;
+            package_name?: string;
+            /** @description Case-sensitive glob on the finding location; `*` also matches `/`. */
+            path_glob?: string;
+            state: components["schemas"]["FindingState"];
+            reason: string;
+            /** @description Optional end of the rule, RFC 3339 or `YYYY-MM-DD`. */
+            expires_at?: string;
+        };
+        /** FindingRule */
+        FindingRule: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description The one asset the rule covers; absent covers every asset.
+             */
+            asset_id?: number;
+            finding_type?: components["schemas"]["FindingType"];
+            rule_id?: string;
+            package_name?: string;
+            /** @description Case-sensitive glob on the finding location; `*` also matches `/`. */
+            path_glob?: string;
+            state: components["schemas"]["FindingState"];
+            reason: string;
+            /** @description Optional end of the rule, RFC 3339 or `YYYY-MM-DD`. */
+            expires_at?: string;
+            status: components["schemas"]["FindingRuleStatus"];
+            created_by: components["schemas"]["FindingDecider"];
+            created_at: string;
+            /** @description Findings the rule currently closes. */
+            matched: number;
+        };
+        /** FindingRuleList */
+        FindingRuleList: {
+            rules: components["schemas"]["FindingRule"][];
         };
         /**
          * FindingFixFilter
@@ -1853,6 +1963,11 @@ export interface components {
             /** @description The reason recorded with the decision in `state`. */
             reason?: string;
             decided_by?: components["schemas"]["FindingDecider"];
+            /**
+             * Format: int64
+             * @description The suppression rule that closed the finding, absent otherwise.
+             */
+            rule_ref?: number;
             /**
              * @description When the decision stops applying, in UTC (`YYYY-MM-DDTHH:MM:SS.sssZ`).
              *     Absent when the decision has no expiry.
@@ -4187,6 +4302,172 @@ export interface operations {
             };
             421: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
+        };
+    };
+    listFindingRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every rule, proposals first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FindingRuleList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            /** @description The request failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createFindingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFindingRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description The rule is stored and applied. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The rule has no matcher or a field is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description The asset does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            /** @description The request failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    approveFindingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rule is active and applied. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description No such rule. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            /** @description The request failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteFindingRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rule is gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description No such rule. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            /** @description The request failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listFindings: {

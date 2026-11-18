@@ -68,6 +68,21 @@ type Finding struct {
 	Reachability    sql.NullString
 }
 
+type FindingRule struct {
+	ID          int64
+	AssetID     sql.NullInt64
+	FindingType sql.NullString
+	RuleID      sql.NullString
+	PackageName sql.NullString
+	PathGlob    sql.NullString
+	State       string
+	Reason      string
+	ExpiresAt   sql.NullString
+	Status      string
+	CreatedBy   string
+	CreatedAt   string
+}
+
 type FindingState struct {
 	ID          int64
 	AssetID     int64
@@ -77,6 +92,7 @@ type FindingState struct {
 	CreatedAt   string
 	ExpiresAt   sql.NullString
 	DecidedBy   string
+	RuleRef     sql.NullInt64
 }
 
 type FixPlanPullRequest struct {

@@ -238,6 +238,11 @@ func SaveScanResult(ctx context.Context, db *sql.DB, scanID int64, res ScanResul
 		}
 	}
 
+	// Active rules also cover findings this scan reported for the first time.
+	if err := applyFindingRules(ctx, queries, scan.AssetID); err != nil {
+		return fmt.Errorf("store: save scan %d: apply finding rules: %w", scanID, err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: save scan %d: commit: %w", scanID, err)
 	}

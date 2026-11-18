@@ -74,6 +74,8 @@ type Finding struct {
 	Reason         string
 	// DecidedBy is who made the decision: user or agent, empty without one.
 	DecidedBy string
+	// RuleRef is the suppression rule that closed the finding, 0 without one.
+	RuleRef int64
 	// ExpiresAt is the canonical expiry of the decision, empty when it has
 	// none. Expired is true when the decision exists but its expiry passed:
 	// Status is open again, while State keeps the stale decision for the UI.
@@ -305,6 +307,7 @@ func (s *Service) listFindings(ctx context.Context, filter Filter, by Sort, limi
 			State:          row.State.String,
 			Reason:         row.Reason.String,
 			DecidedBy:      row.DecidedBy.String,
+			RuleRef:        row.RuleRef.Int64,
 			ExpiresAt:      row.ExpiresAt.String,
 			Expired:        row.Expired != 0,
 			Description:    row.Description.String,
