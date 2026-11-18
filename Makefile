@@ -13,7 +13,7 @@ GORELEASER := go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 # out of bastion's own self-scan.
 TOOL := go tool -modfile=tools/go.mod
 
-.PHONY: build check fmt lint test test-race gen web-build web-check e2e release-snapshot
+.PHONY: build check fmt lint test test-race gen web-build web-check e2e release-snapshot ui-preview
 
 # The UI is embedded into the binary (web/embed.go), so it must be built
 # before go build. node_modules is a file target: npm ci runs only when the
@@ -27,6 +27,10 @@ web-build: web/node_modules
 web-check: web/node_modules
 	$(NPM) run typecheck
 	$(NPM) run test
+
+# The real UI with hot reload and in-memory data: no server, token or session.
+ui-preview: web/node_modules
+	cd web && npx vite --config vite.preview.config.ts
 
 build: web-build
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/bastion ./cmd/bastion
