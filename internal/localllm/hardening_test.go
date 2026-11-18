@@ -49,6 +49,26 @@ func TestExplainKeepsTheCauseOfAnHTTPError(t *testing.T) {
 	}
 }
 
+// TestExplainHandlesThinkingModels checks reasoning is turned off in the
+// request, and that a model still out of tokens gets a specific error.
+func TestExplainHandlesThinkingModels(t *testing.T) {
+	var body string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		body = string(raw)
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":""},"finish_reason":"length"}]}`)
+	}))
+	t.Cleanup(server.Close)
+
+	_, err := enabledService(t, server.URL).Explain(t.Context(), ExplainInput{Title: "x"})
+	if !errors.Is(err, ErrUpstream) || !strings.Contains(err.Error(), "output tokens") {
+		t.Fatalf("Explain = %v, want ErrUpstream naming the token budget", err)
+	}
+	if !strings.Contains(body, `"reasoning_effort":"none"`) {
+		t.Errorf("request does not turn reasoning off: %s", body)
+	}
+}
+
 // TestExplainCapsInFlightRequests holds the model until more callers than
 // slots have started, and checks only maxInFlight reach it at once.
 func TestExplainCapsInFlightRequests(t *testing.T) {

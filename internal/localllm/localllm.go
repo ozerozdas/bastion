@@ -290,6 +290,9 @@ func (s *Service) Explain(ctx context.Context, in ExplainInput) (Result, error) 
 		Stream:      false,
 		Temperature: 0.2,
 		MaxTokens:   maxTokens,
+		// A thinking model can otherwise spend all of maxTokens on reasoning
+		// and return an empty answer.
+		ReasoningEffort: "none",
 	})
 	if err != nil {
 		return Result{}, fmt.Errorf("localllm: encode request: %w", err)
@@ -336,6 +339,10 @@ func (s *Service) Explain(ctx context.Context, in ExplainInput) (Result, error) 
 	}
 	text := strings.TrimSpace(decoded.Choices[0].Message.Content)
 	if text == "" {
+		if decoded.Choices[0].FinishReason == "length" {
+			return Result{}, fmt.Errorf("%w: the model used its %d output tokens without answering; try a non-thinking model",
+				ErrUpstream, maxTokens)
+		}
 		return Result{}, fmt.Errorf("%w: the response is empty", ErrUpstream)
 	}
 	return Result{Text: clipText(text), Model: model}, nil
@@ -349,6 +356,8 @@ type chatRequest struct {
 	Stream      bool          `json:"stream"`
 	Temperature float64       `json:"temperature"`
 	MaxTokens   int           `json:"max_tokens"`
+
+	ReasoningEffort string `json:"reasoning_effort"`
 }
 
 type chatMessage struct {
@@ -363,6 +372,7 @@ type chatResponse struct {
 		Message struct {
 			Content string `json:"content"`
 		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 	Error upstreamError `json:"error"`
 }
