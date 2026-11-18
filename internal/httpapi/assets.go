@@ -126,6 +126,33 @@ func (s *Server) SetAssetLink(ctx context.Context, request gen.SetAssetLinkReque
 	return gen.SetAssetLink200JSONResponse(assetResponse(asset)), nil
 }
 
+// SetAssetSchedule implements gen.StrictServerInterface. The schedule decides
+// whether `bastion serve` queues the asset on its own; off is the default.
+func (s *Server) SetAssetSchedule(ctx context.Context, request gen.SetAssetScheduleRequestObject) (gen.SetAssetScheduleResponseObject, error) {
+	if s.assets == nil {
+		return gen.SetAssetSchedule500ApplicationProblemPlusJSONResponse{Body: unconfigured(assetsUnavailable)}, nil
+	}
+	if request.Body == nil {
+		return gen.SetAssetSchedule400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "the request body is required"),
+		), nil
+	}
+	asset, err := s.assets.SetSchedule(ctx, int64(request.Id), string(request.Body.Schedule))
+	if err != nil {
+		s.log.Error("set asset schedule", "id", request.Id, "schedule", request.Body.Schedule, "error", err)
+		status, problem := assetProblem(err)
+		switch status {
+		case http.StatusBadRequest:
+			return gen.SetAssetSchedule400ApplicationProblemPlusJSONResponse(problem), nil
+		case http.StatusNotFound:
+			return gen.SetAssetSchedule404ApplicationProblemPlusJSONResponse(problem), nil
+		default:
+			return gen.SetAssetSchedule500ApplicationProblemPlusJSONResponse{Body: problem}, nil
+		}
+	}
+	return gen.SetAssetSchedule200JSONResponse(assetResponse(asset)), nil
+}
+
 // ClearAssetLink implements gen.StrictServerInterface. {id} is the image; the
 // link is removed whichever source created it.
 func (s *Server) ClearAssetLink(ctx context.Context, request gen.ClearAssetLinkRequestObject) (gen.ClearAssetLinkResponseObject, error) {
@@ -511,11 +538,12 @@ func assetProblem(err error) (int, gen.Problem) {
 // assetResponse maps one domain asset onto the API shape.
 func assetResponse(asset assets.Asset) gen.Asset {
 	out := gen.Asset{
-		Id:          asset.ID,
-		Kind:        gen.AssetKind(asset.Kind),
-		DisplayName: asset.DisplayName,
-		Ref:         asset.Ref,
-		CreatedAt:   asset.CreatedAt,
+		Id:           asset.ID,
+		Kind:         gen.AssetKind(asset.Kind),
+		DisplayName:  asset.DisplayName,
+		Ref:          asset.Ref,
+		CreatedAt:    asset.CreatedAt,
+		ScanSchedule: gen.AssetScanSchedule(asset.ScanSchedule),
 		OpenCounts: gen.SeverityTotals{
 			Critical: asset.OpenSeverities.Critical,
 			High:     asset.OpenSeverities.High,

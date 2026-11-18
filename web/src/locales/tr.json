@@ -762,5 +762,13 @@
   "epss.percentile": "%{percent}",
 
   "error.requestFailed": "İstek {status} durumuyla başarısız oldu",
-  "error.ecrNoTag": "ECR imajının etiketi yok"
+  "error.ecrNoTag": "ECR imajının etiketi yok",
+  "repos.column.schedule": "Zamanlama",
+  "containers.column.schedule": "Zamanlama",
+  "schedule.aria": "{name} için tarama zamanlaması",
+  "schedule.off": "Kapalı",
+  "schedule.daily": "Günlük",
+  "schedule.weekly": "Haftalık",
+  "schedule.hint": "Zamanlanmış taramalar yalnızca bastion açıkken çalışır. Kaçırılan tarama bir sonraki açılışta bir kez çalışır.",
+  "schedule.failed": "Zamanlama kaydedilemedi."
 }

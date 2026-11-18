@@ -63,8 +63,8 @@ func TestRunDoctorHealthy(t *testing.T) {
 	if report.Database.Status != "ok" {
 		t.Fatalf("database status = %q, want ok", report.Database.Status)
 	}
-	if report.Database.SchemaVersion != 9 {
-		t.Fatalf("schema version = %d, want 9", report.Database.SchemaVersion)
+	if report.Database.SchemaVersion != 10 {
+		t.Fatalf("schema version = %d, want 10", report.Database.SchemaVersion)
 	}
 	if report.Keyring.Status != "ok" {
 		t.Fatalf("keyring = %+v, want ok", report.Keyring)

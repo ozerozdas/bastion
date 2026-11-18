@@ -125,6 +125,12 @@ saying to add one in **Connections → Registry**.
 `--format cyclonedx` prints the scan's package inventory as a CycloneDX 1.6 JSON BOM; the
 same document is a download on **Projects → Scans** (`GET /api/scans/{id}/sbom`).
 
+## Scheduled scans
+
+Set a project or image to scan daily or weekly from its **Schedule** column. Schedules
+run only while `bastion serve` is open; a scan missed while it was closed runs once at the
+next start.
+
 ## MCP server
 
 `bastion mcp` serves the assets, findings, fix plans and scan diffs over the

@@ -37,6 +37,7 @@ type serverServices struct {
 	connections  *connections.Service
 	reports      *reports.Service
 	assets       *assets.Service
+	scheduler    *assets.Scheduler
 	scanManager  *jobs.Manager
 	trivyDB      *trivy.Manager
 	epss         *epss.Service
@@ -186,6 +187,15 @@ func newServerServices(ctx context.Context, paths app.Paths, port, concurrency i
 		return nil, fmt.Errorf("create assets service: %w", err)
 	}
 
+	// Scheduled scans (#58) run only while this serve process is up. The
+	// scheduler checks once now and then every five minutes; Close stops it
+	// before the scan workers, so a queued scan still makes it into the pool.
+	services.scheduler, err = assets.NewScheduler(services.assets)
+	if err != nil {
+		return nil, fmt.Errorf("create scan scheduler: %w", err)
+	}
+	services.scheduler.Start()
+
 	ok = true
 	return services, nil
 }
@@ -194,6 +204,9 @@ func newServerServices(ctx context.Context, paths app.Paths, port, concurrency i
 // instead of being cut off by process exit, then releases the Trivy manager,
 // the database and the serve lock.
 func (s *serverServices) Close() {
+	if s.scheduler != nil {
+		s.scheduler.Close()
+	}
 	if s.scanManager != nil {
 		stopScanManager(s.scanManager)
 	}

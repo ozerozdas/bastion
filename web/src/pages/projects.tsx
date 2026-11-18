@@ -1,3 +1,4 @@
+import { ScanScheduleSelect } from '../components/scan-schedule'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
@@ -73,6 +74,13 @@ function projectColumns(): DataTableColumn<Asset>[] {
       headerClassName: 'pl-3',
       sortable: true,
       sortValue: (asset) => asset.linked_images.length,
+    },
+    {
+      id: 'schedule',
+      header: t('repos.column.schedule'),
+      headerClassName: 'pl-3',
+      sortable: true,
+      sortValue: (asset) => asset.scan_schedule,
     },
     {
       id: 'last-scan',
@@ -294,6 +302,7 @@ function ProjectsTable({
           <ProjectRow asset={asset} live={live.get(asset.id)} selection={selection} />
         )}
       />
+      <p className="text-xs text-faint">{t('schedule.hint')}</p>
     </>
   )
 }
@@ -371,6 +380,9 @@ function ProjectRow({
             </span>
           )}
         </td>
+        <td className="py-2 pl-3 align-top">
+          <ScanScheduleSelect asset={asset} />
+        </td>
         <td className="status-cell-wide py-2 pl-3 align-top whitespace-nowrap">
           {status ? (
             <Badge tone={statusView[status].tone}>
@@ -444,7 +456,7 @@ function ProjectRow({
 
       {confirming ? (
         <tr>
-          <td colSpan={7} className="pb-2">
+          <td colSpan={8} className="pb-2">
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
               <span>
                 {t('repos.confirmRemove', { name: asset.display_name })}
@@ -477,7 +489,7 @@ function ProjectRow({
 
       {failed ? (
         <tr>
-          <td colSpan={7} className="pb-2">
+          <td colSpan={8} className="pb-2">
             <ScanFailure error={scanError} />
           </td>
         </tr>
@@ -485,7 +497,7 @@ function ProjectRow({
 
       {start.isError ? (
         <tr>
-          <td colSpan={7} className="pb-2">
+          <td colSpan={8} className="pb-2">
             <ErrorNote
               error={start.error}
               fix={t('repos.startError')}
@@ -495,7 +507,7 @@ function ProjectRow({
       ) : null}
       {cancel.isError ? (
         <tr>
-          <td colSpan={7} className="pb-2">
+          <td colSpan={8} className="pb-2">
             <ErrorNote
               error={cancel.error}
               fix={t('repos.cancelError')}
@@ -505,7 +517,7 @@ function ProjectRow({
       ) : null}
       {archive.isError ? (
         <tr>
-          <td colSpan={7} className="pb-2">
+          <td colSpan={8} className="pb-2">
             <ErrorNote
               error={archive.error}
               fix={t('repos.archiveError')}

@@ -53,6 +53,16 @@ export function useSetAssetLink() {
   })
 }
 
+/** useSetAssetSchedule sets how often bastion scans an asset while it runs. */
+export function useSetAssetSchedule() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, schedule }: { id: number; schedule: Asset['scan_schedule'] }) =>
+      api.put<Asset>(`/api/assets/${id}/schedule`, { schedule }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: assetsKey }),
+  })
+}
+
 /** useClearAssetLink removes an image's repository link, manual or not. */
 export function useClearAssetLink() {
   const queryClient = useQueryClient()

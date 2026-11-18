@@ -80,6 +80,13 @@ be bookmarked, and **← Scans** returns to the project's filtered Scans tab.
 Every succeeded scan also has a **CycloneDX** link in the SBOM column: it downloads the
 scan's package inventory as a CycloneDX 1.6 JSON BOM (`GET /api/scans/<id>/sbom`).
 
+### Scheduled scans
+
+The **Schedule** column sets a project to **Off**, **Daily** or **Weekly**. Schedules run
+only while `bastion serve` is open. A scan missed while bastion was closed runs once at the
+next start, and notifications work as they do for any other scan. Scheduled scans appear
+in the scan history with the `ui` trigger.
+
 ## Connections
 
 Where credentials live: **GitHub** tokens and **AWS** profiles for ECR.

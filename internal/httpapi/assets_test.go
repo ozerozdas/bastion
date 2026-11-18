@@ -769,6 +769,66 @@ func TestBulkFindingStateAllOrNothing(t *testing.T) {
 	}
 }
 
+// TestSetAssetSchedule covers the PUT contract: every valid value is stored,
+// an invalid one is a 400, an unknown asset a 404 and an archived asset a 404.
+func TestSetAssetSchedule(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+	asset := pathAsset(t, ts, cookie)
+
+	if asset.ScanSchedule != gen.AssetScanScheduleOff {
+		t.Errorf("new asset scan_schedule = %q, want off", asset.ScanSchedule)
+	}
+
+	for _, schedule := range []gen.AssetScanSchedule{
+		gen.AssetScanScheduleDaily,
+		gen.AssetScanScheduleWeekly,
+		gen.AssetScanScheduleOff,
+	} {
+		t.Run(string(schedule), func(t *testing.T) {
+			resp := doJSON(t, ts, http.MethodPut,
+				"/api/assets/"+itoa(asset.Id)+"/schedule",
+				gen.SetAssetScheduleRequest{Schedule: schedule}, withBastion(cookie))
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("PUT schedule: status = %d, want %d: %s",
+					resp.StatusCode, http.StatusOK, readBody(t, resp))
+			}
+			var updated gen.Asset
+			if err := json.Unmarshal(readBody(t, resp), &updated); err != nil {
+				t.Fatalf("decode asset: %v", err)
+			}
+			if updated.ScanSchedule != schedule {
+				t.Errorf("scan_schedule = %q, want %q", updated.ScanSchedule, schedule)
+			}
+			if got := assetList(t, ts, cookie).Assets[0].ScanSchedule; got != schedule {
+				t.Errorf("listed scan_schedule = %q, want %q", got, schedule)
+			}
+		})
+	}
+
+	resp := doJSON(t, ts, http.MethodPut, "/api/assets/"+itoa(asset.Id)+"/schedule",
+		map[string]string{"schedule": "hourly"}, withBastion(cookie))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid schedule: status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+
+	resp = doJSON(t, ts, http.MethodPut, "/api/assets/9999/schedule",
+		gen.SetAssetScheduleRequest{Schedule: gen.AssetScanScheduleDaily}, withBastion(cookie))
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown asset: status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+
+	resp = ts.do(t, http.MethodDelete, "/api/assets/"+itoa(asset.Id), withBastion(cookie))
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("archive asset: status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+	}
+	resp = doJSON(t, ts, http.MethodPut, "/api/assets/"+itoa(asset.Id)+"/schedule",
+		gen.SetAssetScheduleRequest{Schedule: gen.AssetScanScheduleDaily}, withBastion(cookie))
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("archived asset: status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
 // TestMutationsRequireCSRF: the X-Bastion CSRF guard also covers the new
 // endpoints.
 func TestMutationsRequireCSRF(t *testing.T) {
@@ -786,6 +846,8 @@ func TestMutationsRequireCSRF(t *testing.T) {
 		{name: "create asset", method: http.MethodPost, path: "/api/assets",
 			body: gen.CreateAssetRequest{Kind: gen.CreateAssetRequestKindPath, Ref: t.TempDir()}},
 		{name: "delete asset", method: http.MethodDelete, path: "/api/assets/" + itoa(asset.Id)},
+		{name: "set schedule", method: http.MethodPut, path: "/api/assets/" + itoa(asset.Id) + "/schedule",
+			body: gen.SetAssetScheduleRequest{Schedule: gen.AssetScanScheduleDaily}},
 		{name: "queue scan", method: http.MethodPost, path: "/api/scans",
 			body: gen.CreateScansRequest{AssetIds: []int64{asset.Id}}},
 		{name: "cancel scan", method: http.MethodPost, path: "/api/scans/" + itoa(scanID) + "/cancel"},
