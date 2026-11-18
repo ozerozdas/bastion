@@ -158,6 +158,24 @@ func (e CreateConnectionRequestKind) Valid() bool {
 	}
 }
 
+// Defines values for FindingDecider.
+const (
+	FindingDeciderAgent FindingDecider = "agent"
+	FindingDeciderUser  FindingDecider = "user"
+)
+
+// Valid indicates whether the value is a known member of the FindingDecider enum.
+func (e FindingDecider) Valid() bool {
+	switch e {
+	case FindingDeciderAgent:
+		return true
+	case FindingDeciderUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FindingState.
 const (
 	FindingStateAcceptedRisk  FindingState = "accepted_risk"
@@ -1230,8 +1248,11 @@ type ExplainFindingResponse struct {
 // Finding One normalized finding of an asset's latest succeeded scan. Optional
 // fields are absent when the scanner did not provide them.
 type Finding struct {
-	AssetId     int64   `json:"asset_id"`
-	Description *string `json:"description,omitempty"`
+	AssetId int64 `json:"asset_id"`
+
+	// DecidedBy Who made a finding decision, the user or an agent over MCP.
+	DecidedBy   *FindingDecider `json:"decided_by,omitempty"`
+	Description *string         `json:"description,omitempty"`
 
 	// Ecosystem Examples: npm, go, deb
 	Ecosystem *string `json:"ecosystem,omitempty"`
@@ -1282,7 +1303,7 @@ type Finding struct {
 	// (govulncheck did not run, failed, or does not know the advisory).
 	Reachability *Reachability `json:"reachability,omitempty"`
 
-	// Reason The user's reason for the decision in `state`.
+	// Reason The reason recorded with the decision in `state`.
 	Reason *string `json:"reason,omitempty"`
 
 	// References Advisory or rule references; `[]` when there are none.
@@ -1316,6 +1337,9 @@ type Finding struct {
 	// Type Kind of finding (PROJECT_SPEC.md §5).
 	Type FindingType `json:"type"`
 }
+
+// FindingDecider Who made a finding decision, the user or an agent over MCP.
+type FindingDecider string
 
 // FindingGroup One rule (or, without a rule id, one fingerprint) and type, folded
 // across projects (#90). Members keep the single list's order, and groups
@@ -2167,6 +2191,9 @@ type AssetIDRequiredQuery = int64
 // ConnectionID defines model for ConnectionID.
 type ConnectionID = int64
 
+// FindingDeciderQuery Who made a finding decision, the user or an agent over MCP.
+type FindingDeciderQuery = FindingDecider
+
 // FindingStatusQuery Effective status. Any `finding_states` decision for the same asset and
 // fingerprint reports the finding as `ignored`; the decision itself is in
 // `state`.
@@ -2234,6 +2261,9 @@ type ListFindingsParams struct {
 
 	// Status Only findings with this effective status.
 	Status *FindingStatusQuery `form:"status,omitempty" json:"status,omitempty"`
+
+	// DecidedBy Only findings whose decision was made by this decider.
+	DecidedBy *FindingDeciderQuery `form:"decided_by,omitempty" json:"decided_by,omitempty"`
 
 	// Q Case-insensitive substring to search for in the finding title, rule id
 	// (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
@@ -3199,6 +3229,19 @@ func (siw *ServerInterfaceWrapper) ListFindings(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "decided_by" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "decided_by", r.URL.Query(), &params.DecidedBy, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "decided_by"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "decided_by", Err: err})
 		}
 		return
 	}

@@ -1056,6 +1056,46 @@ func (s *Service) SetFindingState(ctx context.Context, in FindingStateInput) err
 // a single transaction. Every fingerprint must be a finding of the asset: one
 // unknown fingerprint rejects the whole batch, so nothing is written.
 func (s *Service) SetFindingStates(ctx context.Context, in BulkFindingStateInput) error {
+	return s.setFindingStates(ctx, in, store.SetFindingStates)
+}
+
+// SetAgentFindingStates records an agent's decision for many fingerprints. A
+// batch naming malware, a secret or a decision the user made is refused whole.
+func (s *Service) SetAgentFindingStates(ctx context.Context, in BulkFindingStateInput) error {
+	return s.setFindingStates(ctx, in, store.SetAgentFindingStates)
+}
+
+// ClearAgentFindingStates removes an agent's decisions and returns how many
+// were removed. It never removes a decision the user made.
+func (s *Service) ClearAgentFindingStates(ctx context.Context, assetID int64, fingerprints []string) (int, error) {
+	if assetID <= 0 {
+		return 0, fmt.Errorf("%w: asset_id must be positive", ErrInvalid)
+	}
+	if len(fingerprints) == 0 {
+		return 0, fmt.Errorf("%w: at least one fingerprint is required", ErrInvalid)
+	}
+	if len(fingerprints) > store.MaxFindingStateBatch {
+		return 0, fmt.Errorf("%w: at most %d fingerprints per request", ErrInvalid, store.MaxFindingStateBatch)
+	}
+	for _, fingerprint := range fingerprints {
+		if strings.TrimSpace(fingerprint) == "" {
+			return 0, fmt.Errorf("%w: fingerprint is required", ErrInvalid)
+		}
+	}
+	if err := s.requireAsset(ctx, assetID); err != nil {
+		return 0, err
+	}
+	cleared, err := store.ClearAgentFindingStates(ctx, s.db, assetID, fingerprints)
+	if err != nil {
+		return 0, fmt.Errorf("assets: clear agent finding states: %w", err)
+	}
+	return cleared, nil
+}
+
+// findingStatesWriter is the store call that records one bulk decision.
+type findingStatesWriter func(ctx context.Context, db *sql.DB, assetID int64, fingerprints []string, state, reason string, expiresAt *time.Time) error
+
+func (s *Service) setFindingStates(ctx context.Context, in BulkFindingStateInput, write findingStatesWriter) error {
 	if in.AssetID <= 0 {
 		return fmt.Errorf("%w: asset_id must be positive", ErrInvalid)
 	}
@@ -1081,7 +1121,7 @@ func (s *Service) SetFindingStates(ctx context.Context, in BulkFindingStateInput
 		return err
 	}
 
-	err = store.SetFindingStates(ctx, s.db, in.AssetID, in.Fingerprints, in.State, in.Reason, expiresAt)
+	err = write(ctx, s.db, in.AssetID, in.Fingerprints, in.State, in.Reason, expiresAt)
 	if err != nil {
 		var unknown *store.UnknownFingerprintsError
 		if errors.As(err, &unknown) {

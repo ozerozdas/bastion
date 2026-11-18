@@ -11,6 +11,27 @@ import (
 	"strings"
 )
 
+const deleteAgentFindingState = `-- name: DeleteAgentFindingState :execrows
+DELETE FROM finding_states
+WHERE asset_id = ?1
+  AND fingerprint = ?2
+  AND decided_by = 'agent'
+`
+
+type DeleteAgentFindingStateParams struct {
+	AssetID     int64
+	Fingerprint string
+}
+
+// Remove a decision only when an agent made it.
+func (q *Queries) DeleteAgentFindingState(ctx context.Context, arg DeleteAgentFindingStateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteAgentFindingState, arg.AssetID, arg.Fingerprint)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteFindingState = `-- name: DeleteFindingState :exec
 DELETE FROM finding_states
 WHERE asset_id = ?1 AND fingerprint = ?2
@@ -28,7 +49,7 @@ func (q *Queries) DeleteFindingState(ctx context.Context, arg DeleteFindingState
 }
 
 const getFindingState = `-- name: GetFindingState :one
-SELECT id, asset_id, fingerprint, state, reason, created_at, expires_at FROM finding_states
+SELECT id, asset_id, fingerprint, state, reason, created_at, expires_at, decided_by FROM finding_states
 WHERE asset_id = ?1 AND fingerprint = ?2
 `
 
@@ -48,12 +69,61 @@ func (q *Queries) GetFindingState(ctx context.Context, arg GetFindingStateParams
 		&i.Reason,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.DecidedBy,
 	)
 	return i, err
 }
 
+const listAgentRestrictedFingerprints = `-- name: ListAgentRestrictedFingerprints :many
+SELECT DISTINCT fingerprint FROM findings
+WHERE asset_id = ?1
+  AND type IN ('malware', 'secret')
+  AND fingerprint IN (/*SLICE:fingerprints*/?)
+ORDER BY fingerprint
+`
+
+type ListAgentRestrictedFingerprintsParams struct {
+	AssetID      int64
+	Fingerprints []string
+}
+
+// The named fingerprints an agent may never close: malware and secrets.
+func (q *Queries) ListAgentRestrictedFingerprints(ctx context.Context, arg ListAgentRestrictedFingerprintsParams) ([]string, error) {
+	query := listAgentRestrictedFingerprints
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.AssetID)
+	if len(arg.Fingerprints) > 0 {
+		for _, v := range arg.Fingerprints {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:fingerprints*/?", strings.Repeat(",?", len(arg.Fingerprints))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:fingerprints*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var fingerprint string
+		if err := rows.Scan(&fingerprint); err != nil {
+			return nil, err
+		}
+		items = append(items, fingerprint)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFindingStatesByAsset = `-- name: ListFindingStatesByAsset :many
-SELECT id, asset_id, fingerprint, state, reason, created_at, expires_at FROM finding_states
+SELECT id, asset_id, fingerprint, state, reason, created_at, expires_at, decided_by FROM finding_states
 WHERE asset_id = ?1
 ORDER BY fingerprint
 `
@@ -75,6 +145,7 @@ func (q *Queries) ListFindingStatesByAsset(ctx context.Context, assetID int64) (
 			&i.Reason,
 			&i.CreatedAt,
 			&i.ExpiresAt,
+			&i.DecidedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -138,19 +209,73 @@ func (q *Queries) ListKnownFingerprints(ctx context.Context, arg ListKnownFinger
 	return items, nil
 }
 
+const listUserDecidedFingerprints = `-- name: ListUserDecidedFingerprints :many
+SELECT fingerprint FROM finding_states
+WHERE asset_id = ?1
+  AND decided_by = 'user'
+  AND (expires_at IS NULL OR expires_at > CAST(?2 AS TEXT))
+  AND fingerprint IN (/*SLICE:fingerprints*/?)
+ORDER BY fingerprint
+`
+
+type ListUserDecidedFingerprintsParams struct {
+	AssetID      int64
+	Now          string
+	Fingerprints []string
+}
+
+// The named fingerprints whose decision belongs to the user. An expired
+// decision no longer applies: the finding is open again.
+func (q *Queries) ListUserDecidedFingerprints(ctx context.Context, arg ListUserDecidedFingerprintsParams) ([]string, error) {
+	query := listUserDecidedFingerprints
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.AssetID)
+	queryParams = append(queryParams, arg.Now)
+	if len(arg.Fingerprints) > 0 {
+		for _, v := range arg.Fingerprints {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:fingerprints*/?", strings.Repeat(",?", len(arg.Fingerprints))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:fingerprints*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var fingerprint string
+		if err := rows.Scan(&fingerprint); err != nil {
+			return nil, err
+		}
+		items = append(items, fingerprint)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertFindingState = `-- name: UpsertFindingState :exec
-INSERT INTO finding_states (asset_id, fingerprint, state, reason, expires_at)
+INSERT INTO finding_states (asset_id, fingerprint, state, reason, expires_at, decided_by)
 VALUES (
     ?1,
     ?2,
     ?3,
     ?4,
-    ?5
+    ?5,
+    ?6
 )
 ON CONFLICT (asset_id, fingerprint) DO UPDATE SET
     state      = excluded.state,
     reason     = excluded.reason,
-    expires_at = excluded.expires_at
+    expires_at = excluded.expires_at,
+    decided_by = excluded.decided_by
 `
 
 type UpsertFindingStateParams struct {
@@ -159,6 +284,7 @@ type UpsertFindingStateParams struct {
 	State       string
 	Reason      sql.NullString
 	ExpiresAt   sql.NullString
+	DecidedBy   string
 }
 
 // Record a user decision for one fingerprint of one asset (PROJECT_SPEC.md
@@ -173,6 +299,7 @@ func (q *Queries) UpsertFindingState(ctx context.Context, arg UpsertFindingState
 		arg.State,
 		arg.Reason,
 		arg.ExpiresAt,
+		arg.DecidedBy,
 	)
 	return err
 }

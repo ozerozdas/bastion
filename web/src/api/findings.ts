@@ -22,6 +22,8 @@ export type FindingFilter = {
   type?: FindingType
   severity?: Severity
   status?: FindingStatus
+  /** Keeps only decisions made by this decider. */
+  decidedBy?: components['schemas']['FindingDecider']
   /** Case-insensitive text search; the latest list and its export honour it. */
   q?: string
 }
@@ -47,6 +49,7 @@ export function filterParams(f: FindingFilter): string {
   if (f.type) params.set('type', f.type)
   if (f.severity) params.set('severity', f.severity)
   if (f.status) params.set('status', f.status)
+  if (f.decidedBy) params.set('decided_by', f.decidedBy)
   if (f.q) params.set('q', f.q)
   const query = params.toString()
   return query ? `?${query}` : ''
@@ -107,6 +110,7 @@ export function exportFindingsUrl(
   if (f.type) params.set('type', f.type)
   if (f.severity) params.set('severity', f.severity)
   if (f.status) params.set('status', f.status)
+  if (f.decidedBy) params.set('decided_by', f.decidedBy)
   if (f.q) params.set('q', f.q)
   params.set('format', f.format)
   params.set('view', f.view)

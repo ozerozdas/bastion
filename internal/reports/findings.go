@@ -33,7 +33,9 @@ type Filter struct {
 	Severity    string
 	Type        string
 	Status      string
-	Query       string
+	// DecidedBy keeps only decisions made by user or agent; empty keeps all.
+	DecidedBy string
+	Query     string
 }
 
 // MaxQueryLength caps the search text. Longer input is refused rather than
@@ -62,6 +64,8 @@ type Finding struct {
 	Status         string
 	State          string
 	Reason         string
+	// DecidedBy is who made the decision: user or agent, empty without one.
+	DecidedBy string
 	// ExpiresAt is the canonical expiry of the decision, empty when it has
 	// none. Expired is true when the decision exists but its expiry passed:
 	// Status is open again, while State keeps the stale decision for the UI.
@@ -292,6 +296,7 @@ func (s *Service) listFindings(ctx context.Context, filter Filter, by Sort, limi
 			Status:         row.Status,
 			State:          row.State.String,
 			Reason:         row.Reason.String,
+			DecidedBy:      row.DecidedBy.String,
 			ExpiresAt:      row.ExpiresAt.String,
 			Expired:        row.Expired != 0,
 			Description:    row.Description.String,
@@ -341,6 +346,7 @@ func (f Filter) params(now string, by Sort, limit, offset int64) (sqlcdb.ListLat
 	params.Severity = nullable(f.Severity)
 	params.Type = nullable(f.Type)
 	params.Status = nullable(f.Status)
+	params.DecidedBy = nullable(f.DecidedBy)
 	params.Query = f.likePattern()
 
 	return params, nil
@@ -361,6 +367,7 @@ func (f Filter) countParams(now string) (sqlcdb.CountLatestFindingsParams, error
 	params.Severity = nullable(f.Severity)
 	params.Type = nullable(f.Type)
 	params.Status = nullable(f.Status)
+	params.DecidedBy = nullable(f.DecidedBy)
 	params.Query = f.likePattern()
 
 	return params, nil
@@ -373,6 +380,9 @@ func (f Filter) validate() error {
 	}
 	if utf8.RuneCountInString(strings.TrimSpace(f.Query)) > MaxQueryLength {
 		return fmt.Errorf("%w: q must be at most %d characters", ErrInvalid, MaxQueryLength)
+	}
+	if f.DecidedBy != "" && f.DecidedBy != "user" && f.DecidedBy != "agent" {
+		return fmt.Errorf("%w: decided_by %q is not one of user, agent", ErrInvalid, f.DecidedBy)
 	}
 	return validateEnums(f.Severity, f.Type, f.Status)
 }

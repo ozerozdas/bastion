@@ -1230,6 +1230,12 @@ export interface components {
             enabled: boolean;
         };
         /**
+         * FindingDecider
+         * @description Who made a finding decision, the user or an agent over MCP.
+         * @enum {string}
+         */
+        FindingDecider: "user" | "agent";
+        /**
          * OutdatedStatus
          * @description The opt-in outdated-package lookup as the UI and the CLI see it. The
          *     setting is off by default; with it off no request reaches deps.dev and
@@ -1834,8 +1840,9 @@ export interface components {
             scanners: string[];
             status: components["schemas"]["FindingStatus"];
             state?: components["schemas"]["FindingState"];
-            /** @description The user's reason for the decision in `state`. */
+            /** @description The reason recorded with the decision in `state`. */
             reason?: string;
+            decided_by?: components["schemas"]["FindingDecider"];
             /**
              * @description When the decision stops applying, in UTC (`YYYY-MM-DDTHH:MM:SS.sssZ`).
              *     Absent when the decision has no expiry.
@@ -2643,6 +2650,8 @@ export interface components {
         FindingTypeQuery: components["schemas"]["FindingType"];
         /** @description Only findings with this effective status. */
         FindingStatusQuery: components["schemas"]["FindingStatus"];
+        /** @description Only findings whose decision was made by this decider. */
+        FindingDeciderQuery: components["schemas"]["FindingDecider"];
         /**
          * @description Case-insensitive substring to search for in the finding title, rule id
          *     (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
@@ -4178,6 +4187,8 @@ export interface operations {
                 type?: components["parameters"]["FindingTypeQuery"];
                 /** @description Only findings with this effective status. */
                 status?: components["parameters"]["FindingStatusQuery"];
+                /** @description Only findings whose decision was made by this decider. */
+                decided_by?: components["parameters"]["FindingDeciderQuery"];
                 /**
                  * @description Case-insensitive substring to search for in the finding title, rule id
                  *     (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
@@ -4249,6 +4260,8 @@ export interface operations {
                 type?: components["parameters"]["FindingTypeQuery"];
                 /** @description Only findings with this effective status. */
                 status?: components["parameters"]["FindingStatusQuery"];
+                /** @description Only findings whose decision was made by this decider. */
+                decided_by?: components["parameters"]["FindingDeciderQuery"];
                 /**
                  * @description Case-insensitive substring to search for in the finding title, rule id
                  *     (CVE, GHSA or rule name), package name and file path. Trimmed; an empty

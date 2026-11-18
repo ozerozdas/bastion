@@ -40,6 +40,9 @@ func (s *Server) ListFindings(ctx context.Context, request gen.ListFindingsReque
 	if request.Params.Type != nil {
 		filter.Type = string(*request.Params.Type)
 	}
+	if request.Params.DecidedBy != nil {
+		filter.DecidedBy = string(*request.Params.DecidedBy)
+	}
 	if request.Params.Status != nil {
 		filter.Status = string(*request.Params.Status)
 	}
@@ -291,6 +294,7 @@ func findingResponse(finding reports.Finding) gen.Finding {
 		Status:          gen.FindingStatus(finding.Status),
 		State:           findingStatePointer(finding.State),
 		Reason:          stringPointer(finding.Reason),
+		DecidedBy:       findingDeciderPointer(finding.DecidedBy),
 		ExpiresAt:       stringPointer(finding.ExpiresAt),
 		FirstSeenScanId: finding.FirstSeenScanID,
 		Description:     stringPointer(finding.Description),
@@ -528,4 +532,13 @@ func findingStatePointer(state string) *gen.FindingState {
 	}
 	mapped := gen.FindingState(state)
 	return &mapped
+}
+
+// findingDeciderPointer omits decided_by from a finding without a decision.
+func findingDeciderPointer(decidedBy string) *gen.FindingDecider {
+	if decidedBy == "" {
+		return nil
+	}
+	value := gen.FindingDecider(decidedBy)
+	return &value
 }

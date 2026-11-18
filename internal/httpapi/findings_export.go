@@ -46,10 +46,11 @@ func (s *Server) handleFindingsExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filter := reports.Filter{
-		Severity: strings.TrimSpace(query.Get("severity")),
-		Type:     strings.TrimSpace(query.Get("type")),
-		Status:   strings.TrimSpace(query.Get("status")),
-		Query:    query.Get("q"),
+		Severity:  strings.TrimSpace(query.Get("severity")),
+		Type:      strings.TrimSpace(query.Get("type")),
+		Status:    strings.TrimSpace(query.Get("status")),
+		DecidedBy: strings.TrimSpace(query.Get("decided_by")),
+		Query:     query.Get("q"),
 	}
 	if raw := strings.TrimSpace(query.Get("asset_id")); raw != "" {
 		id, err := strconv.ParseInt(raw, 10, 64)

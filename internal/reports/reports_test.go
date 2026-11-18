@@ -389,6 +389,7 @@ func TestFindingsRejectsInvalidFilters(t *testing.T) {
 		{"severity", reports.Filter{Severity: "urgent"}, `severity "urgent"`},
 		{"type", reports.Filter{Type: "bogus"}, `type "bogus"`},
 		{"status", reports.Filter{Status: "muted"}, `status "muted"`},
+		{"decided_by", reports.Filter{DecidedBy: "robot"}, `decided_by "robot"`},
 		{"negative asset", reports.Filter{AssetID: -1}, "asset_id must be positive"},
 	}
 	for _, tc := range cases {

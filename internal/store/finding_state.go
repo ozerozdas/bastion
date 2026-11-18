@@ -19,6 +19,12 @@ const (
 	FindingStateFalsePositive = "false_positive"
 )
 
+// finding_states.decided_by values: who made the decision (#180).
+const (
+	FindingDeciderUser  = "user"
+	FindingDeciderAgent = "agent"
+)
+
 // expiryLayout is the canonical UTC form of finding_states.expires_at. The
 // read queries compare it as text with a passed-in now, so both sides must use
 // it; a lexicographic comparison then orders correctly.
@@ -72,6 +78,7 @@ func SetFindingState(ctx context.Context, db *sql.DB, assetID int64, fingerprint
 		State:       state,
 		Reason:      nullString(reason),
 		ExpiresAt:   expiryValue(expiresAt),
+		DecidedBy:   FindingDeciderUser,
 	})
 	if err != nil {
 		return fmt.Errorf("store: set finding state %q for asset %d: %w", state, assetID, err)
@@ -102,6 +109,84 @@ func (e *UnknownFingerprintsError) Error() string {
 // so the caller never has to undo a partial decision. The optional expiry is
 // shared by the whole batch.
 func SetFindingStates(ctx context.Context, db *sql.DB, assetID int64, fingerprints []string, state, reason string, expiresAt *time.Time) error {
+	return setFindingStates(ctx, db, assetID, fingerprints, state, reason, expiresAt, FindingDeciderUser)
+}
+
+// AgentRefusedError reports a batch an agent may not decide. Scanned content
+// is untrusted and can steer an agent, so malware and secrets stay with the
+// user, as does every decision the user already made. Nothing was written.
+type AgentRefusedError struct {
+	// Restricted names malware and secret findings.
+	Restricted []string
+	// UserDecided names findings whose decision belongs to the user.
+	UserDecided []string
+}
+
+func (e *AgentRefusedError) Error() string {
+	parts := make([]string, 0, 2)
+	if len(e.Restricted) > 0 {
+		parts = append(parts, "malware and secret findings need the user's decision: "+fingerprintSample(e.Restricted))
+	}
+	if len(e.UserDecided) > 0 {
+		parts = append(parts, "the user's decision cannot be changed: "+fingerprintSample(e.UserDecided))
+	}
+	return strings.Join(parts, "; ") + "; nothing was written"
+}
+
+// SetAgentFindingStates records an agent's decision, under the same rules as
+// SetFindingStates. The batch is refused whole with an AgentRefusedError when
+// it names a finding the agent may not decide.
+func SetAgentFindingStates(ctx context.Context, db *sql.DB, assetID int64, fingerprints []string, state, reason string, expiresAt *time.Time) error {
+	return setFindingStates(ctx, db, assetID, fingerprints, state, reason, expiresAt, FindingDeciderAgent)
+}
+
+// ClearAgentFindingStates removes an agent's decisions and returns how many
+// were removed. Naming a decision the user made refuses the whole batch.
+func ClearAgentFindingStates(ctx context.Context, db *sql.DB, assetID int64, fingerprints []string) (int, error) {
+	if db == nil {
+		return 0, errors.New("store: clear agent finding states: database is required")
+	}
+	if len(fingerprints) == 0 || len(fingerprints) > MaxFindingStateBatch {
+		return 0, fmt.Errorf("store: clear agent finding states: between 1 and %d fingerprints per request", MaxFindingStateBatch)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("store: clear agent finding states for asset %d: begin transaction: %w", assetID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	queries := sqlcdb.New(tx)
+	userDecided, err := queries.ListUserDecidedFingerprints(ctx, sqlcdb.ListUserDecidedFingerprintsParams{
+		AssetID:      assetID,
+		Now:          FormatTimestamp(time.Now()),
+		Fingerprints: fingerprints,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("store: clear agent finding states for asset %d: check decisions: %w", assetID, err)
+	}
+	if len(userDecided) > 0 {
+		return 0, &AgentRefusedError{UserDecided: userDecided}
+	}
+
+	var cleared int64
+	for _, fingerprint := range fingerprints {
+		rows, err := queries.DeleteAgentFindingState(ctx, sqlcdb.DeleteAgentFindingStateParams{
+			AssetID:     assetID,
+			Fingerprint: fingerprint,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("store: clear agent finding states for asset %d: %w", assetID, err)
+		}
+		cleared += rows
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("store: clear agent finding states for asset %d: commit: %w", assetID, err)
+	}
+	return int(cleared), nil
+}
+
+func setFindingStates(ctx context.Context, db *sql.DB, assetID int64, fingerprints []string, state, reason string, expiresAt *time.Time, decidedBy string) error {
 	if db == nil {
 		return errors.New("store: set finding states: database is required")
 	}
@@ -169,6 +254,27 @@ func SetFindingStates(ctx context.Context, db *sql.DB, assetID int64, fingerprin
 		return &UnknownFingerprintsError{AssetID: assetID, Fingerprints: unknown}
 	}
 
+	if decidedBy == FindingDeciderAgent {
+		restricted, err := queries.ListAgentRestrictedFingerprints(ctx, sqlcdb.ListAgentRestrictedFingerprintsParams{
+			AssetID:      assetID,
+			Fingerprints: unique,
+		})
+		if err != nil {
+			return fmt.Errorf("store: set finding states for asset %d: check finding types: %w", assetID, err)
+		}
+		userDecided, err := queries.ListUserDecidedFingerprints(ctx, sqlcdb.ListUserDecidedFingerprintsParams{
+			AssetID:      assetID,
+			Now:          FormatTimestamp(time.Now()),
+			Fingerprints: unique,
+		})
+		if err != nil {
+			return fmt.Errorf("store: set finding states for asset %d: check decisions: %w", assetID, err)
+		}
+		if len(restricted) > 0 || len(userDecided) > 0 {
+			return &AgentRefusedError{Restricted: restricted, UserDecided: userDecided}
+		}
+	}
+
 	for _, fingerprint := range unique {
 		if err := queries.UpsertFindingState(ctx, sqlcdb.UpsertFindingStateParams{
 			AssetID:     assetID,
@@ -176,6 +282,7 @@ func SetFindingStates(ctx context.Context, db *sql.DB, assetID int64, fingerprin
 			State:       state,
 			Reason:      nullString(reason),
 			ExpiresAt:   expiryValue(expiresAt),
+			DecidedBy:   decidedBy,
 		}); err != nil {
 			return fmt.Errorf("store: set finding states for asset %d: fingerprint %q: %w", assetID, fingerprint, err)
 		}

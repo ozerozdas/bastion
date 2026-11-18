@@ -106,6 +106,7 @@ SELECT
     END AS TEXT) AS status,
     fs.state AS state,
     fs.reason AS reason,
+    fs.decided_by AS decided_by,
     fs.expires_at AS expires_at,
     CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at
@@ -213,6 +214,7 @@ SELECT
     END AS TEXT) AS status,
     fs.state AS state,
     fs.reason AS reason,
+    fs.decided_by AS decided_by,
     fs.expires_at AS expires_at,
     CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at,
@@ -250,6 +252,7 @@ WHERE a.archived_at IS NULL
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = sqlc.narg(status))
+  AND (sqlc.narg(decided_by) IS NULL OR fs.decided_by = sqlc.narg(decided_by))
   -- Text search (#148): a substring of the title, rule id, package or path.
   -- The caller sends %/_ pre-escaped, so the pattern is literal text; LIKE is
   -- case-insensitive for ASCII. The parentheses keep the ORs inside this filter
@@ -339,6 +342,7 @@ WHERE a.archived_at IS NULL
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(sqlc.arg(now) AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = sqlc.narg(status))
+  AND (sqlc.narg(decided_by) IS NULL OR fs.decided_by = sqlc.narg(decided_by))
   -- Same text search as ListLatestFindings, so the total matches the page.
   AND (sqlc.narg(query) IS NULL OR
        (f.title LIKE sqlc.narg(query) ESCAPE '\')
