@@ -120,6 +120,17 @@ func (s *Server) exchangeToken(w http.ResponseWriter, r *http.Request, presented
 		html.EscapeString(target) + `"><title>bastion</title>`))
 }
 
+// limitAPIBodies caps the body of every /api/* request. A read past the cap
+// fails with *http.MaxBytesError, which the API answers with 413.
+func limitAPIBodies(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isAPIPath(r.URL.Path) && r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxAPIBodyBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // validSession reports whether the request carries the session cookie. The
 // comparison is constant-time so the cookie value cannot be recovered byte by
 // byte from response timing.

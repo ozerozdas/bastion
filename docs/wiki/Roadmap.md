@@ -12,7 +12,8 @@ Each phase ends with a tagged release. Every item below is a GitHub issue under 
 | 2b | v0.3 | Containers & links | Done (v0.3.0) |
 | 3 | v0.4 | Actionable output | Done (v0.4.0) |
 | 4 | v0.5 | AI & automation | Done (v0.5.0) |
-| 5 | later | Scale-out | [Ideas](https://github.com/ozerozdas/bastion/milestone/6) |
+| 5 | v0.6 | Continuous visibility | [Planned](https://github.com/ozerozdas/bastion/milestone/9) |
+| 6 | later | Scale-out | [Ideas](https://github.com/ozerozdas/bastion/milestone/6) |
 
 Patch releases (v0.1.x, v0.2.x, …) carry fixes and small chores only; see the open
 patch milestone.
@@ -48,10 +49,17 @@ patch milestone.
 - Optional local LLM (Ollama on localhost only), off by default
 - Official GitHub Action with SARIF upload
 
+## v0.6 — Continuous visibility
+
+- Scheduled scans for one local user while `bastion serve` runs
+- End-of-life runtime and OS findings (opt-in, outbound call clearly labelled)
+- Opt-in git-history secret scanning
+- Shipped source maps in images, if time allows
+
 ## Later
 
-Grype and Syft, git-history secret scanning, server mode with scheduled scans, binary
-hardening, JS bundle inspection, reachability beyond Go. These are
+Grype and Syft, multi-user server mode, binary hardening, deeper JS bundle inspection,
+reachability beyond Go. These are
 [`needs-discussion`](https://github.com/ozerozdas/bastion/issues?q=is%3Aopen+label%3Aneeds-discussion) issues: comment
 before building.
 

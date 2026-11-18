@@ -26,13 +26,14 @@ var ErrInvalid = errors.New("reports: invalid filter")
 // Filter narrows the latest-findings list. The zero value means every asset and
 // every enum value; AssetID 0 means "all assets". Query is a case-insensitive
 // substring of the title, rule id, package name or file path; empty matches
-// everything.
+// everything. Fingerprint, when set, matches that one finding exactly.
 type Filter struct {
-	AssetID  int64
-	Severity string
-	Type     string
-	Status   string
-	Query    string
+	AssetID     int64
+	Fingerprint string
+	Severity    string
+	Type        string
+	Status      string
+	Query       string
 }
 
 // MaxQueryLength caps the search text. Longer input is refused rather than
@@ -336,6 +337,7 @@ func (f Filter) params(now string, by Sort, limit, offset int64) (sqlcdb.ListLat
 	if f.AssetID > 0 {
 		params.AssetID = f.AssetID
 	}
+	params.Fingerprint = nullable(f.Fingerprint)
 	params.Severity = nullable(f.Severity)
 	params.Type = nullable(f.Type)
 	params.Status = nullable(f.Status)
@@ -355,6 +357,7 @@ func (f Filter) countParams(now string) (sqlcdb.CountLatestFindingsParams, error
 	if f.AssetID > 0 {
 		params.AssetID = f.AssetID
 	}
+	params.Fingerprint = nullable(f.Fingerprint)
 	params.Severity = nullable(f.Severity)
 	params.Type = nullable(f.Type)
 	params.Status = nullable(f.Status)

@@ -82,7 +82,7 @@ scan's package inventory as a CycloneDX 1.6 JSON BOM (`GET /api/scans/<id>/sbom`
 
 ## Connections
 
-Where credentials live. In v0.1 this is **GitHub** only.
+Where credentials live: **GitHub** tokens and **AWS** profiles for ECR.
 
 - **Add** — paste a read-only token (see [Getting Started](Getting-Started.md#3-connect-github-optional)).
   It is stored in the OS keychain.

@@ -56,6 +56,9 @@ const (
 	// readHeaderTimeout bounds slow-header clients; the server is local, so
 	// every legitimate request is fast.
 	readHeaderTimeout = 10 * time.Second
+	// maxAPIBodyBytes caps one /api/* request body. The largest legitimate body
+	// is a bulk finding-state change of 5000 fingerprints, well under this.
+	maxAPIBodyBytes = 4 << 20
 )
 
 // placeholderHTML is served when the SPA has not been built: web/dist then
@@ -294,7 +297,13 @@ func (s *Server) buildHandler() http.Handler {
 		// Malformed request bodies and handler failures are problem+json too:
 		// the strict handler's defaults would answer with text/plain, breaking
 		// the API's single error shape (§6).
-		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				writeProblem(w, http.StatusRequestEntityTooLarge, "Content Too Large",
+					"the request body is larger than the API accepts")
+				return
+			}
 			writeProblem(w, http.StatusBadRequest, "Bad Request", "the request body is not valid JSON")
 		},
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
@@ -328,6 +337,7 @@ func (s *Server) buildHandler() http.Handler {
 	mux.Handle("/", newUIHandler(web.Dist(), s.log))
 
 	var h http.Handler = mux
+	h = limitAPIBodies(h)
 	h = s.requireSession(h)
 	h = s.checkHost(h)
 	h = securityHeaders(h)
@@ -376,6 +386,10 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		Handler:           s.handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ErrorLog:          slog.NewLogLogger(s.log.Handler(), slog.LevelDebug),
+	}
+	// An explanation can outlast shutdownGrace, so it is canceled up front.
+	if s.llm != nil {
+		srv.RegisterOnShutdown(s.llm.Shutdown)
 	}
 
 	serveErr := make(chan error, 1)
