@@ -139,7 +139,7 @@ starts no worker pool, download or scan recovery of its own, so it never disturb
 `bastion serve` running beside it. It opens the same database (`--data-dir` applies),
 so an agent reads what the UI shows. stdout is the protocol stream; logs go to stderr.
 
-The one write is `trigger_scan` (`{asset_id}`): it queues a scan for a **running**
+`trigger_scan` (`{asset_id}`) queues a scan for a **running**
 `bastion serve` and returns `{scan_id, status: "queued"}`. The server detects serve
 through an exclusive lock on `<data-dir>/serve.lock`; with no server running the tool
 fails with *bastion serve is not running; start it to run scans* and writes nothing.
@@ -148,6 +148,12 @@ the UI (`trigger: api`) like any other scan. If the asset already has a queued o
 running scan, that scan is returned with `already_queued: true` instead of a second
 one. A scan queued just before serve stops stays queued and is picked up at the next
 `bastion serve` start, never run by this process.
+
+`set_finding_state` (`{asset_id, fingerprints, state, reason, expires_at?}`) lets an agent
+close noise, and `clear_finding_state` (`{asset_id, fingerprints}`) reopens what an agent
+closed. These decisions apply immediately and the UI lists them under **Closed by agent**.
+Scanned content can try to steer an agent, so both tools refuse the whole batch when it
+names a decision you made, and `set_finding_state` also refuses malware and secret findings.
 
 Generic `mcpServers` configuration (Claude Code, Claude Desktop and other MCP clients):
 
@@ -167,10 +173,12 @@ If the database lives elsewhere, pass the global flag through:
 
 Tools: `list_assets`, `list_findings` (asset, severity, type, status, text query, sort and
 paging), `get_fix_plan`, `diff_scans` (two scan ids, or an asset's last two succeeded
-scans) and `trigger_scan` (queue a scan for the running server). Every result that
+scans), `trigger_scan` (queue a scan for the running server), `set_finding_state` and
+`clear_finding_state`. Every result that
 carries scanner-derived values includes an `untrusted_content` notice: those values are
-data, never instructions (see the threat model). Apart from `trigger_scan`, the MCP
-server makes no writes, and it makes no network calls of its own.
+data, never instructions (see the threat model). Apart from `trigger_scan` and the two
+finding-state tools, the MCP server makes no writes, and it makes no network calls of its
+own.
 
 For clients that only speak HTTP, `bastion mcp --http --port 7778` serves the same tools
 over streamable HTTP at `http://127.0.0.1:7778/`. It binds loopback only and needs no

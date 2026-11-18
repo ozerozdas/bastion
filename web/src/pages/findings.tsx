@@ -444,7 +444,12 @@ export function FindingsPage() {
   const grouped = search.asset === undefined && search.view !== 'single'
   const [type, setType] = useState<FindingType | ''>('')
   const [severity, setSeverity] = useState<Severity | ''>('')
-  const [status, setStatus] = useState<FindingStatus>('open')
+  const [statusChoice, setStatusChoice] = useState<
+    FindingStatus | 'agent'
+  >('open')
+  // Closed by agent is the ignored list narrowed to agent decisions.
+  const status: FindingStatus = statusChoice === 'open' ? 'open' : 'ignored'
+  const decidedBy = statusChoice === 'agent' ? ('agent' as const) : undefined
   // The search box is local while typing and debounces into ?q=; the ref holds
   // the value the URL already has, so a URL-driven change can be told apart.
   const [queryInput, setQueryInput] = useState(search.q ?? '')
@@ -537,6 +542,7 @@ export function FindingsPage() {
       type: type === '' ? undefined : type,
       severity: severity === '' ? undefined : severity,
       status,
+      decidedBy,
       q: search.q,
       view: grouped ? 'grouped' : 'single',
       limit: pageSize,
@@ -889,14 +895,15 @@ export function FindingsPage() {
     {
       id: 'findings-status',
       label: t('findings.filter.status'),
-      value: status,
-      className: 'w-36',
+      value: statusChoice,
+      className: 'w-44',
       options: [
         { value: 'open', label: t('findings.filter.open') },
         { value: 'ignored', label: t('findings.filter.ignored') },
+        { value: 'agent', label: t('findings.filter.agent') },
       ],
       onChange: (value) => {
-        setStatus(value as FindingStatus)
+        setStatusChoice(value as FindingStatus | 'agent')
         resetPage()
         setOpenFingerprint(null)
         setOpenGroupKey(null)
@@ -962,6 +969,7 @@ export function FindingsPage() {
               type: type === '' ? undefined : type,
               severity: severity === '' ? undefined : severity,
               status,
+              decidedBy,
               q: search.q,
             }}
             view={grouped ? 'grouped' : 'single'}

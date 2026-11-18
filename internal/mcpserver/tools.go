@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -11,6 +12,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/assets"
 	"github.com/ozerozdas/bastion/internal/fixplan"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/store"
 )
 
 // scanStatusSucceeded is the only scans.status a diff accepts (§5).
@@ -85,9 +87,9 @@ type triggerScanData struct {
 	AlreadyQueued bool `json:"already_queued" jsonschema:"the asset already had a queued or running scan, returned instead of a new one"`
 }
 
-// triggerScan queues a scan row for a running `bastion serve` to pick up. It is
-// the only tool that writes, and it writes exactly one queued scan row: the
-// scan itself runs in the serve process, so this process needs no manager.
+// triggerScan queues a scan row for a running `bastion serve` to pick up. It
+// writes exactly one queued scan row: the scan itself runs in the serve
+// process, so this process needs no manager.
 func (s *Server) triggerScan(ctx context.Context, _ *mcp.CallToolRequest, in triggerScanInput) (
 	*mcp.CallToolResult, triggerScanData, error,
 ) {
@@ -104,6 +106,89 @@ func (s *Server) triggerScan(ctx context.Context, _ *mcp.CallToolRequest, in tri
 		Status:        scanStatusQueued,
 		AlreadyQueued: alreadyQueued,
 	}, nil
+}
+
+// --- set_finding_state and clear_finding_state ----------------------------
+
+// Limits on one agent decision. The reason is shown to the user, so its length
+// is refused rather than clipped.
+const (
+	maxAgentBatch     = 500
+	maxAgentReasonLen = 1000
+)
+
+type setFindingStateInput struct {
+	AssetID      int64    `json:"asset_id" jsonschema:"id of the asset the findings belong to"`
+	Fingerprints []string `json:"fingerprints" jsonschema:"fingerprints from list_findings, at most 500"`
+	State        string   `json:"state" jsonschema:"decision: ignored, accepted_risk or false_positive"`
+	Reason       string   `json:"reason" jsonschema:"why the findings are noise, at most 1000 bytes; the user reviews it"`
+	ExpiresAt    string   `json:"expires_at,omitempty" jsonschema:"optional future end of the decision: RFC 3339 or YYYY-MM-DD"`
+}
+
+type setFindingStateData struct {
+	Updated   int    `json:"updated" jsonschema:"number of findings closed"`
+	DecidedBy string `json:"decided_by" jsonschema:"who the decision is recorded for: agent"`
+}
+
+func (s *Server) setFindingState(ctx context.Context, _ *mcp.CallToolRequest, in setFindingStateInput) (
+	*mcp.CallToolResult, setFindingStateData, error,
+) {
+	if len(in.Fingerprints) > maxAgentBatch {
+		return nil, setFindingStateData{}, fmt.Errorf("set finding state: at most %d fingerprints per call", maxAgentBatch)
+	}
+	if len(in.Reason) > maxAgentReasonLen {
+		return nil, setFindingStateData{}, fmt.Errorf("set finding state: reason is longer than %d bytes", maxAgentReasonLen)
+	}
+	unique := uniqueFingerprints(in.Fingerprints)
+	err := s.assets.SetAgentFindingStates(ctx, assets.BulkFindingStateInput{
+		AssetID:      in.AssetID,
+		Fingerprints: unique,
+		State:        in.State,
+		Reason:       in.Reason,
+		ExpiresAt:    in.ExpiresAt,
+	})
+	if err != nil {
+		return nil, setFindingStateData{}, fmt.Errorf("set finding state: %w", err)
+	}
+	return nil, setFindingStateData{Updated: len(unique), DecidedBy: store.FindingDeciderAgent}, nil
+}
+
+type clearFindingStateInput struct {
+	AssetID      int64    `json:"asset_id" jsonschema:"id of the asset the findings belong to"`
+	Fingerprints []string `json:"fingerprints" jsonschema:"fingerprints to reopen, at most 500"`
+}
+
+type clearFindingStateData struct {
+	Cleared int `json:"cleared" jsonschema:"number of agent decisions removed"`
+}
+
+func (s *Server) clearFindingState(ctx context.Context, _ *mcp.CallToolRequest, in clearFindingStateInput) (
+	*mcp.CallToolResult, clearFindingStateData, error,
+) {
+	if len(in.Fingerprints) > maxAgentBatch {
+		return nil, clearFindingStateData{}, fmt.Errorf("clear finding state: at most %d fingerprints per call", maxAgentBatch)
+	}
+	cleared, err := s.assets.ClearAgentFindingStates(ctx, in.AssetID, uniqueFingerprints(in.Fingerprints))
+	if err != nil {
+		return nil, clearFindingStateData{}, fmt.Errorf("clear finding state: %w", err)
+	}
+	return nil, clearFindingStateData{Cleared: cleared}, nil
+}
+
+// uniqueFingerprints trims the list and drops repeats, keeping blanks so the
+// service rejects them.
+func uniqueFingerprints(fingerprints []string) []string {
+	seen := make(map[string]struct{}, len(fingerprints))
+	out := make([]string, 0, len(fingerprints))
+	for _, fingerprint := range fingerprints {
+		fingerprint = strings.TrimSpace(fingerprint)
+		if _, dup := seen[fingerprint]; dup {
+			continue
+		}
+		seen[fingerprint] = struct{}{}
+		out = append(out, fingerprint)
+	}
+	return out
 }
 
 // --- list_assets ---------------------------------------------------------
@@ -204,15 +289,16 @@ func linkItems(links []assets.AssetLink) []assetLink {
 // --- list_findings -------------------------------------------------------
 
 type listFindingsInput struct {
-	AssetID  int64  `json:"asset_id,omitempty" jsonschema:"only findings of this asset id; omit or 0 for every asset"`
-	Severity string `json:"severity,omitempty" jsonschema:"only this severity: critical, high, medium, low or unknown"`
-	Type     string `json:"type,omitempty" jsonschema:"only this finding type: vulnerability, secret, outdated, misconfig, license, malware or sast"`
-	Status   string `json:"status,omitempty" jsonschema:"only this effective status: open or ignored"`
-	Query    string `json:"query,omitempty" jsonschema:"case-insensitive substring of the title, rule id, package name or file path; at most 200 characters"`
-	Sort     string `json:"sort,omitempty" jsonschema:"order by severity, title, package, project or type; omit for most severe first"`
-	Order    string `json:"order,omitempty" jsonschema:"sort direction: asc or desc; omit for ascending"`
-	Limit    int    `json:"limit,omitempty" jsonschema:"page size between 1 and 500; omit for 50"`
-	Offset   int    `json:"offset,omitempty" jsonschema:"number of findings to skip; omit for 0"`
+	AssetID   int64  `json:"asset_id,omitempty" jsonschema:"only findings of this asset id; omit or 0 for every asset"`
+	Severity  string `json:"severity,omitempty" jsonschema:"only this severity: critical, high, medium, low or unknown"`
+	Type      string `json:"type,omitempty" jsonschema:"only this finding type: vulnerability, secret, outdated, misconfig, license, malware or sast"`
+	Status    string `json:"status,omitempty" jsonschema:"only this effective status: open or ignored"`
+	DecidedBy string `json:"decided_by,omitempty" jsonschema:"only decisions made by: user or agent"`
+	Query     string `json:"query,omitempty" jsonschema:"case-insensitive substring of the title, rule id, package name or file path; at most 200 characters"`
+	Sort      string `json:"sort,omitempty" jsonschema:"order by severity, title, package, project or type; omit for most severe first"`
+	Order     string `json:"order,omitempty" jsonschema:"sort direction: asc or desc; omit for ascending"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"page size between 1 and 500; omit for 50"`
+	Offset    int    `json:"offset,omitempty" jsonschema:"number of findings to skip; omit for 0"`
 }
 
 type epssItem struct {
@@ -240,6 +326,7 @@ type findingItem struct {
 	Status          string    `json:"status" jsonschema:"effective status: open or ignored"`
 	State           string    `json:"state,omitempty" jsonschema:"stored ignore decision, if any"`
 	Reason          string    `json:"reason,omitempty" jsonschema:"reason recorded with the ignore decision"`
+	DecidedBy       string    `json:"decided_by,omitempty" jsonschema:"who made the ignore decision: user or agent"`
 	ExpiresAt       string    `json:"expires_at,omitempty" jsonschema:"RFC 3339 expiry of the ignore decision"`
 	Expired         bool      `json:"expired" jsonschema:"the ignore decision expired, so the finding is open again"`
 	FirstSeenScanID *int64    `json:"first_seen_scan_id,omitempty" jsonschema:"scan that first reported the finding"`
@@ -266,11 +353,12 @@ func (s *Server) listFindings(ctx context.Context, _ *mcp.CallToolRequest, in li
 	}
 	page := reports.Page{Limit: limit, Offset: in.Offset}
 	filter := reports.Filter{
-		AssetID:  in.AssetID,
-		Severity: in.Severity,
-		Type:     in.Type,
-		Status:   in.Status,
-		Query:    in.Query,
+		AssetID:   in.AssetID,
+		Severity:  in.Severity,
+		Type:      in.Type,
+		Status:    in.Status,
+		DecidedBy: in.DecidedBy,
+		Query:     in.Query,
 	}
 	by := reports.Sort{Column: in.Sort, Order: in.Order}
 
@@ -312,6 +400,7 @@ func findingResponse(finding reports.Finding) findingItem {
 		Status:          finding.Status,
 		State:           finding.State,
 		Reason:          finding.Reason,
+		DecidedBy:       finding.DecidedBy,
 		ExpiresAt:       finding.ExpiresAt,
 		Expired:         finding.Expired,
 		FirstSeenScanID: finding.FirstSeenScanID,

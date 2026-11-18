@@ -4,23 +4,50 @@
 -- Re-deciding replaces the previous state, reason and expiry; the decision
 -- survives later scans because it is keyed on (asset_id, fingerprint). A NULL
 -- expires_at keeps the decision until it is cleared (#32).
-INSERT INTO finding_states (asset_id, fingerprint, state, reason, expires_at)
+INSERT INTO finding_states (asset_id, fingerprint, state, reason, expires_at, decided_by)
 VALUES (
     sqlc.arg(asset_id),
     sqlc.arg(fingerprint),
     sqlc.arg(state),
     sqlc.narg(reason),
-    sqlc.narg(expires_at)
+    sqlc.narg(expires_at),
+    sqlc.arg(decided_by)
 )
 ON CONFLICT (asset_id, fingerprint) DO UPDATE SET
     state      = excluded.state,
     reason     = excluded.reason,
-    expires_at = excluded.expires_at;
+    expires_at = excluded.expires_at,
+    decided_by = excluded.decided_by;
 
 -- name: DeleteFindingState :exec
 -- Remove the decision, so the finding shows its stored status again.
 DELETE FROM finding_states
 WHERE asset_id = sqlc.arg(asset_id) AND fingerprint = sqlc.arg(fingerprint);
+
+-- name: DeleteAgentFindingState :execrows
+-- Remove a decision only when an agent made it.
+DELETE FROM finding_states
+WHERE asset_id = sqlc.arg(asset_id)
+  AND fingerprint = sqlc.arg(fingerprint)
+  AND decided_by = 'agent';
+
+-- name: ListAgentRestrictedFingerprints :many
+-- The named fingerprints an agent may never close: malware and secrets.
+SELECT DISTINCT fingerprint FROM findings
+WHERE asset_id = sqlc.arg(asset_id)
+  AND type IN ('malware', 'secret')
+  AND fingerprint IN (sqlc.slice('fingerprints'))
+ORDER BY fingerprint;
+
+-- name: ListUserDecidedFingerprints :many
+-- The named fingerprints whose decision belongs to the user. An expired
+-- decision no longer applies: the finding is open again.
+SELECT fingerprint FROM finding_states
+WHERE asset_id = sqlc.arg(asset_id)
+  AND decided_by = 'user'
+  AND (expires_at IS NULL OR expires_at > CAST(sqlc.arg(now) AS TEXT))
+  AND fingerprint IN (sqlc.slice('fingerprints'))
+ORDER BY fingerprint;
 
 -- name: GetFindingState :one
 SELECT * FROM finding_states

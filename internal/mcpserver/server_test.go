@@ -195,11 +195,13 @@ func TestToolsAreDescribed(t *testing.T) {
 	}
 
 	want := map[string][]string{
-		"list_assets":   {},
-		"list_findings": {"asset_id", "severity", "type", "status", "query", "sort", "order", "limit", "offset"},
-		"get_fix_plan":  {"asset_id"},
-		"diff_scans":    {"scan_id", "against_scan_id", "asset_id"},
-		"trigger_scan":  {"asset_id"},
+		"list_assets":         {},
+		"list_findings":       {"asset_id", "severity", "type", "status", "decided_by", "query", "sort", "order", "limit", "offset"},
+		"get_fix_plan":        {"asset_id"},
+		"diff_scans":          {"scan_id", "against_scan_id", "asset_id"},
+		"trigger_scan":        {"asset_id"},
+		"set_finding_state":   {"asset_id", "fingerprints", "state", "reason", "expires_at"},
+		"clear_finding_state": {"asset_id", "fingerprints"},
 	}
 	for name, properties := range want {
 		tool, ok := byName[name]

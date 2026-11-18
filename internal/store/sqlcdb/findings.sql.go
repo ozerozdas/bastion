@@ -88,12 +88,13 @@ WHERE a.archived_at IS NULL
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(?6 AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = ?5)
+  AND (?7 IS NULL OR fs.decided_by = ?7)
   -- Same text search as ListLatestFindings, so the total matches the page.
-  AND (?7 IS NULL OR
-       (f.title LIKE ?7 ESCAPE '\')
-    OR (f.rule_id LIKE ?7 ESCAPE '\')
-    OR (f.package_name LIKE ?7 ESCAPE '\')
-    OR (f.location LIKE ?7 ESCAPE '\'))
+  AND (?8 IS NULL OR
+       (f.title LIKE ?8 ESCAPE '\')
+    OR (f.rule_id LIKE ?8 ESCAPE '\')
+    OR (f.package_name LIKE ?8 ESCAPE '\')
+    OR (f.location LIKE ?8 ESCAPE '\'))
   AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 `
 
@@ -104,6 +105,7 @@ type CountLatestFindingsParams struct {
 	Severity    interface{}
 	Status      interface{}
 	Now         string
+	DecidedBy   interface{}
 	Query       interface{}
 }
 
@@ -117,6 +119,7 @@ func (q *Queries) CountLatestFindings(ctx context.Context, arg CountLatestFindin
 		arg.Severity,
 		arg.Status,
 		arg.Now,
+		arg.DecidedBy,
 		arg.Query,
 	)
 	var count int64
@@ -291,6 +294,7 @@ SELECT
     END AS TEXT) AS status,
     fs.state AS state,
     fs.reason AS reason,
+    fs.decided_by AS decided_by,
     fs.expires_at AS expires_at,
     CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(?1 AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at
@@ -367,6 +371,7 @@ type ListFindingsByScanRow struct {
 	Status          string
 	State           sql.NullString
 	Reason          sql.NullString
+	DecidedBy       sql.NullString
 	ExpiresAt       sql.NullString
 	Expired         int64
 	CreatedAt       string
@@ -423,6 +428,7 @@ func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScan
 			&i.Status,
 			&i.State,
 			&i.Reason,
+			&i.DecidedBy,
 			&i.ExpiresAt,
 			&i.Expired,
 			&i.CreatedAt,
@@ -478,6 +484,7 @@ SELECT
     END AS TEXT) AS status,
     fs.state AS state,
     fs.reason AS reason,
+    fs.decided_by AS decided_by,
     fs.expires_at AS expires_at,
     CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(?1 AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at,
@@ -515,15 +522,16 @@ WHERE a.archived_at IS NULL
         WHEN fs.id IS NULL OR fs.expires_at <= CAST(?1 AS TEXT) THEN f.status
         ELSE 'ignored'
     END AS TEXT) = ?8)
+  AND (?9 IS NULL OR fs.decided_by = ?9)
   -- Text search (#148): a substring of the title, rule id, package or path.
   -- The caller sends %/_ pre-escaped, so the pattern is literal text; LIKE is
   -- case-insensitive for ASCII. The parentheses keep the ORs inside this filter
   -- and are also required by sqlc, which rejects two bare ESCAPE clauses.
-  AND (?9 IS NULL OR
-       (f.title LIKE ?9 ESCAPE '\')
-    OR (f.rule_id LIKE ?9 ESCAPE '\')
-    OR (f.package_name LIKE ?9 ESCAPE '\')
-    OR (f.location LIKE ?9 ESCAPE '\'))
+  AND (?10 IS NULL OR
+       (f.title LIKE ?10 ESCAPE '\')
+    OR (f.rule_id LIKE ?10 ESCAPE '\')
+    OR (f.package_name LIKE ?10 ESCAPE '\')
+    OR (f.location LIKE ?10 ESCAPE '\'))
   AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 ORDER BY
     -- A requested column sorts first. SQLite cannot parameterize ASC/DESC, so
@@ -568,8 +576,8 @@ ORDER BY
     CASE WHEN sort_key = 0 THEN f.asset_id END ASC,
     -- Stable tiebreaker: every page and direction ends in one deterministic order.
     f.id ASC
-LIMIT CASE WHEN ?11 IS NULL THEN -1 ELSE ?11 END
-OFFSET CASE WHEN ?10 IS NULL THEN 0 ELSE ?10 END
+LIMIT CASE WHEN ?12 IS NULL THEN -1 ELSE ?12 END
+OFFSET CASE WHEN ?11 IS NULL THEN 0 ELSE ?11 END
 `
 
 type ListLatestFindingsParams struct {
@@ -581,6 +589,7 @@ type ListLatestFindingsParams struct {
 	Type        interface{}
 	Severity    interface{}
 	Status      interface{}
+	DecidedBy   interface{}
 	Query       interface{}
 	Offset      interface{}
 	Limit       interface{}
@@ -613,6 +622,7 @@ type ListLatestFindingsRow struct {
 	Status          string
 	State           sql.NullString
 	Reason          sql.NullString
+	DecidedBy       sql.NullString
 	ExpiresAt       sql.NullString
 	Expired         int64
 	CreatedAt       string
@@ -635,6 +645,7 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 		arg.Type,
 		arg.Severity,
 		arg.Status,
+		arg.DecidedBy,
 		arg.Query,
 		arg.Offset,
 		arg.Limit,
@@ -673,6 +684,7 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 			&i.Status,
 			&i.State,
 			&i.Reason,
+			&i.DecidedBy,
 			&i.ExpiresAt,
 			&i.Expired,
 			&i.CreatedAt,

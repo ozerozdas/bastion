@@ -76,6 +76,7 @@ type FindingState struct {
 	Reason      sql.NullString
 	CreatedAt   string
 	ExpiresAt   sql.NullString
+	DecidedBy   string
 }
 
 type FixPlanPullRequest struct {

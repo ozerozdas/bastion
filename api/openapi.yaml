@@ -1622,6 +1622,7 @@ paths:
         - $ref: "#/components/parameters/SeverityQuery"
         - $ref: "#/components/parameters/FindingTypeQuery"
         - $ref: "#/components/parameters/FindingStatusQuery"
+        - $ref: "#/components/parameters/FindingDeciderQuery"
         - $ref: "#/components/parameters/FindingsSearchQuery"
         - $ref: "#/components/parameters/FindingsLimitQuery"
         - $ref: "#/components/parameters/OffsetQuery"
@@ -1681,6 +1682,7 @@ paths:
         - $ref: "#/components/parameters/SeverityQuery"
         - $ref: "#/components/parameters/FindingTypeQuery"
         - $ref: "#/components/parameters/FindingStatusQuery"
+        - $ref: "#/components/parameters/FindingDeciderQuery"
         - $ref: "#/components/parameters/FindingsSearchQuery"
       responses:
         "200":
@@ -2327,6 +2329,13 @@ components:
       description: Only findings with this effective status.
       schema:
         $ref: "#/components/schemas/FindingStatus"
+    FindingDeciderQuery:
+      name: decided_by
+      in: query
+      required: false
+      description: Only findings whose decision was made by this decider.
+      schema:
+        $ref: "#/components/schemas/FindingDecider"
     FindingsSearchQuery:
       name: q
       in: query
@@ -2529,6 +2538,11 @@ components:
           description: |
             True opts in to the daily FIRST.org download; false turns it off and
             stops every future request.
+    FindingDecider:
+      type: string
+      title: FindingDecider
+      description: Who made a finding decision, the user or an agent over MCP.
+      enum: [user, agent]
     OutdatedStatus:
       type: object
       title: OutdatedStatus
@@ -3283,7 +3297,9 @@ components:
           $ref: "#/components/schemas/FindingState"
         reason:
           type: string
-          description: The user's reason for the decision in `state`.
+          description: The reason recorded with the decision in `state`.
+        decided_by:
+          $ref: "#/components/schemas/FindingDecider"
         expires_at:
           type: string
           description: |

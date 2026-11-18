@@ -302,6 +302,11 @@ export function FindingDrawer({
                       })
                     : t('finding.marked', { state: stateLabel })}
                 </p>
+                {finding.decided_by === 'agent' ? (
+                  <p className="text-xs text-faint">
+                    {t('finding.decidedByAgent')}
+                  </p>
+                ) : null}
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
