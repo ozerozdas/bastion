@@ -38,7 +38,7 @@ const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
 
 /** statusView maps a scan status to its badge text and tone (§7.5). */
-const statusView: Record<
+export const statusView: Record<
   Scan['status'],
   { tone: 'neutral' | 'ok' | 'critical'; labelKey: string }
 > = {
@@ -1010,7 +1010,7 @@ function ErrorNote({ error, fix }: { error: unknown; fix: string }) {
 }
 
 /** scanWhen says when the last scan finished, or that it is still running. */
-function scanWhen(lastScan: Asset['last_scan'], running: boolean): string {
+export function scanWhen(lastScan: Asset['last_scan'], running: boolean): string {
   if (running) {
     return t('scanStatus.inProgress')
   }

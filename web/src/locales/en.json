@@ -259,6 +259,8 @@
 
   "asset.fallback": "Asset {id}",
 
+  "assetFindings.rescan": "Rescan",
+  "assetFindings.changes": "Changes",
   "findings.tabs.findings": "Findings",
   "findings.tabs.fixPlan": "Fix plan",
   "findings.tabs.aria": "Findings views",

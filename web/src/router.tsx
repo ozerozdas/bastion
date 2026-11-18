@@ -15,6 +15,7 @@ import {
   parseProjectsTabSearch,
   parseScanDiffSearch,
 } from './lib/urls'
+import { AssetFindingsPage } from './pages/asset-findings'
 import { ConnectionsPage } from './pages/connections'
 import { ContainersPage } from './pages/containers'
 import { DashboardPage } from './pages/dashboard'
@@ -80,11 +81,31 @@ const legacyProjectsRoute = createRoute({
 const findingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/findings',
-  // Grouped is the default view; ?view=single opts out, and ?asset=<id>
-  // narrows the list to one project, which is always single. Both survive
-  // reloads and links.
+  // Grouped is the default view and ?view=single opts out. ?asset=<id> is the
+  // old form of the asset page, and the list's own filters still navigate here.
   validateSearch: parseFindingsSearch,
+  beforeLoad: ({ search: { asset, ...search } }) => {
+    if (!/^[1-9]\d*$/.test(String(asset))) return
+    throw redirect({
+      to: '/findings/$assetId',
+      params: { assetId: String(asset) },
+      search,
+      replace: true,
+    })
+  },
   component: FindingsPage,
+})
+
+// One asset's findings with its scan status and rescan (#182).
+const assetFindingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/findings/$assetId',
+  validateSearch: parseFindingsSearch,
+  beforeLoad: ({ params }) => {
+    if (/^[1-9]\d*$/.test(params.assetId)) return
+    throw redirect({ to: '/findings', replace: true })
+  },
+  component: AssetFindingsPage,
 })
 
 // What changed after a rescan: one scan against another of the same project
@@ -133,6 +154,7 @@ const routeTree = rootRoute.addChildren([
   repositoriesRoute,
   legacyProjectsRoute,
   findingsRoute,
+  assetFindingsRoute,
   scanDiffRoute,
   legacyReportsRoute,
   legacySecurityReportsRoute,

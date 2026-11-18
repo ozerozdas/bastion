@@ -259,6 +259,8 @@
 
   "asset.fallback": "Varlık {id}",
 
+  "assetFindings.rescan": "Yeniden tara",
+  "assetFindings.changes": "Değişiklikler",
   "findings.tabs.findings": "Bulgular",
   "findings.tabs.fixPlan": "Düzeltme planı",
   "findings.tabs.aria": "Bulgu görünümleri",
