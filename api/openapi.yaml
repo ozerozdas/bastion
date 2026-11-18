@@ -1623,6 +1623,10 @@ paths:
         - $ref: "#/components/parameters/FindingTypeQuery"
         - $ref: "#/components/parameters/FindingStatusQuery"
         - $ref: "#/components/parameters/FindingDeciderQuery"
+        - $ref: "#/components/parameters/FindingFixQuery"
+        - $ref: "#/components/parameters/FindingDependencyQuery"
+        - $ref: "#/components/parameters/FindingHideTestsQuery"
+        - $ref: "#/components/parameters/FindingHideMaintenanceQuery"
         - $ref: "#/components/parameters/FindingsSearchQuery"
         - $ref: "#/components/parameters/FindingsLimitQuery"
         - $ref: "#/components/parameters/OffsetQuery"
@@ -1683,6 +1687,10 @@ paths:
         - $ref: "#/components/parameters/FindingTypeQuery"
         - $ref: "#/components/parameters/FindingStatusQuery"
         - $ref: "#/components/parameters/FindingDeciderQuery"
+        - $ref: "#/components/parameters/FindingFixQuery"
+        - $ref: "#/components/parameters/FindingDependencyQuery"
+        - $ref: "#/components/parameters/FindingHideTestsQuery"
+        - $ref: "#/components/parameters/FindingHideMaintenanceQuery"
         - $ref: "#/components/parameters/FindingsSearchQuery"
       responses:
         "200":
@@ -2336,6 +2344,34 @@ components:
       description: Only findings whose decision was made by this decider.
       schema:
         $ref: "#/components/schemas/FindingDecider"
+    FindingFixQuery:
+      name: fix
+      in: query
+      required: false
+      description: Only findings with a known fix, or only those without one.
+      schema:
+        $ref: "#/components/schemas/FindingFixFilter"
+    FindingDependencyQuery:
+      name: dependency
+      in: query
+      required: false
+      description: Only findings of direct, or of indirect, dependencies.
+      schema:
+        $ref: "#/components/schemas/FindingDependencyFilter"
+    FindingHideTestsQuery:
+      name: hide_tests
+      in: query
+      required: false
+      description: Leave out findings in test, fixture and example paths.
+      schema:
+        type: boolean
+    FindingHideMaintenanceQuery:
+      name: hide_maintenance
+      in: query
+      required: false
+      description: Leave out licence and outdated-package findings.
+      schema:
+        type: boolean
     FindingsSearchQuery:
       name: q
       in: query
@@ -2538,6 +2574,14 @@ components:
           description: |
             True opts in to the daily FIRST.org download; false turns it off and
             stops every future request.
+    FindingFixFilter:
+      type: string
+      title: FindingFixFilter
+      enum: [available, none]
+    FindingDependencyFilter:
+      type: string
+      title: FindingDependencyFilter
+      enum: [direct, indirect]
     FindingDecider:
       type: string
       title: FindingDecider

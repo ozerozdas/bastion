@@ -289,16 +289,20 @@ func linkItems(links []assets.AssetLink) []assetLink {
 // --- list_findings -------------------------------------------------------
 
 type listFindingsInput struct {
-	AssetID   int64  `json:"asset_id,omitempty" jsonschema:"only findings of this asset id; omit or 0 for every asset"`
-	Severity  string `json:"severity,omitempty" jsonschema:"only this severity: critical, high, medium, low or unknown"`
-	Type      string `json:"type,omitempty" jsonschema:"only this finding type: vulnerability, secret, outdated, misconfig, license, malware or sast"`
-	Status    string `json:"status,omitempty" jsonschema:"only this effective status: open or ignored"`
-	DecidedBy string `json:"decided_by,omitempty" jsonschema:"only decisions made by: user or agent"`
-	Query     string `json:"query,omitempty" jsonschema:"case-insensitive substring of the title, rule id, package name or file path; at most 200 characters"`
-	Sort      string `json:"sort,omitempty" jsonschema:"order by severity, title, package, project or type; omit for most severe first"`
-	Order     string `json:"order,omitempty" jsonschema:"sort direction: asc or desc; omit for ascending"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"page size between 1 and 500; omit for 50"`
-	Offset    int    `json:"offset,omitempty" jsonschema:"number of findings to skip; omit for 0"`
+	AssetID         int64  `json:"asset_id,omitempty" jsonschema:"only findings of this asset id; omit or 0 for every asset"`
+	Severity        string `json:"severity,omitempty" jsonschema:"only this severity: critical, high, medium, low or unknown"`
+	Type            string `json:"type,omitempty" jsonschema:"only this finding type: vulnerability, secret, outdated, misconfig, license, malware or sast"`
+	Status          string `json:"status,omitempty" jsonschema:"only this effective status: open or ignored"`
+	DecidedBy       string `json:"decided_by,omitempty" jsonschema:"only decisions made by: user or agent"`
+	Fix             string `json:"fix,omitempty" jsonschema:"only findings with a known fix (available) or without one (none)"`
+	Dependency      string `json:"dependency,omitempty" jsonschema:"only findings of direct or indirect dependencies"`
+	HideTests       bool   `json:"hide_tests,omitempty" jsonschema:"leave out findings in test, fixture and example paths"`
+	HideMaintenance bool   `json:"hide_maintenance,omitempty" jsonschema:"leave out licence and outdated-package findings"`
+	Query           string `json:"query,omitempty" jsonschema:"case-insensitive substring of the title, rule id, package name or file path; at most 200 characters"`
+	Sort            string `json:"sort,omitempty" jsonschema:"order by severity, title, package, project or type; omit for most severe first"`
+	Order           string `json:"order,omitempty" jsonschema:"sort direction: asc or desc; omit for ascending"`
+	Limit           int    `json:"limit,omitempty" jsonschema:"page size between 1 and 500; omit for 50"`
+	Offset          int    `json:"offset,omitempty" jsonschema:"number of findings to skip; omit for 0"`
 }
 
 type epssItem struct {
@@ -353,12 +357,16 @@ func (s *Server) listFindings(ctx context.Context, _ *mcp.CallToolRequest, in li
 	}
 	page := reports.Page{Limit: limit, Offset: in.Offset}
 	filter := reports.Filter{
-		AssetID:   in.AssetID,
-		Severity:  in.Severity,
-		Type:      in.Type,
-		Status:    in.Status,
-		DecidedBy: in.DecidedBy,
-		Query:     in.Query,
+		AssetID:         in.AssetID,
+		Severity:        in.Severity,
+		Type:            in.Type,
+		Status:          in.Status,
+		DecidedBy:       in.DecidedBy,
+		Fix:             in.Fix,
+		Dependency:      in.Dependency,
+		HideTests:       in.HideTests,
+		HideMaintenance: in.HideMaintenance,
+		Query:           in.Query,
 	}
 	by := reports.Sort{Column: in.Sort, Order: in.Order}
 

@@ -176,6 +176,42 @@ func (e FindingDecider) Valid() bool {
 	}
 }
 
+// Defines values for FindingDependencyFilter.
+const (
+	Direct   FindingDependencyFilter = "direct"
+	Indirect FindingDependencyFilter = "indirect"
+)
+
+// Valid indicates whether the value is a known member of the FindingDependencyFilter enum.
+func (e FindingDependencyFilter) Valid() bool {
+	switch e {
+	case Direct:
+		return true
+	case Indirect:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingFixFilter.
+const (
+	Available FindingFixFilter = "available"
+	None      FindingFixFilter = "none"
+)
+
+// Valid indicates whether the value is a known member of the FindingFixFilter enum.
+func (e FindingFixFilter) Valid() bool {
+	switch e {
+	case Available:
+		return true
+	case None:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FindingState.
 const (
 	FindingStateAcceptedRisk  FindingState = "accepted_risk"
@@ -1341,6 +1377,12 @@ type Finding struct {
 // FindingDecider Who made a finding decision, the user or an agent over MCP.
 type FindingDecider string
 
+// FindingDependencyFilter defines model for FindingDependencyFilter.
+type FindingDependencyFilter string
+
+// FindingFixFilter defines model for FindingFixFilter.
+type FindingFixFilter string
+
 // FindingGroup One rule (or, without a rule id, one fingerprint) and type, folded
 // across projects (#90). Members keep the single list's order, and groups
 // sort by worst severity, then finding count, then title.
@@ -2194,6 +2236,18 @@ type ConnectionID = int64
 // FindingDeciderQuery Who made a finding decision, the user or an agent over MCP.
 type FindingDeciderQuery = FindingDecider
 
+// FindingDependencyQuery defines model for FindingDependencyQuery.
+type FindingDependencyQuery = FindingDependencyFilter
+
+// FindingFixQuery defines model for FindingFixQuery.
+type FindingFixQuery = FindingFixFilter
+
+// FindingHideMaintenanceQuery defines model for FindingHideMaintenanceQuery.
+type FindingHideMaintenanceQuery = bool
+
+// FindingHideTestsQuery defines model for FindingHideTestsQuery.
+type FindingHideTestsQuery = bool
+
 // FindingStatusQuery Effective status. Any `finding_states` decision for the same asset and
 // fingerprint reports the finding as `ignored`; the decision itself is in
 // `state`.
@@ -2264,6 +2318,18 @@ type ListFindingsParams struct {
 
 	// DecidedBy Only findings whose decision was made by this decider.
 	DecidedBy *FindingDeciderQuery `form:"decided_by,omitempty" json:"decided_by,omitempty"`
+
+	// Fix Only findings with a known fix, or only those without one.
+	Fix *FindingFixQuery `form:"fix,omitempty" json:"fix,omitempty"`
+
+	// Dependency Only findings of direct, or of indirect, dependencies.
+	Dependency *FindingDependencyQuery `form:"dependency,omitempty" json:"dependency,omitempty"`
+
+	// HideTests Leave out findings in test, fixture and example paths.
+	HideTests *FindingHideTestsQuery `form:"hide_tests,omitempty" json:"hide_tests,omitempty"`
+
+	// HideMaintenance Leave out licence and outdated-package findings.
+	HideMaintenance *FindingHideMaintenanceQuery `form:"hide_maintenance,omitempty" json:"hide_maintenance,omitempty"`
 
 	// Q Case-insensitive substring to search for in the finding title, rule id
 	// (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
@@ -3242,6 +3308,58 @@ func (siw *ServerInterfaceWrapper) ListFindings(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "decided_by"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "decided_by", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "fix" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "fix", r.URL.Query(), &params.Fix, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "fix"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fix", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dependency" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dependency", r.URL.Query(), &params.Dependency, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dependency"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dependency", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "hide_tests" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "hide_tests", r.URL.Query(), &params.HideTests, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "hide_tests"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "hide_tests", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "hide_maintenance" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "hide_maintenance", r.URL.Query(), &params.HideMaintenance, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "hide_maintenance"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "hide_maintenance", Err: err})
 		}
 		return
 	}

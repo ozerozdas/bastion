@@ -40,6 +40,14 @@ func (s *Server) ListFindings(ctx context.Context, request gen.ListFindingsReque
 	if request.Params.Type != nil {
 		filter.Type = string(*request.Params.Type)
 	}
+	if request.Params.Fix != nil {
+		filter.Fix = string(*request.Params.Fix)
+	}
+	if request.Params.Dependency != nil {
+		filter.Dependency = string(*request.Params.Dependency)
+	}
+	filter.HideTests = request.Params.HideTests != nil && *request.Params.HideTests
+	filter.HideMaintenance = request.Params.HideMaintenance != nil && *request.Params.HideMaintenance
 	if request.Params.DecidedBy != nil {
 		filter.DecidedBy = string(*request.Params.DecidedBy)
 	}

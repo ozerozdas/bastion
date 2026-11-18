@@ -253,6 +253,40 @@ WHERE a.archived_at IS NULL
         ELSE 'ignored'
     END AS TEXT) = sqlc.narg(status))
   AND (sqlc.narg(decided_by) IS NULL OR fs.decided_by = sqlc.narg(decided_by))
+  -- Noise filters (#181) narrow the view and never change a finding.
+  AND (sqlc.narg(fix) IS NULL
+       OR (sqlc.narg(fix) = 'available' AND COALESCE(f.fixed_version, '') <> '')
+       OR (sqlc.narg(fix) = 'none' AND COALESCE(f.fixed_version, '') = ''))
+  AND (sqlc.narg(dependency) IS NULL
+       OR (sqlc.narg(dependency) = 'direct' AND EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 1))
+       OR (sqlc.narg(dependency) = 'indirect' AND EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 0)
+          AND NOT EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 1)))
+  AND (CAST(sqlc.arg(hide_maintenance) AS INTEGER) = 0 OR f.type NOT IN ('license', 'outdated'))
+  AND (CAST(sqlc.arg(hide_tests) AS INTEGER) = 0 OR NOT (
+        instr(('/' || lower(COALESCE(f.location, ''))), '/test/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/tests/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__tests__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/testdata/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/fixtures/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__fixtures__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/spec/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/specs/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/example/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/examples/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/mocks/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__mocks__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '_test.go') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '.test.') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '.spec.') > 0))
   -- Text search (#148): a substring of the title, rule id, package or path.
   -- The caller sends %/_ pre-escaped, so the pattern is literal text; LIKE is
   -- case-insensitive for ASCII. The parentheses keep the ORs inside this filter
@@ -343,6 +377,40 @@ WHERE a.archived_at IS NULL
         ELSE 'ignored'
     END AS TEXT) = sqlc.narg(status))
   AND (sqlc.narg(decided_by) IS NULL OR fs.decided_by = sqlc.narg(decided_by))
+  -- Noise filters (#181) narrow the view and never change a finding.
+  AND (sqlc.narg(fix) IS NULL
+       OR (sqlc.narg(fix) = 'available' AND COALESCE(f.fixed_version, '') <> '')
+       OR (sqlc.narg(fix) = 'none' AND COALESCE(f.fixed_version, '') = ''))
+  AND (sqlc.narg(dependency) IS NULL
+       OR (sqlc.narg(dependency) = 'direct' AND EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 1))
+       OR (sqlc.narg(dependency) = 'indirect' AND EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 0)
+          AND NOT EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 1)))
+  AND (CAST(sqlc.arg(hide_maintenance) AS INTEGER) = 0 OR f.type NOT IN ('license', 'outdated'))
+  AND (CAST(sqlc.arg(hide_tests) AS INTEGER) = 0 OR NOT (
+        instr(('/' || lower(COALESCE(f.location, ''))), '/test/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/tests/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__tests__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/testdata/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/fixtures/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__fixtures__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/spec/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/specs/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/example/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/examples/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/mocks/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__mocks__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '_test.go') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '.test.') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '.spec.') > 0))
   -- Same text search as ListLatestFindings, so the total matches the page.
   AND (sqlc.narg(query) IS NULL OR
        (f.title LIKE sqlc.narg(query) ESCAPE '\')

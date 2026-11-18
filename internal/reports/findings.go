@@ -35,7 +35,15 @@ type Filter struct {
 	Status      string
 	// DecidedBy keeps only decisions made by user or agent; empty keeps all.
 	DecidedBy string
-	Query     string
+	// Fix keeps findings with a known fix (available) or without one (none).
+	Fix string
+	// Dependency keeps findings of direct or indirect dependencies.
+	Dependency string
+	// HideTests drops findings in test, fixture and example paths.
+	HideTests bool
+	// HideMaintenance drops licence and outdated-package findings.
+	HideMaintenance bool
+	Query           string
 }
 
 // MaxQueryLength caps the search text. Longer input is refused rather than
@@ -347,6 +355,10 @@ func (f Filter) params(now string, by Sort, limit, offset int64) (sqlcdb.ListLat
 	params.Type = nullable(f.Type)
 	params.Status = nullable(f.Status)
 	params.DecidedBy = nullable(f.DecidedBy)
+	params.Fix = nullable(f.Fix)
+	params.Dependency = nullable(f.Dependency)
+	params.HideTests = flag(f.HideTests)
+	params.HideMaintenance = flag(f.HideMaintenance)
 	params.Query = f.likePattern()
 
 	return params, nil
@@ -368,6 +380,10 @@ func (f Filter) countParams(now string) (sqlcdb.CountLatestFindingsParams, error
 	params.Type = nullable(f.Type)
 	params.Status = nullable(f.Status)
 	params.DecidedBy = nullable(f.DecidedBy)
+	params.Fix = nullable(f.Fix)
+	params.Dependency = nullable(f.Dependency)
+	params.HideTests = flag(f.HideTests)
+	params.HideMaintenance = flag(f.HideMaintenance)
 	params.Query = f.likePattern()
 
 	return params, nil
@@ -384,7 +400,21 @@ func (f Filter) validate() error {
 	if f.DecidedBy != "" && f.DecidedBy != "user" && f.DecidedBy != "agent" {
 		return fmt.Errorf("%w: decided_by %q is not one of user, agent", ErrInvalid, f.DecidedBy)
 	}
+	if f.Fix != "" && f.Fix != "available" && f.Fix != "none" {
+		return fmt.Errorf("%w: fix %q is not one of available, none", ErrInvalid, f.Fix)
+	}
+	if f.Dependency != "" && f.Dependency != "direct" && f.Dependency != "indirect" {
+		return fmt.Errorf("%w: dependency %q is not one of direct, indirect", ErrInvalid, f.Dependency)
+	}
 	return validateEnums(f.Severity, f.Type, f.Status)
+}
+
+// flag renders a boolean filter as the integer the query compares.
+func flag(on bool) int64 {
+	if on {
+		return 1
+	}
+	return 0
 }
 
 // likePattern turns the search text into a LIKE pattern, or nil for no filter.

@@ -1230,6 +1230,16 @@ export interface components {
             enabled: boolean;
         };
         /**
+         * FindingFixFilter
+         * @enum {string}
+         */
+        FindingFixFilter: "available" | "none";
+        /**
+         * FindingDependencyFilter
+         * @enum {string}
+         */
+        FindingDependencyFilter: "direct" | "indirect";
+        /**
          * FindingDecider
          * @description Who made a finding decision, the user or an agent over MCP.
          * @enum {string}
@@ -2652,6 +2662,14 @@ export interface components {
         FindingStatusQuery: components["schemas"]["FindingStatus"];
         /** @description Only findings whose decision was made by this decider. */
         FindingDeciderQuery: components["schemas"]["FindingDecider"];
+        /** @description Only findings with a known fix, or only those without one. */
+        FindingFixQuery: components["schemas"]["FindingFixFilter"];
+        /** @description Only findings of direct, or of indirect, dependencies. */
+        FindingDependencyQuery: components["schemas"]["FindingDependencyFilter"];
+        /** @description Leave out findings in test, fixture and example paths. */
+        FindingHideTestsQuery: boolean;
+        /** @description Leave out licence and outdated-package findings. */
+        FindingHideMaintenanceQuery: boolean;
         /**
          * @description Case-insensitive substring to search for in the finding title, rule id
          *     (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
@@ -4189,6 +4207,14 @@ export interface operations {
                 status?: components["parameters"]["FindingStatusQuery"];
                 /** @description Only findings whose decision was made by this decider. */
                 decided_by?: components["parameters"]["FindingDeciderQuery"];
+                /** @description Only findings with a known fix, or only those without one. */
+                fix?: components["parameters"]["FindingFixQuery"];
+                /** @description Only findings of direct, or of indirect, dependencies. */
+                dependency?: components["parameters"]["FindingDependencyQuery"];
+                /** @description Leave out findings in test, fixture and example paths. */
+                hide_tests?: components["parameters"]["FindingHideTestsQuery"];
+                /** @description Leave out licence and outdated-package findings. */
+                hide_maintenance?: components["parameters"]["FindingHideMaintenanceQuery"];
                 /**
                  * @description Case-insensitive substring to search for in the finding title, rule id
                  *     (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
@@ -4262,6 +4288,14 @@ export interface operations {
                 status?: components["parameters"]["FindingStatusQuery"];
                 /** @description Only findings whose decision was made by this decider. */
                 decided_by?: components["parameters"]["FindingDeciderQuery"];
+                /** @description Only findings with a known fix, or only those without one. */
+                fix?: components["parameters"]["FindingFixQuery"];
+                /** @description Only findings of direct, or of indirect, dependencies. */
+                dependency?: components["parameters"]["FindingDependencyQuery"];
+                /** @description Leave out findings in test, fixture and example paths. */
+                hide_tests?: components["parameters"]["FindingHideTestsQuery"];
+                /** @description Leave out licence and outdated-package findings. */
+                hide_maintenance?: components["parameters"]["FindingHideMaintenanceQuery"];
                 /**
                  * @description Case-insensitive substring to search for in the finding title, rule id
                  *     (CVE, GHSA or rule name), package name and file path. Trimmed; an empty
