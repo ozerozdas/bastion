@@ -134,16 +134,14 @@ func (s *Server) ExplainFinding(ctx context.Context, request gen.ExplainFindingR
 // exactly the row the user clicked; an archived asset or a fixed finding is
 // not found.
 func (s *Server) findingForExplain(ctx context.Context, assetID int64, fingerprint string) (reports.Finding, bool, error) {
-	findings, err := s.reports.Findings(ctx, reports.Filter{AssetID: assetID})
+	findings, err := s.reports.Findings(ctx, reports.Filter{AssetID: assetID, Fingerprint: fingerprint})
 	if err != nil {
 		return reports.Finding{}, false, err
 	}
-	for _, finding := range findings {
-		if finding.Fingerprint == fingerprint {
-			return finding, true, nil
-		}
+	if len(findings) == 0 {
+		return reports.Finding{}, false, nil
 	}
-	return reports.Finding{}, false, nil
+	return findings[0], true, nil
 }
 
 // epssForExplain converts the report read model's EPSS score to the prompt

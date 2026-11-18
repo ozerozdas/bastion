@@ -7,7 +7,7 @@ Every scanner result is normalized into one **finding** model, whatever produced
 | Type | Produced by | Example |
 |---|---|---|
 | `vulnerability` | Trivy and OSV | `CVE-2024-1234` in `lodash@4.17.20`, fixed in `4.17.21` |
-| `license` | Trivy | A package under a licence you may need to review (informational in v0.1) |
+| `license` | Trivy | A package under a licence you may need to review; a deny policy raises its severity |
 | `misconfig` | Trivy | Dockerfile runs as root; S3 bucket without encryption |
 | `secret` | Gitleaks | An AWS key committed in `config/prod.env` |
 | `malware` | OSV | A `MAL-` advisory: a known-malicious package in the inventory (always critical) |
@@ -71,7 +71,7 @@ Bastion never stores a raw secret. For each Gitleaks match it keeps:
 The HMAC lets bastion recognise the same secret across scans without it being recoverable
 from the database. A plain hash would not do: short secrets could be brute-forced.
 
-Only the **working tree** is scanned in v0.1, not git history.
+Only the **working tree** is scanned, not git history.
 
 > If a secret shows up, **rotate it**. Deleting it from the file does not remove it from
 > git history or from anyone who already cloned the repository.

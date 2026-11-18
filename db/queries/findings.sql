@@ -238,6 +238,7 @@ WHERE a.archived_at IS NULL
       WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
   )
   AND (sqlc.narg(asset_id) IS NULL OR f.asset_id = sqlc.narg(asset_id))
+  AND (sqlc.narg(fingerprint) IS NULL OR f.fingerprint = sqlc.narg(fingerprint))
   AND (sqlc.narg(type) IS NULL OR f.type = sqlc.narg(type))
   AND (sqlc.narg(severity) IS NULL OR CAST(CASE
         WHEN f.type = 'license'
@@ -326,6 +327,7 @@ WHERE a.archived_at IS NULL
       WHERE s2.asset_id = f.asset_id AND s2.status = 'succeeded'
   )
   AND (sqlc.narg(asset_id) IS NULL OR f.asset_id = sqlc.narg(asset_id))
+  AND (sqlc.narg(fingerprint) IS NULL OR f.fingerprint = sqlc.narg(fingerprint))
   AND (sqlc.narg(type) IS NULL OR f.type = sqlc.narg(type))
   AND (sqlc.narg(severity) IS NULL OR CAST(CASE
         WHEN f.type = 'license'

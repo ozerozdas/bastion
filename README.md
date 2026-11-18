@@ -15,13 +15,12 @@ Nothing leaves the machine except the calls listed under [Network calls](#networ
 
 ## Status
 
-**v0.1 released (Phase 1 — core MVP).** Working today: GitHub PAT connection (token in
-the OS keyring), repo discovery and tarball fetch, scan jobs with live progress, Trivy
-(vulnerabilities, licences, IaC), Gitleaks (working-tree secrets) and an OSV
-malicious-package matcher over the package inventory, ignore with
-reason, a licence allow/deny policy (global or per project), Findings, and
-`bastion scan` with JSON, table and SARIF output. Container
-images, fix plans, SAST and MCP are later phases: see the [roadmap](docs/wiki/Roadmap.md).
+**v0.5 released.** Working today: GitHub repositories, AWS ECR and local Docker images,
+Trivy, Gitleaks and OSV scanning, scan diffs, CycloneDX SBOM export, fix plans with
+prioritization, Go reachability, opt-in SAST, licence policies, and `bastion scan` with
+JSON, table and SARIF output. Automation covers the MCP server, dependency-upgrade PRs,
+Slack and email notifications, an optional local LLM and the GitHub Action. What comes
+next is on the [roadmap](docs/wiki/Roadmap.md).
 
 ## Install
 

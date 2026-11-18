@@ -57,6 +57,10 @@ const (
 	// maxTokens caps the model's output, independent of MaxTextBytes.
 	maxTokens = 800
 
+	// maxInFlight caps concurrent explanations; later ones wait for a slot. A
+	// local model serves few requests at once, and more only slow it down.
+	maxInFlight = 2
+
 	// maxModelLength and maxEndpointLength reject garbage before it is stored.
 	maxModelLength    = 200
 	maxEndpointLength = 2048
@@ -159,6 +163,12 @@ type Service struct {
 
 	path   string
 	client *http.Client
+
+	// slots holds one token per running explanation.
+	slots chan struct{}
+	// closing ends when Shutdown runs, canceling every explanation.
+	closing  context.Context
+	shutdown context.CancelFunc
 }
 
 // New validates cfg and loads the stored settings. A missing or unreadable
@@ -184,13 +194,23 @@ func New(cfg Config) (*Service, error) {
 		}
 	}
 
+	closing, shutdown := context.WithCancel(context.Background())
 	service := &Service{
 		settings: DefaultSettings(),
 		path:     filepath.Join(cfg.DataDir, settingsFileName),
 		client:   client,
+		slots:    make(chan struct{}, maxInFlight),
+		closing:  closing,
+		shutdown: shutdown,
 	}
 	service.settings = service.readSettings()
 	return service, nil
+}
+
+// Shutdown cancels the running and waiting explanations. It is safe to call
+// more than once.
+func (s *Service) Shutdown() {
+	s.shutdown()
 }
 
 // Settings returns a copy of the stored choices.
@@ -249,6 +269,18 @@ func (s *Service) Explain(ctx context.Context, in ExplainInput) (Result, error) 
 		return Result{}, err
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(s.closing, cancel)
+	defer stop()
+
+	select {
+	case s.slots <- struct{}{}:
+		defer func() { <-s.slots }()
+	case <-ctx.Done():
+		return Result{}, fmt.Errorf("%w: %w", ErrUpstream, ctx.Err())
+	}
+
 	body, err := json.Marshal(chatRequest{
 		Model: model,
 		Messages: []chatMessage{
@@ -283,16 +315,21 @@ func (s *Service) Explain(ctx context.Context, in ExplainInput) (Result, error) 
 	if len(raw) > MaxResponseBytes {
 		return Result{}, fmt.Errorf("%w: the response is larger than %d bytes", ErrUpstream, MaxResponseBytes)
 	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return Result{}, fmt.Errorf("%w: the endpoint returned HTTP %d", ErrUpstream, resp.StatusCode)
-	}
 
 	var decoded chatResponse
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return Result{}, fmt.Errorf("%w: decode response: %w", ErrUpstream, err)
+	decodeErr := json.Unmarshal(raw, &decoded)
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		// Ollama names the cause in the body, for example a model not pulled yet.
+		if decodeErr == nil && decoded.Error != "" {
+			return Result{}, fmt.Errorf("%w: HTTP %d: %s", ErrUpstream, resp.StatusCode, decoded.Error)
+		}
+		return Result{}, fmt.Errorf("%w: the endpoint returned HTTP %d", ErrUpstream, resp.StatusCode)
 	}
-	if decoded.Error != nil && decoded.Error.Message != "" {
-		return Result{}, fmt.Errorf("%w: %s", ErrUpstream, decoded.Error.Message)
+	if decodeErr != nil {
+		return Result{}, fmt.Errorf("%w: decode response: %w", ErrUpstream, decodeErr)
+	}
+	if decoded.Error != "" {
+		return Result{}, fmt.Errorf("%w: %s", ErrUpstream, decoded.Error)
 	}
 	if len(decoded.Choices) == 0 {
 		return Result{}, fmt.Errorf("%w: the response has no choice", ErrUpstream)
@@ -327,9 +364,28 @@ type chatResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
-	Error *struct {
+	Error upstreamError `json:"error"`
+}
+
+// upstreamError is the response's error message. OpenAI-compatible servers send
+// {"message": "..."}, while Ollama's native errors are a plain string.
+type upstreamError string
+
+// UnmarshalJSON accepts both shapes. Any other shape counts as no message, so
+// the response is judged by its choices.
+func (e *upstreamError) UnmarshalJSON(data []byte) error {
+	var text string
+	if json.Unmarshal(data, &text) == nil {
+		*e = upstreamError(text)
+		return nil
+	}
+	var object struct {
 		Message string `json:"message"`
-	} `json:"error"`
+	}
+	if json.Unmarshal(data, &object) == nil {
+		*e = upstreamError(object.Message)
+	}
+	return nil
 }
 
 // untrustedFinding is the data object inside the delimited block. JSON
@@ -460,10 +516,32 @@ func (s *Service) writeSettings(settings Settings) error {
 		return fmt.Errorf("localllm: encode settings: %w", err)
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(s.path, data, 0o600); err != nil {
+	if err := writeFileAtomic(s.path, data); err != nil {
 		return fmt.Errorf("localllm: store settings: %w", err)
 	}
 	return nil
+}
+
+// writeFileAtomic writes data through a temporary file in the same directory
+// and renames it into place, so an interrupted write never truncates the file.
+func writeFileAtomic(path string, data []byte) error {
+	temp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	defer func() { _ = os.Remove(tempPath) }()
+	if _, err := temp.Write(data); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tempPath, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, path)
 }
 
 // clip shortens s to at most limit bytes, ending with TruncatedMarker when it

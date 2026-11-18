@@ -12,8 +12,7 @@ Trivy and Gitleaks are compiled in as Go libraries; OSV advisories are queried o
 HTTPS — no Docker daemon, no Python, no external CLI. No telemetry; the only network calls
 are listed in [Security and Privacy](Security-and-Privacy.md#network-calls).
 
-> **Status:** v0.1 (Phase 1 — core MVP). Container images, fix plans, SAST and MCP come in
-> later phases — see [Roadmap](Roadmap.md).
+> **Status:** v0.5 (AI & automation). What comes next is on the [Roadmap](Roadmap.md).
 
 ## Start here
 
