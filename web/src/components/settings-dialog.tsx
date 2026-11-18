@@ -9,6 +9,7 @@ import {
   useSetNotificationSettings,
   useTestNotification,
 } from '../api/notifications'
+import { eolQuery, useSetEOLEnabled } from '../api/eol'
 import { outdatedQuery, useSetOutdatedEnabled } from '../api/outdated'
 import { reachabilityQuery, useSetReachabilityEnabled } from '../api/reachability'
 import { sastQuery, useSetSASTEnabled } from '../api/sast'
@@ -97,6 +98,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               <EPSSToggle />
               <ReachabilityToggle />
               <OutdatedToggle />
+              <EOLToggle />
               <SASTToggle />
               <LicencePolicySection />
               <ReleaseCheckSection />
@@ -250,6 +252,30 @@ function OutdatedToggle() {
       </p>
       <ToggleButton
         title={t('settings.outdated.title')}
+        on={data.enabled}
+        pending={toggle.isPending}
+        onChange={(enabled) => toggle.mutate(enabled)}
+      />
+    </SettingSection>
+  )
+}
+
+function EOLToggle() {
+  const t = useT()
+  const { data } = useQuery(eolQuery)
+  const toggle = useSetEOLEnabled()
+
+  if (!data) {
+    return null
+  }
+
+  return (
+    <SettingSection title={t('settings.eol.title')} on={data.enabled}>
+      <p className="text-[0.6875rem] leading-relaxed text-muted">
+        {t('settings.eol.body')}
+      </p>
+      <ToggleButton
+        title={t('settings.eol.title')}
         on={data.enabled}
         pending={toggle.isPending}
         onChange={(enabled) => toggle.mutate(enabled)}

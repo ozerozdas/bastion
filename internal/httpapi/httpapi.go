@@ -32,6 +32,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/preferences"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/scanners/depsdev"
+	"github.com/ozerozdas/bastion/internal/scanners/eol"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
@@ -101,6 +102,8 @@ type Config struct {
 	// Outdated serves GET and PUT /api/outdated. serve wires the opt-in
 	// deps.dev lookup; nil answers those endpoints with 500.
 	Outdated *depsdev.Service
+	// EOL serves GET and PUT /api/eol, the opt-in end-of-life lookup.
+	EOL *eol.Service
 	// Reachability serves GET and PUT /api/reachability. serve wires the
 	// opt-in govulncheck enrichment; nil answers those endpoints with 500.
 	Reachability *govulncheck.Service
@@ -166,6 +169,8 @@ type Server struct {
 	// outdated backs GET and PUT /api/outdated, with the same
 	// nil-means-unavailable contract.
 	outdated *depsdev.Service
+	// eol backs GET and PUT /api/eol.
+	eol *eol.Service
 
 	// reachability backs GET and PUT /api/reachability, with the same
 	// nil-means-unavailable contract.
@@ -236,6 +241,7 @@ func New(cfg Config) (*Server, error) {
 		trivyDB:       cfg.TrivyDB,
 		epss:          cfg.EPSS,
 		outdated:      cfg.Outdated,
+		eol:           cfg.EOL,
 		reachability:  cfg.Reachability,
 		sast:          cfg.SAST,
 		licencePolicy: cfg.LicencePolicy,

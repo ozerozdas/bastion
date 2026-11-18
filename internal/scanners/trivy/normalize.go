@@ -172,13 +172,19 @@ func (s *Scanner) ImageSource(raw *scanners.RawResult) scanners.ImageSource {
 	return scanners.ImageSource{
 		URL:      strings.TrimSpace(labels[labelImageSource]),
 		Revision: strings.TrimSpace(labels[labelImageRevision]),
+		OSFamily: strings.TrimSpace(parsed.Metadata.OS.Family),
+		OSName:   strings.TrimSpace(parsed.Metadata.OS.Name),
 	}
 }
 
-// imageSourceReport mirrors the one path in a Trivy image report that carries
-// the OCI labels: Metadata.ImageConfig.config.Labels.
+// imageSourceReport mirrors the paths in a Trivy report that carry the OCI
+// labels (Metadata.ImageConfig.config.Labels) and the detected OS (Metadata.OS).
 type imageSourceReport struct {
 	Metadata struct {
+		OS struct {
+			Family string `json:"Family"`
+			Name   string `json:"Name"`
+		} `json:"OS"`
 		ImageConfig struct {
 			Config struct {
 				Labels map[string]string `json:"Labels"`

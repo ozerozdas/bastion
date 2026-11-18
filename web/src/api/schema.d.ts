@@ -198,6 +198,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/eol": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the end-of-life lookup state.
+         * @description Returns the stored opt-in setting only. The handler never blocks on the
+         *     network.
+         */
+        get: operations["getEOLStatus"];
+        /**
+         * Store the end-of-life lookup opt-in choice.
+         * @description Only the UI calls this. The choice affects the next scan; the response
+         *     is the updated status.
+         */
+        put: operations["setEOLEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reachability": {
         parameters: {
             query?: never;
@@ -1221,6 +1247,23 @@ export interface components {
             /**
              * @description True opts in to the deps.dev lookup during scans; false turns it off
              *     and stops every future request.
+             */
+            enabled: boolean;
+        };
+        /**
+         * EOLStatus
+         * @description The opt-in end-of-life lookup. It is off by default; with it off no
+         *     request reaches endoflife.date.
+         */
+        EOLStatus: {
+            /** @description The stored opt-in setting. */
+            enabled: boolean;
+        };
+        /** SetEOLEnabledRequest */
+        SetEOLEnabledRequest: {
+            /**
+             * @description True opts in to the endoflife.date lookup during scans; false stops
+             *     every future request.
              */
             enabled: boolean;
         };
@@ -2866,6 +2909,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OutdatedStatus"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getEOLStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current end-of-life lookup state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EOLStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setEOLEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetEOLEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The choice was stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EOLStatus"];
                 };
             };
             400: components["responses"]["Problem"];

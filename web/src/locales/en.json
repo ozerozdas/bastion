@@ -87,6 +87,8 @@
   "settings.reach.install": "Install Go; findings stay unknown until then.",
   "settings.outdated.title": "Outdated packages",
   "settings.outdated.body": "Looks up the latest version of each package on deps.dev (api.deps.dev) during scans. Only ecosystems, package names and versions are sent.",
+  "settings.eol.title": "End-of-life check",
+  "settings.eol.body": "Checks the scanned operating system and Go version against endoflife.date during scans. Only the product name is sent; versions are compared locally.",
   "settings.sast.title": "SAST",
   "settings.sast.body": "Downloads Opengrep {version} (~47 MB) and the community rules (~1.1 MB) from GitHub, then scans repository source locally for code issues. Both downloads are checksum-verified.",
   "settings.sast.downloading": "Downloading Opengrep {version}…",

@@ -143,6 +143,20 @@ type OutdatedMatcher interface {
 	Match(ctx context.Context, packages []findings.Package, asset findings.Asset) ([]findings.Finding, []string, error)
 }
 
+// EOLMatcher reports end-of-life operating systems and runtimes (#55). It is
+// opt-in: Enabled is false by default and then no request is made.
+type EOLMatcher interface {
+	// Name is the stable scanner id stored in scanner_runs.
+	Name() string
+	// Version identifies the API surface the lookup speaks.
+	Version() string
+	// Enabled reports the stored opt-in setting.
+	Enabled() bool
+	// Match returns findings and warnings for partial coverage. An error
+	// means the lookup could not run; it never fails the scan.
+	Match(ctx context.Context, osFamily, osName string, packages []findings.Package, asset findings.Asset) ([]findings.Finding, []string, error)
+}
+
 // ReachabilityEnricher classifies Go vulnerability findings as reachable,
 // unreachable or unknown (#37). It reads the workspace rather than the package
 // inventory, so it runs once after the scanners finish. A failure is recorded
@@ -195,6 +209,8 @@ type Config struct {
 	// Outdated enriches the merged package inventory with latest-version
 	// findings. Nil disables the lookup; a failure never fails the scan.
 	Outdated OutdatedMatcher
+	// EOL reports end-of-life operating systems and runtimes; nil disables it.
+	EOL EOLMatcher
 	// Reachability classifies Go vulnerabilities as reachable, unreachable or
 	// unknown. Nil disables the enrichment; a failure never fails the scan.
 	Reachability ReachabilityEnricher
@@ -227,6 +243,7 @@ type Manager struct {
 	notify       CompletionListener
 	advisories   AdvisoryMatcher
 	outdated     OutdatedMatcher
+	eol          EOLMatcher
 	reachability ReachabilityEnricher
 
 	runCtx  context.Context
@@ -299,6 +316,7 @@ func New(cfg Config) (*Manager, error) {
 		notify:       cfg.Notify,
 		advisories:   cfg.Advisories,
 		outdated:     cfg.Outdated,
+		eol:          cfg.EOL,
 		reachability: cfg.Reachability,
 		runCtx:       runCtx,
 		cancel:       cancel,

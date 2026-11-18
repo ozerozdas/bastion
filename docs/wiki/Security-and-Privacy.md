@@ -16,6 +16,7 @@ it on.
 | `api.osv.dev` | Scans with a non-empty package inventory | Malware advisories. Sends package name, version and ecosystem only, with `User-Agent: bastion/<version>` |
 | `api.github.com` | **Only on your action**: test connection, list repos, add, scan | Identity, repo list, commit SHA, tarball |
 | `codeload.github.com` | Redirect of the tarball call | The repository archive |
+| `endoflife.date` | Scans that detect an OS or Go runtime, **only after you turn the End-of-life check on** | Release cycles of that product, cached for a day. Sends the product name only |
 | `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed |
 
 GitHub is contacted in the background only by the daily release check; every scan,

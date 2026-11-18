@@ -87,6 +87,8 @@
   "settings.reach.install": "Go'yu kurun; o zamana kadar bulgular bilinmiyor kalır.",
   "settings.outdated.title": "Eski paketler",
   "settings.outdated.body": "Taramalar sırasında her paketin en son sürümünü deps.dev (api.deps.dev) üzerinden arar. Yalnızca ekosistemler, paket adları ve sürümler gönderilir.",
+  "settings.eol.title": "Destek sonu denetimi",
+  "settings.eol.body": "Taramalar sırasında işletim sistemini ve Go sürümünü endoflife.date üzerinden denetler. Yalnızca ürün adı gönderilir; sürümler yerelde karşılaştırılır.",
   "settings.sast.title": "SAST",
   "settings.sast.body": "GitHub'dan Opengrep {version} (~47 MB) ve topluluk kurallarını (~1,1 MB) indirir, ardından depo kaynak kodunu yerelde kod sorunları için tarar. Her iki indirme de sağlama toplamıyla doğrulanır.",
   "settings.sast.downloading": "Opengrep {version} indiriliyor…",

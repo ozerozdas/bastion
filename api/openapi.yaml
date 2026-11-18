@@ -60,6 +60,13 @@ tags:
       version is older. Off by default; with the setting off no request is
       made. Only the ecosystem and package name are sent. `GET /api/outdated`
       never blocks on the network.
+  - name: eol
+    description: |
+      The opt-in end-of-life lookup (#55). When on, a scan asks endoflife.date
+      for the release cycles of the detected operating system and Go runtime
+      and reports an `outdated` finding naming the end-of-life date. Off by
+      default; with the setting off no request is made. Only the product name
+      is sent. `GET /api/eol` never blocks on the network.
   - name: reachability
     description: |
       The opt-in Go reachability enrichment (#37). When on, a scan of a Go
@@ -394,6 +401,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OutdatedStatus"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/eol:
+    get:
+      operationId: getEOLStatus
+      summary: Report the end-of-life lookup state.
+      description: |
+        Returns the stored opt-in setting only. The handler never blocks on the
+        network.
+      tags: [eol]
+      responses:
+        "200":
+          description: The current end-of-life lookup state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EOLStatus"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setEOLEnabled
+      summary: Store the end-of-life lookup opt-in choice.
+      description: |
+        Only the UI calls this. The choice affects the next scan; the response
+        is the updated status.
+      tags: [eol]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEOLEnabledRequest"
+      responses:
+        "200":
+          description: The choice was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EOLStatus"
         "400":
           $ref: "#/components/responses/Problem"
         "401":
@@ -2495,6 +2555,29 @@ components:
           description: |
             True opts in to the deps.dev lookup during scans; false turns it off
             and stops every future request.
+    EOLStatus:
+      type: object
+      title: EOLStatus
+      description: |
+        The opt-in end-of-life lookup. It is off by default; with it off no
+        request reaches endoflife.date.
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: The stored opt-in setting.
+    SetEOLEnabledRequest:
+      type: object
+      title: SetEOLEnabledRequest
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            True opts in to the endoflife.date lookup during scans; false stops
+            every future request.
     Reachability:
       type: string
       title: Reachability

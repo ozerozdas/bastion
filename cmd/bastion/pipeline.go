@@ -50,6 +50,8 @@ type pipelineConfig struct {
 	// Outdated enriches the package inventory with latest-version findings;
 	// nil disables the lookup.
 	Outdated jobs.OutdatedMatcher
+	// EOL reports end-of-life operating systems and runtimes; nil disables it.
+	EOL jobs.EOLMatcher
 	// Reachability classifies Go vulnerabilities; nil disables the enrichment.
 	Reachability jobs.ReachabilityEnricher
 	// Concurrency is the worker count; zero means jobs.DefaultConcurrency.
@@ -79,6 +81,7 @@ func newScanManager(cfg pipelineConfig) (*jobs.Manager, error) {
 		Normalizers:  normalizers,
 		Advisories:   cfg.Advisories,
 		Outdated:     cfg.Outdated,
+		EOL:          cfg.EOL,
 		Reachability: cfg.Reachability,
 		Options:      func() scanners.Options { return cfg.Options },
 		Concurrency:  cfg.Concurrency,
@@ -281,7 +284,7 @@ const serverScanShutdownGrace = 10 * time.Second
 // scan can never stay queued forever. bus receives the lifecycle events the
 // SSE endpoint streams. trivyDB is the vulnerability DB manager the scans and
 // the /api/trivy-db endpoints share.
-func newServerScanManager(ctx context.Context, db *sql.DB, paths app.Paths, concurrency int, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager, outdated jobs.OutdatedMatcher, reachability jobs.ReachabilityEnricher, sast *opengrep.Service, notify jobs.CompletionListener) (*jobs.Manager, error) {
+func newServerScanManager(ctx context.Context, db *sql.DB, paths app.Paths, concurrency int, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager, outdated jobs.OutdatedMatcher, eolLookup jobs.EOLMatcher, reachability jobs.ReachabilityEnricher, sast *opengrep.Service, notify jobs.CompletionListener) (*jobs.Manager, error) {
 	hmacKey, err := secrets.LocalKey(secretStore)
 	if err != nil {
 		// Only secret fingerprints need the key; everything else still works,
@@ -311,6 +314,7 @@ func newServerScanManager(ctx context.Context, db *sql.DB, paths app.Paths, conc
 		},
 		Advisories:   osv.New(version),
 		Outdated:     outdated,
+		EOL:          eolLookup,
 		Reachability: reachability,
 		Concurrency:  concurrency,
 		Events:       bus,

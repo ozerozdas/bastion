@@ -93,6 +93,7 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 	}
 
 	var failures []string
+	var osFamily, osName string
 	for _, sc := range m.scanners {
 		if !sc.Supports(target.Kind) {
 			continue
@@ -143,6 +144,9 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 			// Partial coverage is a warning, not a failure: the scanner's
 			// findings are real, it just could not cover everything.
 			run.Warning = strings.Join(warnings, "; ")
+			if imageSource.OSFamily != "" {
+				osFamily, osName = imageSource.OSFamily, imageSource.OSName
+			}
 			if imageSource.URL != "" {
 				// The image declares its source repository; persistence links
 				// it unless a manual link already exists.
@@ -188,6 +192,7 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 	// the advisory lookup it is an enrichment: partial coverage is a warning
 	// on its scanner run, and a failure never fails the scan.
 	m.enrichOutdated(ctx, job, asset, res)
+	m.enrichEOL(ctx, job, asset, osFamily, osName, res)
 
 	// One finding per fingerprint per scan (PROJECT_SPEC.md §5), in a stable
 	// order so persistence and golden output do not depend on scanner order.
@@ -231,6 +236,39 @@ func (m *Manager) enrichOutdated(ctx context.Context, job *scanJob, asset findin
 		res.Findings = append(res.Findings, fs...)
 		// Partial coverage is a warning, not a failure: the findings that
 		// were produced are real.
+		run.Warning = strings.Join(warnings, "; ")
+	}
+	res.ScannerRuns = append(res.ScannerRuns, run)
+}
+
+// enrichEOL adds end-of-life findings for the scan's OS and runtimes (#55). It
+// runs only when the user opted in. Failures and partial coverage are recorded
+// in scanner_runs and logged, never added to failures.
+func (m *Manager) enrichEOL(ctx context.Context, job *scanJob, asset findings.Asset, osFamily, osName string, res *store.ScanResult) {
+	if m.eol == nil || !m.eol.Enabled() || (osFamily == "" && len(res.Packages) == 0) || ctx.Err() != nil {
+		return
+	}
+
+	m.progress(job, StageScan, m.eol.Name())
+	run := store.ScannerRun{
+		Scanner:        m.eol.Name(),
+		ScannerVersion: m.eol.Version(),
+		Status:         "succeeded",
+	}
+	start := time.Now()
+	fs, warnings, err := m.eol.Match(ctx, osFamily, osName, res.Packages, asset)
+	duration := time.Since(start).Milliseconds()
+	run.DurationMS = &duration
+	switch {
+	case err != nil && ctx.Err() != nil:
+		run.Status = "canceled"
+		run.Error = err.Error()
+	case err != nil:
+		slog.Warn("jobs: end-of-life lookup failed", "scan_id", job.scanID, "error", err)
+		run.Status = "failed"
+		run.Error = err.Error()
+	default:
+		res.Findings = append(res.Findings, fs...)
 		run.Warning = strings.Join(warnings, "; ")
 	}
 	res.ScannerRuns = append(res.ScannerRuns, run)

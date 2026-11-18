@@ -34,6 +34,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/sbom"
 	"github.com/ozerozdas/bastion/internal/scanners"
 	"github.com/ozerozdas/bastion/internal/scanners/depsdev"
+	"github.com/ozerozdas/bastion/internal/scanners/eol"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
@@ -722,6 +723,7 @@ func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, ass
 		Options:      scanOpts,
 		Advisories:   deps.advisoryMatcher(),
 		Outdated:     depsdev.New(depsdev.Config{DataDir: deps.paths.DataDir, Version: deps.version}),
+		EOL:          eol.New(eol.Config{DataDir: deps.paths.DataDir, Version: deps.version}),
 		Reachability: govulncheck.New(govulncheck.Config{DataDir: deps.paths.DataDir}),
 		Concurrency:  1,
 		Events:       waiter,
