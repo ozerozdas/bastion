@@ -149,6 +149,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		Reachability:  services.reachability,
 		SAST:          services.sast,
 		Outdated:      services.outdated,
+		EOL:           services.eol,
 		LicencePolicy: services.licence,
 		Preferences:   services.preferences,
 		Notifications: services.notify,

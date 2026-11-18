@@ -20,6 +20,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/preferences"
 	"github.com/ozerozdas/bastion/internal/reports"
 	"github.com/ozerozdas/bastion/internal/scanners/depsdev"
+	"github.com/ozerozdas/bastion/internal/scanners/eol"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
@@ -43,6 +44,7 @@ type serverServices struct {
 	epss         *epss.Service
 	reachability *govulncheck.Service
 	outdated     *depsdev.Service
+	eol          *eol.Service
 	sast         *opengrep.Service
 	licence      *licencepolicy.Service
 	preferences  *preferences.Service
@@ -109,6 +111,9 @@ func newServerServices(ctx context.Context, paths app.Paths, port, concurrency i
 	// Outdated-package lookup is opt-in (#38): off by default, so no request
 	// reaches api.deps.dev and scans carry no outdated findings.
 	services.outdated = depsdev.New(depsdev.Config{DataDir: paths.DataDir, Version: version})
+	// The end-of-life lookup is opt-in too (#55): off means no request reaches
+	// endoflife.date.
+	services.eol = eol.New(eol.Config{DataDir: paths.DataDir, Version: version})
 	// SAST is opt-in (#33): off by default, so nothing is downloaded and
 	// repository scans are unchanged until the user turns it on.
 	services.sast = newOpengrepModule(paths)
@@ -169,7 +174,7 @@ func newServerServices(ctx context.Context, paths app.Paths, port, concurrency i
 	services.trivyDB = trivy.NewManager(paths.TrivyCacheDir())
 	services.scanManager, err = newServerScanManager(ctx, db, paths, concurrency,
 		services.connections, secretStore, services.events, services.trivyDB,
-		services.outdated, services.reachability, services.sast, services.notify)
+		services.outdated, services.eol, services.reachability, services.sast, services.notify)
 	if err != nil {
 		return nil, err
 	}

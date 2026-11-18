@@ -1136,6 +1136,13 @@ type DockerImageList struct {
 	Images []DockerImage `json:"images"`
 }
 
+// EOLStatus The opt-in end-of-life lookup. It is off by default; with it off no
+// request reaches endoflife.date.
+type EOLStatus struct {
+	// Enabled The stored opt-in setting.
+	Enabled bool `json:"enabled"`
+}
+
 // EPSSScore FIRST.org's EPSS prediction for one CVE: the probability that it is
 // exploited in the next 30 days, and the score's percentile among all
 // scored CVEs. Both are fractions between 0 and 1.
@@ -1937,6 +1944,13 @@ type SetAssetScheduleRequest struct {
 	Schedule AssetScanSchedule `json:"schedule"`
 }
 
+// SetEOLEnabledRequest defines model for SetEOLEnabledRequest.
+type SetEOLEnabledRequest struct {
+	// Enabled True opts in to the endoflife.date lookup during scans; false stops
+	// every future request.
+	Enabled bool `json:"enabled"`
+}
+
 // SetEPSSEnabledRequest defines model for SetEPSSEnabledRequest.
 type SetEPSSEnabledRequest struct {
 	// Enabled True opts in to the daily FIRST.org download; false turns it off and
@@ -2334,6 +2348,9 @@ type CreateConnectionJSONRequestBody = CreateConnectionRequest
 // RenameConnectionJSONRequestBody defines body for RenameConnection for application/json ContentType.
 type RenameConnectionJSONRequestBody = RenameConnectionRequest
 
+// SetEOLEnabledJSONRequestBody defines body for SetEOLEnabled for application/json ContentType.
+type SetEOLEnabledJSONRequestBody = SetEOLEnabledRequest
+
 // SetEPSSEnabledJSONRequestBody defines body for SetEPSSEnabled for application/json ContentType.
 type SetEPSSEnabledJSONRequestBody = SetEPSSEnabledRequest
 
@@ -2572,6 +2589,12 @@ type ServerInterface interface {
 	// GetDockerImages List images on the local Docker daemon.
 	// (GET /api/docker/images)
 	GetDockerImages(w http.ResponseWriter, r *http.Request)
+	// GetEOLStatus Report the end-of-life lookup state.
+	// (GET /api/eol)
+	GetEOLStatus(w http.ResponseWriter, r *http.Request)
+	// SetEOLEnabled Store the end-of-life lookup opt-in choice.
+	// (PUT /api/eol)
+	SetEOLEnabled(w http.ResponseWriter, r *http.Request)
 	// GetEPSSStatus Report the EPSS feed state.
 	// (GET /api/epss)
 	GetEPSSStatus(w http.ResponseWriter, r *http.Request)
@@ -3041,6 +3064,34 @@ func (siw *ServerInterfaceWrapper) GetDockerImages(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDockerImages(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetEOLStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetEOLStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetEOLStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetEOLEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetEOLEnabled(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetEOLEnabled(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4060,6 +4111,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/epss", wrapper.SetEPSSEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/outdated", wrapper.GetOutdatedStatus)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/outdated", wrapper.SetOutdatedEnabled)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/eol", wrapper.GetEOLStatus)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/eol", wrapper.SetEOLEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reachability", wrapper.GetReachabilityStatus)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/reachability", wrapper.SetReachabilityEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/sast", wrapper.GetSASTStatus)
@@ -6453,6 +6506,255 @@ type GetDockerImages500ApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetDockerImages500ApplicationProblemPlusJSONResponse) VisitGetDockerImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEOLStatusRequestObject struct {
+}
+
+type GetEOLStatusResponseObject interface {
+	VisitGetEOLStatusResponse(w http.ResponseWriter) error
+}
+
+type GetEOLStatus200JSONResponse EOLStatus
+
+func (response GetEOLStatus200JSONResponse) VisitGetEOLStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEOLStatus401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetEOLStatus401ApplicationProblemPlusJSONResponse) VisitGetEOLStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEOLStatus403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetEOLStatus403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetEOLStatus403ResponseHeaders
+}
+
+func (response GetEOLStatus403ApplicationProblemPlusJSONResponse) VisitGetEOLStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEOLStatus421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetEOLStatus421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetEOLStatus421ResponseHeaders
+}
+
+func (response GetEOLStatus421ApplicationProblemPlusJSONResponse) VisitGetEOLStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEOLStatus500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetEOLStatus500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetEOLStatus500ResponseHeaders
+}
+
+func (response GetEOLStatus500ApplicationProblemPlusJSONResponse) VisitGetEOLStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEOLEnabledRequestObject struct {
+	Body *SetEOLEnabledJSONRequestBody
+}
+
+type SetEOLEnabledResponseObject interface {
+	VisitSetEOLEnabledResponse(w http.ResponseWriter) error
+}
+
+type SetEOLEnabled200JSONResponse EOLStatus
+
+func (response SetEOLEnabled200JSONResponse) VisitSetEOLEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEOLEnabled400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetEOLEnabled400ApplicationProblemPlusJSONResponse) VisitSetEOLEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEOLEnabled401ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetEOLEnabled401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetEOLEnabled401ResponseHeaders
+}
+
+func (response SetEOLEnabled401ApplicationProblemPlusJSONResponse) VisitSetEOLEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEOLEnabled403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetEOLEnabled403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetEOLEnabled403ResponseHeaders
+}
+
+func (response SetEOLEnabled403ApplicationProblemPlusJSONResponse) VisitSetEOLEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEOLEnabled421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetEOLEnabled421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetEOLEnabled421ResponseHeaders
+}
+
+func (response SetEOLEnabled421ApplicationProblemPlusJSONResponse) VisitSetEOLEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetEOLEnabled500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetEOLEnabled500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetEOLEnabled500ResponseHeaders
+}
+
+func (response SetEOLEnabled500ApplicationProblemPlusJSONResponse) VisitSetEOLEnabledResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -10902,6 +11204,12 @@ type StrictServerInterface interface {
 	// GetDockerImages List images on the local Docker daemon.
 	// (GET /api/docker/images)
 	GetDockerImages(ctx context.Context, request GetDockerImagesRequestObject) (GetDockerImagesResponseObject, error)
+	// GetEOLStatus Report the end-of-life lookup state.
+	// (GET /api/eol)
+	GetEOLStatus(ctx context.Context, request GetEOLStatusRequestObject) (GetEOLStatusResponseObject, error)
+	// SetEOLEnabled Store the end-of-life lookup opt-in choice.
+	// (PUT /api/eol)
+	SetEOLEnabled(ctx context.Context, request SetEOLEnabledRequestObject) (SetEOLEnabledResponseObject, error)
 	// GetEPSSStatus Report the EPSS feed state.
 	// (GET /api/epss)
 	GetEPSSStatus(ctx context.Context, request GetEPSSStatusRequestObject) (GetEPSSStatusResponseObject, error)
@@ -11487,6 +11795,61 @@ func (sh *strictHandler) GetDockerImages(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDockerImagesResponseObject); ok {
 		if err := validResponse.VisitGetDockerImagesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEOLStatus operation middleware
+func (sh *strictHandler) GetEOLStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetEOLStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEOLStatus(ctx, request.(GetEOLStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEOLStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetEOLStatusResponseObject); ok {
+		if err := validResponse.VisitGetEOLStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetEOLEnabled operation middleware
+func (sh *strictHandler) SetEOLEnabled(w http.ResponseWriter, r *http.Request) {
+	var request SetEOLEnabledRequestObject
+
+	var body SetEOLEnabledJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetEOLEnabled(ctx, request.(SetEOLEnabledRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetEOLEnabled")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetEOLEnabledResponseObject); ok {
+		if err := validResponse.VisitSetEOLEnabledResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

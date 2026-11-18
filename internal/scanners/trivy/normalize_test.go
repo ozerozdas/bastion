@@ -327,3 +327,11 @@ func TestImageSourceWithoutLabels(t *testing.T) {
 		})
 	}
 }
+
+func TestImageSourceReadsDetectedOS(t *testing.T) {
+	raw := &scanners.RawResult{Raw: []byte(`{"Metadata":{"OS":{"Family":"alpine","Name":"3.18.4"}}}`)}
+	got := (&Scanner{}).ImageSource(raw)
+	if got.OSFamily != "alpine" || got.OSName != "3.18.4" {
+		t.Fatalf("ImageSource = %+v", got)
+	}
+}

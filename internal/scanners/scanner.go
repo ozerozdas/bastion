@@ -76,9 +76,14 @@ type Scanner interface {
 // the OCI labels org.opencontainers.image.source and .revision. It is a neutral
 // shape: the scanner adapter that can read it owns the format, the pipeline
 // only passes it on.
+//
+// OSFamily and OSName are the operating system the scanner detected in the
+// target, for example "alpine" and "3.18.4"; both are empty when it found none.
 type ImageSource struct {
 	URL      string
 	Revision string
+	OSFamily string
+	OSName   string
 }
 
 // ImageSourceReader is implemented by adapters whose raw output can carry an
