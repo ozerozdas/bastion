@@ -1,9 +1,14 @@
-import { ScanScheduleSelect } from '../components/scan-schedule'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
 
-import { assetsQuery, useArchiveAsset, useCreateAsset, type Asset } from '../api/assets'
+import {
+  assetsQuery,
+  useArchiveAsset,
+  useCreateAsset,
+  useSetAssetSchedule,
+  type Asset,
+} from '../api/assets'
 import { ApiError } from '../api/client'
 import {
   connectionsQuery,
@@ -23,8 +28,11 @@ import {
 } from '../components/data-table'
 import { PageActions } from '../components/app-shell'
 import { EmptyState } from '../components/empty-state'
+import { ClockIcon } from '../components/icons'
+import { ActionMenu } from '../components/ui/action-menu'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { InfoTip } from '../components/ui/info-tip'
 import { CountBadge, severityCounts } from '../components/severity-counts'
 import { Tabs, type TabItem } from '../components/ui/tabs'
 import { suggestFix } from '../lib/hints'
@@ -62,25 +70,11 @@ function projectColumns(): DataTableColumn<Asset>[] {
       sortValue: (asset) => asset.display_name,
     },
     {
-      id: 'ref',
-      header: t('repos.column.ref'),
-      headerClassName: 'pl-3',
-      sortable: true,
-      sortValue: (asset) => asset.ref,
-    },
-    {
       id: 'images',
       header: t('repos.column.images'),
-      headerClassName: 'pl-3',
+      headerClassName: 'w-[5rem] pl-3',
       sortable: true,
       sortValue: (asset) => asset.linked_images.length,
-    },
-    {
-      id: 'schedule',
-      header: t('repos.column.schedule'),
-      headerClassName: 'pl-3',
-      sortable: true,
-      sortValue: (asset) => asset.scan_schedule,
     },
     {
       id: 'last-scan',
@@ -92,7 +86,7 @@ function projectColumns(): DataTableColumn<Asset>[] {
     {
       id: 'open-findings',
       header: t('repos.column.openFindings'),
-      headerClassName: 'pl-3',
+      headerClassName: 'w-[10rem] pl-3',
       sortable: true,
       defaultSortDirection: 'desc',
       sortValue: (asset) => openFindingTotal(asset.open_counts),
@@ -100,7 +94,7 @@ function projectColumns(): DataTableColumn<Asset>[] {
     {
       id: 'actions',
       header: t('repos.column.actions'),
-      headerClassName: 'pl-3 text-right',
+      headerClassName: 'w-[8rem] pl-3 text-right',
     },
   ]
 }
@@ -302,12 +296,18 @@ function ProjectsTable({
           <ProjectRow asset={asset} live={live.get(asset.id)} selection={selection} />
         )}
       />
-      <p className="text-xs text-faint">{t('schedule.hint')}</p>
     </>
   )
 }
 
-/** ProjectRow is one asset and its small set of actions. */
+/** rowColSpan is the checkbox plus the five columns, for the sub-rows. */
+const rowColSpan = 6
+
+/**
+ * ProjectRow is one asset: its identity, scan state, and the actions that stay
+ * out of the way. Scan is the only inline button; everything else is in the ⋯
+ * menu, so a row keeps one calm line of controls.
+ */
 function ProjectRow({
   asset,
   live,
@@ -322,13 +322,40 @@ function ProjectRow({
   const start = useStartScans()
   const cancel = useCancelScan()
   const archive = useArchiveAsset()
+  const schedule = useSetAssetSchedule()
   const [confirming, setConfirming] = useState(false)
+  const confirmRemove = useRef<HTMLButtonElement>(null)
+  const menuTrigger = useRef<HTMLButtonElement>(null)
 
   const lastScan = asset.last_scan
   // A live event wins over the list row until the finished event refetches it.
   const liveActive = isLiveActive(live)
   const status = liveActive && live ? live.status : lastScan?.status
   const running = status === 'queued' || status === 'running'
+  const images = asset.linked_images ?? []
+  const findings = openFindingTotal(asset.open_counts)
+  // A repository's ref is its name, so the line under the name carries what
+  // the name cannot show twice: the branch, or the path behind a base name.
+  const refLine =
+    asset.default_branch === undefined
+      ? asset.ref
+      : asset.ref === asset.display_name
+        ? asset.default_branch
+        : `${asset.ref} · ${asset.default_branch}`
+  const refTitle =
+    asset.default_branch === undefined
+      ? asset.ref
+      : `${asset.ref} · ${asset.default_branch}`
+  const scheduleLabel =
+    asset.scan_schedule === 'daily' || asset.scan_schedule === 'weekly'
+      ? t(`schedule.${asset.scan_schedule}`)
+      : null
+
+  // The confirm row replaces the actions that opened it, so it takes focus;
+  // cancelling puts focus back on the ⋯ button that started it.
+  useEffect(() => {
+    if (confirming) confirmRemove.current?.focus()
+  }, [confirming])
 
   // AssetLastScan has no error field, so read the failed scan's own row.
   const failedScan = useQuery({
@@ -342,48 +369,53 @@ function ProjectRow({
   return (
     <Fragment>
       <DataTableRow selection={selection.row(asset)}>
-        <td className="max-w-[24ch] py-2 pr-3 align-top">
-          <span className="block truncate font-medium" title={asset.display_name}>
-            {asset.display_name}
-          </span>
-        </td>
-        <td className="max-w-[28ch] py-2 pl-3 align-top">
-          <span className="block truncate font-mono text-xs text-muted" title={asset.ref}>
-            {asset.ref}
-          </span>
-          {asset.default_branch ? (
-            <span className="text-xs text-faint">{asset.default_branch}</span>
-          ) : null}
-        </td>
-        <td className="max-w-[28ch] py-2 pl-3 align-top">
-          {(asset.linked_images ?? []).length === 0 ? (
-            <span className="text-faint">—</span>
-          ) : (
-            <span className="flex flex-wrap gap-1">
-              {(asset.linked_images ?? []).map((image) => (
-                <Badge
-                  key={image.asset_id}
-                  tone={image.source === 'manual' ? 'neutral' : 'ok'}
-                >
-                  <span
-                    className="font-mono"
-                    title={
-                      image.revision
-                        ? `${image.ref} · ${image.source} · ${image.revision}`
-                        : `${image.ref} · ${image.source}`
-                    }
-                  >
-                    {image.display_name}
-                  </span>
-                </Badge>
-              ))}
+        <td className="max-w-[34ch] py-2 pr-3 align-middle">
+          <div className="flex min-w-0 flex-col gap-0.5 leading-tight">
+            <span className="truncate font-medium" title={asset.display_name}>
+              {asset.display_name}
             </span>
+            <span className="flex min-w-0 items-center gap-1.5 text-[0.8125rem] text-muted">
+              <span className="truncate font-mono" title={refTitle}>
+                {refLine}
+              </span>
+              {scheduleLabel === null ? null : (
+                <span
+                  className="flex shrink-0 items-center gap-1 text-faint"
+                  title={t('schedule.aria', { name: asset.display_name })}
+                >
+                  <ClockIcon className="size-3" />
+                  {scheduleLabel}
+                </span>
+              )}
+            </span>
+          </div>
+        </td>
+        <td className="py-2 pl-3 align-middle">
+          {images.length === 0 ? null : (
+            <InfoTip
+              label={t('repos.images.aria', { name: asset.display_name })}
+              trigger={
+                <Badge className="tabular-nums">{images.length}</Badge>
+              }
+              className="size-auto"
+              content={
+                <span className="flex flex-col gap-0.5">
+                  {images.map((image) => (
+                    <span key={image.asset_id} className="break-all font-mono">
+                      {image.ref}
+                      {image.revision === undefined ? null : (
+                        <span className="ml-1.5 font-sans text-faint">
+                          {image.revision}
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </span>
+              }
+            />
           )}
         </td>
-        <td className="py-2 pl-3 align-top">
-          <ScanScheduleSelect asset={asset} />
-        </td>
-        <td className="status-cell-wide py-2 pl-3 align-top whitespace-nowrap">
+        <td className="status-cell-wide py-2 pl-3 align-middle whitespace-nowrap">
           {status ? (
             <Badge tone={statusView[status].tone}>
               {t(statusView[status].labelKey)}
@@ -391,36 +423,42 @@ function ProjectRow({
           ) : (
             <Badge>{t('scanStatus.neverScanned')}</Badge>
           )}
-          <span className="ml-2 text-xs text-faint tabular-nums">
+          <span className="ml-2 text-[0.8125rem] text-faint tabular-nums">
             {scanWhen(lastScan, running)}
           </span>
           {liveActive && live ? (
-            <span className="ml-1 text-xs text-muted">{liveDetail(live)}</span>
+            <span className="ml-1 text-[0.8125rem] text-muted">
+              {liveDetail(live)}
+            </span>
           ) : null}
         </td>
-        <td className="py-2 pl-3 align-top">
-          <span className="flex flex-wrap gap-1">
-            {severityCounts.map((severity) => (
-              <CountBadge
-                key={severity.key}
-                count={asset.open_counts[severity.key]}
-                tone={severity.tone}
-                label={severity.key}
-              />
-            ))}
-          </span>
+        <td className="py-2 pl-3 align-middle">
+          {lastScan === undefined && !liveActive ? (
+            <span className="text-[0.8125rem] whitespace-nowrap text-faint">
+              {t('repos.findings.notScanned')}
+            </span>
+          ) : findings === 0 ? (
+            <span className="text-[0.8125rem] text-faint">
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">{t('repos.findings.none')}</span>
+            </span>
+          ) : (
+            <span className="flex flex-nowrap items-center gap-1">
+              {severityCounts
+                .filter((severity) => asset.open_counts[severity.key] > 0)
+                .map((severity) => (
+                  <CountBadge
+                    key={severity.key}
+                    count={asset.open_counts[severity.key]}
+                    tone={severity.tone}
+                    label={severity.key}
+                  />
+                ))}
+            </span>
+          )}
         </td>
-        <td className="py-2 pl-3 align-top">
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => start.mutate([asset.id])}
-              disabled={start.isPending || running}
-            >
-              {start.isPending ? t('repos.queueing') : t('repos.scan')}
-            </Button>
+        <td className="py-2 pl-3 align-middle">
+          <div className="flex items-center justify-end gap-1">
             {running && lastScan ? (
               <Button
                 type="button"
@@ -431,32 +469,68 @@ function ProjectRow({
               >
                 {cancel.isPending ? t('repos.canceling') : t('repos.cancel')}
               </Button>
-            ) : null}
-            <Link
-              to="/findings"
-              search={{ asset: asset.id }}
-              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-            >
-              {t('repos.viewFindings')}
-            </Link>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                start.reset()
-                setConfirming(true)
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => start.mutate([asset.id])}
+                disabled={start.isPending || running}
+              >
+                {start.isPending ? t('repos.queueing') : t('repos.scan')}
+              </Button>
+            )}
+            <ActionMenu
+              label={t('repos.actions.aria', { name: asset.display_name })}
+              triggerRef={menuTrigger}
+              items={[
+                {
+                  key: 'findings',
+                  label: t('repos.viewFindings'),
+                  to: '/findings',
+                  search: { asset: asset.id },
+                },
+                {
+                  key: 'remove',
+                  label: t('repos.remove'),
+                  destructive: true,
+                  onSelect: () => {
+                    start.reset()
+                    setConfirming(true)
+                  },
+                },
+              ]}
+              radio={{
+                label: t('schedule.aria', { name: asset.display_name }),
+                title: t('repos.column.schedule'),
+                hint: (
+                  <InfoTip
+                    label={t('schedule.hintAria')}
+                    content={t('schedule.hint')}
+                    menuControl
+                  />
+                ),
+                value: asset.scan_schedule ?? 'off',
+                options: [
+                  { value: 'off', label: t('schedule.off') },
+                  { value: 'daily', label: t('schedule.daily') },
+                  { value: 'weekly', label: t('schedule.weekly') },
+                ],
+                disabled: schedule.isPending,
+                onChange: (value) =>
+                  schedule.mutate({
+                    id: asset.id,
+                    schedule: value as Asset['scan_schedule'],
+                  }),
               }}
-            >
-              {t('repos.remove')}
-            </Button>
+            />
           </div>
         </td>
       </DataTableRow>
 
       {confirming ? (
         <tr>
-          <td colSpan={8} className="pb-2">
+          <td colSpan={rowColSpan} className="pb-2">
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
               <span>
                 {t('repos.confirmRemove', { name: asset.display_name })}
@@ -466,6 +540,7 @@ function ProjectRow({
                 size="sm"
                 variant="outline"
                 className="text-critical"
+                ref={confirmRemove}
                 onClick={() => archive.mutate(asset.id)}
                 disabled={archive.isPending}
               >
@@ -478,6 +553,7 @@ function ProjectRow({
                 onClick={() => {
                   archive.reset()
                   setConfirming(false)
+                  menuTrigger.current?.focus()
                 }}
               >
                 {t('common.cancel')}
@@ -489,7 +565,7 @@ function ProjectRow({
 
       {failed ? (
         <tr>
-          <td colSpan={8} className="pb-2">
+          <td colSpan={rowColSpan} className="pb-2">
             <ScanFailure error={scanError} />
           </td>
         </tr>
@@ -497,7 +573,7 @@ function ProjectRow({
 
       {start.isError ? (
         <tr>
-          <td colSpan={8} className="pb-2">
+          <td colSpan={rowColSpan} className="pb-2">
             <ErrorNote
               error={start.error}
               fix={t('repos.startError')}
@@ -507,7 +583,7 @@ function ProjectRow({
       ) : null}
       {cancel.isError ? (
         <tr>
-          <td colSpan={8} className="pb-2">
+          <td colSpan={rowColSpan} className="pb-2">
             <ErrorNote
               error={cancel.error}
               fix={t('repos.cancelError')}
@@ -517,11 +593,20 @@ function ProjectRow({
       ) : null}
       {archive.isError ? (
         <tr>
-          <td colSpan={8} className="pb-2">
+          <td colSpan={rowColSpan} className="pb-2">
             <ErrorNote
               error={archive.error}
               fix={t('repos.archiveError')}
             />
+          </td>
+        </tr>
+      ) : null}
+      {schedule.isError ? (
+        <tr>
+          <td colSpan={rowColSpan} className="pb-2">
+            <p role="alert" className="text-xs text-critical">
+              {t('schedule.failed')}
+            </p>
           </td>
         </tr>
       ) : null}

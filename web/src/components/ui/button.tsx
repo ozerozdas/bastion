@@ -14,8 +14,8 @@ export const buttonVariants = cva(
         ghost: 'text-muted hover:bg-hover hover:text-fg',
       },
       size: {
-        default: 'h-8 px-3 text-[0.8125rem]',
-        sm: 'h-7 px-2 text-xs',
+        default: 'h-8 px-3 text-[0.875rem]',
+        sm: 'h-7 px-2 text-[0.8125rem]',
       },
     },
     defaultVariants: {

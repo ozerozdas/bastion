@@ -37,6 +37,7 @@ import { PageActions } from '../components/app-shell'
 import { Tabs } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { InfoTip } from '../components/ui/info-tip'
 import { severityLabel, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
 import { expiryDate, expiryValue, type ExpiryChoice } from '../lib/expiry'
 import { epssLabel, percentileLabel } from '../lib/epss'
@@ -68,6 +69,9 @@ const severityOptions: Severity[] = ['critical', 'high', 'medium', 'low', 'unkno
 
 /** searchDebounceMs keeps a search from querying the API on every keystroke. */
 const searchDebounceMs = 300
+
+/** moreFiltersId ties the Filters button to the panel it opens. */
+const moreFiltersId = 'findings-more-filters'
 
 /**
  * findingColumns builds the table for the projects on screen. The Project
@@ -458,6 +462,8 @@ export function FindingsPage() {
   const [dependency, setDependency] = useState<'' | 'direct' | 'indirect'>('')
   const [hideTests, setHideTests] = useState(false)
   const [hideMaintenance, setHideMaintenance] = useState(false)
+  // The row shows the common filters; the disclosure reveals the rest.
+  const [showMore, setShowMore] = useState(false)
   // The search box is local while typing and debounces into ?q=; the ref holds
   // the value the URL already has, so a URL-driven change can be told apart.
   const [queryInput, setQueryInput] = useState(search.q ?? '')
@@ -821,6 +827,54 @@ export function FindingsPage() {
     setCheckedGroups(new Set())
   }
 
+  // A control and its chip clear through the same handler, so state and URL
+  // cannot drift apart when one is used instead of the other.
+  function changeAsset(value: string) {
+    // A project filter forces single, so the view leaves the URL with it.
+    void navigate({
+      to: '/findings',
+      search: {
+        ...(value === '' ? {} : { asset: Number(value) }),
+        ...(search.q === undefined ? {} : { q: search.q }),
+        ...(search.size === undefined ? {} : { size: search.size }),
+        ...(search.sort === undefined ? {} : { sort: search.sort }),
+        ...(search.order === undefined ? {} : { order: search.order }),
+      },
+      replace: true,
+    })
+    clearSelection()
+  }
+  function changeType(value: string) {
+    setType(value as FindingType | '')
+    narrowed()
+  }
+  function changeSeverity(value: string) {
+    setSeverity(value as Severity | '')
+    narrowed()
+  }
+  function changeStatus(value: string) {
+    setStatusChoice(value as FindingStatus | 'agent')
+    narrowed()
+  }
+  function changeFix(value: string) {
+    setFix(value as typeof fix)
+    narrowed()
+  }
+  function changeDependency(value: string) {
+    setDependency(value as typeof dependency)
+    narrowed()
+  }
+  function changeHideTests(value: boolean) {
+    setHideTests(value)
+    narrowed()
+  }
+  function changeHideMaintenance(value: boolean) {
+    setHideMaintenance(value)
+    narrowed()
+  }
+
+  // The row keeps the filters that answer most questions; the rest wait behind
+  // the Filters disclosure, which counts how many of them are active.
   const filters: FilterField[] = [
     {
       id: 'findings-search',
@@ -828,15 +882,41 @@ export function FindingsPage() {
       kind: 'search',
       placeholder: t('findings.filter.searchPlaceholder'),
       value: queryInput,
-      className: 'w-64',
+      className: 'w-full sm:w-52',
       options: [],
       onChange: setQueryInput,
+    },
+    {
+      id: 'findings-severity',
+      label: t('findings.filter.severity'),
+      value: severity,
+      className: 'w-full sm:w-36',
+      options: [
+        { value: '', label: t('findings.filter.allSeverities') },
+        ...severityOptions.map((option) => ({
+          value: option,
+          label: severityLabel(option),
+        })),
+      ],
+      onChange: changeSeverity,
+    },
+    {
+      id: 'findings-status',
+      label: t('findings.filter.status'),
+      value: statusChoice,
+      className: 'w-full sm:w-40',
+      options: [
+        { value: 'open', label: t('findings.filter.open') },
+        { value: 'ignored', label: t('findings.filter.ignored') },
+        { value: 'agent', label: t('findings.filter.agent') },
+      ],
+      onChange: changeStatus,
     },
     {
       id: 'findings-project',
       label: t('findings.filter.project'),
       value: selected === undefined ? '' : String(selected.id),
-      className: 'w-64',
+      className: 'w-full sm:w-52',
       options: [
         { value: '', label: t('findings.filter.allProjects') },
         // Grouped by asset kind, so images are not mixed into repositories.
@@ -855,22 +935,11 @@ export function FindingsPage() {
             group: t('findings.filter.group.images'),
           })),
       ],
-      onChange: (value) => {
-        // A project filter forces single, so the view leaves the URL with it.
-        void navigate({
-          to: '/findings',
-          search: {
-            ...(value === '' ? {} : { asset: Number(value) }),
-            ...(search.q === undefined ? {} : { q: search.q }),
-            ...(search.size === undefined ? {} : { size: search.size }),
-            ...(search.sort === undefined ? {} : { sort: search.sort }),
-            ...(search.order === undefined ? {} : { order: search.order }),
-          },
-          replace: true,
-        })
-        clearSelection()
-      },
+      onChange: changeAsset,
     },
+  ]
+
+  const moreFilters: FilterField[] = [
     {
       id: 'findings-type',
       label: t('findings.filter.type'),
@@ -883,50 +952,7 @@ export function FindingsPage() {
           label: t(typeLabels[option]),
         })),
       ],
-      onChange: (value) => {
-        setType(value as FindingType | '')
-        resetPage()
-        setOpenFingerprint(null)
-        setOpenGroupKey(null)
-        setChecked(new Set())
-        setCheckedGroups(new Set())
-      },
-    },
-    {
-      id: 'findings-severity',
-      label: t('findings.filter.severity'),
-      value: severity,
-      className: 'w-40',
-      options: [
-        { value: '', label: t('findings.filter.allSeverities') },
-        ...severityOptions.map((option) => ({
-          value: option,
-          label: severityLabel(option),
-        })),
-      ],
-      onChange: (value) => {
-        setSeverity(value as Severity | '')
-        resetPage()
-        setOpenFingerprint(null)
-        setOpenGroupKey(null)
-        setChecked(new Set())
-        setCheckedGroups(new Set())
-      },
-    },
-    {
-      id: 'findings-status',
-      label: t('findings.filter.status'),
-      value: statusChoice,
-      className: 'w-44',
-      options: [
-        { value: 'open', label: t('findings.filter.open') },
-        { value: 'ignored', label: t('findings.filter.ignored') },
-        { value: 'agent', label: t('findings.filter.agent') },
-      ],
-      onChange: (value) => {
-        setStatusChoice(value as FindingStatus | 'agent')
-        narrowed()
-      },
+      onChange: changeType,
     },
     {
       id: 'findings-fix',
@@ -938,10 +964,7 @@ export function FindingsPage() {
         { value: 'available', label: t('findings.filter.fixAvailable') },
         { value: 'none', label: t('findings.filter.fixNone') },
       ],
-      onChange: (value) => {
-        setFix(value as typeof fix)
-        narrowed()
-      },
+      onChange: changeFix,
     },
     {
       id: 'findings-dependency',
@@ -953,12 +976,127 @@ export function FindingsPage() {
         { value: 'direct', label: t('findings.filter.dependencyDirect') },
         { value: 'indirect', label: t('findings.filter.dependencyIndirect') },
       ],
-      onChange: (value) => {
-        setDependency(value as typeof dependency)
-        narrowed()
-      },
+      onChange: changeDependency,
     },
   ]
+
+  // Every non-default filter is a chip below the row, so what narrows the list
+  // stays readable and removable without reopening the panel. Status keeps its
+  // default Open, which is not a filter the user set.
+  const activeChips: {
+    key: string
+    text: string
+    removeLabel: string
+    onRemove: () => void
+  }[] = []
+  function addChip(
+    key: string,
+    label: string,
+    value: string | undefined,
+    onRemove: () => void,
+  ) {
+    activeChips.push({
+      key,
+      text:
+        value === undefined
+          ? label
+          : t('findings.filter.chip', { filter: label, value }),
+      removeLabel:
+        value === undefined
+          ? t('findings.filter.removeChip', { filter: label })
+          : t('findings.filter.removeChipValue', { filter: label, value }),
+      onRemove,
+    })
+  }
+  const trimmedQuery = queryInput.trim()
+  if (trimmedQuery !== '') {
+    addChip('q', t('findings.filter.search'), trimmedQuery, () =>
+      setQueryInput(''),
+    )
+  }
+  if (selected !== undefined) {
+    addChip('asset', t('findings.filter.project'), selected.display_name, () =>
+      changeAsset(''),
+    )
+  }
+  if (type !== '') {
+    addChip('type', t('findings.filter.type'), t(typeLabels[type]), () =>
+      changeType(''),
+    )
+  }
+  if (severity !== '') {
+    addChip('severity', t('findings.filter.severity'), severityLabel(severity), () =>
+      changeSeverity(''),
+    )
+  }
+  if (statusChoice !== 'open') {
+    addChip(
+      'status',
+      t('findings.filter.status'),
+      t(
+        statusChoice === 'ignored'
+          ? 'findings.filter.ignored'
+          : 'findings.filter.agent',
+      ),
+      () => changeStatus('open'),
+    )
+  }
+  if (fix !== '') {
+    addChip(
+      'fix',
+      t('findings.filter.fix'),
+      t(
+        fix === 'available'
+          ? 'findings.filter.fixAvailable'
+          : 'findings.filter.fixNone',
+      ),
+      () => changeFix(''),
+    )
+  }
+  if (dependency !== '') {
+    addChip(
+      'dependency',
+      t('findings.filter.dependency'),
+      t(
+        dependency === 'direct'
+          ? 'findings.filter.dependencyDirect'
+          : 'findings.filter.dependencyIndirect',
+      ),
+      () => changeDependency(''),
+    )
+  }
+  if (hideTests) {
+    addChip('hideTests', t('findings.filter.hideTests'), undefined, () =>
+      changeHideTests(false),
+    )
+  }
+  if (hideMaintenance) {
+    addChip('hideMaintenance', t('findings.filter.hideMaintenance'), undefined, () =>
+      changeHideMaintenance(false),
+    )
+  }
+
+  // The disclosure badge counts the filters that are not in the row.
+  const hiddenCount =
+    (type === '' ? 0 : 1) +
+    (fix === '' ? 0 : 1) +
+    (dependency === '' ? 0 : 1) +
+    (hideTests ? 1 : 0) +
+    (hideMaintenance ? 1 : 0)
+
+  function clearFilters() {
+    setQueryInput('')
+    setType('')
+    setSeverity('')
+    setStatusChoice('open')
+    setFix('')
+    setDependency('')
+    setHideTests(false)
+    setHideMaintenance(false)
+    narrowed()
+    // The asset lives in the URL, so it clears through the same navigate.
+    if (search.asset !== undefined) changeAsset('')
+  }
 
   const selection: DataTableSelection<Finding> = {
     all: {
@@ -1046,65 +1184,140 @@ export function FindingsPage() {
           title={t('licence.forProject', { project: selected.display_name })}
         />
       )}
-      <FilterBar label={t('findings.filter.aria')} fields={filters}>
-        <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
-          <input
-            type="checkbox"
-            checked={hideTests}
-            onChange={(event) => {
-              setHideTests(event.target.checked)
-              narrowed()
-            }}
-          />
-          {t('findings.filter.hideTests')}
-        </label>
-        <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
-          <input
-            type="checkbox"
-            checked={hideMaintenance}
-            onChange={(event) => {
-              setHideMaintenance(event.target.checked)
-              narrowed()
-            }}
-          />
-          {t('findings.filter.hideMaintenance')}
-        </label>
-        {/* Grouping folds a rule across projects, so it is only offered while
-            every project is in the list (#106). */}
-        {search.asset === undefined ? (
+      <FilterBar
+        label={t('findings.filter.aria')}
+        fields={filters}
+        panel={
           <div
-            role="group"
-            aria-label={t('findings.view.aria')}
-            className="flex items-center gap-1 rounded-md border border-border-subtle bg-bg p-0.5"
+            id={moreFiltersId}
+            hidden={!showMore}
+            className={cn(
+              'flex-col gap-3 border-t border-border-subtle pt-3',
+              showMore ? 'flex' : 'hidden',
+            )}
           >
-            {(['single', 'grouped'] as const).map((option) => {
-              const active = grouped === (option === 'grouped')
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setView(option)}
-                  className={cn(
-                    'rounded px-2.5 py-1 text-[0.8125rem] transition-colors',
-                    active
-                      ? 'bg-surface text-fg shadow-sm'
-                      : 'text-muted hover:text-fg',
-                  )}
-                >
-                  {option === 'single'
-                    ? t('findings.view.single')
-                    : t('findings.view.grouped')}
-                </button>
-              )
-            })}
+            <FilterBar
+              label={t('findings.filter.moreAria')}
+              fields={moreFilters}
+              bordered={false}
+            />
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
+                <input
+                  type="checkbox"
+                  checked={hideTests}
+                  onChange={(event) => changeHideTests(event.target.checked)}
+                />
+                {t('findings.filter.hideTests')}
+              </label>
+              <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
+                <input
+                  type="checkbox"
+                  checked={hideMaintenance}
+                  onChange={(event) =>
+                    changeHideMaintenance(event.target.checked)
+                  }
+                />
+                {t('findings.filter.hideMaintenance')}
+              </label>
+            </div>
           </div>
-        ) : null}
-        <p className="ml-auto text-xs text-faint">
-          {selected === undefined
-            ? t('findings.scope.all')
-            : t('findings.scope.one', { project: selected.display_name })}
-        </p>
+        }
+        activeFilters={
+          activeChips.length === 0 ? undefined : (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {activeChips.map((chip) => (
+                <FilterChip
+                  key={chip.key}
+                  text={chip.text}
+                  removeLabel={chip.removeLabel}
+                  onRemove={chip.onRemove}
+                />
+              ))}
+              {activeChips.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="rounded px-1 text-xs text-muted underline-offset-2 hover:text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
+                >
+                  {t('findings.filter.clearAll')}
+                </button>
+              ) : null}
+            </div>
+          )
+        }
+      >
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-expanded={showMore}
+            aria-controls={moreFiltersId}
+            aria-label={
+              hiddenCount === 0
+                ? t('findings.filter.more')
+                : t('findings.filter.moreActive', { count: hiddenCount })
+            }
+            onClick={() => setShowMore((open) => !open)}
+          >
+            {t('findings.filter.more')}
+            {hiddenCount === 0 ? null : (
+              <span
+                aria-hidden="true"
+                className="min-w-[18px] rounded-full bg-bg px-1 text-center font-mono text-[0.6875rem] leading-[16px] tabular-nums"
+              >
+                {hiddenCount}
+              </span>
+            )}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={cn(
+                'size-3 transition-transform',
+                showMore && 'rotate-180',
+              )}
+            >
+              <path d="M2.5 4.5 6 8l3.5-3.5" />
+            </svg>
+          </Button>
+          {/* Grouping folds a rule across projects, so it is only offered while
+              every project is in the list (#106). */}
+          {search.asset === undefined ? (
+            <div
+              role="group"
+              aria-label={t('findings.view.aria')}
+              className="flex items-center gap-1 rounded-md border border-border-subtle bg-bg p-0.5"
+            >
+              {(['single', 'grouped'] as const).map((option) => {
+                const active = grouped === (option === 'grouped')
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setView(option)}
+                    className={cn(
+                      'rounded px-2.5 py-1 text-[0.8125rem] transition-colors',
+                      active
+                        ? 'bg-surface text-fg shadow-sm'
+                        : 'text-muted hover:text-fg',
+                    )}
+                  >
+                    {option === 'single'
+                      ? t('findings.view.single')
+                      : t('findings.view.grouped')}
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
+        </div>
       </FilterBar>
 
       {findings.isPending ? (
@@ -1172,6 +1385,18 @@ export function FindingsPage() {
                 : selected === undefined
                   ? t('findings.count.all', { total: formatNumber(total) })
                   : t('findings.count.one', { total: formatNumber(total) })}
+            </span>
+            <span className="self-center">
+              <InfoTip
+                label={t('findings.scope.aria')}
+                content={
+                  selected === undefined
+                    ? t('findings.scope.all')
+                    : t('findings.scope.one', {
+                        project: selected.display_name,
+                      })
+                }
+              />
             </span>
           </div>
           {checkedFindings.length > 0 ? (
@@ -1256,6 +1481,45 @@ export function FindingsPage() {
         )}
       </Tabs>
     </>
+  )
+}
+
+/**
+ * FilterChip names one active filter and removes it from the row itself. The
+ * visible text stays short; the accessible name of the remove button reads the
+ * filter and its value, so a list of chips can be worked through blind.
+ */
+function FilterChip({
+  text,
+  removeLabel,
+  onRemove,
+}: {
+  text: string
+  removeLabel: string
+  onRemove: () => void
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-bg py-0.5 pr-1 pl-2.5 text-xs text-muted">
+      {text}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={removeLabel}
+        className="inline-flex size-4 items-center justify-center rounded-full text-faint hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-muted"
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          className="size-2.5"
+        >
+          <path d="M3 3l6 6M9 3l-6 6" />
+        </svg>
+      </button>
+    </span>
   )
 }
 

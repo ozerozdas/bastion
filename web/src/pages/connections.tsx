@@ -16,6 +16,7 @@ import {
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { InfoTip } from '../components/ui/info-tip'
 import { Tabs, type TabItem } from '../components/ui/tabs'
 import { formatLocalDate, t, useT } from '../lib/i18n'
 import type { ConnectionsTab } from '../lib/urls'
@@ -372,9 +373,15 @@ function AddAWSForm() {
       className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
     >
       <div className="flex flex-col gap-0.5">
-        <h2 className="text-[0.8125rem] font-semibold">
-          {t('connections.aws.addTitle')}
-        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-[0.8125rem] font-semibold">
+            {t('connections.aws.addTitle')}
+          </h2>
+          <InfoTip
+            label={t('connections.aws.hintAria')}
+            content={t('connections.aws.hint')}
+          />
+        </div>
         <p className="text-xs text-muted">
           {t('connections.aws.addBodyBefore')}{' '}
           <span className="font-mono">aws sso login --profile work</span>

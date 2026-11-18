@@ -7,11 +7,14 @@ import { Badge } from './ui/badge'
 export function SettingSection({
   title,
   on,
+  tip,
   children,
 }: {
   title: string
   /** On/off state for the badge; omitted when the setting is not a toggle. */
   on?: boolean
+  /** A secondary explanation beside the name, e.g. an InfoTip. */
+  tip?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -26,6 +29,7 @@ export function SettingSection({
             {on ? t('settings.badge.on') : t('settings.badge.off')}
           </Badge>
         )}
+        {tip}
       </div>
       {children}
     </section>

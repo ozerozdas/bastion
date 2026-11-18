@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 
 import { SettingSection } from './setting-section'
+import { InfoTip } from './ui/info-tip'
 import { languageOptions, setLanguage, useLanguage, useT } from '../lib/i18n'
 import {
   fontFamilyOptions,
@@ -89,7 +90,15 @@ export function AppearanceSettings() {
         </div>
       </SettingSection>
 
-      <SettingSection title={t('appearance.mode.title')}>
+      <SettingSection
+        title={t('appearance.mode.title')}
+        tip={
+          <InfoTip
+            label={t('appearance.mode.hintAria')}
+            content={t('appearance.mode.hint')}
+          />
+        }
+      >
         <div
           role="group"
           aria-label={t('appearance.mode.aria')}
@@ -110,12 +119,17 @@ export function AppearanceSettings() {
             </button>
           ))}
         </div>
-        <p className="text-[0.6875rem] text-muted">
-          {t('appearance.mode.hint')}
-        </p>
       </SettingSection>
 
-      <SettingSection title={t('appearance.fontFamily.title')}>
+      <SettingSection
+        title={t('appearance.fontFamily.title')}
+        tip={
+          <InfoTip
+            label={t('appearance.fontFamily.hintAria')}
+            content={t('appearance.fontFamily.hint')}
+          />
+        }
+      >
         <select
           aria-label={t('appearance.fontFamily.aria')}
           value={family}
@@ -130,9 +144,6 @@ export function AppearanceSettings() {
             </option>
           ))}
         </select>
-        <p className="text-[0.6875rem] text-muted">
-          {t('appearance.fontFamily.hint')}
-        </p>
       </SettingSection>
 
       <SettingSection title={t('appearance.fontSize.title')}>
@@ -158,7 +169,15 @@ export function AppearanceSettings() {
         </div>
       </SettingSection>
 
-      <SettingSection title={t('appearance.language.title')}>
+      <SettingSection
+        title={t('appearance.language.title')}
+        tip={
+          <InfoTip
+            label={t('appearance.language.hintAria')}
+            content={t('appearance.language.hint')}
+          />
+        }
+      >
         <select
           aria-label={t('appearance.language.aria')}
           value={language}
@@ -171,9 +190,6 @@ export function AppearanceSettings() {
             </option>
           ))}
         </select>
-        <p className="text-[0.6875rem] text-muted">
-          {t('appearance.language.hint')}
-        </p>
       </SettingSection>
     </div>
   )

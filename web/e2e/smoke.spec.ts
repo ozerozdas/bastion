@@ -294,9 +294,10 @@ test('drops a stale project id from the findings URL', async ({
   await page.getByRole('button', { name: 'Add path' }).click()
 
   const name = basename(server.projectDir)
-  const findingsLink = page
-    .getByRole('row', { name: new RegExp(name) })
-    .getByRole('link', { name: 'View findings' })
+  const row = page.getByRole('row', { name: new RegExp(name) })
+  // View findings moved into the row's ⋯ menu; the item is still a link.
+  await row.getByRole('button', { name: `Actions for ${name}` }).click()
+  const findingsLink = page.getByRole('menuitem', { name: 'View findings' })
   await expect(findingsLink).toBeVisible()
 
   const origin = new URL(page.url()).origin

@@ -115,8 +115,8 @@ export function DataTable<T>({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-[0.8125rem]">
-        <thead className="text-xs text-faint">
+      <table className="w-full text-left text-[0.875rem]">
+        <thead className="text-[0.8125rem] text-faint">
           <tr>
             {selection ? (
               <th className={cn('pb-2', selection.headerClassName)}>

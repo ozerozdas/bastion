@@ -33,6 +33,10 @@ export type FilterBarProps = {
   bordered?: boolean
   /** Content after the fields, e.g. a note about the view on screen. */
   children?: ReactNode
+  /** Content under the row inside the card, e.g. an inline disclosure panel. */
+  panel?: ReactNode
+  /** Content under the panel inside the card, e.g. removable filter chips. */
+  activeFilters?: ReactNode
 }
 
 const stackedInput =
@@ -77,68 +81,85 @@ export function FilterBar({
   layout = 'stacked',
   bordered = true,
   children,
+  panel,
+  activeFilters,
 }: FilterBarProps) {
   const stacked = layout === 'stacked'
   // Findings has always wrapped its filters in a section; the Scans tab's inline
   // row is a plain div on the page.
   const Wrapper = stacked ? 'section' : 'div'
+  const card = bordered && 'rounded-card border border-border-subtle bg-surface p-4'
+  const row = cn(
+    'flex flex-wrap',
+    stacked ? 'items-end gap-3' : 'items-center gap-2',
+  )
+
+  const fieldNodes = fields.map((field) => {
+    const control =
+      field.kind === 'search' ? (
+        <input
+          id={field.id}
+          type="search"
+          value={field.value}
+          onChange={(event) => field.onChange(event.target.value)}
+          placeholder={field.placeholder}
+          autoComplete="off"
+          spellCheck={false}
+          // The API refuses a q above 200 characters; keep the box inside it.
+          maxLength={200}
+          className={stacked ? stackedInput : inlineSelect}
+        />
+      ) : (
+        <select
+          id={field.id}
+          value={field.value}
+          onChange={(event) => field.onChange(event.target.value)}
+          className={stacked ? stackedInput : inlineSelect}
+        >
+          {optionNodes(field.options)}
+        </select>
+      )
+
+    if (!stacked) {
+      return (
+        <Fragment key={field.id}>
+          <label htmlFor={field.id} className="text-xs text-muted">
+            {field.label}
+          </label>
+          {control}
+        </Fragment>
+      )
+    }
+
+    return (
+      <div key={field.id} className={cn('flex flex-col gap-1', field.className)}>
+        <label htmlFor={field.id} className="text-xs font-medium text-muted">
+          {field.label}
+        </label>
+        {control}
+      </div>
+    )
+  })
+
+  // A page with a panel or chips keeps them inside the card, so the row becomes
+  // one line of a column instead of the wrapper itself.
+  if (panel === undefined && activeFilters === undefined) {
+    return (
+      <Wrapper aria-label={label} className={cn(row, card)}>
+        {fieldNodes}
+        {children}
+      </Wrapper>
+    )
+  }
 
   return (
-    <Wrapper
-      aria-label={label}
-      className={cn(
-        'flex flex-wrap',
-        stacked ? 'items-end gap-3' : 'items-center gap-2',
-        bordered && 'rounded-card border border-border-subtle bg-surface p-4',
-      )}
-    >
-      {fields.map((field) => {
-        const control =
-          field.kind === 'search' ? (
-            <input
-              id={field.id}
-              type="search"
-              value={field.value}
-              onChange={(event) => field.onChange(event.target.value)}
-              placeholder={field.placeholder}
-              autoComplete="off"
-              spellCheck={false}
-              // The API refuses a q above 200 characters; keep the box inside it.
-              maxLength={200}
-              className={stacked ? stackedInput : inlineSelect}
-            />
-          ) : (
-            <select
-              id={field.id}
-              value={field.value}
-              onChange={(event) => field.onChange(event.target.value)}
-              className={stacked ? stackedInput : inlineSelect}
-            >
-              {optionNodes(field.options)}
-            </select>
-          )
-
-        if (!stacked) {
-          return (
-            <Fragment key={field.id}>
-              <label htmlFor={field.id} className="text-xs text-muted">
-                {field.label}
-              </label>
-              {control}
-            </Fragment>
-          )
-        }
-
-        return (
-          <div key={field.id} className={cn('flex flex-col gap-1', field.className)}>
-            <label htmlFor={field.id} className="text-xs font-medium text-muted">
-              {field.label}
-            </label>
-            {control}
-          </div>
-        )
-      })}
-      {children}
+    <Wrapper aria-label={label} className={cn('flex flex-col gap-3', card)}>
+      <div className={row}>
+        {fieldNodes}
+        {children}
+      </div>
+      {panel}
+      {activeFilters}
     </Wrapper>
   )
 }

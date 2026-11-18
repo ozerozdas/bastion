@@ -167,6 +167,10 @@ test('Repositories shows the images linked to a repository', async ({ page, serv
   await page.getByRole('link', { name: 'Repositories' }).click()
 
   const row = page.getByRole('row').filter({ hasText: 'acme/api' })
-  await expect(row.getByText(imageRef, { exact: true })).toBeVisible()
+  // The images cell is a count; the names are one hover away.
+  await row
+    .getByRole('button', { name: 'Images linked to acme/api' })
+    .hover()
+  await expect(page.getByRole('tooltip')).toContainText(imageRef)
   expect(problems).toEqual([])
 })
