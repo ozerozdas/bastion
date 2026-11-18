@@ -307,7 +307,7 @@ test('lists findings across projects with no filter, critical first', async ({
   await page.locator('#findings-project').selectOption(String(beta.id))
   await expect(rows).toHaveCount(3)
   await expect(rows.nth(0)).toContainText('beta')
-  await expect(page).toHaveURL(`${origin}/findings?asset=${String(beta.id)}`)
+  await expect(page).toHaveURL(`${origin}/findings/${String(beta.id)}`)
   await expect(page.getByRole('group', { name: 'Findings view' })).toHaveCount(0)
   expect(requested.at(-1)?.searchParams.get('asset_id')).toBe(String(beta.id))
 
@@ -416,7 +416,7 @@ test('redirects old report URLs to the findings list', async ({ page, server }) 
   const origin = new URL(page.url()).origin
 
   await page.goto(`${origin}/reports?asset=${String(asset.id)}`)
-  await expect(page).toHaveURL(`${origin}/findings?asset=${String(asset.id)}`)
+  await expect(page).toHaveURL(`${origin}/findings/${String(asset.id)}`)
   await expect(
     page.getByRole('heading', { level: 1, name: 'Findings' }),
   ).toBeVisible()
@@ -428,7 +428,7 @@ test('redirects old report URLs to the findings list', async ({ page, server }) 
 
   // The name the previous UI used keeps working too.
   await page.goto(`${origin}/security-reports?asset=${String(asset.id)}`)
-  await expect(page).toHaveURL(`${origin}/findings?asset=${String(asset.id)}`)
+  await expect(page).toHaveURL(`${origin}/findings/${String(asset.id)}`)
 
   expect(problems).toEqual([])
 })

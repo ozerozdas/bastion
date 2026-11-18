@@ -139,7 +139,7 @@ test('fix plan groups findings into one package upgrade per asset', async ({
   ).toBeVisible()
 
   await page.locator('#fix-plan-project').selectOption('1')
-  await expect(page).toHaveURL(`${origin}/findings?tab=fix-plan&asset=1`)
+  await expect(page).toHaveURL(`${origin}/findings/1?tab=fix-plan`)
 
   await expect(page.getByRole('heading', { name: 'Fix plan' })).toBeVisible()
   await expect(page.getByText(/1 upgrade close 2 findings/)).toBeVisible()

@@ -112,7 +112,7 @@ test('dashboard project names link to their filtered findings', async ({
   await dashboardSection(page, 'Open critical and high')
     .getByRole('link', { name: 'alpha' })
     .click()
-  await expect(page).toHaveURL(`${origin}/findings?asset=${String(alpha.id)}`)
+  await expect(page).toHaveURL(`${origin}/findings/${String(alpha.id)}`)
   await expect(
     page.getByRole('heading', { level: 1, name: 'Findings' }),
   ).toBeVisible()
@@ -123,7 +123,7 @@ test('dashboard project names link to their filtered findings', async ({
   await dashboardSection(page, 'Last scan per project')
     .getByRole('link', { name: 'beta' })
     .click()
-  await expect(page).toHaveURL(`${origin}/findings?asset=${String(beta.id)}`)
+  await expect(page).toHaveURL(`${origin}/findings/${String(beta.id)}`)
   await expect(page.locator('#findings-project')).toHaveValue(String(beta.id))
 
   expect(problems).toEqual([])

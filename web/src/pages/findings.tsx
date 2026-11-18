@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { assetsQuery } from '../api/assets'
@@ -432,7 +432,11 @@ function FindingsExportMenu({
 export function FindingsPage() {
   const t = useT()
   const languageCode = useLanguage()
-  const search = useSearch({ from: '/findings' })
+  // The asset page carries its project in the path; the list works the same.
+  const { assetId } = useParams({ strict: false })
+  const urlSearch = useSearch({ strict: false }) as FindingsSearch
+  const search: FindingsSearch =
+    assetId === undefined ? urlSearch : { ...urlSearch, asset: Number(assetId) }
   const navigate = useNavigate()
   const assets = useQuery(assetsQuery)
   const epss = useQuery(epssQuery)
