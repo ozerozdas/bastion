@@ -38,6 +38,7 @@ func TestOpenRunsMigrations(t *testing.T) {
 		"asset_links",
 		"assets",
 		"connections",
+		"finding_rules",
 		"finding_states",
 		"findings",
 		"fix_plan_pull_requests",
@@ -75,8 +76,8 @@ func TestOpenRunsMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MigrationVersion: %v", err)
 	}
-	if version != 11 {
-		t.Fatalf("schema version = %d, want 11", version)
+	if version != 12 {
+		t.Fatalf("schema version = %d, want 12", version)
 	}
 }
 
@@ -121,8 +122,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MigrationVersion: %v", err)
 	}
-	if version != 11 {
-		t.Fatalf("schema version after re-open = %d, want 11", version)
+	if version != 12 {
+		t.Fatalf("schema version after re-open = %d, want 12", version)
 	}
 }
 

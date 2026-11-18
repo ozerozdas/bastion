@@ -17,7 +17,8 @@ ON CONFLICT (asset_id, fingerprint) DO UPDATE SET
     state      = excluded.state,
     reason     = excluded.reason,
     expires_at = excluded.expires_at,
-    decided_by = excluded.decided_by;
+    decided_by = excluded.decided_by,
+    rule_ref   = NULL;
 
 -- name: DeleteFindingState :exec
 -- Remove the decision, so the finding shows its stored status again.

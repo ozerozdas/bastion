@@ -175,6 +175,39 @@ func (s *Server) clearFindingState(ctx context.Context, _ *mcp.CallToolRequest, 
 	return nil, clearFindingStateData{Cleared: cleared}, nil
 }
 
+type proposeFindingRuleInput struct {
+	AssetID     int64  `json:"asset_id" jsonschema:"id of the one asset the rule covers"`
+	FindingType string `json:"finding_type,omitempty" jsonschema:"match this type: vulnerability, outdated, misconfig, license or sast"`
+	RuleID      string `json:"rule_id,omitempty" jsonschema:"match this exact CVE, GHSA or scanner rule id"`
+	PackageName string `json:"package_name,omitempty" jsonschema:"match this exact package name"`
+	PathGlob    string `json:"path_glob,omitempty" jsonschema:"match the finding location with a case-sensitive glob; * also matches /"`
+	State       string `json:"state" jsonschema:"decision: ignored, accepted_risk or false_positive"`
+	Reason      string `json:"reason" jsonschema:"why matching findings are noise, at most 1000 bytes; the user reviews it"`
+}
+
+type proposeFindingRuleData struct {
+	ProposalID int64  `json:"proposal_id" jsonschema:"id of the stored proposal"`
+	Status     string `json:"status" jsonschema:"rule status: proposed until the user approves it"`
+}
+
+func (s *Server) proposeFindingRule(ctx context.Context, _ *mcp.CallToolRequest, in proposeFindingRuleInput) (
+	*mcp.CallToolResult, proposeFindingRuleData, error,
+) {
+	id, err := s.assets.ProposeFindingRule(ctx, assets.FindingRuleInput{
+		AssetID:     &in.AssetID,
+		FindingType: in.FindingType,
+		RuleID:      in.RuleID,
+		PackageName: in.PackageName,
+		PathGlob:    in.PathGlob,
+		State:       in.State,
+		Reason:      in.Reason,
+	})
+	if err != nil {
+		return nil, proposeFindingRuleData{}, fmt.Errorf("propose finding rule: %w", err)
+	}
+	return nil, proposeFindingRuleData{ProposalID: id, Status: store.FindingRuleProposed}, nil
+}
+
 // uniqueFingerprints trims the list and drops repeats, keeping blanks so the
 // service rejects them.
 func uniqueFingerprints(fingerprints []string) []string {

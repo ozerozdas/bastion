@@ -1599,6 +1599,138 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/finding-rules:
+    get:
+      operationId: listFindingRules
+      summary: List suppression rules and agent proposals.
+      tags: [findings]
+      responses:
+        "200":
+          description: Every rule, proposals first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FindingRuleList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          description: The request failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    post:
+      operationId: createFindingRule
+      summary: Create a suppression rule and apply it.
+      description: |
+        The rule closes matching findings now and in later scans. An existing
+        decision wins. Malware is never closed by a rule, and a secret only by
+        a rule whose `finding_type` is `secret`.
+      tags: [findings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFindingRuleRequest"
+      responses:
+        "204":
+          description: The rule is stored and applied.
+        "400":
+          description: The rule has no matcher or a field is invalid.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: The asset does not exist.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          description: The request failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/finding-rules/{id}/approve:
+    post:
+      operationId: approveFindingRule
+      summary: Activate a rule an agent proposed.
+      tags: [findings]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: The rule is active and applied.
+        "404":
+          description: No such rule.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          description: The request failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /api/finding-rules/{id}:
+    delete:
+      operationId: deleteFindingRule
+      summary: Remove a rule or reject a proposal.
+      description: Findings the rule closed open again.
+      tags: [findings]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: The rule is gone.
+        "404":
+          description: No such rule.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          description: The request failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/findings:
     get:
       operationId: listFindings
@@ -2574,6 +2706,94 @@ components:
           description: |
             True opts in to the daily FIRST.org download; false turns it off and
             stops every future request.
+    FindingRuleStatus:
+      type: string
+      title: FindingRuleStatus
+      enum: [active, proposed]
+    CreateFindingRuleRequest:
+      type: object
+      title: CreateFindingRuleRequest
+      additionalProperties: false
+      required: [state, reason]
+      properties:
+        asset_id:
+          type: integer
+          format: int64
+          description: The one asset the rule covers; absent covers every asset.
+        finding_type:
+          $ref: "#/components/schemas/FindingType"
+        rule_id:
+          type: string
+          maxLength: 256
+        package_name:
+          type: string
+          maxLength: 256
+        path_glob:
+          type: string
+          maxLength: 256
+          description: Case-sensitive glob on the finding location; `*` also matches `/`.
+        state:
+          $ref: "#/components/schemas/FindingState"
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        expires_at:
+          type: string
+          description: Optional end of the rule, RFC 3339 or `YYYY-MM-DD`.
+    FindingRule:
+      type: object
+      title: FindingRule
+      additionalProperties: false
+      required: [id, state, reason, status, created_by, created_at, matched]
+      properties:
+        id:
+          type: integer
+          format: int64
+        asset_id:
+          type: integer
+          format: int64
+          description: The one asset the rule covers; absent covers every asset.
+        finding_type:
+          $ref: "#/components/schemas/FindingType"
+        rule_id:
+          type: string
+          maxLength: 256
+        package_name:
+          type: string
+          maxLength: 256
+        path_glob:
+          type: string
+          maxLength: 256
+          description: Case-sensitive glob on the finding location; `*` also matches `/`.
+        state:
+          $ref: "#/components/schemas/FindingState"
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        expires_at:
+          type: string
+          description: Optional end of the rule, RFC 3339 or `YYYY-MM-DD`.
+        status:
+          $ref: "#/components/schemas/FindingRuleStatus"
+        created_by:
+          $ref: "#/components/schemas/FindingDecider"
+        created_at:
+          type: string
+        matched:
+          type: integer
+          description: Findings the rule currently closes.
+    FindingRuleList:
+      type: object
+      title: FindingRuleList
+      additionalProperties: false
+      required: [rules]
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/FindingRule"
     FindingFixFilter:
       type: string
       title: FindingFixFilter
@@ -3344,6 +3564,10 @@ components:
           description: The reason recorded with the decision in `state`.
         decided_by:
           $ref: "#/components/schemas/FindingDecider"
+        rule_ref:
+          type: integer
+          format: int64
+          description: The suppression rule that closed the finding, absent otherwise.
         expires_at:
           type: string
           description: |

@@ -337,6 +337,7 @@ SELECT
     fs.state AS state,
     fs.reason AS reason,
     fs.decided_by AS decided_by,
+    fs.rule_ref AS rule_ref,
     fs.expires_at AS expires_at,
     CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(?1 AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at
@@ -414,6 +415,7 @@ type ListFindingsByScanRow struct {
 	State           sql.NullString
 	Reason          sql.NullString
 	DecidedBy       sql.NullString
+	RuleRef         sql.NullInt64
 	ExpiresAt       sql.NullString
 	Expired         int64
 	CreatedAt       string
@@ -471,6 +473,7 @@ func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScan
 			&i.State,
 			&i.Reason,
 			&i.DecidedBy,
+			&i.RuleRef,
 			&i.ExpiresAt,
 			&i.Expired,
 			&i.CreatedAt,
@@ -527,6 +530,7 @@ SELECT
     fs.state AS state,
     fs.reason AS reason,
     fs.decided_by AS decided_by,
+    fs.rule_ref AS rule_ref,
     fs.expires_at AS expires_at,
     CAST(CASE WHEN fs.id IS NOT NULL AND fs.expires_at <= CAST(?1 AS TEXT) THEN 1 ELSE 0 END AS INTEGER) AS expired,
     f.created_at,
@@ -703,6 +707,7 @@ type ListLatestFindingsRow struct {
 	State           sql.NullString
 	Reason          sql.NullString
 	DecidedBy       sql.NullString
+	RuleRef         sql.NullInt64
 	ExpiresAt       sql.NullString
 	Expired         int64
 	CreatedAt       string
@@ -769,6 +774,7 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 			&i.State,
 			&i.Reason,
 			&i.DecidedBy,
+			&i.RuleRef,
 			&i.ExpiresAt,
 			&i.Expired,
 			&i.CreatedAt,

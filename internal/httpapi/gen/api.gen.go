@@ -212,6 +212,24 @@ func (e FindingFixFilter) Valid() bool {
 	}
 }
 
+// Defines values for FindingRuleStatus.
+const (
+	Active   FindingRuleStatus = "active"
+	Proposed FindingRuleStatus = "proposed"
+)
+
+// Valid indicates whether the value is a known member of the FindingRuleStatus enum.
+func (e FindingRuleStatus) Valid() bool {
+	switch e {
+	case Active:
+		return true
+	case Proposed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FindingState.
 const (
 	FindingStateAcceptedRisk  FindingState = "accepted_risk"
@@ -1115,6 +1133,27 @@ type CreateConnectionRequest struct {
 // CreateConnectionRequestKind Kind to create. `github` needs `token`; `aws` needs `region`.
 type CreateConnectionRequestKind string
 
+// CreateFindingRuleRequest defines model for CreateFindingRuleRequest.
+type CreateFindingRuleRequest struct {
+	// AssetId The one asset the rule covers; absent covers every asset.
+	AssetId *int64 `json:"asset_id,omitempty"`
+
+	// ExpiresAt Optional end of the rule, RFC 3339 or `YYYY-MM-DD`.
+	ExpiresAt *string `json:"expires_at,omitempty"`
+
+	// FindingType Kind of finding (PROJECT_SPEC.md §5).
+	FindingType *FindingType `json:"finding_type,omitempty"`
+	PackageName *string      `json:"package_name,omitempty"`
+
+	// PathGlob Case-sensitive glob on the finding location; `*` also matches `/`.
+	PathGlob *string `json:"path_glob,omitempty"`
+	Reason   string  `json:"reason"`
+	RuleId   *string `json:"rule_id,omitempty"`
+
+	// State The user decision that hides a finding across scans.
+	State FindingState `json:"state"`
+}
+
 // CreateScansRequest defines model for CreateScansRequest.
 type CreateScansRequest struct {
 	AssetIds []int64 `json:"asset_ids"`
@@ -1347,7 +1386,10 @@ type Finding struct {
 
 	// RuleId CVE, GHSA or scanner rule id.
 	RuleId *string `json:"rule_id,omitempty"`
-	ScanId int64   `json:"scan_id"`
+
+	// RuleRef The suppression rule that closed the finding, absent otherwise.
+	RuleRef *int64 `json:"rule_ref,omitempty"`
+	ScanId  int64  `json:"scan_id"`
 
 	// Scanner Primary scanner. Its fingerprint is the one stored, so it stays
 	// stable when another scanner reports the same advisory.
@@ -1445,6 +1487,44 @@ type FindingList struct {
 	// TotalFindings Findings the filters match, across every group in grouped view.
 	TotalFindings int `json:"total_findings"`
 }
+
+// FindingRule defines model for FindingRule.
+type FindingRule struct {
+	// AssetId The one asset the rule covers; absent covers every asset.
+	AssetId   *int64 `json:"asset_id,omitempty"`
+	CreatedAt string `json:"created_at"`
+
+	// CreatedBy Who made a finding decision, the user or an agent over MCP.
+	CreatedBy FindingDecider `json:"created_by"`
+
+	// ExpiresAt Optional end of the rule, RFC 3339 or `YYYY-MM-DD`.
+	ExpiresAt *string `json:"expires_at,omitempty"`
+
+	// FindingType Kind of finding (PROJECT_SPEC.md §5).
+	FindingType *FindingType `json:"finding_type,omitempty"`
+	Id          int64        `json:"id"`
+
+	// Matched Findings the rule currently closes.
+	Matched     int     `json:"matched"`
+	PackageName *string `json:"package_name,omitempty"`
+
+	// PathGlob Case-sensitive glob on the finding location; `*` also matches `/`.
+	PathGlob *string `json:"path_glob,omitempty"`
+	Reason   string  `json:"reason"`
+	RuleId   *string `json:"rule_id,omitempty"`
+
+	// State The user decision that hides a finding across scans.
+	State  FindingState      `json:"state"`
+	Status FindingRuleStatus `json:"status"`
+}
+
+// FindingRuleList defines model for FindingRuleList.
+type FindingRuleList struct {
+	Rules []FindingRule `json:"rules"`
+}
+
+// FindingRuleStatus defines model for FindingRuleStatus.
+type FindingRuleStatus string
 
 // FindingState The user decision that hides a finding across scans.
 type FindingState string
@@ -2450,6 +2530,9 @@ type SetEOLEnabledJSONRequestBody = SetEOLEnabledRequest
 // SetEPSSEnabledJSONRequestBody defines body for SetEPSSEnabled for application/json ContentType.
 type SetEPSSEnabledJSONRequestBody = SetEPSSEnabledRequest
 
+// CreateFindingRuleJSONRequestBody defines body for CreateFindingRule for application/json ContentType.
+type CreateFindingRuleJSONRequestBody = CreateFindingRuleRequest
+
 // SetFindingStatesJSONRequestBody defines body for SetFindingStates for application/json ContentType.
 type SetFindingStatesJSONRequestBody = BulkSetFindingStateRequest
 
@@ -2697,6 +2780,18 @@ type ServerInterface interface {
 	// SetEPSSEnabled Store the EPSS opt-in choice.
 	// (PUT /api/epss)
 	SetEPSSEnabled(w http.ResponseWriter, r *http.Request)
+	// ListFindingRules List suppression rules and agent proposals.
+	// (GET /api/finding-rules)
+	ListFindingRules(w http.ResponseWriter, r *http.Request)
+	// CreateFindingRule Create a suppression rule and apply it.
+	// (POST /api/finding-rules)
+	CreateFindingRule(w http.ResponseWriter, r *http.Request)
+	// DeleteFindingRule Remove a rule or reject a proposal.
+	// (DELETE /api/finding-rules/{id})
+	DeleteFindingRule(w http.ResponseWriter, r *http.Request, id int64)
+	// ApproveFindingRule Activate a rule an agent proposed.
+	// (POST /api/finding-rules/{id}/approve)
+	ApproveFindingRule(w http.ResponseWriter, r *http.Request, id int64)
 	// ListFindings Latest findings across assets.
 	// (GET /api/findings)
 	ListFindings(w http.ResponseWriter, r *http.Request, params ListFindingsParams)
@@ -3216,6 +3311,86 @@ func (siw *ServerInterfaceWrapper) SetEPSSEnabled(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetEPSSEnabled(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFindingRules operation middleware
+func (siw *ServerInterfaceWrapper) ListFindingRules(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFindingRules(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateFindingRule operation middleware
+func (siw *ServerInterfaceWrapper) CreateFindingRule(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateFindingRule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFindingRule operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFindingRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFindingRule(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApproveFindingRule operation middleware
+func (siw *ServerInterfaceWrapper) ApproveFindingRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApproveFindingRule(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4302,6 +4477,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/findings/state", wrapper.SetFindingStates)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/findings/{fingerprint}/state", wrapper.ClearFindingState)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/findings/{fingerprint}/state", wrapper.SetFindingState)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/finding-rules", wrapper.ListFindingRules)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/finding-rules", wrapper.CreateFindingRule)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/finding-rules/{id}/approve", wrapper.ApproveFindingRule)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/finding-rules/{id}", wrapper.DeleteFindingRule)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/findings", wrapper.ListFindings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/licence-policy", wrapper.GetLicencePolicy)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/licence-policy", wrapper.SetLicencePolicy)
@@ -7174,6 +7353,455 @@ func (response SetEPSSEnabled500ApplicationProblemPlusJSONResponse) VisitSetEPSS
 	if response.Headers.ContentType != nil {
 		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
 	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFindingRulesRequestObject struct {
+}
+
+type ListFindingRulesResponseObject interface {
+	VisitListFindingRulesResponse(w http.ResponseWriter) error
+}
+
+type ListFindingRules200JSONResponse FindingRuleList
+
+func (response ListFindingRules200JSONResponse) VisitListFindingRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFindingRules401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListFindingRules401ApplicationProblemPlusJSONResponse) VisitListFindingRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFindingRules403ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListFindingRules403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListFindingRules403ResponseHeaders
+}
+
+func (response ListFindingRules403ApplicationProblemPlusJSONResponse) VisitListFindingRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFindingRules421ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListFindingRules421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListFindingRules421ResponseHeaders
+}
+
+func (response ListFindingRules421ApplicationProblemPlusJSONResponse) VisitListFindingRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFindingRules500ApplicationProblemPlusJSONResponse Problem
+
+func (response ListFindingRules500ApplicationProblemPlusJSONResponse) VisitListFindingRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFindingRuleRequestObject struct {
+	Body *CreateFindingRuleJSONRequestBody
+}
+
+type CreateFindingRuleResponseObject interface {
+	VisitCreateFindingRuleResponse(w http.ResponseWriter) error
+}
+
+type CreateFindingRule204Response struct {
+}
+
+func (response CreateFindingRule204Response) VisitCreateFindingRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type CreateFindingRule400ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateFindingRule400ApplicationProblemPlusJSONResponse) VisitCreateFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFindingRule401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CreateFindingRule401ApplicationProblemPlusJSONResponse) VisitCreateFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFindingRule403ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateFindingRule403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateFindingRule403ResponseHeaders
+}
+
+func (response CreateFindingRule403ApplicationProblemPlusJSONResponse) VisitCreateFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFindingRule404ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateFindingRule404ApplicationProblemPlusJSONResponse) VisitCreateFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFindingRule421ResponseHeaders struct {
+	ContentType *string
+}
+
+type CreateFindingRule421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers CreateFindingRule421ResponseHeaders
+}
+
+func (response CreateFindingRule421ApplicationProblemPlusJSONResponse) VisitCreateFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFindingRule500ApplicationProblemPlusJSONResponse Problem
+
+func (response CreateFindingRule500ApplicationProblemPlusJSONResponse) VisitCreateFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFindingRuleRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteFindingRuleResponseObject interface {
+	VisitDeleteFindingRuleResponse(w http.ResponseWriter) error
+}
+
+type DeleteFindingRule204Response struct {
+}
+
+func (response DeleteFindingRule204Response) VisitDeleteFindingRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteFindingRule401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteFindingRule401ApplicationProblemPlusJSONResponse) VisitDeleteFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFindingRule403ResponseHeaders struct {
+	ContentType *string
+}
+
+type DeleteFindingRule403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DeleteFindingRule403ResponseHeaders
+}
+
+func (response DeleteFindingRule403ApplicationProblemPlusJSONResponse) VisitDeleteFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFindingRule404ApplicationProblemPlusJSONResponse Problem
+
+func (response DeleteFindingRule404ApplicationProblemPlusJSONResponse) VisitDeleteFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFindingRule421ResponseHeaders struct {
+	ContentType *string
+}
+
+type DeleteFindingRule421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers DeleteFindingRule421ResponseHeaders
+}
+
+func (response DeleteFindingRule421ApplicationProblemPlusJSONResponse) VisitDeleteFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFindingRule500ApplicationProblemPlusJSONResponse Problem
+
+func (response DeleteFindingRule500ApplicationProblemPlusJSONResponse) VisitDeleteFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveFindingRuleRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type ApproveFindingRuleResponseObject interface {
+	VisitApproveFindingRuleResponse(w http.ResponseWriter) error
+}
+
+type ApproveFindingRule204Response struct {
+}
+
+func (response ApproveFindingRule204Response) VisitApproveFindingRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ApproveFindingRule401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveFindingRule401ApplicationProblemPlusJSONResponse) VisitApproveFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveFindingRule403ResponseHeaders struct {
+	ContentType *string
+}
+
+type ApproveFindingRule403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ApproveFindingRule403ResponseHeaders
+}
+
+func (response ApproveFindingRule403ApplicationProblemPlusJSONResponse) VisitApproveFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveFindingRule404ApplicationProblemPlusJSONResponse Problem
+
+func (response ApproveFindingRule404ApplicationProblemPlusJSONResponse) VisitApproveFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveFindingRule421ResponseHeaders struct {
+	ContentType *string
+}
+
+type ApproveFindingRule421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ApproveFindingRule421ResponseHeaders
+}
+
+func (response ApproveFindingRule421ApplicationProblemPlusJSONResponse) VisitApproveFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveFindingRule500ApplicationProblemPlusJSONResponse Problem
+
+func (response ApproveFindingRule500ApplicationProblemPlusJSONResponse) VisitApproveFindingRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(500)
 	_, err := buf.WriteTo(w)
 	return err
@@ -11377,6 +12005,18 @@ type StrictServerInterface interface {
 	// SetEPSSEnabled Store the EPSS opt-in choice.
 	// (PUT /api/epss)
 	SetEPSSEnabled(ctx context.Context, request SetEPSSEnabledRequestObject) (SetEPSSEnabledResponseObject, error)
+	// ListFindingRules List suppression rules and agent proposals.
+	// (GET /api/finding-rules)
+	ListFindingRules(ctx context.Context, request ListFindingRulesRequestObject) (ListFindingRulesResponseObject, error)
+	// CreateFindingRule Create a suppression rule and apply it.
+	// (POST /api/finding-rules)
+	CreateFindingRule(ctx context.Context, request CreateFindingRuleRequestObject) (CreateFindingRuleResponseObject, error)
+	// DeleteFindingRule Remove a rule or reject a proposal.
+	// (DELETE /api/finding-rules/{id})
+	DeleteFindingRule(ctx context.Context, request DeleteFindingRuleRequestObject) (DeleteFindingRuleResponseObject, error)
+	// ApproveFindingRule Activate a rule an agent proposed.
+	// (POST /api/finding-rules/{id}/approve)
+	ApproveFindingRule(ctx context.Context, request ApproveFindingRuleRequestObject) (ApproveFindingRuleResponseObject, error)
 	// ListFindings Latest findings across assets.
 	// (GET /api/findings)
 	ListFindings(ctx context.Context, request ListFindingsRequestObject) (ListFindingsResponseObject, error)
@@ -12066,6 +12706,113 @@ func (sh *strictHandler) SetEPSSEnabled(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetEPSSEnabledResponseObject); ok {
 		if err := validResponse.VisitSetEPSSEnabledResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListFindingRules operation middleware
+func (sh *strictHandler) ListFindingRules(w http.ResponseWriter, r *http.Request) {
+	var request ListFindingRulesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListFindingRules(ctx, request.(ListFindingRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListFindingRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListFindingRulesResponseObject); ok {
+		if err := validResponse.VisitListFindingRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateFindingRule operation middleware
+func (sh *strictHandler) CreateFindingRule(w http.ResponseWriter, r *http.Request) {
+	var request CreateFindingRuleRequestObject
+
+	var body CreateFindingRuleJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateFindingRule(ctx, request.(CreateFindingRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateFindingRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateFindingRuleResponseObject); ok {
+		if err := validResponse.VisitCreateFindingRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteFindingRule operation middleware
+func (sh *strictHandler) DeleteFindingRule(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteFindingRuleRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteFindingRule(ctx, request.(DeleteFindingRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteFindingRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteFindingRuleResponseObject); ok {
+		if err := validResponse.VisitDeleteFindingRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApproveFindingRule operation middleware
+func (sh *strictHandler) ApproveFindingRule(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ApproveFindingRuleRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApproveFindingRule(ctx, request.(ApproveFindingRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApproveFindingRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApproveFindingRuleResponseObject); ok {
+		if err := validResponse.VisitApproveFindingRuleResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

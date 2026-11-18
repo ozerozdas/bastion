@@ -10,6 +10,7 @@ import {
   useTestNotification,
 } from '../api/notifications'
 import { eolQuery, useSetEOLEnabled } from '../api/eol'
+import { FindingRulesEditor } from './finding-rules-editor'
 import { outdatedQuery, useSetOutdatedEnabled } from '../api/outdated'
 import { reachabilityQuery, useSetReachabilityEnabled } from '../api/reachability'
 import { sastQuery, useSetSASTEnabled } from '../api/sast'
@@ -100,6 +101,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               <OutdatedToggle />
               <EOLToggle />
               <SASTToggle />
+              <FindingRulesSection />
               <LicencePolicySection />
               <ReleaseCheckSection />
             </div>
@@ -806,6 +808,15 @@ function AISection() {
           {t('settings.ai.modelRequired')}
         </p>
       ) : null}
+    </SettingSection>
+  )
+}
+
+function FindingRulesSection() {
+  const t = useT()
+  return (
+    <SettingSection title={t('settings.rules.title')}>
+      <FindingRulesEditor />
     </SettingSection>
   )
 }

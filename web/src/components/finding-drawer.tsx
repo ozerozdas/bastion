@@ -307,6 +307,11 @@ export function FindingDrawer({
                     {t('finding.decidedByAgent')}
                   </p>
                 ) : null}
+                {finding.rule_ref ? (
+                  <p className="text-xs text-faint">
+                    {t('finding.closedByRule', { id: finding.rule_ref })}
+                  </p>
+                ) : null}
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
