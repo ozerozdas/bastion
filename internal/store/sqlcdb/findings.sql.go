@@ -89,24 +89,62 @@ WHERE a.archived_at IS NULL
         ELSE 'ignored'
     END AS TEXT) = ?5)
   AND (?7 IS NULL OR fs.decided_by = ?7)
+  -- Noise filters (#181) narrow the view and never change a finding.
+  AND (?8 IS NULL
+       OR (?8 = 'available' AND COALESCE(f.fixed_version, '') <> '')
+       OR (?8 = 'none' AND COALESCE(f.fixed_version, '') = ''))
+  AND (?9 IS NULL
+       OR (?9 = 'direct' AND EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 1))
+       OR (?9 = 'indirect' AND EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 0)
+          AND NOT EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 1)))
+  AND (CAST(?10 AS INTEGER) = 0 OR f.type NOT IN ('license', 'outdated'))
+  AND (CAST(?11 AS INTEGER) = 0 OR NOT (
+        instr(('/' || lower(COALESCE(f.location, ''))), '/test/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/tests/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__tests__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/testdata/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/fixtures/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__fixtures__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/spec/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/specs/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/example/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/examples/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/mocks/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__mocks__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '_test.go') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '.test.') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '.spec.') > 0))
   -- Same text search as ListLatestFindings, so the total matches the page.
-  AND (?8 IS NULL OR
-       (f.title LIKE ?8 ESCAPE '\')
-    OR (f.rule_id LIKE ?8 ESCAPE '\')
-    OR (f.package_name LIKE ?8 ESCAPE '\')
-    OR (f.location LIKE ?8 ESCAPE '\'))
+  AND (?12 IS NULL OR
+       (f.title LIKE ?12 ESCAPE '\')
+    OR (f.rule_id LIKE ?12 ESCAPE '\')
+    OR (f.package_name LIKE ?12 ESCAPE '\')
+    OR (f.location LIKE ?12 ESCAPE '\'))
   AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 `
 
 type CountLatestFindingsParams struct {
-	AssetID     interface{}
-	Fingerprint interface{}
-	Type        interface{}
-	Severity    interface{}
-	Status      interface{}
-	Now         string
-	DecidedBy   interface{}
-	Query       interface{}
+	AssetID         interface{}
+	Fingerprint     interface{}
+	Type            interface{}
+	Severity        interface{}
+	Status          interface{}
+	Now             string
+	DecidedBy       interface{}
+	Fix             interface{}
+	Dependency      interface{}
+	HideMaintenance int64
+	HideTests       int64
+	Query           interface{}
 }
 
 // Number of rows ListLatestFindings returns for the same filters, ignoring
@@ -120,6 +158,10 @@ func (q *Queries) CountLatestFindings(ctx context.Context, arg CountLatestFindin
 		arg.Status,
 		arg.Now,
 		arg.DecidedBy,
+		arg.Fix,
+		arg.Dependency,
+		arg.HideMaintenance,
+		arg.HideTests,
 		arg.Query,
 	)
 	var count int64
@@ -523,15 +565,49 @@ WHERE a.archived_at IS NULL
         ELSE 'ignored'
     END AS TEXT) = ?8)
   AND (?9 IS NULL OR fs.decided_by = ?9)
+  -- Noise filters (#181) narrow the view and never change a finding.
+  AND (?10 IS NULL
+       OR (?10 = 'available' AND COALESCE(f.fixed_version, '') <> '')
+       OR (?10 = 'none' AND COALESCE(f.fixed_version, '') = ''))
+  AND (?11 IS NULL
+       OR (?11 = 'direct' AND EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 1))
+       OR (?11 = 'indirect' AND EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 0)
+          AND NOT EXISTS (
+            SELECT 1 FROM packages p
+            WHERE p.scan_id = f.scan_id AND p.ecosystem = f.ecosystem
+              AND p.name = f.package_name AND p.direct = 1)))
+  AND (CAST(?12 AS INTEGER) = 0 OR f.type NOT IN ('license', 'outdated'))
+  AND (CAST(?13 AS INTEGER) = 0 OR NOT (
+        instr(('/' || lower(COALESCE(f.location, ''))), '/test/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/tests/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__tests__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/testdata/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/fixtures/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__fixtures__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/spec/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/specs/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/example/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/examples/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/mocks/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '/__mocks__/') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '_test.go') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '.test.') > 0
+        OR instr(('/' || lower(COALESCE(f.location, ''))), '.spec.') > 0))
   -- Text search (#148): a substring of the title, rule id, package or path.
   -- The caller sends %/_ pre-escaped, so the pattern is literal text; LIKE is
   -- case-insensitive for ASCII. The parentheses keep the ORs inside this filter
   -- and are also required by sqlc, which rejects two bare ESCAPE clauses.
-  AND (?10 IS NULL OR
-       (f.title LIKE ?10 ESCAPE '\')
-    OR (f.rule_id LIKE ?10 ESCAPE '\')
-    OR (f.package_name LIKE ?10 ESCAPE '\')
-    OR (f.location LIKE ?10 ESCAPE '\'))
+  AND (?14 IS NULL OR
+       (f.title LIKE ?14 ESCAPE '\')
+    OR (f.rule_id LIKE ?14 ESCAPE '\')
+    OR (f.package_name LIKE ?14 ESCAPE '\')
+    OR (f.location LIKE ?14 ESCAPE '\'))
   AND NOT (f.type = 'license' AND COALESCE(lpa.action, lpg.action, '') = 'allow')
 ORDER BY
     -- A requested column sorts first. SQLite cannot parameterize ASC/DESC, so
@@ -576,23 +652,27 @@ ORDER BY
     CASE WHEN sort_key = 0 THEN f.asset_id END ASC,
     -- Stable tiebreaker: every page and direction ends in one deterministic order.
     f.id ASC
-LIMIT CASE WHEN ?12 IS NULL THEN -1 ELSE ?12 END
-OFFSET CASE WHEN ?11 IS NULL THEN 0 ELSE ?11 END
+LIMIT CASE WHEN ?16 IS NULL THEN -1 ELSE ?16 END
+OFFSET CASE WHEN ?15 IS NULL THEN 0 ELSE ?15 END
 `
 
 type ListLatestFindingsParams struct {
-	Now         string
-	Sort        int64
-	Order       int64
-	AssetID     interface{}
-	Fingerprint interface{}
-	Type        interface{}
-	Severity    interface{}
-	Status      interface{}
-	DecidedBy   interface{}
-	Query       interface{}
-	Offset      interface{}
-	Limit       interface{}
+	Now             string
+	Sort            int64
+	Order           int64
+	AssetID         interface{}
+	Fingerprint     interface{}
+	Type            interface{}
+	Severity        interface{}
+	Status          interface{}
+	DecidedBy       interface{}
+	Fix             interface{}
+	Dependency      interface{}
+	HideMaintenance int64
+	HideTests       int64
+	Query           interface{}
+	Offset          interface{}
+	Limit           interface{}
 }
 
 type ListLatestFindingsRow struct {
@@ -646,6 +726,10 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 		arg.Severity,
 		arg.Status,
 		arg.DecidedBy,
+		arg.Fix,
+		arg.Dependency,
+		arg.HideMaintenance,
+		arg.HideTests,
 		arg.Query,
 		arg.Offset,
 		arg.Limit,

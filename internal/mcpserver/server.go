@@ -125,7 +125,7 @@ func New(cfg Config) (*Server, error) {
 	mcp.AddTool(server.mcp, &mcp.Tool{
 		Name: "list_findings",
 		Description: "List the open findings of each asset's latest succeeded scan, with " +
-			"optional asset, severity, type, status, decision maker, text, sort and paging filters.",
+			"optional asset, severity, type, status, decision maker, noise, text, sort and paging filters.",
 	}, server.listFindings)
 	mcp.AddTool(server.mcp, &mcp.Tool{
 		Name: "get_fix_plan",

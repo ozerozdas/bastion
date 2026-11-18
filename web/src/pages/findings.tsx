@@ -450,6 +450,10 @@ export function FindingsPage() {
   // Closed by agent is the ignored list narrowed to agent decisions.
   const status: FindingStatus = statusChoice === 'open' ? 'open' : 'ignored'
   const decidedBy = statusChoice === 'agent' ? ('agent' as const) : undefined
+  const [fix, setFix] = useState<'' | 'available' | 'none'>('')
+  const [dependency, setDependency] = useState<'' | 'direct' | 'indirect'>('')
+  const [hideTests, setHideTests] = useState(false)
+  const [hideMaintenance, setHideMaintenance] = useState(false)
   // The search box is local while typing and debounces into ?q=; the ref holds
   // the value the URL already has, so a URL-driven change can be told apart.
   const [queryInput, setQueryInput] = useState(search.q ?? '')
@@ -543,6 +547,10 @@ export function FindingsPage() {
       severity: severity === '' ? undefined : severity,
       status,
       decidedBy,
+      fix: fix === '' ? undefined : fix,
+      dependency: dependency === '' ? undefined : dependency,
+      hideTests,
+      hideMaintenance,
       q: search.q,
       view: grouped ? 'grouped' : 'single',
       limit: pageSize,
@@ -800,6 +808,15 @@ export function FindingsPage() {
     clearSelection()
   }
 
+  // A noise filter changes the rows, so the page and selection start over.
+  const narrowed = () => {
+    resetPage()
+    setOpenFingerprint(null)
+    setOpenGroupKey(null)
+    setChecked(new Set())
+    setCheckedGroups(new Set())
+  }
+
   const filters: FilterField[] = [
     {
       id: 'findings-search',
@@ -904,11 +921,37 @@ export function FindingsPage() {
       ],
       onChange: (value) => {
         setStatusChoice(value as FindingStatus | 'agent')
-        resetPage()
-        setOpenFingerprint(null)
-        setOpenGroupKey(null)
-        setChecked(new Set())
-        setCheckedGroups(new Set())
+        narrowed()
+      },
+    },
+    {
+      id: 'findings-fix',
+      label: t('findings.filter.fix'),
+      value: fix,
+      className: 'w-40',
+      options: [
+        { value: '', label: t('findings.filter.fixAll') },
+        { value: 'available', label: t('findings.filter.fixAvailable') },
+        { value: 'none', label: t('findings.filter.fixNone') },
+      ],
+      onChange: (value) => {
+        setFix(value as typeof fix)
+        narrowed()
+      },
+    },
+    {
+      id: 'findings-dependency',
+      label: t('findings.filter.dependency'),
+      value: dependency,
+      className: 'w-40',
+      options: [
+        { value: '', label: t('findings.filter.dependencyAll') },
+        { value: 'direct', label: t('findings.filter.dependencyDirect') },
+        { value: 'indirect', label: t('findings.filter.dependencyIndirect') },
+      ],
+      onChange: (value) => {
+        setDependency(value as typeof dependency)
+        narrowed()
       },
     },
   ]
@@ -970,6 +1013,10 @@ export function FindingsPage() {
               severity: severity === '' ? undefined : severity,
               status,
               decidedBy,
+              fix: fix === '' ? undefined : fix,
+              dependency: dependency === '' ? undefined : dependency,
+              hideTests,
+              hideMaintenance,
               q: search.q,
             }}
             view={grouped ? 'grouped' : 'single'}
@@ -996,6 +1043,28 @@ export function FindingsPage() {
         />
       )}
       <FilterBar label={t('findings.filter.aria')} fields={filters}>
+        <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
+          <input
+            type="checkbox"
+            checked={hideTests}
+            onChange={(event) => {
+              setHideTests(event.target.checked)
+              narrowed()
+            }}
+          />
+          {t('findings.filter.hideTests')}
+        </label>
+        <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
+          <input
+            type="checkbox"
+            checked={hideMaintenance}
+            onChange={(event) => {
+              setHideMaintenance(event.target.checked)
+              narrowed()
+            }}
+          />
+          {t('findings.filter.hideMaintenance')}
+        </label>
         {/* Grouping folds a rule across projects, so it is only offered while
             every project is in the list (#106). */}
         {search.asset === undefined ? (
