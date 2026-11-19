@@ -15,6 +15,7 @@ import {
   type TypeTotals,
 } from '../api/reports'
 import { scansQuery } from '../api/scans'
+import { PageActions } from '../components/app-shell'
 import { EmptyState } from '../components/empty-state'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
@@ -162,6 +163,9 @@ export function DashboardPage() {
           onCliDone={markCliStep}
         />
       ) : null}
+      <PageActions>
+        <LatestScan scans={data.last_scans} />
+      </PageActions>
       <RiskSummary totals={data.totals_by_severity} />
       <RiskiestProjects assets={data.top_assets} />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -170,6 +174,28 @@ export function DashboardPage() {
       </div>
       <LastScans scans={data.last_scans} />
     </div>
+  )
+}
+
+/** LatestScan says in the page header when the newest scan finished, or that one is running. */
+function LatestScan({ scans }: { scans: LastScan[] }) {
+  const t = useT()
+  if (scans.some((s) => s.status === 'queued' || s.status === 'running')) {
+    return <span className="text-xs text-muted">{t('dashboard.header.scanning')}</span>
+  }
+  // ISO timestamps sort as strings.
+  const newest = scans
+    .map((s) => s.finished_at)
+    .filter((f): f is string => f !== undefined)
+    .sort()
+    .at(-1)
+  if (!newest) {
+    return null
+  }
+  return (
+    <span className="text-xs text-faint tabular-nums" title={formatDateTime(newest)}>
+      {t('dashboard.header.lastScan', { when: relativeTime(newest) })}
+    </span>
   )
 }
 
@@ -337,97 +363,78 @@ function GetStartedStepLink({
 }
 
 /**
- * RiskSummary is one strip instead of five cards: the total, then the two
- * severities that matter first, with the rest kept quiet.
+ * RiskSummary is the dashboard hero: the total and a one-line verdict on the
+ * left, the per-severity breakdown on the right, and one segmented bar that
+ * shows the mix at a glance.
  */
 function RiskSummary({ totals }: { totals: SeverityTotals }) {
   const t = useT()
   const total = openFindingTotal(totals)
+  const rows = [
+    { key: 'critical', count: totals.critical, label: t('severity.critical'), mark: 'bg-critical', strong: true },
+    { key: 'high', count: totals.high, label: t('severity.high'), mark: 'bg-high', strong: true },
+    { key: 'medium', count: totals.medium, label: t('severity.medium'), mark: 'bg-medium', strong: false },
+    { key: 'low', count: totals.low, label: t('severity.low'), mark: 'bg-low', strong: false },
+    { key: 'unknown', count: totals.unknown, label: t('severity.unknown'), mark: 'bg-border-strong', strong: false },
+  ].filter((r) => r.key !== 'unknown' || r.count > 0)
   return (
     <section
       aria-labelledby="severity-heading"
-      className="flex flex-col gap-4 rounded-card border border-border-subtle bg-surface px-4 py-3.5"
+      className="flex flex-col gap-5 rounded-card border border-border-subtle bg-surface px-5 py-5 sm:px-6"
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <SectionHeading
-          id="severity-heading"
-          title={t('dashboard.openFindings')}
-          tip={{
-            label: t('dashboard.openFindings.scopeAria'),
-            content: t('dashboard.openFindings.scope', { total }),
-          }}
-        />
-        <span className="ml-auto text-xs text-muted tabular-nums">
-          {t('dashboard.openFindings.total', { total })}
-        </span>
-      </div>
-      <div className="flex flex-col gap-y-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-8 sm:gap-y-4">
-        <div className="flex items-end gap-x-8">
-          <SeverityStat
-            count={totals.critical}
-            label={t('severity.critical')}
-            mark="bg-critical"
-            strong
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-2">
+          <SectionHeading
+            id="severity-heading"
+            title={t('dashboard.openFindings')}
+            tip={{
+              label: t('dashboard.openFindings.scopeAria'),
+              content: t('dashboard.openFindings.scope', { total }),
+            }}
           />
-          <SeverityStat
-            count={totals.high}
-            label={t('severity.high')}
-            mark="bg-high"
-            strong
-          />
+          <div className="flex items-baseline gap-3">
+            <span className="text-[2.5rem] leading-none font-semibold tracking-tight tabular-nums">
+              {total}
+            </span>
+            <Link to="/findings" className="text-[0.8125rem] text-muted hover:text-fg hover:underline">
+              {t('dashboard.hero.viewAll')}
+            </Link>
+          </div>
+          <p className="text-[0.8125rem] text-muted">
+            {t('dashboard.hero.headline', { critical: totals.critical, high: totals.high })}
+          </p>
         </div>
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-3 sm:ml-auto">
-          <SeverityStat
-            count={totals.medium}
-            label={t('severity.medium')}
-            mark="bg-medium"
-          />
-          <SeverityStat
-            count={totals.low}
-            label={t('severity.low')}
-            mark="bg-low"
-          />
-          {totals.unknown > 0 ? (
-            <SeverityStat
-              count={totals.unknown}
-              label={t('severity.unknown')}
-              mark="bg-border-strong"
-            />
-          ) : null}
-        </div>
+        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-5 lg:w-[34rem]">
+          {rows.map((r) => (
+            <li
+              key={r.key}
+              className={`flex flex-col gap-1.5 rounded-md px-3 py-2.5 ${r.strong ? 'bg-hover' : ''}`}
+            >
+              <span
+                className={`leading-none tabular-nums ${
+                  r.strong ? 'text-[1.5rem] font-semibold' : 'text-[1.125rem] font-medium text-muted'
+                }`}
+              >
+                {r.count}
+              </span>
+              <span className="flex items-center gap-1.5 text-xs text-muted">
+                <span aria-hidden="true" className={`size-1.5 rounded-full ${r.mark}`} />
+                {r.label}
+              </span>
+            </li>
+          ))}
+        </ul>
       </div>
+      {total > 0 ? (
+        <div aria-hidden="true" className="flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full">
+          {rows.map((r) =>
+            r.count > 0 ? (
+              <span key={r.key} className={r.mark} style={{ flexGrow: r.count }} />
+            ) : null,
+          )}
+        </div>
+      ) : null}
     </section>
-  )
-}
-
-/** SeverityStat is one severity number; only its dot carries the colour (§7). */
-function SeverityStat({
-  count,
-  label,
-  mark,
-  strong = false,
-}: {
-  count: number
-  label: string
-  mark: string
-  strong?: boolean
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span
-        className={`leading-none tabular-nums ${
-          strong
-            ? 'text-[1.5rem] font-semibold'
-            : 'text-[0.9375rem] font-medium text-muted'
-        }`}
-      >
-        {count}
-      </span>
-      <span className="flex items-center gap-1.5 text-xs text-muted">
-        <span aria-hidden="true" className={`size-1.5 rounded-full ${mark}`} />
-        {label}
-      </span>
-    </div>
   )
 }
 

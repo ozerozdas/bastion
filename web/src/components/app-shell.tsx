@@ -173,7 +173,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             {t(current.labelKey)}
           </h1>
-          <span className="min-w-0 text-faint">{t(current.subtitleKey)}</span>
+          {/* The dashboard hero states this itself. */}
+          {pathname === '/' ? null : (
+            <span className="min-w-0 text-faint">{t(current.subtitleKey)}</span>
+          )}
           <div id={pageActionsId} className="ml-auto flex items-center gap-2" />
         </header>
         <div className="flex flex-col gap-4 px-4 py-4 sm:px-7 sm:py-6">
