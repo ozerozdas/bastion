@@ -170,6 +170,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/security-news": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the Security News feed.
+         * @description Returns the opt-in setting, the preset sources with their toggles and
+         *     the latest items of every enabled source, newest first. The feature is
+         *     off by default; with the setting off no request is made and `items` is
+         *     empty. Each source refreshes at most every 30 minutes; a failed source
+         *     reports `error` and the other sources keep their items. Feed content is
+         *     sanitized: only a plain-text title and summary, the source, the
+         *     publication date and an http(s) link are returned.
+         */
+        get: operations["getSecurityNews"];
+        /**
+         * Store the Security News setting and source selection.
+         * @description Only the UI calls this. `enabled: false` stops every future request and
+         *     clears the cached feed. With `enabled: true` and no `sources` list the
+         *     recommended sources are selected; an explicit list, including an empty
+         *     one, is stored as sent. An unknown source id is rejected with 400 and
+         *     nothing is written.
+         */
+        put: operations["setSecurityNews"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/outdated": {
         parameters: {
             query?: never;
@@ -1630,6 +1664,89 @@ export interface components {
              *     stops every future request.
              */
             enabled: boolean;
+        };
+        /**
+         * SecurityNewsSource
+         * @description One preset feed source and its toggle.
+         */
+        SecurityNewsSource: {
+            /**
+             * @description Stable source id used by the MCP `source` filter.
+             * @example the-hacker-news
+             */
+            id: string;
+            /**
+             * @description Display name shown in the UI.
+             * @example The Hacker News
+             */
+            name: string;
+            /**
+             * @description True for the sources selected by default when the feature is
+             *     enabled for the first time.
+             */
+            recommended: boolean;
+            /** @description Whether this source is fetched while the feature is on. */
+            enabled: boolean;
+            /** @description Why the last fetch failed. The other sources keep their items. */
+            error?: string;
+        };
+        /**
+         * SecurityNewsItem
+         * @description One sanitized feed entry. The title and summary are plain text, and the
+         *     link is always an absolute http(s) URL.
+         */
+        SecurityNewsItem: {
+            title: string;
+            /** @description The source's display name. */
+            source: string;
+            /** @description The source's stable id. */
+            source_id: string;
+            /**
+             * Format: date-time
+             * @description The feed's publication date. An entry without a parsable date has
+             *     the zero timestamp `0001-01-01T00:00:00Z` and sorts last.
+             */
+            published: string;
+            /**
+             * Format: uri
+             * @description Absolute http(s) link to the original article.
+             */
+            link: string;
+            /** @description Plain-text summary, at most 280 characters. */
+            summary: string;
+        };
+        /**
+         * SecurityNewsSettings
+         * @description The stored feature switch and source selection.
+         */
+        SecurityNewsSettings: {
+            /** @description False makes no request. The feature is off by default. */
+            enabled: boolean;
+            sources: components["schemas"]["SecurityNewsSource"][];
+        };
+        /**
+         * SecurityNewsFeed
+         * @description The Security News setting, sources and latest items.
+         */
+        SecurityNewsFeed: {
+            enabled: boolean;
+            sources: components["schemas"]["SecurityNewsSource"][];
+            /**
+             * @description The enabled sources' items, newest first, at most 100. Empty while
+             *     the feature is off.
+             */
+            items: components["schemas"]["SecurityNewsItem"][];
+        };
+        /** SetSecurityNewsRequest */
+        SetSecurityNewsRequest: {
+            /** @description True turns the feed on; false stops every future request. */
+            enabled: boolean;
+            /**
+             * @description Source ids to enable. Omitted keeps the current selection, or the
+             *     recommended set when the feature was never configured; an empty
+             *     list disables every source.
+             */
+            sources?: string[];
         };
         /**
          * FindingRuleStatus
@@ -3653,6 +3770,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EPSSStatus"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getSecurityNews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current Security News feed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityNewsFeed"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setSecurityNews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetSecurityNewsRequest"];
+            };
+        };
+        responses: {
+            /** @description The setting and source selection were stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityNewsSettings"];
                 };
             };
             400: components["responses"]["Problem"];

@@ -2471,6 +2471,67 @@ type ScannerRun struct {
 	Warning *string `json:"warning,omitempty"`
 }
 
+// SecurityNewsFeed The Security News setting, sources and latest items.
+type SecurityNewsFeed struct {
+	Enabled bool `json:"enabled"`
+
+	// Items The enabled sources' items, newest first, at most 100. Empty while
+	// the feature is off.
+	Items   []SecurityNewsItem   `json:"items"`
+	Sources []SecurityNewsSource `json:"sources"`
+}
+
+// SecurityNewsItem One sanitized feed entry. The title and summary are plain text, and the
+// link is always an absolute http(s) URL.
+type SecurityNewsItem struct {
+	// Link Absolute http(s) link to the original article.
+	Link string `json:"link"`
+
+	// Published The feed's publication date. An entry without a parsable date has
+	// the zero timestamp `0001-01-01T00:00:00Z` and sorts last.
+	Published time.Time `json:"published"`
+
+	// Source The source's display name.
+	Source string `json:"source"`
+
+	// SourceId The source's stable id.
+	SourceId string `json:"source_id"`
+
+	// Summary Plain-text summary, at most 280 characters.
+	Summary string `json:"summary"`
+	Title   string `json:"title"`
+}
+
+// SecurityNewsSettings The stored feature switch and source selection.
+type SecurityNewsSettings struct {
+	// Enabled False makes no request. The feature is off by default.
+	Enabled bool                 `json:"enabled"`
+	Sources []SecurityNewsSource `json:"sources"`
+}
+
+// SecurityNewsSource One preset feed source and its toggle.
+type SecurityNewsSource struct {
+	// Enabled Whether this source is fetched while the feature is on.
+	Enabled bool `json:"enabled"`
+
+	// Error Why the last fetch failed. The other sources keep their items.
+	Error *string `json:"error,omitempty"`
+
+	// Id Stable source id used by the MCP `source` filter.
+	//
+	// Examples: the-hacker-news
+	Id string `json:"id"`
+
+	// Name Display name shown in the UI.
+	//
+	// Examples: The Hacker News
+	Name string `json:"name"`
+
+	// Recommended True for the sources selected by default when the feature is
+	// enabled for the first time.
+	Recommended bool `json:"recommended"`
+}
+
 // SetAssetLinkRequest The repository an image was built from.
 type SetAssetLinkRequest struct {
 	RepoAssetId int64 `json:"repo_asset_id"`
@@ -2594,6 +2655,17 @@ type SetSASTEnabledRequest struct {
 	// repository scans; false turns it off without canceling a running
 	// download.
 	Enabled bool `json:"enabled"`
+}
+
+// SetSecurityNewsRequest defines model for SetSecurityNewsRequest.
+type SetSecurityNewsRequest struct {
+	// Enabled True turns the feed on; false stops every future request.
+	Enabled bool `json:"enabled"`
+
+	// Sources Source ids to enable. Omitted keeps the current selection, or the
+	// recommended set when the feature was never configured; an empty
+	// list disables every source.
+	Sources *[]string `json:"sources,omitempty"`
 }
 
 // SetUpdateConsentRequest defines model for SetUpdateConsentRequest.
@@ -3037,6 +3109,9 @@ type SetSASTEnabledJSONRequestBody = SetSASTEnabledRequest
 // CreateScansJSONRequestBody defines body for CreateScans for application/json ContentType.
 type CreateScansJSONRequestBody = CreateScansRequest
 
+// SetSecurityNewsJSONRequestBody defines body for SetSecurityNews for application/json ContentType.
+type SetSecurityNewsJSONRequestBody = SetSecurityNewsRequest
+
 // SetSLASettingsJSONRequestBody defines body for SetSLASettings for application/json ContentType.
 type SetSLASettingsJSONRequestBody = SLAThresholds
 
@@ -3383,6 +3458,12 @@ type ServerInterface interface {
 	// ListScanFindings Findings of one scan.
 	// (GET /api/scans/{id}/findings)
 	ListScanFindings(w http.ResponseWriter, r *http.Request, id ScanID, params ListScanFindingsParams)
+	// GetSecurityNews Read the Security News feed.
+	// (GET /api/security-news)
+	GetSecurityNews(w http.ResponseWriter, r *http.Request)
+	// SetSecurityNews Store the Security News setting and source selection.
+	// (PUT /api/security-news)
+	SetSecurityNews(w http.ResponseWriter, r *http.Request)
 	// GetSLASettings Read the SLA thresholds.
 	// (GET /api/settings/sla)
 	GetSLASettings(w http.ResponseWriter, r *http.Request)
@@ -5169,6 +5250,34 @@ func (siw *ServerInterfaceWrapper) ListScanFindings(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetSecurityNews operation middleware
+func (siw *ServerInterfaceWrapper) GetSecurityNews(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSecurityNews(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetSecurityNews operation middleware
+func (siw *ServerInterfaceWrapper) SetSecurityNews(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetSecurityNews(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetSLASettings operation middleware
 func (siw *ServerInterfaceWrapper) GetSLASettings(w http.ResponseWriter, r *http.Request) {
 
@@ -5381,6 +5490,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/trivy-db/download", wrapper.DownloadTrivyDB)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/epss", wrapper.GetEPSSStatus)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/epss", wrapper.SetEPSSEnabled)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/security-news", wrapper.GetSecurityNews)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/security-news", wrapper.SetSecurityNews)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/outdated", wrapper.GetOutdatedStatus)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/outdated", wrapper.SetOutdatedEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/eol", wrapper.GetEOLStatus)
@@ -13716,6 +13827,255 @@ func (response ListScanFindings500ApplicationProblemPlusJSONResponse) VisitListS
 	return err
 }
 
+type GetSecurityNewsRequestObject struct {
+}
+
+type GetSecurityNewsResponseObject interface {
+	VisitGetSecurityNewsResponse(w http.ResponseWriter) error
+}
+
+type GetSecurityNews200JSONResponse SecurityNewsFeed
+
+func (response GetSecurityNews200JSONResponse) VisitGetSecurityNewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityNews401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetSecurityNews401ApplicationProblemPlusJSONResponse) VisitGetSecurityNewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityNews403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetSecurityNews403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetSecurityNews403ResponseHeaders
+}
+
+func (response GetSecurityNews403ApplicationProblemPlusJSONResponse) VisitGetSecurityNewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityNews421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetSecurityNews421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetSecurityNews421ResponseHeaders
+}
+
+func (response GetSecurityNews421ApplicationProblemPlusJSONResponse) VisitGetSecurityNewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSecurityNews500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetSecurityNews500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetSecurityNews500ResponseHeaders
+}
+
+func (response GetSecurityNews500ApplicationProblemPlusJSONResponse) VisitGetSecurityNewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSecurityNewsRequestObject struct {
+	Body *SetSecurityNewsJSONRequestBody
+}
+
+type SetSecurityNewsResponseObject interface {
+	VisitSetSecurityNewsResponse(w http.ResponseWriter) error
+}
+
+type SetSecurityNews200JSONResponse SecurityNewsSettings
+
+func (response SetSecurityNews200JSONResponse) VisitSetSecurityNewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSecurityNews400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetSecurityNews400ApplicationProblemPlusJSONResponse) VisitSetSecurityNewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSecurityNews401ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetSecurityNews401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetSecurityNews401ResponseHeaders
+}
+
+func (response SetSecurityNews401ApplicationProblemPlusJSONResponse) VisitSetSecurityNewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSecurityNews403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetSecurityNews403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetSecurityNews403ResponseHeaders
+}
+
+func (response SetSecurityNews403ApplicationProblemPlusJSONResponse) VisitSetSecurityNewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSecurityNews421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetSecurityNews421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetSecurityNews421ResponseHeaders
+}
+
+func (response SetSecurityNews421ApplicationProblemPlusJSONResponse) VisitSetSecurityNewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSecurityNews500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetSecurityNews500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetSecurityNews500ResponseHeaders
+}
+
+func (response SetSecurityNews500ApplicationProblemPlusJSONResponse) VisitSetSecurityNewsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSLASettingsRequestObject struct {
 }
 
@@ -14616,6 +14976,12 @@ type StrictServerInterface interface {
 	// ListScanFindings Findings of one scan.
 	// (GET /api/scans/{id}/findings)
 	ListScanFindings(ctx context.Context, request ListScanFindingsRequestObject) (ListScanFindingsResponseObject, error)
+	// GetSecurityNews Read the Security News feed.
+	// (GET /api/security-news)
+	GetSecurityNews(ctx context.Context, request GetSecurityNewsRequestObject) (GetSecurityNewsResponseObject, error)
+	// SetSecurityNews Store the Security News setting and source selection.
+	// (PUT /api/security-news)
+	SetSecurityNews(ctx context.Context, request SetSecurityNewsRequestObject) (SetSecurityNewsResponseObject, error)
 	// GetSLASettings Read the SLA thresholds.
 	// (GET /api/settings/sla)
 	GetSLASettings(ctx context.Context, request GetSLASettingsRequestObject) (GetSLASettingsResponseObject, error)
@@ -16359,6 +16725,61 @@ func (sh *strictHandler) ListScanFindings(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListScanFindingsResponseObject); ok {
 		if err := validResponse.VisitListScanFindingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSecurityNews operation middleware
+func (sh *strictHandler) GetSecurityNews(w http.ResponseWriter, r *http.Request) {
+	var request GetSecurityNewsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSecurityNews(ctx, request.(GetSecurityNewsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSecurityNews")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSecurityNewsResponseObject); ok {
+		if err := validResponse.VisitGetSecurityNewsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetSecurityNews operation middleware
+func (sh *strictHandler) SetSecurityNews(w http.ResponseWriter, r *http.Request) {
+	var request SetSecurityNewsRequestObject
+
+	var body SetSecurityNewsJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetSecurityNews(ctx, request.(SetSecurityNewsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetSecurityNews")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetSecurityNewsResponseObject); ok {
+		if err := validResponse.VisitSetSecurityNewsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
