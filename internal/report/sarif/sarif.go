@@ -109,7 +109,8 @@ type Region struct {
 // build version ("dev" when built from source). The caller passes findings in
 // its display order; rules follow the order they first appear in.
 func Build(toolVersion string, list []findings.Finding) Report {
-	driver := Driver{Name: ToolName, Version: toolVersion}
+	// Rules must encode as [] (not null) or code scanning rejects a clean scan.
+	driver := Driver{Name: ToolName, Version: toolVersion, Rules: []Rule{}}
 	rules := make(map[string]int)
 	results := make([]Result, 0, len(list))
 
