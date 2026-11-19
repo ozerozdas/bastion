@@ -22,6 +22,11 @@ type LicenseItem struct {
 	Ecosystem      string
 	AssetID        int64
 	DisplayName    string
+	// Ignored is true while a live finding decision covers this finding.
+	Ignored bool
+	// State is the decision's value (ignored, accepted_risk or false_positive),
+	// empty when no live decision applies.
+	State string
 }
 
 // LicenseEntry is one licence name with the policy that applies to it.
@@ -30,6 +35,9 @@ type LicenseEntry struct {
 	Policy  string
 	// Packages counts the distinct package names in Items.
 	Packages int
+	// IgnoredPackages counts the distinct package names whose finding carries
+	// a live decision.
+	IgnoredPackages int
 	// Assets counts the distinct assets in Items.
 	Assets int
 	Items  []LicenseItem
@@ -42,9 +50,9 @@ type LicenseReport struct {
 
 // Licenses lists the latest open licence findings, grouped by licence name and
 // the effective allow/deny rule (#39). A per-asset rule overrides the global
-// one. The scope is the findings list's, except that allow findings are kept:
-// this report is the whole licence inventory, not only the issues. assetID 0
-// means every asset.
+// one. The scope is the findings list's, except that allow findings and
+// findings carrying a live decision are kept: this report is the whole licence
+// inventory, not only the issues. assetID 0 means every asset.
 func (s *Service) Licenses(ctx context.Context, assetID int64) (LicenseReport, error) {
 	if err := (Filter{AssetID: assetID}).validate(); err != nil {
 		return LicenseReport{}, err
@@ -79,17 +87,24 @@ func (s *Service) Licenses(ctx context.Context, assetID int64) (LicenseReport, e
 			Ecosystem:      row.Ecosystem.String,
 			AssetID:        row.AssetID,
 			DisplayName:    row.DisplayName,
+			Ignored:        row.Ignored != 0,
+			State:          row.State.String,
 		})
 	}
 
 	for i := range entries {
 		packages := make(map[string]struct{}, len(entries[i].Items))
+		ignoredPackages := make(map[string]struct{})
 		assets := make(map[int64]struct{}, len(entries[i].Items))
 		for _, item := range entries[i].Items {
 			packages[item.PackageName] = struct{}{}
+			if item.Ignored {
+				ignoredPackages[item.PackageName] = struct{}{}
+			}
 			assets[item.AssetID] = struct{}{}
 		}
 		entries[i].Packages = len(packages)
+		entries[i].IgnoredPackages = len(ignoredPackages)
 		entries[i].Assets = len(assets)
 		sort.SliceStable(entries[i].Items, func(a, b int) bool {
 			left, right := entries[i].Items[a], entries[i].Items[b]

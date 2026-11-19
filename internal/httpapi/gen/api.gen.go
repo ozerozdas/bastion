@@ -81,6 +81,7 @@ func (e AssetScanSchedule) Valid() bool {
 const (
 	CIRunTriggerApi CIRunTrigger = "api"
 	CIRunTriggerCli CIRunTrigger = "cli"
+	CIRunTriggerUi  CIRunTrigger = "ui"
 )
 
 // Valid indicates whether the value is a known member of the CIRunTrigger enum.
@@ -89,6 +90,8 @@ func (e CIRunTrigger) Valid() bool {
 	case CIRunTriggerApi:
 		return true
 	case CIRunTriggerCli:
+		return true
+	case CIRunTriggerUi:
 		return true
 	default:
 		return false
@@ -872,6 +875,27 @@ func (e ListFindingsParamsOrder) Valid() bool {
 	}
 }
 
+// Defines values for GetReportCIHistoryParamsTrigger.
+const (
+	GetReportCIHistoryParamsTriggerApi GetReportCIHistoryParamsTrigger = "api"
+	GetReportCIHistoryParamsTriggerCli GetReportCIHistoryParamsTrigger = "cli"
+	GetReportCIHistoryParamsTriggerUi  GetReportCIHistoryParamsTrigger = "ui"
+)
+
+// Valid indicates whether the value is a known member of the GetReportCIHistoryParamsTrigger enum.
+func (e GetReportCIHistoryParamsTrigger) Valid() bool {
+	switch e {
+	case GetReportCIHistoryParamsTriggerApi:
+		return true
+	case GetReportCIHistoryParamsTriggerCli:
+		return true
+	case GetReportCIHistoryParamsTriggerUi:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListScansParamsSort.
 const (
 	ListScansParamsSortDuration ListScansParamsSort = "duration"
@@ -1097,11 +1121,11 @@ type BulkSetFindingStateRequest struct {
 
 // CIHistoryReport defines model for CIHistoryReport.
 type CIHistoryReport struct {
-	// Runs CLI and API scan runs, newest first.
+	// Runs Scan runs, newest first.
 	Runs []CIRun `json:"runs"`
 }
 
-// CIRun One CLI- or API-triggered scan. `counts` holds the findings the scan
+// CIRun One scan the history lists. `counts` holds the findings the scan
 // recorded per raw severity: ignored findings are counted and no licence
 // policy applies, so it reports what the run produced.
 type CIRun struct {
@@ -1944,6 +1968,9 @@ type LicenseEntry struct {
 	// Assets Number of distinct assets.
 	Assets int `json:"assets"`
 
+	// IgnoredPackages Number of distinct package names under a live finding decision.
+	IgnoredPackages int `json:"ignored_packages"`
+
 	// Items One entry per finding, by asset and package.
 	Items []LicenseItem `json:"items"`
 
@@ -1964,11 +1991,19 @@ type LicenseEntryPolicy string
 
 // LicenseItem defines model for LicenseItem.
 type LicenseItem struct {
-	AssetId        int64  `json:"asset_id"`
-	DisplayName    string `json:"display_name"`
-	Ecosystem      string `json:"ecosystem"`
+	AssetId     int64  `json:"asset_id"`
+	DisplayName string `json:"display_name"`
+	Ecosystem   string `json:"ecosystem"`
+
+	// Ignored True while a live finding decision covers this finding, so the
+	// inventory can show it without hiding it.
+	Ignored        bool   `json:"ignored"`
 	PackageName    string `json:"package_name"`
 	PackageVersion string `json:"package_version"`
+
+	// State The live decision behind `ignored`, or `null` when the finding has
+	// none.
+	State *FindingState `json:"state"`
 }
 
 // LicensesReport defines model for LicensesReport.
@@ -2836,9 +2871,15 @@ type GetReportCIHistoryParams struct {
 	// AssetId Only findings of this asset.
 	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
 
+	// Trigger Only list the runs this trigger started; absent lists every scan.
+	Trigger *GetReportCIHistoryParamsTrigger `form:"trigger,omitempty" json:"trigger,omitempty"`
+
 	// Limit Maximum number of runs to return, newest first.
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// GetReportCIHistoryParamsTrigger defines parameters for GetReportCIHistory.
+type GetReportCIHistoryParamsTrigger string
 
 // GetCVEInsightsParams defines parameters for GetCVEInsights.
 type GetCVEInsightsParams struct {
@@ -3291,7 +3332,7 @@ type ServerInterface interface {
 	// GetReportAudit Audit pack for one asset or the whole fleet.
 	// (GET /api/reports/audit)
 	GetReportAudit(w http.ResponseWriter, r *http.Request, params GetReportAuditParams)
-	// GetReportCIHistory CLI and API scan runs, newest first.
+	// GetReportCIHistory Scan runs of every trigger, newest first.
 	// (GET /api/reports/ci-history)
 	GetReportCIHistory(w http.ResponseWriter, r *http.Request, params GetReportCIHistoryParams)
 	// GetCVEInsights Assets affected by one CVE or GHSA id, with its EPSS score.
@@ -4501,6 +4542,19 @@ func (siw *ServerInterfaceWrapper) GetReportCIHistory(w http.ResponseWriter, r *
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "trigger" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "trigger", r.URL.Query(), &params.Trigger, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "trigger"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trigger", Err: err})
 		}
 		return
 	}
@@ -14511,7 +14565,7 @@ type StrictServerInterface interface {
 	// GetReportAudit Audit pack for one asset or the whole fleet.
 	// (GET /api/reports/audit)
 	GetReportAudit(ctx context.Context, request GetReportAuditRequestObject) (GetReportAuditResponseObject, error)
-	// GetReportCIHistory CLI and API scan runs, newest first.
+	// GetReportCIHistory Scan runs of every trigger, newest first.
 	// (GET /api/reports/ci-history)
 	GetReportCIHistory(ctx context.Context, request GetReportCIHistoryRequestObject) (GetReportCIHistoryResponseObject, error)
 	// GetCVEInsights Assets affected by one CVE or GHSA id, with its EPSS score.

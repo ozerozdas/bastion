@@ -30,7 +30,13 @@ export const reportTrendDays = [30, 90, 180, 365] as const
 /** ReportTrendDays is one offered trend window, in days. */
 export type ReportTrendDays = (typeof reportTrendDays)[number]
 
-/** ReportSearch is a report page's scope: project, advisory and trend window. */
+/** reportTriggers are the surfaces a scan can be started from. */
+export const reportTriggers = ['ui', 'cli', 'api'] as const
+
+/** ReportTrigger is one of them: the app, the CLI or the API. */
+export type ReportTrigger = (typeof reportTriggers)[number]
+
+/** ReportSearch is a report page's scope: project, advisory, window and trigger. */
 export type ReportSearch = {
   /** Narrows the report to one project; absent means the whole fleet. */
   asset?: number
@@ -38,15 +44,18 @@ export type ReportSearch = {
   cve?: string
   /** ?days=<n> is the trend window; absent is the API's 90-day default. */
   days?: ReportTrendDays
+  /** ?trigger=<ui|cli|api> filters the scan history; absent is every surface. */
+  trigger?: ReportTrigger
 }
 
 /** MaxCveSearchLength caps the advisory id, so a pasted blob cannot fill the URL. */
 const maxCveSearchLength = 64
 
 /**
- * parseReportSearch reads ?asset=<id>, ?cve=<id> and ?days=<n> from a report
- * page. Malformed values are dropped, so a shared link with a stale window
- * still opens the report instead of failing the route.
+ * parseReportSearch reads ?asset=<id>, ?cve=<id>, ?days=<n> and
+ * ?trigger=<ui|cli|api> from a report page. Malformed values are dropped, so a
+ * shared link with a stale window still opens the report instead of failing the
+ * route.
  */
 export function parseReportSearch(
   search: Record<string, unknown>,
@@ -58,10 +67,12 @@ export function parseReportSearch(
   const days = reportTrendDays.find(
     (option) => String(option) === String(search.days),
   )
+  const trigger = reportTriggers.find((option) => option === search.trigger)
   return {
     ...parseAssetSearch(search),
     ...(cve === '' ? {} : { cve }),
     ...(days === undefined ? {} : { days }),
+    ...(trigger === undefined ? {} : { trigger }),
   }
 }
 

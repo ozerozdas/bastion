@@ -110,9 +110,9 @@ test('saves SLA thresholds and renders the audit and CI history reports', async 
 
   await page.goto(`${origin}/reports/ci-history`)
   await expect(
-    page.getByRole('heading', { level: 1, name: 'CI scan history' }),
+    page.getByRole('heading', { level: 1, name: 'Scan history' }),
   ).toBeVisible()
-  await expect(page.getByText('No CI runs yet')).toBeVisible()
+  await expect(page.getByText('No scans yet')).toBeVisible()
 
   expect(problems).toEqual([])
 })

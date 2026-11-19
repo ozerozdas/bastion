@@ -112,10 +112,10 @@ WITH selected AS (
     FROM scans s
     JOIN assets a ON a.id = s.asset_id
     WHERE a.archived_at IS NULL
-      AND s."trigger" IN ('cli', 'api')
-      AND (?1 IS NULL OR s.asset_id = ?1)
+      AND (?1 IS NULL OR s."trigger" = ?1)
+      AND (?2 IS NULL OR s.asset_id = ?2)
     ORDER BY s.id DESC
-    LIMIT ?2
+    LIMIT ?3
 ),
 counts AS (
     -- One grouped pass over the selected scans' findings, not one correlated
@@ -150,6 +150,7 @@ ORDER BY s.id DESC
 `
 
 type ReportCIHistoryParams struct {
+	Trigger  interface{}
 	AssetID  interface{}
 	RunLimit int64
 }
@@ -169,12 +170,13 @@ type ReportCIHistoryRow struct {
 	Unknown     int64
 }
 
-// CLI- and API-triggered scans, newest first, with the raw severity counts of
+// Scans (UI, CLI and API alike), newest first, with the raw severity counts of
 // what each scan recorded. Unlike the dashboard counts, these are not
 // ignore-filtered and no licence policy applies: the history reports what the
-// CI run produced, not today's view of it.
+// run produced, not today's view of it. An optional trigger narrows the
+// history to one kind of run.
 func (q *Queries) ReportCIHistory(ctx context.Context, arg ReportCIHistoryParams) ([]ReportCIHistoryRow, error) {
-	rows, err := q.db.QueryContext(ctx, reportCIHistory, arg.AssetID, arg.RunLimit)
+	rows, err := q.db.QueryContext(ctx, reportCIHistory, arg.Trigger, arg.AssetID, arg.RunLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -217,15 +219,16 @@ WHERE sr.scan_id IN (
     FROM scans s
     JOIN assets a ON a.id = s.asset_id
     WHERE a.archived_at IS NULL
-      AND s."trigger" IN ('cli', 'api')
-      AND (?1 IS NULL OR s.asset_id = ?1)
+      AND (?1 IS NULL OR s."trigger" = ?1)
+      AND (?2 IS NULL OR s.asset_id = ?2)
     ORDER BY s.id DESC
-    LIMIT ?2
+    LIMIT ?3
 )
 ORDER BY sr.scan_id, sr.scanner
 `
 
 type ReportCIScannerRunsParams struct {
+	Trigger  interface{}
 	AssetID  interface{}
 	RunLimit int64
 }
@@ -236,11 +239,11 @@ type ReportCIScannerRunsRow struct {
 	Status  string
 }
 
-// The scanner runs of the newest CLI/API scans in the same order-limited set
+// The scanner runs of the newest scans in the same order-limited set
 // ReportCIHistory returns, so the history can name each scanner and its
 // outcome.
 func (q *Queries) ReportCIScannerRuns(ctx context.Context, arg ReportCIScannerRunsParams) ([]ReportCIScannerRunsRow, error) {
-	rows, err := q.db.QueryContext(ctx, reportCIScannerRuns, arg.AssetID, arg.RunLimit)
+	rows, err := q.db.QueryContext(ctx, reportCIScannerRuns, arg.Trigger, arg.AssetID, arg.RunLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +325,13 @@ SELECT
     f.package_version,
     f.ecosystem,
     f.asset_id,
-    a.display_name
+    a.display_name,
+    CASE
+        WHEN st.id IS NOT NULL
+         AND (st.expires_at IS NULL OR st.expires_at > CAST(?1 AS TEXT))
+        THEN 1 ELSE 0
+    END AS ignored,
+    st.state
 FROM findings f
 JOIN scans s ON s.id = f.scan_id
 JOIN assets a ON a.id = f.asset_id
@@ -341,7 +350,6 @@ WHERE a.archived_at IS NULL
   )
   AND f.type = 'license'
   AND f.status = 'open'
-  AND (st.id IS NULL OR st.expires_at <= CAST(?1 AS TEXT))
   AND (?2 IS NULL OR f.asset_id = ?2)
 ORDER BY lower(COALESCE(f.rule_id, '')), a.display_name, f.package_name
 `
@@ -359,13 +367,17 @@ type ReportLicenseFindingsRow struct {
 	Ecosystem      sql.NullString
 	AssetID        int64
 	DisplayName    string
+	Ignored        int64
+	State          sql.NullString
 }
 
 // Latest open licence findings with the effective allow/deny rule (#39)
 // resolved per asset over the global one. Unlike ListLatestFindings, allow
 // findings are kept: this report exists to show the whole licence inventory.
-// The rest of the scope is the findings list's: non-archived assets, their
-// newest succeeded scan, and ignore decisions applied until they expire.
+// The rest of the scope is the findings list's: non-archived assets and their
+// newest succeeded scan. Findings with a live ignore decision are kept too,
+// flagged through ignored and state, so the inventory stays whole; a decision
+// stops counting once it expires.
 func (q *Queries) ReportLicenseFindings(ctx context.Context, arg ReportLicenseFindingsParams) ([]ReportLicenseFindingsRow, error) {
 	rows, err := q.db.QueryContext(ctx, reportLicenseFindings, arg.Now, arg.AssetID)
 	if err != nil {
@@ -383,6 +395,8 @@ func (q *Queries) ReportLicenseFindings(ctx context.Context, arg ReportLicenseFi
 			&i.Ecosystem,
 			&i.AssetID,
 			&i.DisplayName,
+			&i.Ignored,
+			&i.State,
 		); err != nil {
 			return nil, err
 		}

@@ -99,8 +99,8 @@ func TestLicensesResolvesPolicyAndIncludesAllow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Licenses: %v", err)
 	}
-	if len(report.Licenses) != 4 {
-		t.Fatalf("licenses = %+v, want four entries", report.Licenses)
+	if len(report.Licenses) != 5 {
+		t.Fatalf("licenses = %+v, want five entries", report.Licenses)
 	}
 
 	// Deny first, then by package count descending, then by licence name.
@@ -113,6 +113,7 @@ func TestLicensesResolvesPolicyAndIncludesAllow(t *testing.T) {
 	}{
 		{license: "GPL-3.0", policy: reports.LicensePolicyDeny, packages: 1, assets: 1, pkg: "beta-gpl"},
 		{license: "Apache-2.0", policy: reports.LicensePolicyAllow, packages: 2, assets: 1},
+		{license: "BSD-3-Clause", policy: reports.LicensePolicyNone, packages: 1, assets: 1, pkg: "alpha-bsd"},
 		{license: "GPL-3.0", policy: reports.LicensePolicyAllow, packages: 1, assets: 1, pkg: "alpha-gpl"},
 		{license: "MIT", policy: reports.LicensePolicyNone, packages: 1, assets: 1, pkg: "alpha-mit"},
 	}
@@ -129,14 +130,27 @@ func TestLicensesResolvesPolicyAndIncludesAllow(t *testing.T) {
 		}
 	}
 
-	// The ignored BSD finding and the archived asset's GPL are absent.
-	for _, entry := range report.Licenses {
-		if entry.License == "BSD-3-Clause" {
-			t.Errorf("licenses contains the ignored BSD finding: %+v", entry)
+	// The ignored BSD finding is kept and flagged; the archived asset is not.
+	ignoredEntry := report.Licenses[2]
+	if ignoredEntry.License != "BSD-3-Clause" || ignoredEntry.IgnoredPackages != 1 {
+		t.Errorf("licenses[2] = %+v, want the ignored BSD entry", ignoredEntry)
+	}
+	if len(ignoredEntry.Items) != 1 {
+		t.Fatalf("ignored entry items = %+v, want one", ignoredEntry.Items)
+	}
+	if item := ignoredEntry.Items[0]; !item.Ignored || item.State != store.FindingStateIgnored {
+		t.Errorf("ignored item = %+v, want ignored with the ignored state", item)
+	}
+	for i, entry := range report.Licenses {
+		if i != 2 && entry.IgnoredPackages != 0 {
+			t.Errorf("licenses[%d] ignored packages = %d, want 0", i, entry.IgnoredPackages)
 		}
 		for _, item := range entry.Items {
 			if item.AssetID == archived.ID {
 				t.Errorf("licenses contains the archived asset: %+v", item)
+			}
+			if i != 2 && (item.Ignored || item.State != "") {
+				t.Errorf("licenses[%d] item = %+v, want no decision", i, item)
 			}
 		}
 	}
@@ -145,8 +159,8 @@ func TestLicensesResolvesPolicyAndIncludesAllow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Licenses(alpha): %v", err)
 	}
-	if len(scoped.Licenses) != 2 {
-		t.Fatalf("scoped licenses = %+v, want alpha's two entries", scoped.Licenses)
+	if len(scoped.Licenses) != 3 {
+		t.Fatalf("scoped licenses = %+v, want alpha's three entries", scoped.Licenses)
 	}
 	for _, entry := range scoped.Licenses {
 		for _, item := range entry.Items {

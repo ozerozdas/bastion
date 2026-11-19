@@ -271,6 +271,18 @@ describe('parseReportSearch', () => {
     })
   })
 
+  it('keeps the trigger filter the scan history offers', () => {
+    expect(parseReportSearch({ trigger: 'ui' })).toEqual({ trigger: 'ui' })
+    expect(parseReportSearch({ trigger: 'cli' })).toEqual({ trigger: 'cli' })
+    expect(parseReportSearch({ trigger: 'api' })).toEqual({ trigger: 'api' })
+  })
+
+  it('drops an unknown trigger, so the history shows every surface', () => {
+    expect(parseReportSearch({ trigger: 'cron' })).toEqual({})
+    expect(parseReportSearch({ trigger: '' })).toEqual({})
+    expect(parseReportSearch({ trigger: 7 })).toEqual({})
+  })
+
   it('caps a pasted advisory id', () => {
     const cve = 'C'.repeat(100)
     expect(parseReportSearch({ cve })).toEqual({ cve: 'C'.repeat(64) })

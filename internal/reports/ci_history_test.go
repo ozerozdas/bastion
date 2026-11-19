@@ -69,8 +69,9 @@ func TestCIHistoryFiltersOrdersAndValidates(t *testing.T) {
 		at(11), at(11),
 		newFinding(beta.ID, findings.TypeVulnerability, "CVE-CI-3", findings.SeverityMedium))
 
-	// A UI scan and an archived asset's CLI scan are out of scope.
-	seedTriggeredScan(t, db, alpha.ID, "ui", store.ScanStatusSucceeded, at(12), at(12),
+	// A UI scan is listed like any other; an archived asset's CLI scan is out
+	// of scope.
+	uiScan := seedTriggeredScan(t, db, alpha.ID, "ui", store.ScanStatusSucceeded, at(12), at(12),
 		newFinding(alpha.ID, findings.TypeVulnerability, "CVE-CI-4", findings.SeverityCritical))
 	seedTriggeredScan(t, db, archived.ID, store.ScanTriggerCLI, store.ScanStatusSucceeded,
 		at(13), at(13),
@@ -88,12 +89,12 @@ func TestCIHistoryFiltersOrdersAndValidates(t *testing.T) {
 		t.Fatalf("StartScan(queued): %v", err)
 	}
 
-	report, err := service.CIHistory(ctx, 0, reports.DefaultCIHistoryLimit)
+	report, err := service.CIHistory(ctx, 0, "", reports.DefaultCIHistoryLimit)
 	if err != nil {
 		t.Fatalf("CIHistory: %v", err)
 	}
-	if len(report.Runs) != 3 {
-		t.Fatalf("runs = %+v, want the queued, API and CLI runs", report.Runs)
+	if len(report.Runs) != 4 {
+		t.Fatalf("runs = %+v, want the queued, UI, API and CLI runs", report.Runs)
 	}
 	if report.Runs[0].ScanID != queued || report.Runs[0].DurationMS != nil ||
 		report.Runs[0].StartedAt != nil || report.Runs[0].FinishedAt != nil {
@@ -103,10 +104,18 @@ func TestCIHistoryFiltersOrdersAndValidates(t *testing.T) {
 		t.Errorf("queued scanners = %+v, want none", report.Runs[0].Scanners)
 	}
 
-	apiRun := report.Runs[1]
+	uiRun := report.Runs[1]
+	if uiRun.ScanID != uiScan || uiRun.Trigger != "ui" {
+		t.Errorf("second run = %+v, want the alpha UI scan", uiRun)
+	}
+	if uiRun.Counts.Critical != 1 {
+		t.Errorf("ui counts = %+v, want one critical", uiRun.Counts)
+	}
+
+	apiRun := report.Runs[2]
 	if apiRun.ScanID != apiScan || apiRun.Trigger != store.ScanTriggerAPI ||
 		apiRun.AssetID != beta.ID || apiRun.DisplayName != "Beta" {
-		t.Errorf("second run = %+v, want the beta API scan", apiRun)
+		t.Errorf("third run = %+v, want the beta API scan", apiRun)
 	}
 	if apiRun.DurationMS == nil || *apiRun.DurationMS != 0 {
 		t.Errorf("api duration = %v, want 0", apiRun.DurationMS)
@@ -119,9 +128,9 @@ func TestCIHistoryFiltersOrdersAndValidates(t *testing.T) {
 		t.Errorf("api scanners = %+v, want trivy succeeded", apiRun.Scanners)
 	}
 
-	cliRun := report.Runs[2]
+	cliRun := report.Runs[3]
 	if cliRun.ScanID != cliScan || cliRun.Trigger != store.ScanTriggerCLI {
-		t.Errorf("third run = %+v, want the alpha CLI scan", cliRun)
+		t.Errorf("fourth run = %+v, want the alpha CLI scan", cliRun)
 	}
 	if cliRun.DurationMS == nil || *cliRun.DurationMS != 90000 {
 		t.Errorf("cli duration = %v, want 90000", cliRun.DurationMS)
@@ -131,15 +140,38 @@ func TestCIHistoryFiltersOrdersAndValidates(t *testing.T) {
 		t.Errorf("cli counts = %+v, want 1 critical and 1 high", cliRun.Counts)
 	}
 
-	scoped, err := service.CIHistory(ctx, alpha.ID, reports.DefaultCIHistoryLimit)
+	cliOnly, err := service.CIHistory(ctx, 0, reports.CIHistoryTriggerCLI, reports.DefaultCIHistoryLimit)
+	if err != nil {
+		t.Fatalf("CIHistory(cli): %v", err)
+	}
+	if len(cliOnly.Runs) != 2 || cliOnly.Runs[0].ScanID != queued || cliOnly.Runs[1].ScanID != cliScan {
+		t.Errorf("cli runs = %+v, want the queued and CLI scans", cliOnly.Runs)
+	}
+	uiOnly, err := service.CIHistory(ctx, 0, reports.CIHistoryTriggerUI, reports.DefaultCIHistoryLimit)
+	if err != nil {
+		t.Fatalf("CIHistory(ui): %v", err)
+	}
+	if len(uiOnly.Runs) != 1 || uiOnly.Runs[0].ScanID != uiScan {
+		t.Errorf("ui runs = %+v, want only the UI scan", uiOnly.Runs)
+	}
+	apiOnly, err := service.CIHistory(ctx, 0, reports.CIHistoryTriggerAPI, reports.DefaultCIHistoryLimit)
+	if err != nil {
+		t.Fatalf("CIHistory(api): %v", err)
+	}
+	if len(apiOnly.Runs) != 1 || apiOnly.Runs[0].ScanID != apiScan {
+		t.Errorf("api runs = %+v, want only the API scan", apiOnly.Runs)
+	}
+
+	scoped, err := service.CIHistory(ctx, alpha.ID, "", reports.DefaultCIHistoryLimit)
 	if err != nil {
 		t.Fatalf("CIHistory(alpha): %v", err)
 	}
-	if len(scoped.Runs) != 2 || scoped.Runs[0].ScanID != queued || scoped.Runs[1].ScanID != cliScan {
-		t.Errorf("scoped runs = %+v, want alpha's queued and CLI scans", scoped.Runs)
+	if len(scoped.Runs) != 3 || scoped.Runs[0].ScanID != queued ||
+		scoped.Runs[1].ScanID != uiScan || scoped.Runs[2].ScanID != cliScan {
+		t.Errorf("scoped runs = %+v, want alpha's queued, UI and CLI scans", scoped.Runs)
 	}
 
-	limited, err := service.CIHistory(ctx, 0, 1)
+	limited, err := service.CIHistory(ctx, 0, "", 1)
 	if err != nil {
 		t.Fatalf("CIHistory(limit=1): %v", err)
 	}
@@ -148,11 +180,16 @@ func TestCIHistoryFiltersOrdersAndValidates(t *testing.T) {
 	}
 
 	for _, limit := range []int{-1, 0, reports.MaxCIHistoryLimit + 1} {
-		if _, err := service.CIHistory(ctx, 0, limit); !errors.Is(err, reports.ErrInvalid) {
+		if _, err := service.CIHistory(ctx, 0, "", limit); !errors.Is(err, reports.ErrInvalid) {
 			t.Errorf("CIHistory(limit=%d) error = %v, want ErrInvalid", limit, err)
 		}
 	}
-	if _, err := service.CIHistory(ctx, -1, 50); !errors.Is(err, reports.ErrInvalid) {
+	for _, trigger := range []string{"cron", "UI", "scheduled"} {
+		if _, err := service.CIHistory(ctx, 0, trigger, 50); !errors.Is(err, reports.ErrInvalid) {
+			t.Errorf("CIHistory(trigger=%q) error = %v, want ErrInvalid", trigger, err)
+		}
+	}
+	if _, err := service.CIHistory(ctx, -1, "", 50); !errors.Is(err, reports.ErrInvalid) {
 		t.Errorf("CIHistory(asset=-1) error = %v, want ErrInvalid", err)
 	}
 }
@@ -178,7 +215,7 @@ func TestCIHistoryCountsSelectedScansOnly(t *testing.T) {
 		at(11), at(11),
 		newFinding(alpha.ID, findings.TypeVulnerability, "CVE-CI-COUNT-3", findings.SeverityMedium))
 
-	limited, err := service.CIHistory(ctx, 0, 1)
+	limited, err := service.CIHistory(ctx, 0, "", 1)
 	if err != nil {
 		t.Fatalf("CIHistory(limit=1): %v", err)
 	}
@@ -189,7 +226,7 @@ func TestCIHistoryCountsSelectedScansOnly(t *testing.T) {
 		t.Errorf("newer counts = %+v, want 1 medium and no critical", got)
 	}
 
-	both, err := service.CIHistory(ctx, 0, 2)
+	both, err := service.CIHistory(ctx, 0, "", 2)
 	if err != nil {
 		t.Fatalf("CIHistory(limit=2): %v", err)
 	}

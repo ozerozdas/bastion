@@ -356,8 +356,10 @@ ORDER BY f.package_name, f.package_version, a.display_name, f.asset_id;
 -- Latest open licence findings with the effective allow/deny rule (#39)
 -- resolved per asset over the global one. Unlike ListLatestFindings, allow
 -- findings are kept: this report exists to show the whole licence inventory.
--- The rest of the scope is the findings list's: non-archived assets, their
--- newest succeeded scan, and ignore decisions applied until they expire.
+-- The rest of the scope is the findings list's: non-archived assets and their
+-- newest succeeded scan. Findings with a live ignore decision are kept too,
+-- flagged through ignored and state, so the inventory stays whole; a decision
+-- stops counting once it expires.
 SELECT
     COALESCE(f.rule_id, '') AS license,
     CAST(COALESCE(lpa.action, lpg.action, 'none') AS TEXT) AS policy,
@@ -365,7 +367,13 @@ SELECT
     f.package_version,
     f.ecosystem,
     f.asset_id,
-    a.display_name
+    a.display_name,
+    CASE
+        WHEN st.id IS NOT NULL
+         AND (st.expires_at IS NULL OR st.expires_at > CAST(sqlc.arg(now) AS TEXT))
+        THEN 1 ELSE 0
+    END AS ignored,
+    st.state
 FROM findings f
 JOIN scans s ON s.id = f.scan_id
 JOIN assets a ON a.id = f.asset_id
@@ -384,21 +392,21 @@ WHERE a.archived_at IS NULL
   )
   AND f.type = 'license'
   AND f.status = 'open'
-  AND (st.id IS NULL OR st.expires_at <= CAST(sqlc.arg(now) AS TEXT))
   AND (sqlc.narg(asset_id) IS NULL OR f.asset_id = sqlc.narg(asset_id))
 ORDER BY lower(COALESCE(f.rule_id, '')), a.display_name, f.package_name;
 
 -- name: ReportCIHistory :many
--- CLI- and API-triggered scans, newest first, with the raw severity counts of
+-- Scans (UI, CLI and API alike), newest first, with the raw severity counts of
 -- what each scan recorded. Unlike the dashboard counts, these are not
 -- ignore-filtered and no licence policy applies: the history reports what the
--- CI run produced, not today's view of it.
+-- run produced, not today's view of it. An optional trigger narrows the
+-- history to one kind of run.
 WITH selected AS (
     SELECT s.id, s.asset_id, a.display_name, s."trigger", s.status, s.started_at, s.finished_at
     FROM scans s
     JOIN assets a ON a.id = s.asset_id
     WHERE a.archived_at IS NULL
-      AND s."trigger" IN ('cli', 'api')
+      AND (sqlc.narg(trigger) IS NULL OR s."trigger" = sqlc.narg(trigger))
       AND (sqlc.narg(asset_id) IS NULL OR s.asset_id = sqlc.narg(asset_id))
     ORDER BY s.id DESC
     LIMIT sqlc.arg(run_limit)
@@ -435,7 +443,7 @@ LEFT JOIN counts c ON c.scan_id = s.id
 ORDER BY s.id DESC;
 
 -- name: ReportCIScannerRuns :many
--- The scanner runs of the newest CLI/API scans in the same order-limited set
+-- The scanner runs of the newest scans in the same order-limited set
 -- ReportCIHistory returns, so the history can name each scanner and its
 -- outcome.
 SELECT sr.scan_id, sr.scanner, sr.status
@@ -445,7 +453,7 @@ WHERE sr.scan_id IN (
     FROM scans s
     JOIN assets a ON a.id = s.asset_id
     WHERE a.archived_at IS NULL
-      AND s."trigger" IN ('cli', 'api')
+      AND (sqlc.narg(trigger) IS NULL OR s."trigger" = sqlc.narg(trigger))
       AND (sqlc.narg(asset_id) IS NULL OR s.asset_id = sqlc.narg(asset_id))
     ORDER BY s.id DESC
     LIMIT sqlc.arg(run_limit)

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { ciHistoryQuery, type CIRun } from '../../api/reports'
@@ -7,6 +8,11 @@ import { Badge } from '../../components/ui/badge'
 import { useT } from '../../lib/i18n'
 import { ciFailOnLevels, runFails, type CIFailOn } from '../../lib/report-ci'
 import { formatDateTime } from '../../lib/time'
+import {
+  reportTriggers,
+  type ReportSearch,
+} from '../../lib/urls'
+import { cn } from '../../lib/utils'
 import {
   ReportCaption,
   ReportError,
@@ -36,14 +42,19 @@ const scannerStatusClass: Record<
 }
 
 /**
- * CIHistoryReportPanel is the CI scan history (#190): the runs pipelines
- * started, with their outcome. The fail-on selector only changes how the
- * badge reads, so a pipeline's threshold can be previewed against the history.
+ * CIHistoryReportPanel is the Scan history report (#190): the scans the app,
+ * the CLI and the API started, with their outcome. The trigger filter is the
+ * URL's ?trigger=, and the fail-on selector only changes how the badge reads,
+ * so a pipeline's threshold can be previewed against the history.
  */
 export function CIHistoryReportPanel({ search }: ReportPanelProps) {
   const t = useT()
   const report = useQuery(
-    ciHistoryQuery({ assetId: search.asset, limit: ciHistoryLimit }),
+    ciHistoryQuery({
+      assetId: search.asset,
+      limit: ciHistoryLimit,
+      trigger: search.trigger,
+    }),
   )
   const [failOn, setFailOn] = useState<CIFailOn>('none')
 
@@ -52,11 +63,32 @@ export function CIHistoryReportPanel({ search }: ReportPanelProps) {
 
   const runs = report.data.runs
   if (runs.length === 0) {
+    // A filter that matches nothing must stay on screen, or the reader cannot
+    // clear it. An empty CLI/API slice is the cue to show how a pipeline runs a
+    // scan; any other empty scope gets the plain "no scans" copy.
+    const ciOnly = search.trigger === 'cli' || search.trigger === 'api'
     return (
-      <EmptyState
-        title={t('reports.ci-history.empty.title')}
-        body={t('reports.ci-history.empty.body')}
-      />
+      <section className="flex flex-col gap-3">
+        <TriggerFilter search={search} />
+        <EmptyState
+          title={
+            ciOnly
+              ? t('reports.ci-history.empty.ci.title')
+              : t('reports.ci-history.empty.title')
+          }
+          body={
+            ciOnly
+              ? t('reports.ci-history.empty.ci.body')
+              : t('reports.ci-history.empty.body')
+          }
+        >
+          {ciOnly ? (
+            <pre className="overflow-x-auto rounded-md border border-border-subtle bg-bg px-3 py-2 font-mono text-xs">
+              <code>bastion scan --path . --fail-on high</code>
+            </pre>
+          ) : null}
+        </EmptyState>
+      </section>
     )
   }
 
@@ -85,25 +117,28 @@ export function CIHistoryReportPanel({ search }: ReportPanelProps) {
           />
           <ReportCaption>{t('reports.ci-history.caption')}</ReportCaption>
         </div>
-        <div className="flex flex-col gap-1 print-hide">
-          <label
-            htmlFor="ci-fail-on"
-            className="text-xs font-medium text-muted"
-          >
-            {t('reports.ci-history.failOn.label')}
-          </label>
-          <select
-            id="ci-fail-on"
-            value={failOn}
-            onChange={(event) => setFailOn(event.target.value as CIFailOn)}
-            className="h-8 min-w-40 rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg"
-          >
-            {ciFailOnLevels.map((level) => (
-              <option key={level} value={level}>
-                {t(`reports.ci-history.failOn.${level}`)}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-end gap-3 print-hide">
+          <TriggerFilter search={search} />
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="ci-fail-on"
+              className="text-xs font-medium text-muted"
+            >
+              {t('reports.ci-history.failOn.label')}
+            </label>
+            <select
+              id="ci-fail-on"
+              value={failOn}
+              onChange={(event) => setFailOn(event.target.value as CIFailOn)}
+              className="h-8 min-w-40 rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg"
+            >
+              {ciFailOnLevels.map((level) => (
+                <option key={level} value={level}>
+                  {t(`reports.ci-history.failOn.${level}`)}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -147,6 +182,60 @@ export function CIHistoryReportPanel({ search }: ReportPanelProps) {
         </table>
       </div>
     </section>
+  )
+}
+
+/**
+ * TriggerFilter is the All/UI/CLI/API segmented control (#190). The selection
+ * is the URL's ?trigger=, so a shared link opens the same slice of the history
+ * and the empty state keeps the control that emptied it.
+ */
+function TriggerFilter({ search }: { search: ReportSearch }) {
+  const t = useT()
+  const navigate = useNavigate()
+  const options = ['all', ...reportTriggers] as const
+  const active = search.trigger ?? 'all'
+
+  function change(next: (typeof options)[number]) {
+    const nextSearch: ReportSearch = { ...search }
+    if (next === 'all') delete nextSearch.trigger
+    else nextSearch.trigger = next
+    void navigate({
+      to: '/reports/$reportId',
+      params: { reportId: 'ci-history' },
+      search: nextSearch,
+      replace: true,
+    })
+  }
+
+  return (
+    <div
+      role="group"
+      aria-label={t('reports.ci-history.filter.aria')}
+      className="flex items-center gap-1 rounded-md border border-border-subtle bg-bg p-0.5"
+    >
+      {options.map((option) => {
+        const isActive = active === option
+        return (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={isActive}
+            onClick={() => change(option)}
+            className={cn(
+              'rounded px-2.5 py-1 text-[0.8125rem] transition-colors',
+              isActive
+                ? 'bg-surface text-fg shadow-sm'
+                : 'text-muted hover:text-fg',
+            )}
+          >
+            {option === 'all'
+              ? t('reports.ci-history.filter.all')
+              : t(`reports.ci-history.trigger.${option}`)}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

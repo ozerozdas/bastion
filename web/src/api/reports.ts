@@ -208,11 +208,16 @@ export function auditQuery(assetId?: number) {
   })
 }
 
-/** CIHistoryScope is the run history's scope and page size. */
+/** CITrigger is who started a scan: the app, the CLI or the API. */
+export type CITrigger = CIRun['trigger']
+
+/** CIHistoryScope is the run history's scope, page size and trigger filter. */
 export type CIHistoryScope = {
   assetId?: number
   /** Maximum number of runs, newest first; the API defaults to 50. */
   limit?: number
+  /** Only runs started from this surface; absent means every trigger. */
+  trigger?: CITrigger
 }
 
 /** ciHistoryQuery reads the scans pipelines started, newest first. */
@@ -220,6 +225,7 @@ export function ciHistoryQuery(f: CIHistoryScope = {}) {
   const params = new URLSearchParams()
   if (f.assetId !== undefined) params.set('asset_id', String(f.assetId))
   if (f.limit !== undefined) params.set('limit', String(f.limit))
+  if (f.trigger !== undefined) params.set('trigger', f.trigger)
   const query = params.toString()
   return queryOptions({
     queryKey: [...reportsKey, 'ci-history', f],

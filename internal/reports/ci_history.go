@@ -17,13 +17,30 @@ const (
 	MaxCIHistoryLimit = 200
 )
 
+// CI history trigger values a caller may filter by.
+const (
+	CIHistoryTriggerUI  = "ui"
+	CIHistoryTriggerCLI = "cli"
+	CIHistoryTriggerAPI = "api"
+)
+
+// validCIHistoryTrigger reports whether a trigger filter is acceptable; the
+// empty string means every trigger.
+func validCIHistoryTrigger(trigger string) bool {
+	switch trigger {
+	case "", CIHistoryTriggerUI, CIHistoryTriggerCLI, CIHistoryTriggerAPI:
+		return true
+	}
+	return false
+}
+
 // CIScannerRun is one scanner's outcome within a CI run.
 type CIScannerRun struct {
 	Scanner string
 	Status  string
 }
 
-// CIRun is one CLI- or API-triggered scan.
+// CIRun is one scan the history lists.
 type CIRun struct {
 	ScanID      int64
 	AssetID     int64
@@ -45,13 +62,17 @@ type CIHistoryReport struct {
 	Runs []CIRun
 }
 
-// CIHistory lists the latest CLI- and API-triggered scans, newest first, across
-// every non-archived asset or only assetID when it is positive. limit must be
+// CIHistory lists the latest scans, newest first, across every non-archived
+// asset or only assetID when it is positive. trigger narrows the list to one
+// of ui, cli or api; the empty string lists every trigger. limit must be
 // 1..MaxCIHistoryLimit; the caller applies DefaultCIHistoryLimit when the
 // request omitted it.
-func (s *Service) CIHistory(ctx context.Context, assetID int64, limit int) (CIHistoryReport, error) {
+func (s *Service) CIHistory(ctx context.Context, assetID int64, trigger string, limit int) (CIHistoryReport, error) {
 	if err := (Filter{AssetID: assetID}).validate(); err != nil {
 		return CIHistoryReport{}, err
+	}
+	if !validCIHistoryTrigger(trigger) {
+		return CIHistoryReport{}, fmt.Errorf("%w: trigger must be ui, cli or api", ErrInvalid)
 	}
 	if limit < 1 || limit > MaxCIHistoryLimit {
 		return CIHistoryReport{}, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalid, MaxCIHistoryLimit)
@@ -62,6 +83,10 @@ func (s *Service) CIHistory(ctx context.Context, assetID int64, limit int) (CIHi
 	if assetID > 0 {
 		params.AssetID = assetID
 		scannerParams.AssetID = assetID
+	}
+	if trigger != "" {
+		params.Trigger = trigger
+		scannerParams.Trigger = trigger
 	}
 
 	rows, err := sqlcdb.New(s.db).ReportCIHistory(ctx, params)

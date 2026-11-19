@@ -10,6 +10,7 @@ import {
 import { EmptyState } from '../../components/empty-state'
 import { Badge } from '../../components/ui/badge'
 import { buttonVariants } from '../../components/ui/button'
+import { stateLabels } from '../../lib/finding-labels'
 import { formatNumber, useT } from '../../lib/i18n'
 import {
   ReportCaption,
@@ -163,6 +164,13 @@ export function LicensesReportPanel({ search }: ReportPanelProps) {
                     </td>
                     <td className="py-2 pl-3 tabular-nums">
                       {formatNumber(entry.packages)}
+                      {entry.ignored_packages > 0 ? (
+                        <span className="block text-xs text-faint">
+                          {t('reports.licenses-sbom.ignored', {
+                            count: entry.ignored_packages,
+                          })}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="py-2 pl-3 tabular-nums">
                       {formatNumber(entry.assets)}
@@ -193,6 +201,11 @@ export function LicensesReportPanel({ search }: ReportPanelProps) {
                                   <span className="text-xs text-faint">
                                     {item.ecosystem}
                                   </span>
+                                )}
+                                {item.state === null ? null : (
+                                  <Badge tone="neutral">
+                                    {t(stateLabels[item.state])}
+                                  </Badge>
                                 )}
                               </span>
                               <span className="text-xs text-muted">

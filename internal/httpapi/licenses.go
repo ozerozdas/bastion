@@ -52,17 +52,30 @@ func (s *Server) GetReportLicenses(ctx context.Context, request gen.GetReportLic
 				Ecosystem:      item.Ecosystem,
 				AssetId:        item.AssetID,
 				DisplayName:    item.DisplayName,
+				Ignored:        item.Ignored,
+				State:          licenseItemState(item.State),
 			})
 		}
 		out.Licenses = append(out.Licenses, gen.LicenseEntry{
-			License:  entry.License,
-			Policy:   gen.LicenseEntryPolicy(entry.Policy),
-			Packages: entry.Packages,
-			Assets:   entry.Assets,
-			Items:    items,
+			License:         entry.License,
+			Policy:          gen.LicenseEntryPolicy(entry.Policy),
+			Packages:        entry.Packages,
+			IgnoredPackages: entry.IgnoredPackages,
+			Assets:          entry.Assets,
+			Items:           items,
 		})
 	}
 	return gen.GetReportLicenses200JSONResponse(out), nil
+}
+
+// licenseItemState maps a stored decision to the optional response field:
+// no decision is null, not an empty enum value.
+func licenseItemState(state string) *gen.FindingState {
+	if state == "" {
+		return nil
+	}
+	value := gen.FindingState(state)
+	return &value
 }
 
 // handleLicenseCSV serves GET /api/reports/licenses.csv. It is hand-written
@@ -128,6 +141,7 @@ func licenseTable(report reports.LicenseReport) export.Table {
 		{Key: "version", Header: "version"},
 		{Key: "ecosystem", Header: "ecosystem"},
 		{Key: "asset", Header: "asset"},
+		{Key: "ignored", Header: "ignored"},
 	}}
 	for _, entry := range report.Licenses {
 		for _, item := range entry.Items {
@@ -138,6 +152,7 @@ func licenseTable(report reports.LicenseReport) export.Table {
 				export.TextCell(item.PackageVersion),
 				export.TextCell(item.Ecosystem),
 				export.TextCell(item.DisplayName),
+				export.TextCell(strconv.FormatBool(item.Ignored)),
 			})
 		}
 	}

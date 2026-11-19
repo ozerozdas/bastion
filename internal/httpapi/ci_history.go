@@ -27,7 +27,11 @@ func (s *Server) GetReportCIHistory(ctx context.Context, request gen.GetReportCI
 	if request.Params.Limit != nil {
 		limit = *request.Params.Limit
 	}
-	report, err := s.reports.CIHistory(ctx, assetID, limit)
+	trigger := ""
+	if request.Params.Trigger != nil {
+		trigger = string(*request.Params.Trigger)
+	}
+	report, err := s.reports.CIHistory(ctx, assetID, trigger, limit)
 	if err != nil {
 		if errors.Is(err, reports.ErrInvalid) {
 			return gen.GetReportCIHistory400ApplicationProblemPlusJSONResponse(

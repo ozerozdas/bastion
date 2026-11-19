@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 
+import { eolQuery } from '../../api/eol'
 import { runtimesQuery, type RuntimeEntry } from '../../api/reports'
 import { EmptyState } from '../../components/empty-state'
 import { Badge } from '../../components/ui/badge'
+import { buttonVariants } from '../../components/ui/button'
 import { useT } from '../../lib/i18n'
 import { eolDaysLeft, eolStatus, type EolStatus } from '../../lib/report-runtimes'
 import {
@@ -23,17 +25,39 @@ import {
 export function RuntimesReportPanel({ search }: ReportPanelProps) {
   const t = useT()
   const report = useQuery(runtimesQuery(search.asset))
+  const eol = useQuery(eolQuery)
 
   if (report.isPending) return <ReportLoading />
   if (report.isError) return <ReportError error={report.error} />
 
   const runtimes = report.data.runtimes
   if (runtimes.length === 0) {
+    // An empty report is only good news when the check ran: with the module
+    // off nothing was looked up, so point at the switch instead.
+    if (eol.data?.enabled === false) {
+      return (
+        <EmptyState
+          title={t('reports.runtimes.empty.off.title')}
+          body={t('reports.runtimes.empty.off.body')}
+        >
+          <Link
+            to="/configurations"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            {t('reports.runtimes.empty.off.action')}
+          </Link>
+        </EmptyState>
+      )
+    }
     return (
       <EmptyState
         title={t('reports.runtimes.empty.title')}
         body={t('reports.runtimes.empty.body')}
-      />
+      >
+        <p className="text-xs text-muted">
+          {t('reports.runtimes.empty.coverage')}
+        </p>
+      </EmptyState>
     )
   }
 

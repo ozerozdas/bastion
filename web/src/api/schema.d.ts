@@ -1351,14 +1351,17 @@ export interface paths {
          * Licence inventory with the effective allow/deny policy.
          * @description Latest open licence findings, grouped by licence name and the policy
          *     that applies to them. The scope matches `GET /api/findings`: the newest
-         *     succeeded scan of every non-archived asset, with ignored findings left
-         *     out. Unlike the findings list, `allow` findings are included here: this
-         *     report is the whole licence inventory, not the issues view.
+         *     succeeded scan of every non-archived asset. Unlike the findings list,
+         *     `allow` findings are included and so are findings with a live ignore
+         *     decision: this report is the whole licence inventory, not the issues
+         *     view. An ignored item carries `ignored: true` and the decision in
+         *     `state`; an expired decision no longer counts.
          *
          *     The scanner sets the finding's rule id to the licence name. `policy` is
          *     the effective rule for the finding's asset: a per-asset rule overrides
          *     the global one, and `none` means no rule matched. An entry's `packages`
-         *     counts its distinct package names and `assets` its distinct assets.
+         *     counts its distinct package names, `ignored_packages` the distinct
+         *     package names under a live decision, and `assets` its distinct assets.
          *     Entries with policy `deny` come first, then the rest by `packages`
          *     descending.
          */
@@ -1382,7 +1385,8 @@ export interface paths {
          * Download the licence inventory as CSV.
          * @description Writes the same licence inventory as `GET /api/reports/licenses`, one
          *     row per finding, with the columns `license`, `policy`, `package`,
-         *     `version`, `ecosystem` and `asset`. The response is an attachment.
+         *     `version`, `ecosystem`, `asset` and `ignored`. The response is an
+         *     attachment.
          *
          *     This operation is hand-written in `internal/httpapi/licenses.go` and
          *     excluded from codegen (api/oapi-codegen.yaml): the generated strict
@@ -1435,10 +1439,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * CLI and API scan runs, newest first.
-         * @description The scans triggered by `cli` or `api`, newest first, across
-         *     non-archived assets or only `asset_id` when it is given. UI-triggered
-         *     scans are left out, since this history is for CI pipelines.
+         * Scan runs of every trigger, newest first.
+         * @description The scans of non-archived assets, newest first, or only `asset_id`
+         *     when it is given. Every trigger is listed; `trigger` narrows the
+         *     history to the runs the UI, the CLI or the API started.
          *
          *     `counts` is the raw severity count of the findings each scan recorded:
          *     ignored findings are included and no licence policy applies, so the
@@ -2784,6 +2788,8 @@ export interface components {
             policy: "allow" | "deny" | "none";
             /** @description Number of distinct package names. */
             packages: number;
+            /** @description Number of distinct package names under a live finding decision. */
+            ignored_packages: number;
             /** @description Number of distinct assets. */
             assets: number;
             /** @description One entry per finding, by asset and package. */
@@ -2797,6 +2803,16 @@ export interface components {
             /** Format: int64 */
             asset_id: number;
             display_name: string;
+            /**
+             * @description True while a live finding decision covers this finding, so the
+             *     inventory can show it without hiding it.
+             */
+            ignored: boolean;
+            /**
+             * @description The live decision behind `ignored`, or `null` when the finding has
+             *     none.
+             */
+            state: components["schemas"]["FindingState"] | null;
         };
         /** AuditAsset */
         AuditAsset: {
@@ -2836,12 +2852,12 @@ export interface components {
         };
         /** CIHistoryReport */
         CIHistoryReport: {
-            /** @description CLI and API scan runs, newest first. */
+            /** @description Scan runs, newest first. */
             runs: components["schemas"]["CIRun"][];
         };
         /**
          * CIRun
-         * @description One CLI- or API-triggered scan. `counts` holds the findings the scan
+         * @description One scan the history lists. `counts` holds the findings the scan
          *     recorded per raw severity: ignored findings are counted and no licence
          *     policy applies, so it reports what the run produced.
          */
@@ -2855,7 +2871,7 @@ export interface components {
              * @description Who started the scan.
              * @enum {string}
              */
-            trigger: "cli" | "api";
+            trigger: "ui" | "cli" | "api";
             status: components["schemas"]["ScanStatus"];
             /**
              * Format: date-time
@@ -6160,6 +6176,8 @@ export interface operations {
             query?: {
                 /** @description Only findings of this asset. */
                 asset_id?: components["parameters"]["AssetIDQuery"];
+                /** @description Only list the runs this trigger started; absent lists every scan. */
+                trigger?: "ui" | "cli" | "api";
                 /** @description Maximum number of runs to return, newest first. */
                 limit?: number;
             };
@@ -6169,7 +6187,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The CI scan runs. */
+            /** @description The scan runs. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6178,7 +6196,7 @@ export interface operations {
                     "application/json": components["schemas"]["CIHistoryReport"];
                 };
             };
-            /** @description `asset_id` is not a positive asset id, or `limit` is outside 1..200. */
+            /** @description `asset_id` is not a positive asset id, `trigger` is unknown, or `limit` is outside 1..200. */
             400: {
                 headers: {
                     [name: string]: unknown;

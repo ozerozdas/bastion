@@ -69,9 +69,15 @@ func TestReportLicensesHandlerAndCSV(t *testing.T) {
 		t.Fatalf("Replace(alpha): %v", err)
 	}
 
+	ignoredBSD := licenseReportFinding(alpha.ID, "BSD-3-Clause", "alpha-bsd", "1.0.0")
 	seedTriggeredReportScan(t, ts.db, alpha.ID, store.ScanTriggerCLI,
 		licenseReportFinding(alpha.ID, "GPL-3.0", "alpha-gpl", "1.0.0"),
-		licenseReportFinding(alpha.ID, "Apache-2.0", "alpha-web", "1.0.0"))
+		licenseReportFinding(alpha.ID, "Apache-2.0", "alpha-web", "1.0.0"),
+		ignoredBSD)
+	if err := store.SetFindingState(t.Context(), ts.db, alpha.ID, ignoredBSD.Fingerprint,
+		store.FindingStateIgnored, "vendored package", nil); err != nil {
+		t.Fatalf("SetFindingState: %v", err)
+	}
 	seedTriggeredReportScan(t, ts.db, beta.ID, store.ScanTriggerCLI,
 		licenseReportFinding(beta.ID, "GPL-3.0", "beta-gpl", "2.0.0"))
 
@@ -83,8 +89,8 @@ func TestReportLicensesHandlerAndCSV(t *testing.T) {
 	if err := json.Unmarshal(readBody(t, resp), &report); err != nil {
 		t.Fatalf("decode licences: %v", err)
 	}
-	if len(report.Licenses) != 3 {
-		t.Fatalf("licenses = %+v, want three entries", report.Licenses)
+	if len(report.Licenses) != 4 {
+		t.Fatalf("licenses = %+v, want four entries", report.Licenses)
 	}
 	// Deny first: the global GPL rule applies to beta, while alpha's override
 	// keeps its own GPL finding allowed.
@@ -96,6 +102,7 @@ func TestReportLicensesHandlerAndCSV(t *testing.T) {
 	}
 	allowedGPL := false
 	allowedApache := false
+	ignoredEntry := false
 	for _, entry := range report.Licenses {
 		if entry.License == "GPL-3.0" && string(entry.Policy) == "allow" {
 			allowedGPL = true
@@ -103,9 +110,22 @@ func TestReportLicensesHandlerAndCSV(t *testing.T) {
 		if entry.License == "Apache-2.0" && string(entry.Policy) == "allow" {
 			allowedApache = true
 		}
+		if entry.License == "BSD-3-Clause" {
+			// The ignored finding stays in the inventory, flagged with the
+			// live decision and counted separately.
+			ignoredEntry = true
+			if entry.IgnoredPackages != 1 || len(entry.Items) != 1 {
+				t.Errorf("BSD entry = %+v, want one ignored package", entry)
+			} else if item := entry.Items[0]; !item.Ignored ||
+				item.State == nil || *item.State != gen.FindingStateIgnored {
+				t.Errorf("BSD item = %+v, want ignored with the ignored state", item)
+			}
+		} else if entry.IgnoredPackages != 0 {
+			t.Errorf("%s ignored packages = %d, want 0", entry.License, entry.IgnoredPackages)
+		}
 	}
-	if !allowedGPL || !allowedApache {
-		t.Errorf("licenses = %+v, want both allow entries included", report.Licenses)
+	if !allowedGPL || !allowedApache || !ignoredEntry {
+		t.Errorf("licenses = %+v, want allow entries and the ignored BSD finding", report.Licenses)
 	}
 
 	csv := ts.do(t, http.MethodGet, "/api/reports/licenses.csv", withCookie(cookie))
@@ -121,13 +141,14 @@ func TestReportLicensesHandlerAndCSV(t *testing.T) {
 		t.Errorf("CSV Content-Disposition = %q, want a licence attachment", disposition)
 	}
 	body := string(readBody(t, csv))
-	if !strings.HasPrefix(body, "\uFEFFlicense,policy,package,version,ecosystem,asset\r\n") {
+	if !strings.HasPrefix(body, "\uFEFFlicense,policy,package,version,ecosystem,asset,ignored\r\n") {
 		t.Errorf("CSV header = %q, want the licence columns", firstLine(body))
 	}
 	for _, row := range []string{
-		"GPL-3.0,deny,beta-gpl,2.0.0,npm,Beta",
-		"GPL-3.0,allow,alpha-gpl,1.0.0,npm,Alpha",
-		"Apache-2.0,allow,alpha-web,1.0.0,npm,Alpha",
+		"GPL-3.0,deny,beta-gpl,2.0.0,npm,Beta,false",
+		"GPL-3.0,allow,alpha-gpl,1.0.0,npm,Alpha,false",
+		"Apache-2.0,allow,alpha-web,1.0.0,npm,Alpha,false",
+		"BSD-3-Clause,none,alpha-bsd,1.0.0,npm,Alpha,true",
 	} {
 		if !strings.Contains(body, row) {
 			t.Errorf("CSV body is missing row %q:\n%s", row, body)
@@ -230,8 +251,8 @@ func TestReportCIHistoryHandler(t *testing.T) {
 	if err := json.Unmarshal(readBody(t, resp), &report); err != nil {
 		t.Fatalf("decode history: %v", err)
 	}
-	if len(report.Runs) != 2 {
-		t.Fatalf("runs = %+v, want the CLI and API scans only", report.Runs)
+	if len(report.Runs) != 3 {
+		t.Fatalf("runs = %+v, want every trigger's scans", report.Runs)
 	}
 	triggers := map[string]bool{}
 	for _, run := range report.Runs {
@@ -240,8 +261,28 @@ func TestReportCIHistoryHandler(t *testing.T) {
 			t.Errorf("run %d duration = %v, want null without started_at", run.ScanId, run.DurationMs)
 		}
 	}
-	if !triggers["cli"] || !triggers["api"] || triggers["ui"] {
-		t.Errorf("triggers = %v, want cli and api but no ui", triggers)
+	if !triggers["cli"] || !triggers["api"] || !triggers["ui"] {
+		t.Errorf("triggers = %v, want cli, api and ui", triggers)
+	}
+
+	for trigger, wantRuns := range map[string]int{"ui": 1, "cli": 1, "api": 1} {
+		resp := ts.do(t, http.MethodGet, "/api/reports/ci-history?trigger="+trigger, withCookie(cookie))
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("trigger=%s status = %d, want %d: %s",
+				trigger, resp.StatusCode, http.StatusOK, readBody(t, resp))
+		}
+		var filtered gen.CIHistoryReport
+		if err := json.Unmarshal(readBody(t, resp), &filtered); err != nil {
+			t.Fatalf("decode trigger=%s history: %v", trigger, err)
+		}
+		if len(filtered.Runs) != wantRuns {
+			t.Fatalf("trigger=%s runs = %+v, want %d", trigger, filtered.Runs, wantRuns)
+		}
+		for _, run := range filtered.Runs {
+			if string(run.Trigger) != trigger {
+				t.Errorf("trigger=%s run %d has trigger %q", trigger, run.ScanId, run.Trigger)
+			}
+		}
 	}
 
 	limited := ts.do(t, http.MethodGet, "/api/reports/ci-history?limit=1", withCookie(cookie))
@@ -256,7 +297,7 @@ func TestReportCIHistoryHandler(t *testing.T) {
 		t.Errorf("limit=1 runs = %d, want 1", len(limitedReport.Runs))
 	}
 
-	for _, query := range []string{"?limit=0", "?limit=201", "?asset_id=-1"} {
+	for _, query := range []string{"?limit=0", "?limit=201", "?asset_id=-1", "?trigger=cron", "?trigger=UI"} {
 		resp := ts.do(t, http.MethodGet, "/api/reports/ci-history"+query, withCookie(cookie))
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("GET /api/reports/ci-history%s: status = %d, want %d",
