@@ -25,4 +25,5 @@ jobs:
           fail-on: critical
           skip-dirs: |
             testdata
+            internal/scanners/govulncheck/testdata
             tools
