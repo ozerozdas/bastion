@@ -988,6 +988,13 @@ dialog:not([open])::backdrop {
     --b-border-subtle: #d4d4d4;
     --b-border-strong: #b4b4b4;
     --b-hover: #f2f2f2;
+    /* Severity stays legible on paper: the light-theme values, not the theme
+       the screen happened to be in (a dark accent is unreadable on white). */
+    --b-critical: #c81e1e;
+    --b-high: #b9410c;
+    --b-medium: #946006;
+    --b-low: #2155d6;
+    --b-ok: #146c34;
   }
 
   .print-report .print-avoid {

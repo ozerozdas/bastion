@@ -12,13 +12,19 @@ import (
 // category of the report.
 const OWASPUnmapped = "unmapped"
 
+// MaxOWASPCategoryFindings caps the findings one category carries; Count
+// still reports every matching finding, and Truncated says the cap dropped
+// some.
+const MaxOWASPCategoryFindings = 50
+
 // OWASPCategory is one OWASP Top 10 2021 category (or the unmapped bucket) and
 // the latest open findings that belong to it.
 type OWASPCategory struct {
-	ID       string
-	Title    string
-	Count    int
-	Findings []Finding
+	ID        string
+	Title     string
+	Count     int
+	Findings  []Finding
+	Truncated bool
 }
 
 // owaspCategory is one row of the report's fixed category list.
@@ -180,8 +186,13 @@ func (s *Service) OWASPTop10(ctx context.Context, assetID int64) ([]OWASPCategor
 			continue
 		}
 		index := position[OWASPCategoryFor(finding.CWE)]
-		categories[index].Findings = append(categories[index].Findings, finding)
-		categories[index].Count++
+		category := &categories[index]
+		category.Count++
+		if len(category.Findings) < MaxOWASPCategoryFindings {
+			category.Findings = append(category.Findings, finding)
+			continue
+		}
+		category.Truncated = true
 	}
 	return categories, nil
 }

@@ -3,7 +3,7 @@
 -- open before it is overdue. One row per severity, seeded with a default
 -- policy the settings screen can replace.
 CREATE TABLE sla_thresholds (
-    severity TEXT    PRIMARY KEY CHECK (severity IN ('critical', 'high', 'medium', 'low')),
+    severity TEXT    NOT NULL PRIMARY KEY CHECK (severity IN ('critical', 'high', 'medium', 'low')),
     days     INTEGER NOT NULL CHECK (days BETWEEN 1 AND 3650)
 );
 

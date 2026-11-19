@@ -2046,9 +2046,10 @@ type NotificationThreshold string
 
 // OWASPCategory defines model for OWASPCategory.
 type OWASPCategory struct {
+	// Count Every open finding in the category, including any the cap dropped.
 	Count int `json:"count"`
 
-	// Findings The category's open findings, most severe first.
+	// Findings The category's open findings, most severe first, capped at 50.
 	Findings []Finding `json:"findings"`
 
 	// Id The 2021 category id, or `unmapped`.
@@ -2058,6 +2059,9 @@ type OWASPCategory struct {
 
 	// Title Examples: A03:2021 - Injection
 	Title string `json:"title"`
+
+	// Truncated `count` exceeds the 50 findings the category carries.
+	Truncated bool `json:"truncated"`
 }
 
 // OWASPTop10 Latest open findings grouped by OWASP Top 10 2021 category. Every
@@ -2270,11 +2274,14 @@ type SLAReport struct {
 	// OpenCount Open findings in scope, of every severity.
 	OpenCount int `json:"open_count"`
 
-	// Overdue Overdue findings, most overdue first.
+	// Overdue Overdue findings, most overdue first, capped at 500.
 	Overdue []SLAOverdueFinding `json:"overdue"`
 
 	// OverdueCount Findings in `overdue`.
 	OverdueCount int `json:"overdue_count"`
+
+	// OverdueTruncated More findings are overdue than the 500 `overdue` carries.
+	OverdueTruncated bool `json:"overdue_truncated"`
 
 	// Thresholds The days a finding of each severity may stay open.
 	Thresholds SLAThresholds `json:"thresholds"`

@@ -71,9 +71,11 @@ func (s *Server) GetReportSLA(ctx context.Context, request gen.GetReportSLAReque
 		}, nil
 	}
 
-	var assetID int64
-	if request.Params.AssetId != nil {
-		assetID = int64(*request.Params.AssetId)
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetReportSLA400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
 	}
 	days := reports.DefaultSLAWindowDays
 	if request.Params.Days != nil {
@@ -94,11 +96,12 @@ func (s *Server) GetReportSLA(ctx context.Context, request gen.GetReportSLAReque
 	}
 
 	out := gen.SLAReport{
-		Thresholds:    slaThresholdsResponse(report.Thresholds),
-		Overdue:       make([]gen.SLAOverdueFinding, 0, len(report.Overdue)),
-		OpenCount:     report.OpenCount,
-		OverdueCount:  report.OverdueCount,
-		FixedInWindow: report.FixedInWindow,
+		Thresholds:       slaThresholdsResponse(report.Thresholds),
+		Overdue:          make([]gen.SLAOverdueFinding, 0, len(report.Overdue)),
+		OpenCount:        report.OpenCount,
+		OverdueCount:     report.OverdueCount,
+		OverdueTruncated: report.OverdueTruncated,
+		FixedInWindow:    report.FixedInWindow,
 	}
 	for _, item := range report.Overdue {
 		out.Overdue = append(out.Overdue, gen.SLAOverdueFinding{

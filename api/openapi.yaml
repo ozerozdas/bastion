@@ -2604,7 +2604,8 @@ paths:
         `critical`, `high`, `medium` or `low` and whose age since its first
         appearance exceeds that severity's threshold. Findings of unknown
         severity are left out. Entries are sorted by overdue days, most
-        overdue first.
+        overdue first and capped at 500; `overdue_truncated` says the cap
+        dropped some.
 
         A finding is fixed when its fingerprint appeared in some succeeded
         scan of an asset but is absent from that asset's newest succeeded
@@ -4523,7 +4524,7 @@ components:
       type: object
       title: OWASPCategory
       additionalProperties: false
-      required: [id, title, count, findings]
+      required: [id, title, count, findings, truncated]
       properties:
         id:
           type: string
@@ -4535,11 +4536,16 @@ components:
         count:
           type: integer
           minimum: 0
+          description: Every open finding in the category, including any the cap dropped.
         findings:
           type: array
-          description: The category's open findings, most severe first.
+          description: |
+            The category's open findings, most severe first, capped at 50.
           items:
             $ref: "#/components/schemas/Finding"
+        truncated:
+          type: boolean
+          description: "`count` exceeds the 50 findings the category carries."
     CVEInsights:
       type: object
       title: CVEInsights
@@ -4745,13 +4751,15 @@ components:
         - overdue
         - open_count
         - overdue_count
+        - overdue_truncated
         - fixed_in_window
       properties:
         thresholds:
           $ref: "#/components/schemas/SLAThresholds"
         overdue:
           type: array
-          description: Overdue findings, most overdue first.
+          description: |
+            Overdue findings, most overdue first, capped at 500.
           items:
             $ref: "#/components/schemas/SLAOverdueFinding"
         open_count:
@@ -4762,6 +4770,10 @@ components:
           type: integer
           minimum: 0
           description: Findings in `overdue`.
+        overdue_truncated:
+          type: boolean
+          description: |
+            More findings are overdue than the 500 `overdue` carries.
         fixed_in_window:
           type: integer
           minimum: 0

@@ -3,7 +3,6 @@ package reports
 import (
 	"context"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/ozerozdas/bastion/internal/findings"
@@ -23,6 +22,10 @@ const (
 	// MaxSLAWindowDays caps the fix window, so one request cannot ask for
 	// years.
 	MaxSLAWindowDays = 365
+	// MaxSLAOverdue caps the overdue list one response carries. OverdueCount
+	// still reports how many entries the list holds, and OverdueTruncated says
+	// the cap dropped some.
+	MaxSLAOverdue = 500
 )
 
 // defaultSLAThresholds is the policy the migration seeds. It also fills a
@@ -93,6 +96,9 @@ type SLAReport struct {
 	Overdue      []SLAOverdue
 	OpenCount    int
 	OverdueCount int
+	// OverdueTruncated says the overdue list hit MaxSLAOverdue and more
+	// findings are overdue.
+	OverdueTruncated bool
 	// FixedInWindow counts the fingerprints that disappeared and whose fix
 	// date falls inside the window.
 	FixedInWindow int
@@ -178,50 +184,64 @@ func (s *Service) SLA(ctx context.Context, assetID int64, days int) (SLAReport, 
 	if err != nil {
 		return SLAReport{}, err
 	}
-	list, err := s.Findings(ctx, Filter{AssetID: assetID, Status: FindingStatusOpen})
-	if err != nil {
-		return SLAReport{}, err
-	}
 
+	now := s.now().UTC()
+	nowText := s.expiryNow()
 	var assetArg interface{}
 	if assetID > 0 {
 		assetArg = assetID
 	}
 	queries := sqlcdb.New(s.db)
-	firstSeenRows, err := queries.SLAFirstSeen(ctx, assetArg)
+
+	// The fleet-wide open count is a COUNT, not the decoded findings list: the
+	// SLA report never needs every row to count them.
+	countParams, err := (Filter{AssetID: assetID, Status: FindingStatusOpen}).countParams(nowText)
 	if err != nil {
-		return SLAReport{}, fmt.Errorf("reports: sla first seen: %w", err)
+		return SLAReport{}, err
 	}
-	firstSeen := make(map[int64]time.Time, len(firstSeenRows))
-	for _, row := range firstSeenRows {
-		seen, err := parseTimestamp(row.FirstSeenAt)
-		if err != nil {
-			return SLAReport{}, fmt.Errorf("reports: sla first seen of finding %d: %w", row.FindingID, err)
-		}
-		if seen != nil {
-			firstSeen[row.FindingID] = *seen
-		}
+	openCount, err := queries.CountLatestFindings(ctx, countParams)
+	if err != nil {
+		return SLAReport{}, fmt.Errorf("reports: sla open count: %w", err)
 	}
 
-	now := s.now().UTC()
+	// Overdue rows are ranked and capped in SQL, so only the entries the
+	// response can carry are decoded.
+	overdueRows, err := queries.SLAOverdueFindings(ctx, sqlcdb.SLAOverdueFindingsParams{
+		Now:      nowText,
+		AssetID:  assetArg,
+		RowLimit: MaxSLAOverdue + 1,
+	})
+	if err != nil {
+		return SLAReport{}, fmt.Errorf("reports: sla overdue findings: %w", err)
+	}
+
 	report := SLAReport{
 		Thresholds: thresholds,
 		Overdue:    make([]SLAOverdue, 0),
-		OpenCount:  len(list),
+		OpenCount:  int(openCount),
 	}
-	for _, finding := range list {
-		seen, ok := firstSeen[finding.ID]
-		if !ok {
-			// Without a first appearance the finding cannot be aged.
+	for _, row := range overdueRows {
+		seen, err := parseTimestamp(row.FirstSeenAt)
+		if err != nil {
+			return SLAReport{}, fmt.Errorf("reports: sla finding %d: first seen: %w", row.ID, err)
+		}
+		if seen == nil {
 			continue
 		}
-		threshold, ok := thresholds.days(finding.Severity)
-		if !ok {
-			continue
-		}
-		age := wholeDays(now.Sub(seen))
+		threshold := int(row.ThresholdDays)
+		age := wholeDays(now.Sub(*seen))
 		if age <= threshold {
+			// The SQL bound over-includes the exact threshold; the whole-day
+			// age decides, exactly like the response's age_days.
 			continue
+		}
+		if len(report.Overdue) == MaxSLAOverdue {
+			report.OverdueTruncated = true
+			break
+		}
+		finding, err := s.findingFromSLARow(row)
+		if err != nil {
+			return SLAReport{}, fmt.Errorf("reports: sla finding %d: %w", row.ID, err)
 		}
 		report.Overdue = append(report.Overdue, SLAOverdue{
 			Finding:       finding,
@@ -231,19 +251,17 @@ func (s *Service) SLA(ctx context.Context, assetID int64, days int) (SLAReport, 
 			OverdueDays:   age - threshold,
 		})
 	}
-	sort.SliceStable(report.Overdue, func(i, j int) bool {
-		if left, right := report.Overdue[i].OverdueDays, report.Overdue[j].OverdueDays; left != right {
-			return left > right
-		}
-		return report.Overdue[i].Finding.ID < report.Overdue[j].Finding.ID
-	})
 	report.OverdueCount = len(report.Overdue)
 
-	fixedRows, err := queries.SLAFixedFindings(ctx, assetArg)
+	since := now.Add(-time.Duration(days) * 24 * time.Hour)
+	fixedRows, err := queries.SLAFixedFindings(ctx, sqlcdb.SLAFixedFindingsParams{
+		AssetID:     assetArg,
+		WindowStart: since.UTC().Format(time.RFC3339),
+		Now:         nowText,
+	})
 	if err != nil {
 		return SLAReport{}, fmt.Errorf("reports: sla fixed findings: %w", err)
 	}
-	since := now.Add(-time.Duration(days) * 24 * time.Hour)
 	var totalDays float64
 	for _, row := range fixedRows {
 		seen, err := parseTimestamp(row.FirstSeenAt)
@@ -268,6 +286,60 @@ func (s *Service) SLA(ctx context.Context, assetID int64, days int) (SLAReport, 
 		report.MeanTimeToFixDays = &mean
 	}
 	return report, nil
+}
+
+// findingFromSLARow converts one SLAOverdueFindings row into the read model.
+// The finding columns mirror ListLatestFindings', so the conversions stay
+// parallel.
+func (s *Service) findingFromSLARow(row sqlcdb.SLAOverdueFindingsRow) (Finding, error) {
+	references, err := decodeReferences(row.ReferencesJSON)
+	if err != nil {
+		return Finding{}, err
+	}
+	scanners, err := decodeScanners(row.Scanners)
+	if err != nil {
+		return Finding{}, err
+	}
+	cwe, err := decodeCWE(row.CWE)
+	if err != nil {
+		return Finding{}, err
+	}
+	finding := Finding{
+		ID:             row.ID,
+		AssetID:        row.AssetID,
+		ScanID:         row.ScanID,
+		Fingerprint:    row.Fingerprint,
+		Type:           row.Type,
+		Severity:       row.Severity,
+		Title:          row.Title,
+		RuleID:         row.RuleID.String,
+		PackageName:    row.PackageName.String,
+		PackageVersion: row.PackageVersion.String,
+		FixedVersion:   row.FixedVersion.String,
+		Ecosystem:      row.Ecosystem.String,
+		Location:       row.Location.String,
+		Occurrences:    int(row.Occurrences),
+		Scanner:        row.Scanner,
+		Scanners:       scanners,
+		CWE:            cwe,
+		Status:         row.Status,
+		State:          row.State,
+		Reason:         row.Reason.String,
+		DecidedBy:      row.DecidedBy,
+		RuleRef:        row.RuleRef.Int64,
+		ExpiresAt:      row.ExpiresAt.String,
+		Expired:        row.Expired != 0,
+		Description:    row.Description.String,
+		References:     references,
+		Reachability:   findings.Reachability(row.Reachability.String),
+		LicencePolicy:  licencePolicyValue(row.LicencePolicy),
+	}
+	if row.FirstSeenScanID.Valid {
+		firstSeen := row.FirstSeenScanID.Int64
+		finding.FirstSeenScanID = &firstSeen
+	}
+	s.enrich(&finding)
+	return finding, nil
 }
 
 // wholeDays is the number of complete days in a duration, never negative.

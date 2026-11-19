@@ -264,3 +264,33 @@ func TestReportCIHistoryHandler(t *testing.T) {
 		}
 	}
 }
+
+// TestReportHandlersRejectNonPositiveAssetID covers the asset_id contract every
+// /api/reports/* endpoint shares: the spec's minimum is 1, so a zero (which the
+// service would otherwise read as the whole fleet) and a negative id are 400.
+func TestReportHandlersRejectNonPositiveAssetID(t *testing.T) {
+	ts := newTestServer(t)
+	cookie := ts.login(t)
+
+	for _, path := range []string{
+		"/api/reports/owasp-top10?asset_id=0",
+		"/api/reports/owasp-top10?asset_id=-1",
+		"/api/reports/cve-insights?cve=CVE-2021-44228&asset_id=0",
+		"/api/reports/trend?asset_id=0",
+		"/api/reports/runtimes?asset_id=0",
+		"/api/reports/malware?asset_id=0",
+		"/api/reports/sla?asset_id=0",
+		"/api/reports/licenses?asset_id=0",
+		"/api/reports/licenses.csv?asset_id=0",
+		"/api/reports/audit?asset_id=0",
+		"/api/reports/ci-history?asset_id=0",
+	} {
+		resp := ts.do(t, http.MethodGet, path, withCookie(cookie))
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("GET %s: status = %d, want %d: %s",
+				path, resp.StatusCode, http.StatusBadRequest, readBody(t, resp))
+			continue
+		}
+		_ = readBody(t, resp)
+	}
+}

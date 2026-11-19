@@ -17,9 +17,11 @@ func (s *Server) GetReportAudit(ctx context.Context, request gen.GetReportAuditR
 		}, nil
 	}
 
-	var assetID int64
-	if request.Params.AssetId != nil {
-		assetID = int64(*request.Params.AssetId)
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetReportAudit400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
 	}
 	report, err := s.reports.Audit(ctx, assetID)
 	if err != nil {

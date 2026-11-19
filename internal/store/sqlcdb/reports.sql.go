@@ -107,31 +107,46 @@ func (q *Queries) CVEInsightsFindings(ctx context.Context, arg CVEInsightsFindin
 }
 
 const reportCIHistory = `-- name: ReportCIHistory :many
+WITH selected AS (
+    SELECT s.id, s.asset_id, a.display_name, s."trigger", s.status, s.started_at, s.finished_at
+    FROM scans s
+    JOIN assets a ON a.id = s.asset_id
+    WHERE a.archived_at IS NULL
+      AND s."trigger" IN ('cli', 'api')
+      AND (?1 IS NULL OR s.asset_id = ?1)
+    ORDER BY s.id DESC
+    LIMIT ?2
+),
+counts AS (
+    -- One grouped pass over the selected scans' findings, not one correlated
+    -- subquery per severity.
+    SELECT
+        f.scan_id,
+        SUM(CASE WHEN f.severity = 'critical' THEN 1 ELSE 0 END) AS critical,
+        SUM(CASE WHEN f.severity = 'high' THEN 1 ELSE 0 END) AS high,
+        SUM(CASE WHEN f.severity = 'medium' THEN 1 ELSE 0 END) AS medium,
+        SUM(CASE WHEN f.severity = 'low' THEN 1 ELSE 0 END) AS low,
+        SUM(CASE WHEN f.severity = 'unknown' THEN 1 ELSE 0 END) AS unknown
+    FROM findings f
+    WHERE f.scan_id IN (SELECT id FROM selected)
+    GROUP BY f.scan_id
+)
 SELECT
     s.id AS scan_id,
     s.asset_id,
-    a.display_name,
+    s.display_name,
     s."trigger",
     s.status,
     s.started_at,
     s.finished_at,
-    CAST((SELECT COUNT(*) FROM findings f
-          WHERE f.scan_id = s.id AND f.severity = 'critical') AS INTEGER) AS critical,
-    CAST((SELECT COUNT(*) FROM findings f
-          WHERE f.scan_id = s.id AND f.severity = 'high') AS INTEGER) AS high,
-    CAST((SELECT COUNT(*) FROM findings f
-          WHERE f.scan_id = s.id AND f.severity = 'medium') AS INTEGER) AS medium,
-    CAST((SELECT COUNT(*) FROM findings f
-          WHERE f.scan_id = s.id AND f.severity = 'low') AS INTEGER) AS low,
-    CAST((SELECT COUNT(*) FROM findings f
-          WHERE f.scan_id = s.id AND f.severity = 'unknown') AS INTEGER) AS unknown
-FROM scans s
-JOIN assets a ON a.id = s.asset_id
-WHERE a.archived_at IS NULL
-  AND s."trigger" IN ('cli', 'api')
-  AND (?1 IS NULL OR s.asset_id = ?1)
+    CAST(COALESCE(c.critical, 0) AS INTEGER) AS critical,
+    CAST(COALESCE(c.high, 0) AS INTEGER) AS high,
+    CAST(COALESCE(c.medium, 0) AS INTEGER) AS medium,
+    CAST(COALESCE(c.low, 0) AS INTEGER) AS low,
+    CAST(COALESCE(c.unknown, 0) AS INTEGER) AS unknown
+FROM selected s
+LEFT JOIN counts c ON c.scan_id = s.id
 ORDER BY s.id DESC
-LIMIT ?2
 `
 
 type ReportCIHistoryParams struct {
@@ -413,6 +428,9 @@ counted AS (
             ELSE f.severity
         END AS effective_severity
     FROM findings f
+    -- Only the scans that will become points: without this join the CTE reads
+    -- every finding in the database instead of the window's scans.
+    JOIN ranked r ON r.scan_id = f.scan_id
     LEFT JOIN licence_policy lpa
         ON lpa.asset_id = f.asset_id AND lpa.licence = lower(f.rule_id)
     LEFT JOIN licence_policy lpg

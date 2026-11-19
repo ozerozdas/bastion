@@ -22,9 +22,11 @@ func (s *Server) GetReportLicenses(ctx context.Context, request gen.GetReportLic
 		}, nil
 	}
 
-	var assetID int64
-	if request.Params.AssetId != nil {
-		assetID = int64(*request.Params.AssetId)
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetReportLicenses400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
 	}
 	report, err := s.reports.Licenses(ctx, assetID)
 	if err != nil {

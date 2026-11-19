@@ -21,6 +21,21 @@ import {
 const ciHistoryLimit = 50
 
 /**
+ * scannerStatusClass colours one scanner run's status: a failure is the only
+ * state worth the eye, everything else reads as the row's quiet text.
+ */
+const scannerStatusClass: Record<
+  CIRun['scanners'][number]['status'],
+  string
+> = {
+  queued: 'text-muted',
+  running: 'text-muted',
+  succeeded: 'text-faint',
+  failed: 'text-critical',
+  canceled: 'text-muted',
+}
+
+/**
  * CIHistoryReportPanel is the CI scan history (#190): the runs pipelines
  * started, with their outcome. The fail-on selector only changes how the
  * badge reads, so a pipeline's threshold can be previewed against the history.
@@ -174,7 +189,19 @@ function RunRow({
         {run.scanners.length === 0 ? (
           <span className="text-faint">—</span>
         ) : (
-          run.scanners.map((scanner) => scanner.scanner).join(', ')
+          <ul className="flex flex-wrap gap-x-2 gap-y-0.5">
+            {run.scanners.map((scanner) => (
+              <li
+                key={scanner.scanner}
+                className="flex items-baseline gap-1 whitespace-nowrap"
+              >
+                <span className="font-mono">{scanner.scanner}</span>
+                <span className={scannerStatusClass[scanner.status]}>
+                  {t(`scanStatus.${scanner.status}`)}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </td>
     </tr>

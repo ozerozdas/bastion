@@ -20,6 +20,19 @@ import (
 // built without one.
 const reportsUnavailable = "reports are not configured; start bastion with its database"
 
+// reportAssetID reads the optional asset_id of a /api/reports/* query. The
+// spec's minimum is 1, but the generated binder only parses the number, and
+// the service would read a zero as "the whole fleet"; reject anything below 1.
+func reportAssetID(id *gen.AssetIDQuery) (int64, bool) {
+	if id == nil {
+		return 0, true
+	}
+	if *id < 1 {
+		return 0, false
+	}
+	return *id, true
+}
+
 // ListFindings implements gen.StrictServerInterface. The single view pages in
 // SQL; the grouped view folds the whole filtered list in reports and then cuts
 // the page, because a group spans projects.
@@ -287,9 +300,11 @@ func (s *Server) GetOwaspTop10(ctx context.Context, request gen.GetOwaspTop10Req
 		}, nil
 	}
 
-	var assetID int64
-	if request.Params.AssetId != nil {
-		assetID = *request.Params.AssetId
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetOwaspTop10400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
 	}
 	categories, err := s.reports.OWASPTop10(ctx, assetID)
 	if err != nil {
@@ -308,10 +323,11 @@ func (s *Server) GetOwaspTop10(ctx context.Context, request gen.GetOwaspTop10Req
 	out := gen.OWASPTop10{Categories: make([]gen.OWASPCategory, 0, len(categories))}
 	for _, category := range categories {
 		out.Categories = append(out.Categories, gen.OWASPCategory{
-			Id:       category.ID,
-			Title:    category.Title,
-			Count:    category.Count,
-			Findings: findingResponses(category.Findings),
+			Id:        category.ID,
+			Title:     category.Title,
+			Count:     category.Count,
+			Findings:  findingResponses(category.Findings),
+			Truncated: category.Truncated,
 		})
 	}
 	return gen.GetOwaspTop10200JSONResponse(out), nil
@@ -325,9 +341,11 @@ func (s *Server) GetCVEInsights(ctx context.Context, request gen.GetCVEInsightsR
 		}, nil
 	}
 
-	var assetID int64
-	if request.Params.AssetId != nil {
-		assetID = *request.Params.AssetId
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetCVEInsights400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
 	}
 	insights, err := s.reports.CVEInsights(ctx, request.Params.Cve, assetID)
 	if err != nil {
@@ -380,9 +398,11 @@ func (s *Server) GetReportTrend(ctx context.Context, request gen.GetReportTrendR
 		}, nil
 	}
 
-	var assetID int64
-	if request.Params.AssetId != nil {
-		assetID = int64(*request.Params.AssetId)
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetReportTrend400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
 	}
 	days := reports.DefaultTrendDays
 	if request.Params.Days != nil {
@@ -432,9 +452,11 @@ func (s *Server) GetReportRuntimes(ctx context.Context, request gen.GetReportRun
 		}, nil
 	}
 
-	var assetID int64
-	if request.Params.AssetId != nil {
-		assetID = int64(*request.Params.AssetId)
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetReportRuntimes400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
 	}
 	runtimes, err := s.reports.Runtimes(ctx, assetID)
 	if err != nil {
@@ -479,9 +501,11 @@ func (s *Server) GetReportMalware(ctx context.Context, request gen.GetReportMalw
 		}, nil
 	}
 
-	var assetID int64
-	if request.Params.AssetId != nil {
-		assetID = int64(*request.Params.AssetId)
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetReportMalware400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
 	}
 	list, err := s.reports.Malware(ctx, assetID)
 	if err != nil {

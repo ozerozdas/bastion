@@ -21,6 +21,34 @@ import {
 /** findingsShown caps one expanded category, so a huge fleet stays responsive. */
 const findingsShown = 50
 
+/** categoryTitleKeys maps a 2021 category id to its translated name. */
+const categoryTitleKeys: Record<string, string> = {
+  A01: 'reports.owasp-top10.category.A01',
+  A02: 'reports.owasp-top10.category.A02',
+  A03: 'reports.owasp-top10.category.A03',
+  A04: 'reports.owasp-top10.category.A04',
+  A05: 'reports.owasp-top10.category.A05',
+  A06: 'reports.owasp-top10.category.A06',
+  A07: 'reports.owasp-top10.category.A07',
+  A08: 'reports.owasp-top10.category.A08',
+  A09: 'reports.owasp-top10.category.A09',
+  A10: 'reports.owasp-top10.category.A10',
+}
+
+/**
+ * categoryLabel translates one category by id. Unmapped findings and ids this
+ * build does not know fall back to the report's own title key and the API's
+ * title, so an unknown category still reads sensibly.
+ */
+function categoryLabel(
+  t: (key: string) => string,
+  category: OWASPCategory,
+): string {
+  if (category.id === 'unmapped') return t('reports.owasp-top10.unmapped.title')
+  const key = categoryTitleKeys[category.id]
+  return key === undefined ? category.title : t(key)
+}
+
 /**
  * OwaspTop10Report groups the latest open findings by their OWASP Top 10 2021
  * category (#190). A category expands in place, and the finding rows open the
@@ -131,6 +159,7 @@ function OwaspRow({
   const expandable = category.count > 0
   const width = `${String((category.count / max) * 100)}%`
   const shown = category.findings.slice(0, findingsShown)
+  const title = categoryLabel(t, category)
 
   const body = (
     <>
@@ -139,9 +168,7 @@ function OwaspRow({
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 truncate text-[0.875rem]">
-            {category.title}
-          </span>
+          <span className="min-w-0 truncate text-[0.875rem]">{title}</span>
           <span
             className={cn(
               'shrink-0 text-xs tabular-nums',
@@ -186,11 +213,7 @@ function OwaspRow({
       )}
       {open && expandable ? (
         <div className="mb-2 border-l border-border-subtle pl-3 sm:ml-11">
-          <ReportFindings
-            findings={shown}
-            onOpen={onOpen}
-            ariaLabel={category.title}
-          />
+          <ReportFindings findings={shown} onOpen={onOpen} ariaLabel={title} />
           {category.count > shown.length ? (
             <p className="px-1 pt-1 text-xs text-muted">
               {t('reports.owasp-top10.truncated', {

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import type { ComponentType } from 'react'
+import { lazy, Suspense, type ComponentType } from 'react'
 
 import { assetsQuery } from '../api/assets'
 import { EmptyState } from '../components/empty-state'
@@ -10,16 +10,58 @@ import { buttonVariants } from '../components/ui/button'
 import { useT } from '../lib/i18n'
 import { reportCatalog, type ReportDefinition, type ReportId } from '../lib/report-catalog'
 import type { AssetSearch, ReportSearch } from '../lib/urls'
-import { AuditReportPanel } from './reports/audit'
-import { CIHistoryReportPanel } from './reports/ci-history'
-import { CveInsightsReport } from './reports/cve-insights'
-import { LicensesReportPanel } from './reports/licenses-sbom'
-import { MalwareReportPanel } from './reports/malware'
-import { OwaspTop10Report } from './reports/owasp-top10'
-import { RuntimesReportPanel } from './reports/runtimes'
-import type { ReportPanelProps } from './reports/shared'
-import { SlaReportPanel } from './reports/sla'
-import { TrendReport } from './reports/trend'
+import { ReportLoading, type ReportPanelProps } from './reports/shared'
+
+/*
+ * The panels are split into their own chunks. Only the two chart reports pull
+ * recharts in, so a report page downloads what it renders and the card grid
+ * stays light (#190).
+ */
+const LicensesReportPanel = lazy(() =>
+  import('./reports/licenses-sbom').then((module) => ({
+    default: module.LicensesReportPanel,
+  })),
+)
+const TrendReport = lazy(() =>
+  import('./reports/trend').then((module) => ({
+    default: module.TrendReport,
+  })),
+)
+const CveInsightsReport = lazy(() =>
+  import('./reports/cve-insights').then((module) => ({
+    default: module.CveInsightsReport,
+  })),
+)
+const MalwareReportPanel = lazy(() =>
+  import('./reports/malware').then((module) => ({
+    default: module.MalwareReportPanel,
+  })),
+)
+const RuntimesReportPanel = lazy(() =>
+  import('./reports/runtimes').then((module) => ({
+    default: module.RuntimesReportPanel,
+  })),
+)
+const CIHistoryReportPanel = lazy(() =>
+  import('./reports/ci-history').then((module) => ({
+    default: module.CIHistoryReportPanel,
+  })),
+)
+const AuditReportPanel = lazy(() =>
+  import('./reports/audit').then((module) => ({
+    default: module.AuditReportPanel,
+  })),
+)
+const OwaspTop10Report = lazy(() =>
+  import('./reports/owasp-top10').then((module) => ({
+    default: module.OwaspTop10Report,
+  })),
+)
+const SlaReportPanel = lazy(() =>
+  import('./reports/sla').then((module) => ({
+    default: module.SlaReportPanel,
+  })),
+)
 
 /** assetSearch keeps ?asset=<id> on a link; absent is every project. */
 function assetSearch(asset: number | undefined): AssetSearch {
@@ -172,7 +214,9 @@ export function ReportPage() {
           }
         />
       </BandHeader>
-      <Panel search={search} />
+      <Suspense fallback={<ReportLoading />}>
+        <Panel search={search} />
+      </Suspense>
     </>
   )
 }

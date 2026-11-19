@@ -1320,7 +1320,8 @@ export interface paths {
          *     `critical`, `high`, `medium` or `low` and whose age since its first
          *     appearance exceeds that severity's threshold. Findings of unknown
          *     severity are left out. Entries are sorted by overdue days, most
-         *     overdue first.
+         *     overdue first and capped at 500; `overdue_truncated` says the cap
+         *     dropped some.
          *
          *     A finding is fixed when its fingerprint appeared in some succeeded
          *     scan of an asset but is absent from that asset's newest succeeded
@@ -2609,9 +2610,12 @@ export interface components {
             id: string;
             /** @example A03:2021 - Injection */
             title: string;
+            /** @description Every open finding in the category, including any the cap dropped. */
             count: number;
-            /** @description The category's open findings, most severe first. */
+            /** @description The category's open findings, most severe first, capped at 50. */
             findings: components["schemas"]["Finding"][];
+            /** @description `count` exceeds the 50 findings the category carries. */
+            truncated: boolean;
         };
         /**
          * CVEInsights
@@ -2725,12 +2729,14 @@ export interface components {
          */
         SLAReport: {
             thresholds: components["schemas"]["SLAThresholds"];
-            /** @description Overdue findings, most overdue first. */
+            /** @description Overdue findings, most overdue first, capped at 500. */
             overdue: components["schemas"]["SLAOverdueFinding"][];
             /** @description Open findings in scope, of every severity. */
             open_count: number;
             /** @description Findings in `overdue`. */
             overdue_count: number;
+            /** @description More findings are overdue than the 500 `overdue` carries. */
+            overdue_truncated: boolean;
             /** @description Findings fixed in the window whose fix date falls inside it. */
             fixed_in_window: number;
             /**

@@ -121,3 +121,37 @@ func TestTrendKeepsLastScanPerDay(t *testing.T) {
 		t.Errorf("Trend(asset=-1) error = %v, want ErrInvalid", err)
 	}
 }
+
+// TestTrendWindowExcludesOldScans checks that the window bounds which scans
+// contribute findings, so an older scan's findings never leak into a point.
+func TestTrendWindowExcludesOldScans(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	clock := trendDay(10, 23)
+	service, err := reports.NewService(db, reports.WithClock(func() time.Time { return clock }))
+	if err != nil {
+		t.Fatalf("reports.NewService: %v", err)
+	}
+
+	alpha := seedAsset(t, db, findings.AssetKindPath, "/tmp/trend-old", "Alpha")
+	oldScanAt := time.Date(2026, time.October, 1, 10, 0, 0, 0, time.UTC)
+	seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, oldScanAt,
+		newFinding(alpha.ID, findings.TypeVulnerability, "CVE-TREND-OLD", findings.SeverityCritical))
+
+	narrow, err := service.Trend(ctx, 0, 3)
+	if err != nil {
+		t.Fatalf("Trend(3 days): %v", err)
+	}
+	if len(narrow) != 0 {
+		t.Errorf("narrow trend = %+v, want the October scan excluded", narrow)
+	}
+
+	wide, err := service.Trend(ctx, 0, 365)
+	if err != nil {
+		t.Fatalf("Trend(365 days): %v", err)
+	}
+	if len(wide) != 1 || len(wide[0].Points) != 1 ||
+		wide[0].Points[0].Date != "2026-10-01" || wide[0].Points[0].Critical != 1 {
+		t.Errorf("wide trend = %+v, want the October critical", wide)
+	}
+}

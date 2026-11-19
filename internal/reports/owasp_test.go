@@ -3,6 +3,7 @@ package reports_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/ozerozdas/bastion/internal/findings"
@@ -131,5 +132,63 @@ func TestOWASPTop10GroupsLatestOpenFindings(t *testing.T) {
 
 	if _, err := service.OWASPTop10(ctx, -1); !errors.Is(err, reports.ErrInvalid) {
 		t.Errorf("negative asset id error = %v, want ErrInvalid", err)
+	}
+}
+
+// TestOWASPTop10CapsCategoryFindings keeps the category count exact while the
+// findings list stops at the cap and reports the truncation.
+func TestOWASPTop10CapsCategoryFindings(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	service, err := reports.NewService(db)
+	if err != nil {
+		t.Fatalf("reports.NewService: %v", err)
+	}
+
+	alpha := seedAsset(t, db, findings.AssetKindPath, "/tmp/owasp-cap", "Alpha")
+
+	list := make([]findings.Finding, 0, 58)
+	for i := 0; i < 55; i++ {
+		finding := newFinding(alpha.ID, findings.TypeVulnerability,
+			fmt.Sprintf("CVE-OWASP-CAP-%02d", i), findings.SeverityHigh)
+		finding.CWE = []string{"CWE-79"} // A03 injection
+		list = append(list, finding)
+	}
+	for i := 0; i < 3; i++ {
+		finding := newFinding(alpha.ID, findings.TypeVulnerability,
+			fmt.Sprintf("CVE-OWASP-ACCESS-%02d", i), findings.SeverityHigh)
+		finding.CWE = []string{"CWE-22"} // A01 broken access control
+		list = append(list, finding)
+	}
+	seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, at(11), list...)
+
+	categories, err := service.OWASPTop10(ctx, 0)
+	if err != nil {
+		t.Fatalf("OWASPTop10: %v", err)
+	}
+	byID := make(map[string]reports.OWASPCategory, len(categories))
+	for _, category := range categories {
+		byID[category.ID] = category
+	}
+
+	injection := byID["A03"]
+	if injection.Count != 55 {
+		t.Errorf("A03 count = %d, want 55", injection.Count)
+	}
+	if len(injection.Findings) != reports.MaxOWASPCategoryFindings {
+		t.Errorf("A03 findings = %d, want the %d cap",
+			len(injection.Findings), reports.MaxOWASPCategoryFindings)
+	}
+	if !injection.Truncated {
+		t.Error("A03 truncated = false, want true")
+	}
+
+	access := byID["A01"]
+	if access.Count != 3 || len(access.Findings) != 3 || access.Truncated {
+		t.Errorf("A01 = count %d, findings %d, truncated %v; want 3/3/false",
+			access.Count, len(access.Findings), access.Truncated)
+	}
+	if empty := byID["A10"]; empty.Count != 0 || empty.Truncated {
+		t.Errorf("A10 = %+v, want an empty untruncated category", empty)
 	}
 }

@@ -68,11 +68,11 @@ export function LicensesReportPanel({ search }: ReportPanelProps) {
       ? asset.last_scan.scan_id
       : undefined
 
-  function toggle(license: string) {
+  function toggle(key: string) {
     setExpanded((current) => {
       const next = new Set(current)
-      if (next.has(license)) next.delete(license)
-      else next.add(license)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
@@ -128,16 +128,19 @@ export function LicensesReportPanel({ search }: ReportPanelProps) {
           </thead>
           <tbody className="divide-y divide-border-subtle">
             {licenses.map((entry) => {
-              const open = expanded.has(entry.license)
+              // The backend groups by licence and policy, so one licence name
+              // can appear more than once; the pair is the row's identity.
+              const key = `${entry.license}:${entry.policy}`
+              const open = expanded.has(key)
               const shown = entry.items.slice(0, itemsShown)
               return (
-                <Fragment key={entry.license}>
+                <Fragment key={key}>
                   <tr className="align-top hover:bg-hover">
                     <td className="py-2 pr-3">
                       <button
                         type="button"
                         aria-expanded={open}
-                        onClick={() => toggle(entry.license)}
+                        onClick={() => toggle(key)}
                         className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left transition-colors hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
                       >
                         <ReportChevron open={open} />

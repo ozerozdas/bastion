@@ -3,6 +3,7 @@ package reports_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -175,6 +176,88 @@ func TestSLAReportAgesFixesAndScopes(t *testing.T) {
 	}
 }
 
+// TestSLAFixedFindingsRespectsIgnoreScope checks that a fingerprint hidden by
+// a live finding_states decision is not a fix, while an expired decision no
+// longer hides it.
+func TestSLAFixedFindingsRespectsIgnoreScope(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	now := slaAt(2026, time.November, 20, 12)
+	service, err := reports.NewService(db, reports.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatalf("reports.NewService: %v", err)
+	}
+
+	alpha := seedAsset(t, db, findings.AssetKindPath, "/tmp/sla-ignore", "Alpha")
+
+	liveIgnored := newFinding(alpha.ID, findings.TypeVulnerability, "CVE-SLA-IGN-1", findings.SeverityHigh)
+	expiredIgnored := newFinding(alpha.ID, findings.TypeVulnerability, "CVE-SLA-IGN-2", findings.SeverityHigh)
+	seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, slaAt(2026, time.May, 1, 10),
+		liveIgnored, expiredIgnored)
+	// Both fingerprints disappear from the August scan: both look fixed.
+	seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, slaAt(2026, time.August, 20, 10))
+
+	if err := store.SetFindingState(ctx, db, alpha.ID, liveIgnored.Fingerprint,
+		store.FindingStateIgnored, "not deployed", nil); err != nil {
+		t.Fatalf("SetFindingState(live): %v", err)
+	}
+	expired := slaAt(2026, time.July, 1, 0)
+	if err := store.SetFindingState(ctx, db, alpha.ID, expiredIgnored.Fingerprint,
+		store.FindingStateIgnored, "temporary", &expired); err != nil {
+		t.Fatalf("SetFindingState(expired): %v", err)
+	}
+
+	// The 100-day window starts on August 12, so the August 20 fix counts.
+	report, err := service.SLA(ctx, 0, 100)
+	if err != nil {
+		t.Fatalf("SLA: %v", err)
+	}
+	if report.FixedInWindow != 1 {
+		t.Fatalf("fixed_in_window = %d, want 1 (the live ignore is not a fix)", report.FixedInWindow)
+	}
+	// May 1 to August 20 is 111 days.
+	if report.MeanTimeToFixDays == nil || *report.MeanTimeToFixDays != 111 {
+		t.Errorf("mean_time_to_fix_days = %v, want 111", report.MeanTimeToFixDays)
+	}
+}
+
+// TestSLAFixedFindingsIgnoresOldFixes bounds the fixed side to the window: a
+// fingerprint fixed long before the window is not counted, and one fixed
+// inside it still is.
+func TestSLAFixedFindingsIgnoresOldFixes(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	now := slaAt(2026, time.November, 20, 12)
+	service, err := reports.NewService(db, reports.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatalf("reports.NewService: %v", err)
+	}
+
+	alpha := seedAsset(t, db, findings.AssetKindPath, "/tmp/sla-window", "Alpha")
+
+	oldFixed := newFinding(alpha.ID, findings.TypeVulnerability, "CVE-SLA-OLD", findings.SeverityHigh)
+	seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, slaAt(2026, time.January, 1, 10), oldFixed)
+	// February 1: oldFixed is gone, fixed 323 days before now.
+	seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, slaAt(2026, time.February, 1, 10))
+
+	recentFixed := newFinding(alpha.ID, findings.TypeVulnerability, "CVE-SLA-NEW", findings.SeverityHigh)
+	seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, slaAt(2026, time.September, 1, 10), recentFixed)
+	// September 10: recentFixed is gone, fixed inside the 90-day window
+	// (which starts on August 22).
+	seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, slaAt(2026, time.September, 10, 10))
+
+	report, err := service.SLA(ctx, 0, reports.DefaultSLAWindowDays)
+	if err != nil {
+		t.Fatalf("SLA: %v", err)
+	}
+	if report.FixedInWindow != 1 {
+		t.Fatalf("fixed_in_window = %d, want only the September fix", report.FixedInWindow)
+	}
+	if report.MeanTimeToFixDays == nil || *report.MeanTimeToFixDays != 9 {
+		t.Errorf("mean_time_to_fix_days = %v, want 9", report.MeanTimeToFixDays)
+	}
+}
+
 // TestSetSLAThresholdsValidatesAndPersists covers the service half of the
 // settings contract: bad values write nothing, good ones survive a re-read.
 func TestSetSLAThresholdsValidatesAndPersists(t *testing.T) {
@@ -212,5 +295,46 @@ func TestSetSLAThresholdsValidatesAndPersists(t *testing.T) {
 	}
 	if stored != want {
 		t.Fatalf("thresholds = %+v, want %+v", stored, want)
+	}
+}
+
+// TestSLACapsOverdueList seeds more overdue findings than the response cap and
+// checks that the list stops at 500 while open_count stays exact.
+func TestSLACapsOverdueList(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	now := slaAt(2026, time.November, 20, 12)
+	service, err := reports.NewService(db, reports.WithClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatalf("reports.NewService: %v", err)
+	}
+
+	alpha := seedAsset(t, db, findings.AssetKindPath, "/tmp/sla-cap", "Alpha")
+
+	const total = reports.MaxSLAOverdue + 1
+	list := make([]findings.Finding, 0, total)
+	for i := 0; i < total; i++ {
+		list = append(list, newFinding(alpha.ID, findings.TypeVulnerability,
+			fmt.Sprintf("CVE-SLA-CAP-%03d", i), findings.SeverityCritical))
+	}
+	seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, slaAt(2026, time.May, 1, 10), list...)
+	// The latest scan still has every finding: all are open, all are overdue.
+	seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, slaAt(2026, time.November, 10, 10), list...)
+
+	report, err := service.SLA(ctx, 0, reports.DefaultSLAWindowDays)
+	if err != nil {
+		t.Fatalf("SLA: %v", err)
+	}
+	if report.OpenCount != total {
+		t.Errorf("open_count = %d, want %d", report.OpenCount, total)
+	}
+	if len(report.Overdue) != reports.MaxSLAOverdue {
+		t.Errorf("overdue entries = %d, want the %d cap", len(report.Overdue), reports.MaxSLAOverdue)
+	}
+	if report.OverdueCount != reports.MaxSLAOverdue {
+		t.Errorf("overdue_count = %d, want %d", report.OverdueCount, reports.MaxSLAOverdue)
+	}
+	if !report.OverdueTruncated {
+		t.Error("overdue_truncated = false, want true")
 	}
 }

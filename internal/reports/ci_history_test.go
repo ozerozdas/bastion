@@ -156,3 +156,50 @@ func TestCIHistoryFiltersOrdersAndValidates(t *testing.T) {
 		t.Errorf("CIHistory(asset=-1) error = %v, want ErrInvalid", err)
 	}
 }
+
+// TestCIHistoryCountsSelectedScansOnly checks the grouped severity aggregate:
+// each selected run carries its own counts, and a scan outside the limit does
+// not leak into another run's counts.
+func TestCIHistoryCountsSelectedScansOnly(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	service, err := reports.NewService(db)
+	if err != nil {
+		t.Fatalf("reports.NewService: %v", err)
+	}
+
+	alpha := seedAsset(t, db, findings.AssetKindPath, "/tmp/ci-counts", "Alpha")
+
+	older := seedTriggeredScan(t, db, alpha.ID, store.ScanTriggerCLI, store.ScanStatusSucceeded,
+		at(10), at(10),
+		newFinding(alpha.ID, findings.TypeVulnerability, "CVE-CI-COUNT-1", findings.SeverityCritical),
+		newFinding(alpha.ID, findings.TypeVulnerability, "CVE-CI-COUNT-2", findings.SeverityCritical))
+	newer := seedTriggeredScan(t, db, alpha.ID, store.ScanTriggerCLI, store.ScanStatusSucceeded,
+		at(11), at(11),
+		newFinding(alpha.ID, findings.TypeVulnerability, "CVE-CI-COUNT-3", findings.SeverityMedium))
+
+	limited, err := service.CIHistory(ctx, 0, 1)
+	if err != nil {
+		t.Fatalf("CIHistory(limit=1): %v", err)
+	}
+	if len(limited.Runs) != 1 || limited.Runs[0].ScanID != newer {
+		t.Fatalf("runs = %+v, want only the newer scan", limited.Runs)
+	}
+	if got := limited.Runs[0].Counts; got.Medium != 1 || got.Critical != 0 {
+		t.Errorf("newer counts = %+v, want 1 medium and no critical", got)
+	}
+
+	both, err := service.CIHistory(ctx, 0, 2)
+	if err != nil {
+		t.Fatalf("CIHistory(limit=2): %v", err)
+	}
+	if len(both.Runs) != 2 {
+		t.Fatalf("runs = %+v, want both scans", both.Runs)
+	}
+	if both.Runs[0].ScanID != newer || both.Runs[0].Counts.Medium != 1 {
+		t.Errorf("newest run = %+v, want the newer scan's medium", both.Runs[0])
+	}
+	if both.Runs[1].ScanID != older || both.Runs[1].Counts.Critical != 2 {
+		t.Errorf("older run = %+v, want the older scan's two criticals", both.Runs[1])
+	}
+}

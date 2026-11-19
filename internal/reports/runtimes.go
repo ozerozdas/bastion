@@ -68,6 +68,12 @@ func (s *Service) Runtimes(ctx context.Context, assetID int64) ([]Runtime, error
 				FixedVersion: row.FixedVersion.String,
 				Assets:       make([]RuntimeAsset, 0),
 			})
+		} else {
+			// Scanners report the same runtime with differing detail. Keep the
+			// most complete row instead of whichever asset happened to sort
+			// first: the end-of-life date matters most, then the fixed version,
+			// then the ecosystem.
+			mergeRuntimeDetails(&runtimes[index], row)
 		}
 		runtimes[index].Assets = append(runtimes[index].Assets, RuntimeAsset{
 			AssetID:     row.AssetID,
@@ -75,4 +81,18 @@ func (s *Service) Runtimes(ctx context.Context, assetID int64) ([]Runtime, error
 		})
 	}
 	return runtimes, nil
+}
+
+// mergeRuntimeDetails fills a grouped runtime from another asset's row when
+// that row is more complete, field by field in priority order.
+func mergeRuntimeDetails(runtime *Runtime, row sqlcdb.RuntimeEOLFindingsRow) {
+	if candidate := eolDate.FindString(row.Description.String); candidate != "" && runtime.EOLDate == "" {
+		runtime.EOLDate = candidate
+	}
+	if candidate := row.FixedVersion.String; candidate != "" && runtime.FixedVersion == "" {
+		runtime.FixedVersion = candidate
+	}
+	if candidate := row.Ecosystem.String; candidate != "" && runtime.Ecosystem == "" {
+		runtime.Ecosystem = candidate
+	}
 }

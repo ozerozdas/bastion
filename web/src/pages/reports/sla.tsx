@@ -141,6 +141,9 @@ export function SlaReportPanel({ search }: ReportPanelProps) {
             })}
           />
           <ReportCaption>{t('reports.sla.overdue.caption')}</ReportCaption>
+          {data.overdue_truncated ? (
+            <ReportCaption>{t('reports.sla.overdue.truncated', { shown: overdue.length })}</ReportCaption>
+          ) : null}
         </div>
 
         {overdue.length === 0 ? (

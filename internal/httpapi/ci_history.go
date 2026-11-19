@@ -17,9 +17,11 @@ func (s *Server) GetReportCIHistory(ctx context.Context, request gen.GetReportCI
 		}, nil
 	}
 
-	var assetID int64
-	if request.Params.AssetId != nil {
-		assetID = int64(*request.Params.AssetId)
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetReportCIHistory400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
 	}
 	limit := reports.DefaultCIHistoryLimit
 	if request.Params.Limit != nil {

@@ -129,3 +129,48 @@ func TestRuntimesGroupsByNameAndVersion(t *testing.T) {
 		t.Errorf("Runtimes(-1) error = %v, want ErrInvalid", err)
 	}
 }
+
+// TestRuntimesPrefersMostCompleteRow checks that a sparse scanner row does not
+// erase details another asset reported for the same runtime: the end-of-life
+// date and fixed version win over empty values, and the ecosystem fills in.
+func TestRuntimesPrefersMostCompleteRow(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	service, err := reports.NewService(db)
+	if err != nil {
+		t.Fatalf("reports.NewService: %v", err)
+	}
+
+	alpha := seedAsset(t, db, findings.AssetKindPath, "/tmp/runtime-sparse", "Alpha")
+	beta := seedAsset(t, db, findings.AssetKindRepo, "octo/runtime-complete", "Beta")
+
+	// Alpha sorts first but its scanner row carries no date, version or
+	// ecosystem.
+	seedScan(t, db, alpha.ID, store.ScanStatusSucceeded, at(10),
+		eolFinding(alpha.ID, "python", "3.8", "", "",
+			"Python 3.8 stopped receiving security updates."))
+	seedScan(t, db, beta.ID, store.ScanStatusSucceeded, at(11),
+		eolFinding(beta.ID, "python", "3.8", "python", "3.13",
+			"Python 3.8 stopped receiving security updates on 2024-10-07."))
+
+	runtimes, err := service.Runtimes(ctx, 0)
+	if err != nil {
+		t.Fatalf("Runtimes: %v", err)
+	}
+	if len(runtimes) != 1 {
+		t.Fatalf("runtimes = %+v, want one grouped runtime", runtimes)
+	}
+	runtime := runtimes[0]
+	if runtime.EOLDate != "2024-10-07" {
+		t.Errorf("eol_date = %q, want 2024-10-07 from the complete row", runtime.EOLDate)
+	}
+	if runtime.FixedVersion != "3.13" {
+		t.Errorf("fixed_version = %q, want 3.13", runtime.FixedVersion)
+	}
+	if runtime.Ecosystem != "python" {
+		t.Errorf("ecosystem = %q, want python", runtime.Ecosystem)
+	}
+	if len(runtime.Assets) != 2 {
+		t.Errorf("assets = %+v, want both assets", runtime.Assets)
+	}
+}
