@@ -8,6 +8,7 @@ import { licencePolicyQuery } from '../api/licence-policy'
 import { useCancelScan, useStartScans } from '../api/scans'
 import { ErrorNote } from '../components/error-note'
 import { LicencePolicyEditor } from '../components/licence-policy-card'
+import { BandSummary } from '../components/page-band'
 import { ScanScheduleSelect } from '../components/scan-schedule'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
@@ -25,7 +26,7 @@ export function AssetFindingsPage() {
   const assets = useQuery(assetsQuery)
   const asset = assets.data?.find((item) => item.id === Number(assetId))
 
-  return <FindingsPage hero={asset ? <AssetHero asset={asset} /> : undefined} />
+  return <FindingsPage band={asset ? <AssetHero asset={asset} /> : undefined} />
 }
 
 function AssetHero({ asset }: { asset: Asset }) {
@@ -42,69 +43,84 @@ function AssetHero({ asset }: { asset: Asset }) {
   const running = status === 'queued' || status === 'running'
 
   return (
-    <section aria-label={asset.display_name} className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-[1.0625rem] font-semibold" title={asset.display_name}>
-            {asset.display_name}
-          </h2>
-          {asset.ref === asset.display_name ? null : (
-            <p className="truncate font-mono text-xs text-muted" title={asset.ref}>
+    <section aria-label={asset.display_name}>
+      <BandSummary
+        heading="h2"
+        title={asset.display_name}
+        subtitle={
+          asset.ref === asset.display_name ? undefined : (
+            <span className="font-mono" title={asset.ref}>
               {asset.ref}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <ScanScheduleSelect asset={asset} />
-          {running && lastScan ? (
+            </span>
+          )
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+            <span className="flex items-center gap-1.5">
+              {status ? (
+                <Badge tone={statusView[status].tone}>
+                  {t(statusView[status].labelKey)}
+                </Badge>
+              ) : (
+                <Badge>{t('scanStatus.neverScanned')}</Badge>
+              )}
+              <span className="text-faint tabular-nums">
+                {scanWhen(lastScan, running)}
+              </span>
+            </span>
+            {liveActive && live ? (
+              <span className="text-muted">{liveDetail(live)}</span>
+            ) : null}
+            {lastScan?.status === 'succeeded' ? (
+              <Link
+                to="/scans/$scanId/diff"
+                params={{ scanId: String(lastScan.scan_id) }}
+                className="text-muted hover:text-fg hover:underline"
+              >
+                {t('assetFindings.changes')}
+              </Link>
+            ) : null}
+            <LicenceChip asset={asset} />
+          </div>
+        }
+        actions={
+          <>
+            <ScanScheduleSelect asset={asset} />
+            {running && lastScan ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => cancel.mutate(lastScan.scan_id)}
+                disabled={cancel.isPending}
+              >
+                {cancel.isPending ? t('repos.canceling') : t('repos.cancel')}
+              </Button>
+            ) : null}
             <Button
               type="button"
               size="sm"
-              variant="ghost"
-              onClick={() => cancel.mutate(lastScan.scan_id)}
-              disabled={cancel.isPending}
+              onClick={() => start.mutate([asset.id])}
+              disabled={start.isPending || running}
             >
-              {cancel.isPending ? t('repos.canceling') : t('repos.cancel')}
+              {start.isPending
+                ? t('repos.queueing')
+                : t('assetFindings.rescan')}
             </Button>
-          ) : null}
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => start.mutate([asset.id])}
-            disabled={start.isPending || running}
-          >
-            {start.isPending ? t('repos.queueing') : t('assetFindings.rescan')}
-          </Button>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-        <span className="flex items-center gap-1.5">
-          {status ? (
-            <Badge tone={statusView[status].tone}>{t(statusView[status].labelKey)}</Badge>
-          ) : (
-            <Badge>{t('scanStatus.neverScanned')}</Badge>
-          )}
-          <span className="text-faint tabular-nums">{scanWhen(lastScan, running)}</span>
-        </span>
-        {liveActive && live ? <span className="text-muted">{liveDetail(live)}</span> : null}
-        {lastScan?.status === 'succeeded' ? (
-          <Link
-            to="/scans/$scanId/diff"
-            params={{ scanId: String(lastScan.scan_id) }}
-            className="text-muted hover:text-fg hover:underline"
-          >
-            {t('assetFindings.changes')}
-          </Link>
-        ) : null}
-        <LicenceChip asset={asset} />
-      </div>
-      {live?.status === 'failed' && live.error ? (
-        <p role="alert" className="text-xs text-critical">
-          {live.error}
-        </p>
-      ) : null}
-      {start.error ? <ErrorNote error={start.error} /> : null}
-      {cancel.error ? <ErrorNote error={cancel.error} /> : null}
+          </>
+        }
+        below={
+          <>
+            {live?.status === 'failed' && live.error ? (
+              <p role="alert" className="text-xs text-critical">
+                {live.error}
+              </p>
+            ) : null}
+            {start.error ? <ErrorNote error={start.error} /> : null}
+            {cancel.error ? <ErrorNote error={cancel.error} /> : null}
+          </>
+        }
+      />
     </section>
   )
 }

@@ -5,6 +5,7 @@ import { AppearanceSettings } from '../components/appearance-settings'
 import { MCPSettings } from '../components/mcp-settings'
 import { ModulesSettings } from '../components/modules-settings'
 import { NotificationsSettings } from '../components/notifications-settings'
+import { BandSummary } from '../components/page-band'
 import { PoliciesSettings } from '../components/policies-settings'
 import { Tabs, type TabItem } from '../components/ui/tabs'
 import { useT } from '../lib/i18n'
@@ -42,6 +43,14 @@ export function ConfigurationsPage() {
           search: next === 'modules' ? {} : { tab: next },
           replace: true,
         })
+      }}
+      band={{
+        summary: (
+          <BandSummary
+            title={t('nav.configurations')}
+            subtitle={t('nav.configurations.subtitle')}
+          />
+        ),
       }}
     >
       {tab === 'policies' ? (

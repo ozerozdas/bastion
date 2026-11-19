@@ -21,6 +21,7 @@ import {
   type ConnectionStatus,
 } from '../api/connections'
 import { EmptyState } from '../components/empty-state'
+import { BandSummary } from '../components/page-band'
 import {
   BitbucketIcon,
   ContainersIcon,
@@ -73,6 +74,14 @@ export function ConnectionsPage() {
           search: next === 'registry' ? { tab: 'registry' } : {},
           replace: true,
         })
+      }}
+      band={{
+        summary: (
+          <BandSummary
+            title={t('nav.connections')}
+            subtitle={t('nav.connections.subtitle')}
+          />
+        ),
       }}
     >
       {tab === 'registry' ? <RegistryPanel /> : <RepositoryPanel />}

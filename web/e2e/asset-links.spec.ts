@@ -120,18 +120,20 @@ test('Containers shows the linked repository and unlinks it', async ({ page, ser
   const row = page.getByRole('row').filter({ hasText: imageRef })
   await expect(row.getByText('acme/api', { exact: true })).toBeVisible()
   await expect(row.getByText('oci', { exact: true })).toBeVisible()
-  await expect(row.getByText('9f2c1ab', { exact: true })).toBeVisible()
 
+  await row.getByRole('button', { name: `Actions for ${imageRef}` }).click()
   const unlinkRequest = page.waitForRequest(
     (request) =>
       request.url().endsWith('/api/assets/2/link') &&
       request.method() === 'DELETE',
   )
-  await row.getByRole('button', { name: 'Unlink' }).click()
+  await page.getByRole('menuitem', { name: 'Unlink' }).click()
   await unlinkRequest
 
+  // Unlinked, the row shows a dash and the menu offers the repositories.
+  await row.getByRole('button', { name: `Actions for ${imageRef}` }).click()
   await expect(
-    page.getByLabel(`Link ${imageRef} to a repository`),
+    page.getByRole('group', { name: `Link ${imageRef} to a repository` }),
   ).toBeVisible()
   expect(problems).toEqual([])
 })
@@ -146,15 +148,20 @@ test('Containers links an image to a repository by hand', async ({ page, server 
   await page.getByRole('link', { name: 'Containers' }).click()
 
   const row = page.getByRole('row').filter({ hasText: imageRef })
+  await row.getByRole('button', { name: `Actions for ${imageRef}` }).click()
   const linkRequest = page.waitForRequest(
     (request) =>
       request.url().endsWith('/api/assets/2/link') && request.method() === 'PUT',
   )
-  await page.getByLabel(`Link ${imageRef} to a repository`).selectOption('1')
-  await row.getByRole('button', { name: 'Link', exact: true }).click()
+  await page
+    .getByRole('group', { name: `Link ${imageRef} to a repository` })
+    .getByRole('menuitemradio', { name: 'acme/api' })
+    .click()
 
   expect((await linkRequest).postDataJSON()).toEqual({ repo_asset_id: 1 })
-  await expect(row.getByRole('button', { name: 'Unlink' })).toBeVisible()
+  // The radio leaves the menu open, so the new unlink item is already there.
+  await expect(page.getByRole('menuitem', { name: 'Unlink' })).toBeVisible()
+  await expect(row.getByText('acme/api', { exact: true })).toBeVisible()
   expect(problems).toEqual([])
 })
 

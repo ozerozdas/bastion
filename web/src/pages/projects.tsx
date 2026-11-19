@@ -26,15 +26,21 @@ import {
   type DataTableColumn,
   type DataTableSelection,
 } from '../components/data-table'
-import { PageActions } from '../components/app-shell'
 import { EmptyState } from '../components/empty-state'
 import { ClockIcon } from '../components/icons'
+import {
+  BandMeta,
+  BandSummary,
+  SeverityMix,
+  type BandMetaItem,
+} from '../components/page-band'
 import { ActionMenu } from '../components/ui/action-menu'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { InfoTip } from '../components/ui/info-tip'
 import { CountBadge, severityCounts } from '../components/severity-counts'
 import { Tabs, type TabItem } from '../components/ui/tabs'
+import { assetStats } from '../lib/asset-stats'
 import { suggestFix } from '../lib/hints'
 import { t, useT } from '../lib/i18n'
 import { isLiveActive, liveDetail } from '../lib/live-scan'
@@ -109,77 +115,152 @@ export function ProjectsPage() {
   const search = useSearch({ from: '/repositories' })
   const navigate = useNavigate()
   const tab: ProjectsTab = search.tab ?? 'projects'
+  const assets = useQuery(assetsQuery)
+  // The scan total is only needed by the Scans tab's hero, so the
+  // Repositories tab keeps its one assets request.
+  const scans = useQuery({ ...scansQuery(), enabled: tab === 'scans' })
+  const [adding, setAdding] = useState(false)
   // projectTabs are the two views of §7's Repositories section (#88).
   const projectTabs: TabItem<ProjectsTab>[] = [
     { value: 'projects', label: t('repos.tabs.repositories') },
     { value: 'scans', label: t('repos.tabs.scans') },
   ]
 
+  // Images have their own page; this list is repositories and local paths.
+  const list = (assets.data ?? []).filter((asset) => asset.kind !== 'image')
+  const stats = assetStats(list)
+  // The Scans tab has no per-repository totals to show: the scan list carries
+  // its own statuses, so the hero keeps the count and the newest finish.
+  const scanList = scans.data ?? []
+  const newestScan = scanList
+    .map((scan) => scan.finished_at)
+    .filter((finished): finished is string => finished !== undefined)
+    .sort()
+    .at(-1)
+  const heroStats: BandMetaItem[] =
+    tab === 'scans'
+      ? [
+          {
+            key: 'scans',
+            label: t('repos.hero.scans'),
+            value: scanList.length,
+          },
+          {
+            key: 'last-scan',
+            label: t('repos.hero.lastScan'),
+            value:
+              newestScan === undefined
+                ? t('repos.hero.none')
+                : relativeTime(newestScan),
+          },
+        ]
+      : [
+          {
+            key: 'repos',
+            label: t('repos.hero.repos'),
+            value: list.length,
+          },
+          {
+            key: 'scheduled',
+            label: t('repos.hero.scheduled'),
+            value: stats.scheduled,
+          },
+          {
+            key: 'findings',
+            label: t('repos.hero.openFindings'),
+            value: (
+              <>
+                {openFindingTotal(stats.open)}
+                <SeverityMix totals={stats.open} />
+              </>
+            ),
+          },
+          {
+            key: 'last-scan',
+            label: t('repos.hero.lastScan'),
+            value:
+              stats.lastScan === undefined
+                ? t('repos.hero.none')
+                : relativeTime(stats.lastScan),
+          },
+        ]
+
   return (
-    <Tabs
-      label={t('repos.tabs.aria')}
-      items={projectTabs}
-      value={tab}
-      onChange={(next) => {
-        // The URL owns the tab, so a reload or a copied link lands on it.
-        // replace: switching tabs is not a step the Back button should undo.
-        void navigate({
-          to: '/repositories',
-          search: next === 'scans' ? { tab: 'scans' } : {},
-          replace: true,
-        })
-      }}
-    >
-      {tab === 'scans' ? <ScansPanel /> : <ProjectsPanel />}
-    </Tabs>
+    <>
+      <Tabs
+        label={t('repos.tabs.aria')}
+        items={projectTabs}
+        value={tab}
+        onChange={(next) => {
+          // The URL owns the tab, so a reload or a copied link lands on it.
+          // replace: switching tabs is not a step the Back button should undo.
+          void navigate({
+            to: '/repositories',
+            search: next === 'scans' ? { tab: 'scans' } : {},
+            replace: true,
+          })
+        }}
+        band={{
+          summary: (
+            <BandSummary
+              title={t('nav.repositories')}
+              subtitle={t('nav.repositories.subtitle')}
+              meta={<BandMeta items={heroStats} />}
+              actions={
+                <Button type="button" size="sm" onClick={() => setAdding(true)}>
+                  {t('repos.add')}
+                </Button>
+              }
+            />
+          ),
+        }}
+      >
+        {tab === 'scans' ? (
+          <ScansPanel />
+        ) : (
+          <ProjectsPanel onAdd={() => setAdding(true)} />
+        )}
+      </Tabs>
+      <AddProjectDialog open={adding} onClose={() => setAdding(false)} />
+    </>
   )
 }
 
 /** ProjectsPanel is §7.3: the repositories table plus the add dialog. */
-function ProjectsPanel() {
+function ProjectsPanel({ onAdd }: { onAdd: () => void }) {
   const t = useT()
   const assets = useQuery(assetsQuery)
   const live = useScanEvents()
-  const [adding, setAdding] = useState(false)
   // Images have their own page; this list is repositories and local paths.
   const list = (assets.data ?? []).filter((asset) => asset.kind !== 'image')
 
   return (
-    <>
-      <PageActions>
-        <Button type="button" size="sm" onClick={() => setAdding(true)}>
-          {t('repos.add')}
-        </Button>
-      </PageActions>
-      <section
-        aria-label={t('repos.section.aria')}
-        className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
-      >
+    <section
+      aria-label={t('repos.section.aria')}
+      className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
+    >
 
-        {assets.isPending ? (
-          <p className="text-muted">{t('repos.loading')}</p>
-        ) : null}
+      {assets.isPending ? (
+        <p className="text-muted">{t('repos.loading')}</p>
+      ) : null}
 
-        {assets.isError ? (
-          <div className="flex flex-col gap-1">
-            <h3 className="text-[0.8125rem] font-semibold">
-              {t('repos.failed')}
-            </h3>
-            <ErrorNote error={assets.error} fix={t('common.reloadFix')} />
-          </div>
-        ) : null}
+      {assets.isError ? (
+        <div className="flex flex-col gap-1">
+          <h3 className="text-[0.8125rem] font-semibold">
+            {t('repos.failed')}
+          </h3>
+          <ErrorNote error={assets.error} fix={t('common.reloadFix')} />
+        </div>
+      ) : null}
 
-        {assets.isSuccess && list.length === 0 ? (
-          <ProjectsEmpty onAdd={() => setAdding(true)} />
-        ) : null}
+      {assets.isSuccess && list.length === 0 ? (
+        <ProjectsEmpty onAdd={onAdd} />
+      ) : null}
 
-        {assets.isSuccess && list.length > 0 ? (
-          <ProjectsTable assets={list} live={live} />
-        ) : null}
-      </section>
-
-      <AddProjectDialog open={adding} onClose={() => setAdding(false)} />
-    </>
+      {assets.isSuccess && list.length > 0 ? (
+        <ProjectsTable assets={list} live={live} />
+      ) : null}
+    </section>
   )
 }
 

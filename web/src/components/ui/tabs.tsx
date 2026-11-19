@@ -1,11 +1,20 @@
 import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react'
 
 import { cn } from '../../lib/utils'
+import { BandFrame, PageBand } from '../page-band'
 
 /** TabItem is one tab's value and its visible label. */
 export type TabItem<T extends string> = {
   value: T
   label: string
+}
+
+/** TabsBand turns the tab row into the bottom edge of a page header band. */
+export type TabsBand = {
+  /** The band's title row, e.g. BandSummary. */
+  summary: ReactNode
+  /** Optional content right-aligned on the tab row. */
+  trailing?: ReactNode
 }
 
 /**
@@ -22,6 +31,7 @@ export function Tabs<T extends string>({
   onChange,
   head,
   hideSingle = false,
+  band,
   children,
 }: {
   /** hideSingle drops the tab row when only one tab is offered. */
@@ -31,6 +41,12 @@ export function Tabs<T extends string>({
    * project's summary. The panel still follows the tablist in reading order.
    */
   head?: ReactNode
+  /**
+   * band renders the tab row on a full-bleed page header band instead of in a
+   * card: the summary shares the band with it and the panel keeps its place in
+   * page content. The band's own bottom border is the line under the row.
+   */
+  band?: TabsBand
   /** Accessible name of the tablist, e.g. "Projects views". */
   label: string
   items: readonly TabItem<T>[]
@@ -82,8 +98,9 @@ export function Tabs<T extends string>({
         aria-label={label}
         className={cn(
           'flex items-center gap-1',
-          // Inside the card the card's own edge is the line under the tabs.
-          head === undefined && 'border-b border-border-subtle',
+          // Inside the card the card's own edge is the line under the tabs;
+          // in a band the band supplies that line.
+          head === undefined && band === undefined && 'border-b border-border-subtle',
         )}
       >
         {items.map((item, index) => {
@@ -122,13 +139,30 @@ export function Tabs<T extends string>({
   )
 
   // One tab is no choice: a caller that opts in shows just the content.
-  if (hideSingle && items.length < 2 && head === undefined) {
+  if (hideSingle && items.length < 2 && head === undefined && band === undefined) {
     return <div className="flex flex-col gap-4">{children}</div>
   }
 
+  const bandNode =
+    band === undefined ? null : (
+      <PageBand>
+        <BandFrame>
+          <div className="pt-4 pb-3">{band.summary}</div>
+          <div className="flex items-end justify-between gap-4">
+            <div className="-mb-px min-w-0">{tablist}</div>
+            {band.trailing === undefined ? null : (
+              <div className="pb-2 text-xs text-muted">{band.trailing}</div>
+            )}
+          </div>
+        </BandFrame>
+      </PageBand>
+    )
+
   return (
     <div className="flex flex-col gap-4">
-      {head === undefined ? (
+      {band !== undefined ? (
+        bandNode
+      ) : head === undefined ? (
         tablist
       ) : (
         <div className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface px-4 pt-4">

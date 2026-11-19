@@ -88,12 +88,23 @@ test('renders every nav page without browser errors', async ({
       page.getByRole('heading', { level: 1, name: item.label }),
     ).toBeVisible()
     // The dashboard's hero and the Findings project switcher replace the
-    // subtitle, so the header leaves it out there.
+    // subtitle; a banded page keeps its title and subtitle in the band instead
+    // of the header bar.
     const subtitle = page.locator('header').getByText(item.subtitle, { exact: true })
-    if (item.label === 'Dashboard' || item.label === 'Findings') {
+    const bandPages = ['Repositories', 'Containers', 'Connections', 'Configuration']
+    if (
+      item.label === 'Dashboard' ||
+      item.label === 'Findings' ||
+      bandPages.includes(item.label)
+    ) {
       await expect(subtitle).toHaveCount(0)
     } else {
       await expect(subtitle).toBeVisible()
+    }
+    if (bandPages.includes(item.label)) {
+      await expect(
+        page.locator('#page-band').getByText(item.subtitle, { exact: true }),
+      ).toBeVisible()
     }
     // The marker only renders once the page's first API call succeeded.
     await expect(
@@ -166,6 +177,13 @@ test('Repositories tabs live in the URL and move with arrow keys', async ({
   await expect(
     page.getByRole('heading', { level: 1, name: 'Repositories' }),
   ).toBeVisible()
+  // The tab row sits on the page band's bottom edge, under its title.
+  const band = page.locator('#page-band')
+  await expect(
+    band.getByRole('heading', { level: 1, name: 'Repositories' }),
+  ).toBeVisible()
+  await expect(band.getByText('Scheduled', { exact: true })).toBeVisible()
+  await expect(band.getByRole('tablist')).toBeVisible()
 
   const origin = new URL(page.url()).origin
 

@@ -64,12 +64,18 @@ export function ActionMenu({
   /** Accessible name of the button and of the menu, e.g. "Actions for acme/api". */
   label: string
   items: readonly ActionMenuItem[]
-  radio?: ActionMenuRadio
+  /**
+   * One or more one-of-many choices, e.g. a schedule and a repository link.
+   * Each group renders as its own section under the items.
+   */
+  radio?: ActionMenuRadio | readonly ActionMenuRadio[]
   /** The trigger, for callers that move focus back to it. */
   triggerRef?: RefObject<HTMLButtonElement | null>
   /** Extra classes for the trigger button. */
   className?: string
 }) {
+  const radios: readonly ActionMenuRadio[] =
+    radio === undefined ? [] : Array.isArray(radio) ? radio : [radio]
   const button = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
@@ -302,30 +308,31 @@ export function ActionMenu({
                 )
               })}
 
-              {radio ? (
+              {radios.map((group) => (
                 <div
+                  key={group.label}
                   role="group"
-                  aria-label={radio.label}
+                  aria-label={group.label}
                   className="mt-1 flex flex-col border-t border-border-subtle pt-1"
                 >
                   <div className="flex items-center gap-1 px-2 pb-1 pt-0.5 text-[0.75rem] text-faint">
-                    <span className="flex-1">{radio.title}</span>
-                    {radio.hint}
+                    <span className="flex-1">{group.title}</span>
+                    {group.hint}
                   </div>
-                  {radio.options.map((option) => {
-                    const checked = option.value === radio.value
+                  {group.options.map((option) => {
+                    const checked = option.value === group.value
                     return (
                       <button
                         key={option.value}
                         type="button"
                         role="menuitemradio"
                         aria-checked={checked}
-                        aria-disabled={radio.disabled ? true : undefined}
-                        disabled={radio.disabled}
-                        onClick={() => radio.onChange(option.value)}
+                        aria-disabled={group.disabled ? true : undefined}
+                        disabled={group.disabled}
+                        onClick={() => group.onChange(option.value)}
                         className={cn(
                           itemClass,
-                          radio.disabled
+                          group.disabled
                             ? 'pointer-events-none opacity-50'
                             : undefined,
                         )}
@@ -338,7 +345,7 @@ export function ActionMenu({
                     )
                   })}
                 </div>
-              ) : null}
+              ))}
             </div>,
             document.body,
           )

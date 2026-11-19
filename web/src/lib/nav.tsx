@@ -113,6 +113,22 @@ const legacyPathnames: Record<string, string> = {
   '/scan-history': '/repositories',
 }
 
+/**
+ * bandTitlePaths are pages whose header band owns the page title, so the app
+ * header bar keeps only the mobile menu button there.
+ */
+const bandTitlePaths = new Set([
+  '/containers',
+  '/repositories',
+  '/connections',
+  '/configurations',
+])
+
+/** bandOwnsTitle says whether the page's band replaces the header bar title. */
+export function bandOwnsTitle(pathname: string): boolean {
+  return bandTitlePaths.has(pathname)
+}
+
 /** sectionPathnames keeps a page under the nav entry that owns it (#17). */
 const sectionPathnames: { prefix: string; to: string }[] = [
   // The scan diff page is the Scans tab's detail view.

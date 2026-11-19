@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom'
 import { useDrawerFocus } from './drawer-focus'
 import { HealthChip } from './health-chip'
 import { CloseIcon, MenuIcon, MoonIcon, SunIcon } from './icons'
+import { pageBandId, pageHeadingId } from './page-band'
 import { TrivyDBChip } from './trivy-db-chip'
 import { UpdateNotice } from './update-notice'
 import { assetsQuery, type Asset } from '../api/assets'
@@ -19,6 +20,7 @@ import type { FindingsSearch } from '../lib/urls'
 import { dashboardQuery, openFindingTotal } from '../api/reports'
 import { useT } from '../lib/i18n'
 import {
+  bandOwnsTitle,
   navBadge,
   navGroups,
   navItemFor,
@@ -170,6 +172,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       ? undefined
       : assets.data?.find((asset) => asset.id === Number(pageAssetId))
   const onFindings = pathname === '/findings' || pageAssetId !== undefined
+  // A banded page owns its title and subtitle, so the header bar keeps only
+  // the mobile menu button.
+  const banded = bandOwnsTitle(pathname)
 
   // A link inside the drawer navigates and the drawer must not stay over the
   // page it just opened; the same goes when the viewport grows past lg.
@@ -178,7 +183,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     previousPath.current = pathname
     if (!drawerOpen) return
     setDrawerOpen(false)
-    headingRef.current?.focus()
+    // A banded page keeps its title outside the header bar.
+    const heading =
+      headingRef.current ?? document.getElementById(pageHeadingId)
+    heading?.focus()
   }, [pathname, drawerOpen])
 
   useEffect(() => {
@@ -209,7 +217,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       ) : null}
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle px-4 py-2.5 sm:px-7">
+        <header
+          className={cn(
+            'flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle px-4 py-2.5 sm:px-7',
+            // A band on desktop starts at the top of the main area.
+            banded && 'lg:hidden',
+          )}
+        >
           <button
             type="button"
             aria-label={t('app.nav.open')}
@@ -223,31 +237,37 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <MenuIcon />
           </button>
-          <h1
-            ref={headingRef}
-            tabIndex={-1}
-            className="shrink-0 text-[0.9375rem] font-semibold focus:outline-none"
-          >
-            {pageAsset ? (
-              <Link to="/findings" className="text-muted hover:text-fg hover:underline">
-                {t(current.labelKey)}
-              </Link>
-            ) : (
-              t(current.labelKey)
-            )}
-          </h1>
-          {onFindings ? (
+          {banded ? null : (
             <>
-              <span aria-hidden="true" className="-mx-1.5 text-faint">›</span>
-              <ProjectSwitcher assets={assets.data ?? []} current={pageAsset} />
+              <h1
+                ref={headingRef}
+                tabIndex={-1}
+                className="shrink-0 text-[0.9375rem] font-semibold focus:outline-none"
+              >
+                {pageAsset ? (
+                  <Link to="/findings" className="text-muted hover:text-fg hover:underline">
+                    {t(current.labelKey)}
+                  </Link>
+                ) : (
+                  t(current.labelKey)
+                )}
+              </h1>
+              {onFindings ? (
+                <>
+                  <span aria-hidden="true" className="-mx-1.5 text-faint">›</span>
+                  <ProjectSwitcher assets={assets.data ?? []} current={pageAsset} />
+                </>
+              ) : null}
+              {/* The dashboard hero and the project switcher say this themselves. */}
+              {pathname === '/' || onFindings ? null : (
+                <span className="min-w-0 text-faint">{t(current.subtitleKey)}</span>
+              )}
             </>
-          ) : null}
-          {/* The dashboard hero and the project switcher say this themselves. */}
-          {pathname === '/' || onFindings ? null : (
-            <span className="min-w-0 text-faint">{t(current.subtitleKey)}</span>
           )}
           <div id={pageActionsId} className="ml-auto flex items-center gap-2" />
         </header>
+        {/* The band spans the main area; page-content keeps its own column. */}
+        <div id={pageBandId} />
         <div className="page-content flex flex-col gap-4 px-4 py-4 sm:px-7 sm:py-6">
           {children}
         </div>

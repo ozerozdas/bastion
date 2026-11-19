@@ -111,6 +111,14 @@ test('Connections shows a Docker status card and links to Containers', async ({
   await expect(page.getByText('alpine:3.20', { exact: true })).toBeVisible()
   await expect(page.getByText('nginx:latest', { exact: true })).toBeVisible()
 
+  // The source tabs share the page's header band, with the title and stats.
+  const band = page.locator('#page-band')
+  await expect(
+    band.getByRole('heading', { level: 1, name: 'Containers' }),
+  ).toBeVisible()
+  await expect(band.getByText('Local images', { exact: true })).toBeVisible()
+  await expect(band.getByRole('tablist')).toBeVisible()
+
   await page
     .getByRole('row')
     .filter({ hasText: 'alpine:3.20' })
@@ -146,10 +154,11 @@ test('Containers shows a tracked image scan and its findings link', async ({
   const row = page.getByRole('row').filter({ hasText: 'alpine:3.20' })
   await expect(row.getByText('succeeded', { exact: true })).toBeVisible()
   await expect(row.getByLabel('1 open critical findings')).toBeVisible()
-  await expect(row.getByRole('link', { name: 'View findings' })).toHaveAttribute(
-    'href',
-    '/findings?asset=7',
-  )
+  // View findings sits in the row's ⋯ menu.
+  await row.getByRole('button', { name: 'Actions for alpine:3.20' }).click()
+  await expect(
+    page.getByRole('menuitem', { name: 'View findings' }),
+  ).toHaveAttribute('href', '/findings?asset=7')
   expect(problems).toEqual([])
 })
 
@@ -202,7 +211,8 @@ test('Containers removes a tracked image after confirming', async ({
   await page.getByRole('link', { name: 'Containers, 1' }).click()
 
   const row = page.getByRole('row').filter({ hasText: 'alpine:3.20' })
-  await row.getByRole('button', { name: 'Remove' }).click()
+  await row.getByRole('button', { name: 'Actions for alpine:3.20' }).click()
+  await page.getByRole('menuitem', { name: 'Remove' }).click()
 
   const confirm = page
     .getByRole('row')
@@ -216,18 +226,12 @@ test('Containers removes a tracked image after confirming', async ({
   await confirm.getByRole('button', { name: 'Remove' }).click()
   await removeRequest
 
-  // The daemon still lists the image; the row is untracked again.
+  // The daemon still lists the image; the row is untracked again, so it has no
+  // per-asset menu and keeps only the primary Scan action.
+  const untracked = page.getByRole('row').filter({ hasText: 'alpine:3.20' })
   await expect(
-    page
-      .getByRole('row')
-      .filter({ hasText: 'alpine:3.20' })
-      .getByRole('link', { name: 'View findings' }),
+    untracked.getByRole('button', { name: 'Actions for alpine:3.20' }),
   ).toHaveCount(0)
-  await expect(
-    page
-      .getByRole('row')
-      .filter({ hasText: 'alpine:3.20' })
-      .getByRole('button', { name: 'Remove' }),
-  ).toHaveCount(0)
+  await expect(untracked.getByRole('button', { name: 'Scan' })).toBeVisible()
   expect(problems).toEqual([])
 })

@@ -499,7 +499,7 @@ function FindingsExportMenu({
  * per rule across projects, is the default (#90, #106); a project filter
  * forces single, and the toggle only appears for the fleet-wide list.
  */
-export function FindingsPage({ hero }: { hero?: ReactNode } = {}) {
+export function FindingsPage({ band }: { band?: ReactNode } = {}) {
   const t = useT()
   const languageCode = useLanguage()
   // The asset page carries its project in the path; the list works the same.
@@ -1208,7 +1208,8 @@ export function FindingsPage({ hero }: { hero?: ReactNode } = {}) {
         }
         value={tab}
         onChange={changeTab}
-        head={hero}
+        // A project page passes its own band summary; the fleet list has none.
+        band={band === undefined ? undefined : { summary: band }}
         hideSingle
       >
         {tab === 'fix-plan' ? (
@@ -1219,7 +1220,7 @@ export function FindingsPage({ hero }: { hero?: ReactNode } = {}) {
           />
         ) : (
           <>
-      {/* A project's own page keeps its policy in the hero. */}
+      {/* A project's own page keeps its policy in the band. */}
       {selected === undefined || pinned ? null : (
         <LicencePolicyCard
           assetId={selected.id}
