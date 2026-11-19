@@ -95,6 +95,7 @@ export function findingColumns(
       cellClassName: 'py-2 pr-3 pl-3',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'status',
       cell: (finding) => (
         <Badge tone={severityTone[finding.severity]}>
           {severityLabel(finding.severity)}
@@ -109,6 +110,7 @@ export function findingColumns(
             headerClassName: 'pl-3',
             cellClassName:
               'py-2 pl-3 whitespace-nowrap tabular-nums text-[0.8125rem]',
+            mobile: 'hidden',
             cell: (finding: Finding) =>
               finding.epss ? (
                 <span title={epssLabel(finding.epss)}>
@@ -133,6 +135,7 @@ export function findingColumns(
             header: t('findings.column.reach'),
             headerClassName: 'pl-3',
             cellClassName: 'py-2 pl-3 whitespace-nowrap',
+            mobile: 'hidden',
             cell: (finding: Finding) =>
               finding.reachability ? (
                 <Badge
@@ -158,6 +161,8 @@ export function findingColumns(
       headerClassName: 'pl-3',
       cellClassName: 'max-w-[22ch] py-2 pl-3',
       sortable: true,
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.project'),
       cellTitle: projectName,
       cell: (finding) => (
         <span className="block truncate">{projectName(finding)}</span>
@@ -169,6 +174,8 @@ export function findingColumns(
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 whitespace-nowrap',
       sortable: true,
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.type'),
       cell: (finding) => (
         <>
           {t(typeLabels[finding.type])}
@@ -200,6 +207,8 @@ export function findingColumns(
       header: t('findings.column.rule'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap text-muted',
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.rule'),
       cell: (finding) => finding.rule_id ?? '—',
     },
     {
@@ -208,6 +217,8 @@ export function findingColumns(
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
       sortable: true,
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.package'),
       cell: (finding) => {
         const packageLabel =
           finding.package_name === undefined
@@ -245,6 +256,8 @@ export function findingColumns(
       cellClassName: 'max-w-[38ch] py-2 pl-3',
       sortable: true,
       sortKey: 'title',
+      mobile: 'primary',
+      cellTitle: (finding) => finding.title,
       cell: (finding) => (
         <>
           <span className="block">{finding.title}</span>
@@ -261,6 +274,7 @@ export function findingColumns(
       header: t('findings.column.scanner'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap text-muted',
+      mobile: 'hidden',
       cell: (finding) => finding.scanner,
     },
   ]
@@ -285,6 +299,7 @@ function groupedColumns(
       cellClassName: 'py-2 pr-3 pl-3 whitespace-nowrap',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'status',
       cell: (group) => (
         <Badge tone={severityTone[group.severity]}>
           {severityLabel(group.severity)}
@@ -298,6 +313,8 @@ function groupedColumns(
       cellClassName: 'max-w-[46ch] py-2 pl-3',
       sortable: true,
       sortKey: 'title',
+      mobile: 'primary',
+      cellTitle: (group) => group.title,
       cell: (group) => (
         <>
           <span className="block">{group.title}</span>
@@ -318,6 +335,8 @@ function groupedColumns(
       sortable: true,
       sortKey: 'project',
       defaultSortDirection: 'desc',
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.projects'),
       cellTitle: (group) =>
         group.asset_ids
           .map(
@@ -331,6 +350,8 @@ function groupedColumns(
       header: t('findings.column.fixedIn'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap',
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.fixedIn'),
       cellTitle: (group) =>
         group.fixed_versions.length > 1
           ? group.fixed_versions.join(', ')
@@ -882,7 +903,7 @@ export function FindingsPage() {
       kind: 'search',
       placeholder: t('findings.filter.searchPlaceholder'),
       value: queryInput,
-      className: 'w-full sm:w-52',
+      className: 'w-full lg:w-52',
       options: [],
       onChange: setQueryInput,
     },
@@ -890,7 +911,7 @@ export function FindingsPage() {
       id: 'findings-severity',
       label: t('findings.filter.severity'),
       value: severity,
-      className: 'w-full sm:w-36',
+      className: 'w-full lg:w-48',
       options: [
         { value: '', label: t('findings.filter.allSeverities') },
         ...severityOptions.map((option) => ({
@@ -904,7 +925,7 @@ export function FindingsPage() {
       id: 'findings-status',
       label: t('findings.filter.status'),
       value: statusChoice,
-      className: 'w-full sm:w-40',
+      className: 'w-full lg:w-40',
       options: [
         { value: 'open', label: t('findings.filter.open') },
         { value: 'ignored', label: t('findings.filter.ignored') },
@@ -916,7 +937,7 @@ export function FindingsPage() {
       id: 'findings-project',
       label: t('findings.filter.project'),
       value: selected === undefined ? '' : String(selected.id),
-      className: 'w-full sm:w-52',
+      className: 'w-full lg:w-52',
       options: [
         { value: '', label: t('findings.filter.allProjects') },
         // Grouped by asset kind, so images are not mixed into repositories.
@@ -1187,6 +1208,7 @@ export function FindingsPage() {
       <FilterBar
         label={t('findings.filter.aria')}
         fields={filters}
+        fieldGrid
         panel={
           <div
             id={moreFiltersId}
@@ -1247,7 +1269,7 @@ export function FindingsPage() {
           )
         }
       >
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2 sm:max-lg:col-span-2">
           <Button
             type="button"
             variant="outline"
@@ -1423,6 +1445,7 @@ export function FindingsPage() {
                 setOpenGroupKey(group.key)
               }}
               bodyRef={groupFocus.bodyRef}
+              mobileCards
             />
           ) : (
             <DataTable
@@ -1437,6 +1460,7 @@ export function FindingsPage() {
                 setOpenFingerprint(finding.fingerprint)
               }}
               bodyRef={rowFocus.bodyRef}
+              mobileCards
             />
           )}
           <Pager

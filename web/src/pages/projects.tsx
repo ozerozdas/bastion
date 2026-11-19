@@ -72,7 +72,8 @@ function projectColumns(): DataTableColumn<Asset>[] {
     {
       id: 'images',
       header: t('repos.column.images'),
-      headerClassName: 'w-[5rem] pl-3',
+      // The image count is the first thing to go when the table is narrow.
+      headerClassName: 'hidden w-[5rem] pl-3 xl:table-cell',
       sortable: true,
       sortValue: (asset) => asset.linked_images.length,
     },
@@ -292,6 +293,7 @@ function ProjectsTable({
         clientSort
         sort={tableSort.sort}
         onSortChange={tableSort.onSortChange}
+        mobileCards
         renderRow={(asset) => (
           <ProjectRow asset={asset} live={live.get(asset.id)} selection={selection} />
         )}
@@ -369,7 +371,7 @@ function ProjectRow({
   return (
     <Fragment>
       <DataTableRow selection={selection.row(asset)}>
-        <td className="max-w-[34ch] py-2 pr-3 align-middle">
+        <td data-mobile="primary" className="max-w-[34ch] py-2 pr-3 align-middle max-xl:max-w-[26ch]">
           <div className="flex min-w-0 flex-col gap-0.5 leading-tight">
             <span className="truncate font-medium" title={asset.display_name}>
               {asset.display_name}
@@ -390,7 +392,7 @@ function ProjectRow({
             </span>
           </div>
         </td>
-        <td className="py-2 pl-3 align-middle">
+        <td data-mobile="hidden" className="hidden py-2 pl-3 align-middle xl:table-cell">
           {images.length === 0 ? null : (
             <InfoTip
               label={t('repos.images.aria', { name: asset.display_name })}
@@ -415,7 +417,10 @@ function ProjectRow({
             />
           )}
         </td>
-        <td className="status-cell-wide py-2 pl-3 align-middle whitespace-nowrap">
+        <td
+          data-mobile="status"
+          className="status-cell-wide py-2 pl-3 align-middle whitespace-nowrap"
+        >
           {status ? (
             <Badge tone={statusView[status].tone}>
               {t(statusView[status].labelKey)}
@@ -432,7 +437,7 @@ function ProjectRow({
             </span>
           ) : null}
         </td>
-        <td className="py-2 pl-3 align-middle">
+        <td data-mobile="counts" className="py-2 pl-3 align-middle">
           {lastScan === undefined && !liveActive ? (
             <span className="text-[0.8125rem] whitespace-nowrap text-faint">
               {t('repos.findings.notScanned')}
@@ -457,7 +462,7 @@ function ProjectRow({
             </span>
           )}
         </td>
-        <td className="py-2 pl-3 align-middle">
+        <td data-mobile="actions" className="py-2 pl-3 align-middle">
           <div className="flex items-center justify-end gap-1">
             {running && lastScan ? (
               <Button

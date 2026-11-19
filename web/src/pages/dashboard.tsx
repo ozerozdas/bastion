@@ -164,7 +164,7 @@ export function DashboardPage() {
       ) : null}
       <RiskSummary totals={data.totals_by_severity} />
       <RiskiestProjects assets={data.top_assets} />
-      <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-2">
         <FindingsByType totals={data.totals_by_type} />
         <Trend trends={data.trend} names={names} />
       </div>
@@ -358,20 +358,22 @@ function RiskSummary({ totals }: { totals: SeverityTotals }) {
           {t('dashboard.openFindings.total', { total })}
         </span>
       </div>
-      <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
-        <SeverityStat
-          count={totals.critical}
-          label={t('severity.critical')}
-          mark="bg-critical"
-          strong
-        />
-        <SeverityStat
-          count={totals.high}
-          label={t('severity.high')}
-          mark="bg-high"
-          strong
-        />
-        <div className="ml-auto flex flex-wrap items-end gap-x-6 gap-y-3">
+      <div className="flex flex-col gap-y-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-8 sm:gap-y-4">
+        <div className="flex items-end gap-x-8">
+          <SeverityStat
+            count={totals.critical}
+            label={t('severity.critical')}
+            mark="bg-critical"
+            strong
+          />
+          <SeverityStat
+            count={totals.high}
+            label={t('severity.high')}
+            mark="bg-high"
+            strong
+          />
+        </div>
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3 sm:ml-auto">
           <SeverityStat
             count={totals.medium}
             label={t('severity.medium')}
@@ -500,10 +502,10 @@ function RiskiestProjects({ assets }: { assets: AssetRisk[] }) {
                 <th className="border-b border-border-subtle pb-1.5 pl-3 font-medium whitespace-nowrap">
                   {t('severity.high')}
                 </th>
-                <th className="border-b border-border-subtle pb-1.5 pl-3 font-medium whitespace-nowrap">
+                <th className="hidden border-b border-border-subtle pb-1.5 pl-3 font-medium whitespace-nowrap sm:table-cell">
                   {t('severity.medium')}
                 </th>
-                <th className="border-b border-border-subtle pb-1.5 pl-3 font-medium whitespace-nowrap">
+                <th className="hidden border-b border-border-subtle pb-1.5 pl-3 font-medium whitespace-nowrap sm:table-cell">
                   {t('severity.low')}
                 </th>
               </tr>
@@ -530,10 +532,10 @@ function RiskiestProjects({ assets }: { assets: AssetRisk[] }) {
                   <td className="py-1.5 pl-3 whitespace-nowrap">
                     <CountBadge count={asset.high} tone="high" />
                   </td>
-                  <td className="py-1.5 pl-3 whitespace-nowrap">
+                  <td className="hidden py-1.5 pl-3 whitespace-nowrap sm:table-cell">
                     <CountBadge count={asset.medium} tone="medium" />
                   </td>
-                  <td className="py-1.5 pl-3 whitespace-nowrap">
+                  <td className="hidden py-1.5 pl-3 whitespace-nowrap sm:table-cell">
                     <CountBadge count={asset.low} tone="low" />
                   </td>
                 </tr>
@@ -576,7 +578,9 @@ function Trend({
             return (
               <li
                 key={trend.asset_id}
-                className="-mx-2 flex items-center justify-between gap-4 rounded px-2 py-1.5 hover:bg-hover"
+                // No negative margin: it pushed the row 8px past the grid
+                // column, so the dashboard grid scrolled sideways at 1440.
+                className="flex items-center justify-between gap-4 rounded py-1.5 hover:bg-hover"
               >
                 <Link
                   to="/findings"
@@ -626,7 +630,7 @@ function LastScans({ scans }: { scans: LastScan[] }) {
               <th className="status-cell border-b border-border-subtle pb-1.5 font-medium">
                 {t('dashboard.column.status')}
               </th>
-              <th className="border-b border-border-subtle pb-1.5 text-right font-medium">
+              <th className="hidden border-b border-border-subtle pb-1.5 text-right font-medium sm:table-cell">
                 {t('dashboard.column.lastScan')}
               </th>
             </tr>
@@ -636,11 +640,12 @@ function LastScans({ scans }: { scans: LastScan[] }) {
               const status = statusView[scan.status]
               return (
                 <tr key={scan.asset_id} className="hover:bg-hover">
-                  <td className="py-1.5 pr-3">
+                  <td className="w-full max-w-0 py-1.5 pr-3">
                     <Link
                       to="/findings"
                       search={{ asset: scan.asset_id }}
-                      className="hover:underline"
+                      className="block truncate hover:underline"
+                      title={scan.display_name}
                     >
                       {scan.display_name}
                     </Link>
@@ -649,7 +654,7 @@ function LastScans({ scans }: { scans: LastScan[] }) {
                     <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
                   </td>
                   <td
-                    className="py-1.5 text-right whitespace-nowrap text-muted tabular-nums"
+                    className="hidden py-1.5 text-right whitespace-nowrap text-muted tabular-nums sm:table-cell"
                     title={
                       scan.finished_at
                         ? formatDateTime(scan.finished_at)

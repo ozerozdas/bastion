@@ -39,6 +39,35 @@ export function CountBadge({
 }
 
 /**
+ * OpenSeverityCounts is the single-line style the Repositories table uses: one
+ * badge per non-zero severity, or a muted dash when nothing is open.
+ */
+export function OpenSeverityCounts({ counts }: { counts: SeverityTotals }) {
+  useT()
+  const shown = severityCounts.filter((severity) => counts[severity.key] > 0)
+  if (shown.length === 0) {
+    return (
+      <span className="text-[0.8125rem] text-faint">
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">{t('repos.findings.none')}</span>
+      </span>
+    )
+  }
+  return (
+    <span className="flex flex-nowrap items-center gap-1">
+      {shown.map((severity) => (
+        <CountBadge
+          key={severity.key}
+          count={counts[severity.key]}
+          tone={severity.tone}
+          label={severity.key}
+        />
+      ))}
+    </span>
+  )
+}
+
+/**
  * SeverityCountBadges shows counts the way the Projects table does, with the
  * same badges, and adds the counts as one screen-reader sentence so the row
  * reads as text and not as four colours.

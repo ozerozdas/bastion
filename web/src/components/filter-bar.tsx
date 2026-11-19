@@ -31,6 +31,11 @@ export type FilterBarProps = {
   layout?: 'stacked' | 'inline'
   /** bordered draws the card surface the reports page uses. */
   bordered?: boolean
+  /**
+   * Fields flow in one column on phones, two between sm and lg, and the usual
+   * wrapping row from lg up. Children then take a row of their own below lg.
+   */
+  fieldGrid?: boolean
   /** Content after the fields, e.g. a note about the view on screen. */
   children?: ReactNode
   /** Content under the row inside the card, e.g. an inline disclosure panel. */
@@ -42,7 +47,7 @@ export type FilterBarProps = {
 const stackedInput =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
 const inlineSelect =
-  'h-8 rounded-md border border-border-strong bg-surface px-2 text-[0.8125rem] text-fg'
+  'h-8 max-w-full min-w-0 rounded-md border border-border-strong bg-surface px-2 text-[0.8125rem] text-fg'
 
 /** optionNodes renders options, folding consecutive same-group ones into an optgroup. */
 function optionNodes(options: readonly FilterOption[]): ReactNode[] {
@@ -80,6 +85,7 @@ export function FilterBar({
   label,
   layout = 'stacked',
   bordered = true,
+  fieldGrid = false,
   children,
   panel,
   activeFilters,
@@ -90,8 +96,10 @@ export function FilterBar({
   const Wrapper = stacked ? 'section' : 'div'
   const card = bordered && 'rounded-card border border-border-subtle bg-surface p-4'
   const row = cn(
-    'flex flex-wrap',
     stacked ? 'items-end gap-3' : 'items-center gap-2',
+    fieldGrid && stacked
+      ? 'grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap'
+      : 'flex flex-wrap',
   )
 
   const fieldNodes = fields.map((field) => {

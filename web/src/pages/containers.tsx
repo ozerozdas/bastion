@@ -25,6 +25,8 @@ import { useStartScans, type Scan } from '../api/scans'
 import {
   DataTable,
   DataTableRow,
+  MobileCellLabel,
+  mobileCellProps,
   useTableSort,
   type DataTableColumn,
 } from '../components/data-table'
@@ -230,9 +232,10 @@ function DockerPanel({
       id: 'image',
       header: t('containers.column.image'),
       sortable: true,
+      mobile: 'primary',
       sortValue: (row) => row.image.reference,
       cell: (row) => (
-        <div className="max-w-[32ch]">
+        <div className="max-w-[32ch] max-xl:max-w-[22ch]">
           <span
             className="block truncate font-mono text-xs text-fg"
             title={row.image.reference}
@@ -248,20 +251,24 @@ function DockerPanel({
     {
       id: 'size',
       header: t('containers.column.size'),
-      headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap tabular-nums',
+      // Size, age and schedule are the metadata that goes before the table
+      // starts scrolling between md and xl.
+      headerClassName: 'hidden pl-3 xl:table-cell',
+      cellClassName: 'hidden pl-3 align-top whitespace-nowrap tabular-nums xl:table-cell',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'hidden',
       sortValue: (row) => row.image.size_bytes,
       cell: (row) => <span className="text-muted">{formatSize(row.image.size_bytes)}</span>,
     },
     {
       id: 'created',
       header: t('containers.column.created'),
-      headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top whitespace-nowrap tabular-nums',
+      headerClassName: 'hidden pl-3 xl:table-cell',
+      cellClassName: 'hidden pl-3 align-top whitespace-nowrap tabular-nums xl:table-cell',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'hidden',
       sortValue: (row) => row.image.created_at,
       cell: (row) => (
         <span className="text-muted">{relativeTime(row.image.created_at)}</span>
@@ -274,6 +281,7 @@ function DockerPanel({
       cellClassName: 'status-cell-wide pl-3 align-top whitespace-nowrap',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'status',
       sortValue: (row) => row.asset?.last_scan?.finished_at ?? '',
       cell: (row) => (
         <ScanCell
@@ -285,9 +293,13 @@ function DockerPanel({
     {
       id: 'repository',
       header: t('containers.column.repository'),
-      headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top',
+      // The linked repository is the first column to go when the schedule needs
+      // the room between md and xl; the card layout below md still shows it.
+      headerClassName: 'hidden pl-3 xl:table-cell',
+      cellClassName: 'hidden pl-3 align-top xl:table-cell',
       sortable: true,
+      mobile: 'secondary',
+      mobileLabel: t('containers.column.repository'),
       sortValue: (row) => row.asset?.display_name ?? '',
       cell: (row) => <LinkCell asset={row.asset} repos={repos} />,
     },
@@ -298,6 +310,8 @@ function DockerPanel({
       cellClassName: 'pl-3 align-top',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'counts',
+      mobileLabel: t('containers.column.openFindings'),
       sortValue: (row) =>
         row.asset === undefined ? -1 : openFindingTotal(row.asset.open_counts),
       cell: (row) =>
@@ -310,8 +324,10 @@ function DockerPanel({
     {
       id: 'schedule',
       header: t('containers.column.schedule'),
-      headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top',
+      headerClassName: 'hidden pl-3 md:table-cell',
+      cellClassName: 'hidden pl-3 align-top md:table-cell',
+      mobile: 'secondary',
+      mobileLabel: t('containers.column.schedule'),
       cell: (row) =>
         row.asset ? (
           <ScanScheduleSelect asset={row.asset} />
@@ -324,6 +340,7 @@ function DockerPanel({
       header: t('containers.column.actions'),
       headerClassName: 'pl-3 text-right',
       cellClassName: 'pl-3 align-top',
+      mobile: 'actions',
       cell: (row) => {
         const asset = row.asset
         const running = asset !== undefined && isRunning(asset, live.get(asset.id))
@@ -408,17 +425,20 @@ function DockerPanel({
             clientSort
             sort={tableSort.sort}
             onSortChange={tableSort.onSortChange}
+            mobileCards
             renderRow={(row) => {
               const asset = row.asset
               return (
                 <Fragment>
-                  <DataTableRow>
+                  <DataTableRow cardMode>
                     {columns.map((column) => (
                       <td
                         key={column.id}
                         className={column.cellClassName}
                         title={column.cellTitle?.(row)}
+                        {...mobileCellProps(column)}
                       >
+                        <MobileCellLabel label={column.mobileLabel} />
                         {column.cell?.(row)}
                       </td>
                     ))}
@@ -496,6 +516,7 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
       id: 'image',
       header: t('containers.column.image'),
       sortable: true,
+      mobile: 'primary',
       sortValue: (asset) => asset.display_name,
       cell: (asset) => (
         <div className="max-w-[40ch]">
@@ -526,6 +547,7 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
       header: t('containers.column.actions'),
       headerClassName: 'pl-3 text-right',
       cellClassName: 'pl-3 align-top',
+      mobile: 'actions',
       cell: (asset) => {
         const archiving = archive.isPending && archive.variables === asset.id
         return (
@@ -564,6 +586,7 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
           clientSort
           sort={tableSort.sort}
           onSortChange={tableSort.onSortChange}
+          mobileCards
         />
       </section>
     </section>
@@ -655,6 +678,7 @@ function EcrConnection({
       cellClassName: 'status-cell-wide pl-3 align-top whitespace-nowrap',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'status',
       sortValue: (row) => row.asset?.last_scan?.finished_at ?? '',
       cell: (row) => (
         <ScanCell
@@ -669,6 +693,8 @@ function EcrConnection({
       headerClassName: 'pl-3',
       cellClassName: 'pl-3 align-top',
       sortable: true,
+      mobile: 'secondary',
+      mobileLabel: t('containers.column.repository'),
       sortValue: (row) => row.asset?.display_name ?? '',
       cell: (row) => <LinkCell asset={row.asset} repos={repos} />,
     },
@@ -679,6 +705,8 @@ function EcrConnection({
       cellClassName: 'pl-3 align-top',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'counts',
+      mobileLabel: t('containers.column.openFindings'),
       sortValue: (row) =>
         row.asset === undefined ? -1 : openFindingTotal(row.asset.open_counts),
       cell: (row) =>
@@ -691,8 +719,10 @@ function EcrConnection({
     {
       id: 'schedule',
       header: t('containers.column.schedule'),
-      headerClassName: 'pl-3',
-      cellClassName: 'pl-3 align-top',
+      headerClassName: 'hidden pl-3 md:table-cell',
+      cellClassName: 'hidden pl-3 align-top md:table-cell',
+      mobile: 'secondary',
+      mobileLabel: t('containers.column.schedule'),
       cell: (row) =>
         row.asset ? (
           <ScanScheduleSelect asset={row.asset} />
@@ -705,6 +735,7 @@ function EcrConnection({
       header: t('containers.column.actions'),
       headerClassName: 'pl-3 text-right',
       cellClassName: 'pl-3 align-top',
+      mobile: 'actions',
       cell: (row) => {
         const asset = row.asset
         const running = asset !== undefined && isRunning(asset, live.get(asset.id))
@@ -791,17 +822,20 @@ function EcrConnection({
             clientSort
             sort={tableSort.sort}
             onSortChange={tableSort.onSortChange}
+            mobileCards
             renderRow={(row) => {
               const asset = row.asset
               return (
                 <Fragment>
-                  <DataTableRow>
+                  <DataTableRow cardMode>
                     {columns.map((column) => (
                       <td
                         key={column.id}
                         className={column.cellClassName}
                         title={column.cellTitle?.(row)}
+                        {...mobileCellProps(column)}
                       >
+                        <MobileCellLabel label={column.mobileLabel} />
                         {column.cell?.(row)}
                       </td>
                     ))}

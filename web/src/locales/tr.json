@@ -18,6 +18,8 @@
   "app.search.placeholder": "Bulgularda, CVE'lerde ara…",
   "app.search.title": "Arama, bulgular tablosuyla birlikte geliyor",
   "app.nav.primary": "Ana",
+  "app.nav.open": "Gezinmeyi aç",
+  "app.nav.close": "Gezinmeyi kapat",
   "app.configuration": "Yapılandırma",
   "app.theme.switch": "{mode} temaya geç",
   "app.theme.light": "Açık",
@@ -798,6 +800,11 @@
   "common.cancel": "Vazgeç",
   "common.requestFailed": "istek başarısız oldu",
   "common.reloadFix": "Sayfayı yenileyin; sürerse bastion'ı çalıştıran terminali kontrol edin.",
+
+  "table.sortBy": "Sırala",
+  "table.defaultOrder": "Varsayılan sıra",
+  "table.sortAscending": "Artan sırala",
+  "table.sortDescending": "Azalan sırala",
 
   "hints.token": "Bağlantılar'da GitHub bağlantısını yeniden test edin.",
   "hints.rateLimit": "GitHub hız sınırını sıfırlayana kadar bekleyin, sonra yeniden tarayın.",

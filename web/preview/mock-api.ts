@@ -519,10 +519,39 @@ function route(method: string, path: string, query: URLSearchParams, body: Recor
     }
     case 'GET scans': {
       if (!rawId) {
+        const sort = query.get('sort')
+        const direction = query.get('order') === 'desc' ? -1 : 1
+        const scanValue = (scan: Scan): string => {
+          switch (sort) {
+            case 'status':
+              return scan.status
+            case 'project':
+              return assets.find((item) => item.id === scan.asset_id)?.ref ?? ''
+            case 'findings':
+              return String(
+                Object.values(scan.counts).reduce((sum, n) => sum + n, 0),
+              )
+            case 'duration':
+              return String(
+                (scan.finished_at === undefined
+                  ? 0
+                  : Date.parse(scan.finished_at)) -
+                  Date.parse(scan.started_at ?? ''),
+              )
+            case 'started':
+              return scan.started_at ?? ''
+            default:
+              return scan.finished_at ?? '9'
+          }
+        }
         const rows = scans
           .filter((scan) => !query.has('asset_id') || scan.asset_id === Number(query.get('asset_id')))
           .filter((scan) => assets.some((item) => item.id === scan.asset_id))
-          .sort((a, b) => (b.finished_at ?? '9').localeCompare(a.finished_at ?? '9'))
+          .sort((a, b) =>
+            sort === null
+              ? (b.finished_at ?? '9').localeCompare(a.finished_at ?? '9')
+              : direction * scanValue(a).localeCompare(scanValue(b)) || b.id - a.id,
+          )
         const limit = Number(query.get('limit') ?? 50)
         const offset = Number(query.get('offset') ?? 0)
         return { scans: rows.slice(offset, offset + limit), total: rows.length, limit, offset }

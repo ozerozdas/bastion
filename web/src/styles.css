@@ -388,6 +388,191 @@ body {
 }
 
 /*
+ * Touch: a coarse pointer needs a fingertip-sized target even where a mouse
+ * does not. Only the hit box grows here, so fine-pointer layouts are unchanged.
+ * `touch-control` is on every Button and every Link styled as one.
+ */
+@media (pointer: coarse) {
+  button,
+  select,
+  textarea,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  [role="tab"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  nav a,
+  nav button,
+  .touch-control {
+    min-height: 2.5rem;
+  }
+
+  /* Icon-only controls are narrower than a fingertip as well. */
+  button[aria-label],
+  button[aria-haspopup],
+  [role="tab"],
+  nav a,
+  nav button,
+  .touch-control {
+    min-width: 2.5rem;
+  }
+
+  /* A checkbox is a target too; the native box simply renders at touch size. */
+  input[type="checkbox"] {
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+  }
+}
+
+/*
+ * Between md and xl the wide status column keeps only the space its badge and
+ * time need, so the tables fit before the xl layout restores the full width.
+ */
+@media (width < 80rem) {
+  .status-cell-wide {
+    width: auto;
+    min-width: 8.5rem;
+  }
+}
+
+/*
+ * Below md an opted-in data table (DataTable's `mobileCards`) becomes a list of
+ * compact cards: each row is a flex line whose cells stack in role order, while
+ * the <table> markup, and every desktop width, stay exactly as they were. Roles
+ * come from data-mobile on each cell; a column without one is hidden here.
+ */
+
+/* The card field label is a real span, not CSS content, so the table keeps its
+ * semantics below md; on the desktop table the header already says it. */
+.data-table-card-label {
+  display: none;
+}
+
+@media (width < 48rem) {
+  .data-table-cards {
+    display: block;
+  }
+
+  /* Headers go; the select-all control stays when the table has one. */
+  .data-table-cards thead {
+    display: none;
+  }
+
+  .data-table-cards thead:has(th[data-mobile="select"]) {
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .data-table-cards thead tr {
+    display: flex;
+    align-items: center;
+  }
+
+  .data-table-cards thead th {
+    display: none;
+  }
+
+  .data-table-cards thead th[data-mobile="select"] {
+    display: block;
+    padding: 0 0 0 0.25rem;
+  }
+
+  .data-table-cards tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .data-table-cards tbody > tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem 0.5rem;
+    border-bottom: 0;
+  }
+
+  .data-table-cards tbody > tr:not(:has(> td[colspan])) {
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--b-border-subtle);
+    border-radius: 8px;
+  }
+
+  /* A confirmation or error row belongs under its card, never in a card of its own. */
+  .data-table-cards tbody > tr:has(> td[colspan]) {
+    display: block;
+    padding: 0 0.25rem;
+  }
+
+  .data-table-cards td {
+    display: block;
+    width: auto;
+    max-width: none;
+    padding: 0;
+  }
+
+  .data-table-cards td[data-mobile="hidden"] {
+    display: none;
+  }
+
+  .data-table-cards td[data-mobile="select"] {
+    order: 0;
+  }
+
+  .data-table-cards td[data-mobile="primary"] {
+    order: 1;
+    flex: 1 1 6rem;
+    min-width: 0;
+  }
+
+  .data-table-cards td[data-mobile="secondary"] {
+    order: 2;
+    flex: 1 1 100%;
+    min-width: 0;
+    font-size: 0.8125rem;
+    white-space: normal;
+  }
+
+  /* A value that truncates on a wide table can wrap once its card is narrow. */
+  .data-table-cards td[data-mobile="secondary"] .truncate {
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+  }
+
+  .data-table-cards td[data-mobile="status"] {
+    order: 3;
+    flex: 0 1 auto;
+    white-space: normal;
+  }
+
+  .data-table-cards td[data-mobile="counts"] {
+    order: 4;
+    flex: 0 1 auto;
+  }
+
+  .data-table-cards td[data-mobile="actions"] {
+    order: 5;
+    flex: 1 1 100%;
+    white-space: normal;
+  }
+
+  /* A secondary value keeps its meaning when its header is not on screen. */
+  .data-table-cards .data-table-card-label {
+    display: inline;
+    color: var(--b-faint);
+  }
+
+  .data-table-cards .data-table-card-label::after {
+    content: ': ';
+  }
+
+  /* A secondary value with nothing in it (a scan without an error) leaves no
+     labelled gap; the cell says so through data-empty. */
+  .data-table-cards td[data-empty] {
+    display: none;
+  }
+}
+
+/*
  * Theme swatches in the Appearance tab: each card previews the palette's light
  * and dark halves. The colours are literals on purpose, so the preview does not
  * depend on the theme that is currently active.
@@ -468,4 +653,25 @@ body {
 dialog::backdrop {
   background: rgb(0 0 0 / 0.55);
   backdrop-filter: blur(1.5px);
+}
+
+/* The navigation drawer on small screens slides in from the left; motion is
+   decoration, so a reduced-motion preference removes it entirely. */
+@keyframes sidebar-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.sidebar-drawer {
+  animation: sidebar-in 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-drawer {
+    animation: none;
+  }
 }

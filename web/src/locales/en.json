@@ -18,6 +18,8 @@
   "app.search.placeholder": "Search findings, CVEs…",
   "app.search.title": "Search arrives with the findings table",
   "app.nav.primary": "Primary",
+  "app.nav.open": "Open navigation",
+  "app.nav.close": "Close navigation",
   "app.configuration": "Configuration",
   "app.theme.switch": "Switch to {mode} theme",
   "app.theme.light": "light",
@@ -798,6 +800,11 @@
   "common.cancel": "Cancel",
   "common.requestFailed": "the request failed",
   "common.reloadFix": "Reload the page; if it persists, check the terminal running bastion.",
+
+  "table.sortBy": "Sort by",
+  "table.defaultOrder": "Default order",
+  "table.sortAscending": "Sort ascending",
+  "table.sortDescending": "Sort descending",
 
   "hints.token": "Re-test the GitHub connection on Connections.",
   "hints.rateLimit": "Wait until GitHub resets the rate limit, then scan again.",
