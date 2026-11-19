@@ -459,10 +459,20 @@ body {
     min-width: 2.5rem;
   }
 
-  /* A checkbox is a target too; the native box simply renders at touch size. */
-  input[type="checkbox"] {
-    inline-size: 2.5rem;
-    block-size: 2.5rem;
+  /*
+   * Switches and checkboxes keep their drawn size: enlarging them turned
+   * switches into circles and checkboxes into 40px native boxes on
+   * touch-capable desktops. A switch grows its hit box with an invisible ring.
+   */
+  [role="switch"] {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  [role="switch"]::before {
+    content: "";
+    position: absolute;
+    inset: -11px -4px;
   }
 }
 
