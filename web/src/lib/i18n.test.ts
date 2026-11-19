@@ -62,7 +62,9 @@ function placeholders(message: string): string[] {
  * Every other key must use exactly the placeholders English uses.
  */
 const perLocaleParams: Record<string, Record<string, string[]>> = {
-  'epss.percentile': { tr: ['percent'] },
+  'epss.percentile': Object.fromEntries(
+    ['tr', 'es', 'pt', 'ja', 'zh'].map((code) => [code, ['percent']]),
+  ),
 }
 
 const codes = localeCodes()

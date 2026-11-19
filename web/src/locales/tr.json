@@ -677,7 +677,6 @@
   "connections.docker.unavailable": "bağlı değil",
   "connections.docker.local": "Yerel daemon",
   "connections.docker.unavailableHint": "Docker daemon bulunamadı. Yerel imajları taramak için Docker'ı başlatıp sayfayı yenileyin.",
-  "connections.github.confirmRemove": "“{name}” kaldırılsın mı? Token'ı işletim sistemi anahtarlığından silinir.",
   "connections.github.testErrorFix": "Yeniden test edin; başarısız olmaya devam ederse bağlantıyı kaldırıp yeniden ekleyin.",
   "connections.github.removeErrorFix": "Kaldırma başarılı olana kadar token kalır; yeniden deneyin.",
   "connections.github.addTitle": "GitHub bağlantısı ekle",

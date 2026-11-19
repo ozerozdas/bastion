@@ -677,7 +677,6 @@
   "connections.docker.unavailable": "not connected",
   "connections.docker.local": "Local daemon",
   "connections.docker.unavailableHint": "No Docker daemon was found. Start Docker and reload to scan local images.",
-  "connections.github.confirmRemove": "Remove “{name}”? Its token is deleted from the OS keychain.",
   "connections.github.testErrorFix": "Test again; if it keeps failing, remove and re-add the connection.",
   "connections.github.removeErrorFix": "The token stays until removal succeeds; try again.",
   "connections.github.addTitle": "Add GitHub connection",
