@@ -65,22 +65,6 @@ func (t SLAThresholds) Validate() error {
 	return nil
 }
 
-// days returns the threshold for one severity and whether that severity has
-// one. Unknown severity has none: the SLA report leaves it out.
-func (t SLAThresholds) days(severity string) (int, bool) {
-	switch findings.Severity(severity) {
-	case findings.SeverityCritical:
-		return t.Critical, true
-	case findings.SeverityHigh:
-		return t.High, true
-	case findings.SeverityMedium:
-		return t.Medium, true
-	case findings.SeverityLow:
-		return t.Low, true
-	}
-	return 0, false
-}
-
 // SLAOverdue is one open finding older than its severity's threshold.
 type SLAOverdue struct {
 	Finding       Finding
