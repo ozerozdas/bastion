@@ -120,4 +120,13 @@ func TestBuildEmpty(t *testing.T) {
 	if len(report.Runs[0].Results) != 0 {
 		t.Fatalf("results = %d, want 0", len(report.Runs[0].Results))
 	}
+	raw, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"rules":[]`, `"results":[]`} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("encoded report lacks %s: %s", want, raw)
+		}
+	}
 }
