@@ -205,7 +205,7 @@ function SidebarSearch() {
         onChange={(event) => setValue(event.target.value)}
         placeholder={t('app.search.placeholder')}
         aria-label={t('app.search.placeholder')}
-        className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-faint [&::-webkit-search-cancel-button]:hidden"
+        className="min-w-0 flex-1 bg-transparent text-fg outline-none! placeholder:text-faint [&::-webkit-search-cancel-button]:hidden"
       />
       <kbd className="rounded border border-border-strong px-1 font-mono text-[0.6875rem]">
         ⌘K
