@@ -14,6 +14,7 @@ import { CloseIcon, MenuIcon, MoonIcon, SunIcon } from './icons'
 import { pageBandId, pageHeadingId } from './page-band'
 import { TrivyDBChip } from './trivy-db-chip'
 import { UpdateNotice } from './update-notice'
+import { useDelayedClose } from './ui/presence'
 import { assetsQuery } from '../api/assets'
 import { dashboardQuery, openFindingTotal } from '../api/reports'
 import { useT } from '../lib/i18n'
@@ -63,6 +64,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const current = navItemFor(pathname)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // The close button and the scrim let the drawer slide out before it unmounts.
+  const drawer = useDelayedClose(() => setDrawerOpen(false))
   // The route the drawer was opened from; a route change closes it and moves
   // focus into the new page instead of back to the menu button.
   const drawerPath = useRef(pathname)
@@ -111,12 +114,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           id={sidebarId}
           label={t('app.nav.primary')}
           restoreFocus={drawerPath.current === pathname}
-          onClose={() => setDrawerOpen(false)}
+          closing={drawer.closing}
+          onClose={drawer.close}
         >
           <SidebarContent
             current={current}
             counts={counts}
-            onClose={() => setDrawerOpen(false)}
+            onClose={drawer.close}
           />
         </SidebarDrawer>
       ) : null}
@@ -262,12 +266,15 @@ function SidebarDrawer({
   id,
   label,
   restoreFocus,
+  closing,
   onClose,
   children,
 }: {
   id: string
   label: string
   restoreFocus: boolean
+  /** True while the drawer slides out; the parent unmounts it after. */
+  closing: boolean
   onClose: () => void
   children: ReactNode
 }) {
@@ -282,7 +289,10 @@ function SidebarDrawer({
   }, [])
 
   return (
-    <div className="fixed inset-0 z-40">
+    <div
+      className="fixed inset-0 z-40"
+      data-closing={closing ? '' : undefined}
+    >
       <div
         aria-hidden="true"
         onClick={onClose}
@@ -296,7 +306,7 @@ function SidebarDrawer({
         aria-label={label}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="sidebar-drawer absolute inset-y-0 left-0 flex w-[232px] max-w-[calc(100vw-3rem)] flex-col gap-[18px] overflow-y-auto border-r border-border-subtle bg-sidebar px-3 py-4 shadow-xl focus:outline-none"
+        className="panel-sheet absolute inset-y-0 left-0 flex w-[232px] max-w-[calc(100vw-3rem)] flex-col gap-[18px] overflow-y-auto border-r border-border-subtle bg-sidebar px-3 py-4 shadow-xl focus:outline-none"
       >
         {children}
       </div>

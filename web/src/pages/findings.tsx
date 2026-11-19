@@ -47,6 +47,7 @@ import { Tabs } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { InfoTip } from '../components/ui/info-tip'
+import { usePresence } from '../components/ui/presence'
 import { severityLabel, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
 import { expiryDate, expiryValue, type ExpiryChoice } from '../lib/expiry'
 import { epssLabel, percentileLabel } from '../lib/epss'
@@ -408,6 +409,8 @@ function FindingsExportMenu({
   const t = useT()
   const [open, setOpen] = useState(false)
   const menu = useRef<HTMLDivElement>(null)
+  // Kept for one exit so the menu closes the way it opened.
+  const { mounted, closing } = usePresence(open, 120)
 
   // A menu closes on an outside click or Escape, like every other popover.
   useEffect(() => {
@@ -440,11 +443,12 @@ function FindingsExportMenu({
       >
         {t('findings.export')}
       </Button>
-      {open ? (
+      {mounted ? (
         <div
           role="menu"
           aria-label={t('findings.export.aria')}
-          className="absolute right-0 z-20 mt-1 flex w-28 flex-col rounded-md border border-border-strong bg-surface p-1 shadow-lg"
+          data-closing={closing ? '' : undefined}
+          className="menu-pop absolute right-0 z-20 mt-1 flex w-28 flex-col rounded-md border border-border-strong bg-surface p-1 shadow-lg"
         >
           {exportFormats.map(({ format, label }) => (
             <a

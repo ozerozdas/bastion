@@ -32,6 +32,22 @@
 
   --b-font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --b-font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+
+  /*
+   * Motion. Every transition in the app reads these, so the timing stays one
+   * system instead of a different curve per component: fast for the things the
+   * pointer touches all day (tooltips, hover, press), the middle for panels
+   * that carry a decision (menus, dialogs), slow only for the large surfaces
+   * (the mobile drawer) where a short slide would look like a jump cut.
+   * Exits reuse a shorter duration than entrances, so a dismissed panel does
+   * not sit on screen after the user has moved on.
+   */
+  --b-motion-fast: 120ms;
+  --b-motion: 160ms;
+  --b-motion-slow: 220ms;
+  --b-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --b-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --b-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -670,23 +686,247 @@ dialog::backdrop {
   backdrop-filter: blur(1.5px);
 }
 
-/* The navigation drawer on small screens slides in from the left; motion is
-   decoration, so a reduced-motion preference removes it entirely. */
-@keyframes sidebar-in {
+/*
+ * Motion, in one place so every overlay enters and leaves the same way.
+ *
+ * Native <dialog> does its own open/close: with @starting-style for the entry
+ * and allow-discrete on display/overlay, the top layer holds the dialog just
+ * long enough for the exit to play before the element is removed.
+ */
+dialog {
+  opacity: 0;
+  transform: scale(0.97);
+  transition:
+    opacity var(--b-motion) var(--b-ease-out),
+    transform var(--b-motion) var(--b-ease-out),
+    overlay var(--b-motion) allow-discrete,
+    display var(--b-motion) allow-discrete;
+}
+
+dialog[open] {
+  opacity: 1;
+  transform: none;
+}
+
+/* A dialog that is closing has left the interaction: the page underneath is
+   usable again at once, even while the panel fades out. */
+dialog:not([open]) {
+  pointer-events: none;
+  transition-duration: var(--b-motion-fast);
+}
+
+@starting-style {
+  dialog[open] {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+dialog::backdrop {
+  opacity: 0;
+  transition:
+    opacity var(--b-motion) var(--b-ease-out),
+    overlay var(--b-motion) allow-discrete,
+    display var(--b-motion) allow-discrete;
+}
+
+dialog[open]::backdrop {
+  opacity: 1;
+}
+
+dialog:not([open])::backdrop {
+  pointer-events: none;
+  transition-duration: var(--b-motion-fast);
+}
+
+@starting-style {
+  dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/*
+ * React overlays (the finding and group drawers, the pull-request dialog and
+ * the mobile navigation drawer) are mounted and unmounted by state rather than
+ * by <dialog>. They enter with a short animation and leave by a transition set
+ * while their wrapper carries data-closing, which the close hook applies for
+ * one exit duration before it unmounts them.
+ */
+.overlay-scrim {
+  animation: scrim-in var(--b-motion) var(--b-ease-out);
+  transition: opacity var(--b-motion) var(--b-ease-out);
+}
+
+[data-closing] > .overlay-scrim {
+  opacity: 0;
+}
+
+.panel-side,
+.panel-sheet,
+.panel-modal {
+  transition:
+    opacity var(--b-motion) var(--b-ease-out),
+    transform var(--b-motion) var(--b-ease-out);
+}
+
+/* The right-hand drawers slide out the way they came in. */
+.panel-side {
+  animation: panel-side-in var(--b-motion-slow) var(--b-ease-drawer);
+}
+
+[data-closing] .panel-side {
+  opacity: 0;
+  transform: translateX(100%);
+}
+
+/* The navigation drawer comes from the left edge it belongs to. */
+.panel-sheet {
+  animation: panel-sheet-in var(--b-motion-slow) var(--b-ease-drawer);
+}
+
+[data-closing] .panel-sheet {
+  opacity: 0;
+  transform: translateX(-100%);
+}
+
+/* A centered confirmation scales in place; it is not anchored to anything. */
+.panel-modal {
+  animation: panel-modal-in var(--b-motion-slow) var(--b-ease-out);
+}
+
+[data-closing] .panel-modal {
+  opacity: 0;
+  transform: scale(0.97);
+}
+
+/*
+ * Popovers: menus and tooltips scale from the corner nearest their trigger,
+ * which the component sets as transform-origin from the measured placement.
+ * Exits are quicker than entries, and an exiting menu no longer takes clicks.
+ */
+.menu-pop {
+  animation: pop-in var(--b-motion) var(--b-ease-out);
+  transform-origin: top right;
+  transition:
+    opacity var(--b-motion-fast) var(--b-ease-out),
+    transform var(--b-motion-fast) var(--b-ease-out);
+}
+
+.menu-pop[data-closing] {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.97);
+}
+
+.info-pop {
+  animation: pop-in var(--b-motion-fast) var(--b-ease-out);
+  transition:
+    opacity var(--b-motion-fast) var(--b-ease-out),
+    transform var(--b-motion-fast) var(--b-ease-out);
+}
+
+.info-pop[data-closing] {
+  opacity: 0;
+  transform: scale(0.98);
+}
+
+/*
+ * Collapsibles: native <details> can animate its content only through
+ * ::details-content. interpolate-size lets block-size go from 0 to auto, so no
+ * height is measured in JS. Browsers without support keep the instant toggle.
+ */
+@supports selector(::details-content) {
+  :root {
+    interpolate-size: allow-keywords;
+  }
+
+  details::details-content {
+    block-size: 0;
+    overflow: hidden;
+    content-visibility: hidden;
+    transition:
+      block-size var(--b-motion-slow) var(--b-ease-out),
+      content-visibility var(--b-motion-slow) allow-discrete;
+  }
+
+  details[open]::details-content {
+    block-size: auto;
+    content-visibility: visible;
+  }
+}
+
+/* A row's detail unfolding under it, and the update card arriving in the sidebar. */
+.plan-detail,
+.notice-in {
+  animation: rise-in var(--b-motion) var(--b-ease-out);
+}
+
+.notice-in {
+  animation-duration: var(--b-motion-slow);
+}
+
+@keyframes scrim-in {
   from {
+    opacity: 0;
+  }
+}
+
+@keyframes panel-side-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+@keyframes panel-sheet-in {
+  from {
+    opacity: 0;
     transform: translateX(-100%);
   }
-  to {
-    transform: translateX(0);
+}
+
+@keyframes panel-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
   }
 }
 
-.sidebar-drawer {
-  animation: sidebar-in 160ms ease-out;
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
 
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/*
+ * Reduced motion: keep the state changes (colour, opacity) and drop every
+ * movement and duration, rather than asking the user to sit through them.
+ * The close hook reads the same query, so overlays still leave at once.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .sidebar-drawer {
-    animation: none;
+  :root {
+    --b-motion-fast: 0ms;
+    --b-motion: 0ms;
+    --b-motion-slow: 0ms;
+  }
+
+  *,
+  ::before,
+  ::after,
+  ::backdrop,
+  ::details-content {
+    animation-delay: 0ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

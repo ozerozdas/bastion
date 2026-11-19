@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom'
 
 import { cn } from '../../lib/utils'
 import { anchoredPosition } from './anchored'
+import { usePresence } from './presence'
 
 /** ActionMenuRadio is the one-of-many choice a menu can carry, e.g. a schedule. */
 export type ActionMenuRadio = {
@@ -82,17 +83,21 @@ export function ActionMenu({
   const button = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(
-    null,
-  )
+  // The menu outlives `open` by one exit animation, so closing it fades.
+  const { mounted, closing } = usePresence(open, 120)
+  const [position, setPosition] = useState<{
+    top: number
+    left: number
+    below: boolean
+  } | null>(null)
 
   function focusTrigger() {
     button.current?.focus()
   }
 
   function close(restoreFocus: boolean) {
+    // The position stays: the panel keeps its place while it fades out.
     setOpen(false)
-    setPosition(null)
     if (restoreFocus) {
       focusTrigger()
     }
@@ -100,7 +105,7 @@ export function ActionMenu({
 
   // Place once the menu has a measured size, then reveal it.
   useLayoutEffect(() => {
-    if (!open) return
+    if (!open || !mounted) return
     const triggerEl = button.current
     const menuEl = menu.current
     if (triggerEl === null || menuEl === null) return
@@ -110,7 +115,7 @@ export function ActionMenu({
         height: menuEl.offsetHeight,
       }, { align: 'end' }),
     )
-  }, [open])
+  }, [open, mounted])
 
   // The first item takes focus, as a menu expects. It waits for the placed
   // render: a hidden menu cannot take focus.
@@ -128,7 +133,6 @@ export function ActionMenu({
 
     function closeHere() {
       setOpen(false)
-      setPosition(null)
     }
     function onPointerDown(event: PointerEvent) {
       const target = event.target as Node
@@ -297,20 +301,25 @@ export function ActionMenu({
         <span aria-hidden="true">⋯</span>
       </button>
 
-      {open
+      {mounted
         ? createPortal(
             <div
               ref={menu}
               role="menu"
               aria-label={label}
+              data-closing={closing ? '' : undefined}
               style={{
                 top: position?.top ?? 0,
                 left: position?.left ?? 0,
+                transformOrigin:
+                  position === null || position.below
+                    ? 'top right'
+                    : 'bottom right',
                 visibility: position === null ? 'hidden' : 'visible',
               }}
               onClick={onMenuClick}
               onKeyDown={onKeyDown}
-              className="fixed z-50 flex max-h-[min(28rem,calc(100vh-1rem))] min-w-[12rem] max-w-[16rem] flex-col overflow-y-auto rounded-md border border-border-strong bg-surface p-1 shadow-lg"
+              className="menu-pop fixed z-50 flex max-h-[min(28rem,calc(100vh-1rem))] min-w-[12rem] max-w-[16rem] flex-col overflow-y-auto rounded-md border border-border-strong bg-surface p-1 shadow-lg"
             >
               {items.map(renderItem)}
 

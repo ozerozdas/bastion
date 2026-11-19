@@ -92,7 +92,7 @@ function UpdateAvailableCard({
   return (
     <section
       aria-label={t('update.aria')}
-      className="flex flex-col gap-2.5 rounded-lg border border-border-subtle bg-surface p-3"
+      className="notice-in flex flex-col gap-2.5 rounded-lg border border-border-subtle bg-surface p-3"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col gap-0.5">

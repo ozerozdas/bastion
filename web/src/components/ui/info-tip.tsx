@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom'
 import { InfoIcon } from '../icons'
 import { cn } from '../../lib/utils'
 import { anchoredPosition } from './anchored'
+import { usePresence } from './presence'
 
 /**
  * InfoTip is the small "i" that explains a dense value without adding a
@@ -42,14 +43,18 @@ export function InfoTip({
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
   const [pinned, setPinned] = useState(false)
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(
-    null,
-  )
   const open = hovered || focused || pinned
+  // The tip stays for one quick fade after the pointer leaves it.
+  const { mounted, closing } = usePresence(open, 120)
+  const [position, setPosition] = useState<{
+    top: number
+    left: number
+    below: boolean
+  } | null>(null)
 
   // Measured after mount, so a long tip is flipped and clamped, not clipped.
   useLayoutEffect(() => {
-    if (!open) return
+    if (!open || !mounted) return
     const triggerEl = button.current
     const tipEl = tip.current
     if (triggerEl === null || tipEl === null) return
@@ -59,7 +64,7 @@ export function InfoTip({
         height: tipEl.offsetHeight,
       }, { align: 'center' }),
     )
-  }, [open])
+  }, [open, mounted])
 
   useEffect(() => {
     if (!open) return
@@ -142,18 +147,23 @@ export function InfoTip({
         {trigger ?? <InfoIcon className="size-3.5" />}
       </button>
 
-      {open
+      {mounted
         ? createPortal(
             <div
               ref={tip}
               id={id}
               role="tooltip"
+              data-closing={closing ? '' : undefined}
               style={{
                 top: position?.top ?? 0,
                 left: position?.left ?? 0,
+                transformOrigin:
+                  position === null || position.below
+                    ? 'top center'
+                    : 'bottom center',
                 visibility: position === null ? 'hidden' : 'visible',
               }}
-              className="pointer-events-none fixed z-50 max-w-[18rem] rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[0.75rem] leading-snug text-fg shadow-lg"
+              className="info-pop pointer-events-none fixed z-50 max-w-[18rem] rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-[0.75rem] leading-snug text-fg shadow-lg"
             >
               {content}
             </div>,

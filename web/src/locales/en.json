@@ -396,6 +396,8 @@
   "finding.noDescription": "No description was reported.",
   "finding.scanner": "Scanner",
   "finding.rule": "Rule",
+  "finding.project": "Project",
+  "finding.projects": "Projects",
   "finding.package": "Package",
   "finding.fixedIn": "Fixed in",
   "finding.fix": "Fix",

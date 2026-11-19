@@ -396,6 +396,8 @@
   "finding.noDescription": "Açıklama bildirilmedi.",
   "finding.scanner": "Tarayıcı",
   "finding.rule": "Kural",
+  "finding.project": "Proje",
+  "finding.projects": "Projeler",
   "finding.package": "Paket",
   "finding.fixedIn": "Düzeltildiği sürüm",
   "finding.fix": "Düzeltme",

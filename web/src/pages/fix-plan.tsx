@@ -25,6 +25,7 @@ import { useDrawerFocus } from '../components/drawer-focus'
 import { OpenSeverityCounts } from '../components/severity-counts'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
+import { useDelayedClose } from '../components/ui/presence'
 import { severityLabel, severityTone } from '../lib/finding-labels'
 import { t, useT } from '../lib/i18n'
 import { manifestPath } from '../lib/manifests'
@@ -556,7 +557,9 @@ function PlanTable<T>({
             </DataTableRow>
             {open ? (
               <tr className="bg-bg">
-                <td colSpan={columns.length}>{detail(row)}</td>
+                <td colSpan={columns.length}>
+                  <div className="plan-detail">{detail(row)}</div>
+                </td>
               </tr>
             ) : null}
           </>
@@ -699,7 +702,8 @@ function PullRequestDialog({
   onClose: () => void
 }) {
   const t = useT()
-  const { panel, onKeyDown } = useDrawerFocus(onClose)
+  const { close, closing } = useDelayedClose(onClose)
+  const { panel, onKeyDown } = useDrawerFocus(close)
   const open = useOpenFixPlanPullRequest(asset.id)
 
   const ecosystem = manifestEcosystem(step.ecosystem)
@@ -722,10 +726,10 @@ function PullRequestDialog({
       : undefined
 
   return (
-    <div className="fixed inset-0 z-40">
+    <div className="fixed inset-0 z-40" data-closing={closing ? '' : undefined}>
       <div
         aria-hidden="true"
-        onClick={onClose}
+        onClick={close}
         className="absolute inset-0 overlay-scrim"
       />
       <div
@@ -735,7 +739,7 @@ function PullRequestDialog({
         aria-labelledby="fix-plan-pr-title"
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="absolute inset-x-4 top-[12vh] mx-auto flex max-h-[76vh] max-w-[520px] flex-col gap-4 overflow-y-auto rounded-xl border border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
+        className="panel-modal absolute inset-x-4 top-[12vh] mx-auto flex max-h-[76vh] max-w-[520px] flex-col gap-4 overflow-y-auto rounded-xl border border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
       >
         <h2 id="fix-plan-pr-title" className="text-[0.9375rem] font-semibold">
           {t('fixPlan.pr.title')}
@@ -758,7 +762,7 @@ function PullRequestDialog({
               {open.data.url}
             </a>
             <div className="flex justify-end">
-              <Button type="button" onClick={onClose}>
+              <Button type="button" onClick={close}>
                 {t('common.close')}
               </Button>
             </div>
@@ -805,7 +809,7 @@ function PullRequestDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={onClose}
+                onClick={close}
                 disabled={open.isPending}
               >
                 {t('common.cancel')}
