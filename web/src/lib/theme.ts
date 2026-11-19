@@ -13,6 +13,7 @@ import {
   setPreference,
   subscribePreferences,
   themePreference as themeKey,
+  widthPreference as widthKey,
   type PreferenceKey,
 } from './preferences'
 
@@ -85,6 +86,15 @@ export const fontSizeOptions = [
   { value: 'xlarge', labelKey: 'fontSize.xlarge' },
 ] as const satisfies readonly { value: FontSize; labelKey: string }[]
 
+/** ContentWidth caps the page column; "full" fills the window. */
+export type ContentWidth = 'full' | 'wide' | 'narrow'
+
+export const widthOptions = [
+  { value: 'full', labelKey: 'width.full' },
+  { value: 'wide', labelKey: 'width.wide' },
+  { value: 'narrow', labelKey: 'width.narrow' },
+] as const satisfies readonly { value: ContentWidth; labelKey: string }[]
+
 type Option<T extends string> = readonly { value: T }[]
 
 /** storedOption reads a key and falls back when it holds an unknown value. */
@@ -125,6 +135,10 @@ export function storedFontSize(): FontSize {
   return storedOption(fontSizeKey, fontSizeOptions, 'default')
 }
 
+export function storedWidth(): ContentWidth {
+  return storedOption(widthKey, widthOptions, 'full')
+}
+
 /** resolveMode turns the System choice into the OS preference. */
 export function resolveMode(mode: Mode): ResolvedMode {
   if (mode !== 'system') {
@@ -142,6 +156,7 @@ export function applyAppearance(): void {
   root.dataset.mode = resolveMode(storedMode())
   root.dataset.font = storedFontFamily()
   root.dataset.fontSize = storedFontSize()
+  root.dataset.width = storedWidth()
 }
 
 const listeners = new Set<() => void>()
@@ -182,6 +197,10 @@ export function setFontFamily(family: FontFamily): void {
 
 export function setFontSize(size: FontSize): void {
   save(fontSizeKey, size)
+}
+
+export function setWidth(width: ContentWidth): void {
+  save(widthKey, width)
 }
 
 /**

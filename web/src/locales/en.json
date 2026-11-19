@@ -63,6 +63,10 @@
   "fontSize.default": "Default",
   "fontSize.large": "Large",
   "fontSize.xlarge": "Extra large",
+  "appearance.width.title": "Content width",
+  "width.full": "Full",
+  "width.wide": "Wide",
+  "width.narrow": "Centered",
 
   "settings.tabs.modules": "Modules",
   "settings.tabs.notifications": "Notifications",

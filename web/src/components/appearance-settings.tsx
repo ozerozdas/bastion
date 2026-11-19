@@ -11,12 +11,15 @@ import {
   setFontSize,
   setMode,
   setTheme,
+  setWidth,
   storedFontFamily,
   storedFontSize,
   storedMode,
   storedTheme,
+  storedWidth,
   subscribeAppearance,
   themeOptions,
+  widthOptions,
   type FontFamily,
 } from '../lib/theme'
 import { cn } from '../lib/utils'
@@ -40,6 +43,7 @@ export function AppearanceSettings() {
   const mode = useSyncExternalStore(subscribeAppearance, storedMode)
   const family = useSyncExternalStore(subscribeAppearance, storedFontFamily)
   const size = useSyncExternalStore(subscribeAppearance, storedFontSize)
+  const width = useSyncExternalStore(subscribeAppearance, storedWidth)
 
   return (
     <div className="flex flex-col gap-3">
@@ -161,6 +165,29 @@ export function AppearanceSettings() {
               className={cn(
                 choiceClass,
                 size === option.value ? choiceOn : choiceOff,
+              )}
+            >
+              {t(option.labelKey)}
+            </button>
+          ))}
+        </div>
+      </SettingSection>
+
+      <SettingSection title={t('appearance.width.title')}>
+        <div
+          role="group"
+          aria-label={t('appearance.width.title')}
+          className="mt-0.5 flex gap-1"
+        >
+          {widthOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={width === option.value}
+              onClick={() => setWidth(option.value)}
+              className={cn(
+                choiceClass,
+                width === option.value ? choiceOn : choiceOff,
               )}
             >
               {t(option.labelKey)}

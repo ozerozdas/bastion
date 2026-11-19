@@ -17,6 +17,7 @@ export const modePreference = 'bastion-mode'
 export const fontFamilyPreference = 'bastion-font-family'
 export const fontSizePreference = 'bastion-font-size'
 export const languagePreference = 'bastion-language'
+export const widthPreference = 'bastion-width'
 export const cliDonePreference = 'bastion:get-started:cli-done'
 export const dismissedPreference = 'bastion:get-started:dismissed'
 
@@ -26,6 +27,7 @@ export const preferenceKeys = [
   fontFamilyPreference,
   fontSizePreference,
   languagePreference,
+  widthPreference,
   cliDonePreference,
   dismissedPreference,
 ] as const

@@ -63,6 +63,10 @@
   "fontSize.default": "Varsayılan",
   "fontSize.large": "Büyük",
   "fontSize.xlarge": "Çok büyük",
+  "appearance.width.title": "İçerik genişliği",
+  "width.full": "Tam",
+  "width.wide": "Geniş",
+  "width.narrow": "Ortalanmış",
 
   "settings.tabs.modules": "Modüller",
   "settings.tabs.notifications": "Bildirimler",

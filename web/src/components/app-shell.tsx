@@ -261,7 +261,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
           <div id={pageActionsId} className="ml-auto flex items-center gap-2" />
         </header>
-        <div className="flex flex-col gap-4 px-4 py-4 sm:px-7 sm:py-6">
+        <div className="page-content flex flex-col gap-4 px-4 py-4 sm:px-7 sm:py-6">
           {children}
         </div>
       </main>
