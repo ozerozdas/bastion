@@ -4,11 +4,13 @@ import { licencePolicyQuery } from '../api/licence-policy'
 import { useT } from '../lib/i18n'
 import { FindingRulesEditor } from './finding-rules-editor'
 import { LicencePolicyEditor } from './licence-policy-card'
+import { SlaSettings } from './sla-settings'
 import { InfoTip } from './ui/info-tip'
 
 /**
- * PoliciesSettings is Configuration's Policies tab: the licence policy and the
- * noise rules that decide which findings the scans keep showing.
+ * PoliciesSettings is Configuration's Policies tab: the licence policy, the
+ * SLA thresholds and the noise rules that decide which findings the scans keep
+ * showing.
  */
 export function PoliciesSettings() {
   const t = useT()
@@ -38,6 +40,8 @@ export function PoliciesSettings() {
           />
         </section>
       ) : null}
+
+      <SlaSettings />
     </div>
   )
 }

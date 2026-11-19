@@ -3,11 +3,12 @@ import type { ReactNode } from 'react'
 
 import { assetsQuery } from '../../api/assets'
 import type { Finding } from '../../api/findings'
+import type { SeverityTotals } from '../../api/reports'
 import type { ReportSearch } from '../../lib/urls'
 import { Badge } from '../../components/ui/badge'
 import { ErrorNote } from '../../components/error-note'
 import { severityLabel, severityTone } from '../../lib/finding-labels'
-import { useT } from '../../lib/i18n'
+import { formatNumber, useT } from '../../lib/i18n'
 import { cn } from '../../lib/utils'
 
 /** ReportPanelProps is what ReportPage hands each report's panel. */
@@ -43,6 +44,67 @@ export function ReportPanelHeading({
 /** ReportCaption is the one-line explanation under a report's heading. */
 export function ReportCaption({ children }: { children: ReactNode }) {
   return <p className="text-xs text-muted">{children}</p>
+}
+
+/** chipSeverities is the reading order of the recorded severity chips. */
+const chipSeverities: {
+  key: keyof SeverityTotals
+  tone: 'critical' | 'high' | 'medium' | 'low' | 'neutral'
+}[] = [
+  { key: 'critical', tone: 'critical' },
+  { key: 'high', tone: 'high' },
+  { key: 'medium', tone: 'medium' },
+  { key: 'low', tone: 'low' },
+  { key: 'unknown', tone: 'neutral' },
+]
+
+/**
+ * ReportSeverityChips shows the recorded counts as compact severity badges,
+ * skipping zeroes; a scope with none reads as a dash.
+ */
+export function ReportSeverityChips({ counts }: { counts: SeverityTotals }) {
+  const shown = chipSeverities.filter((severity) => counts[severity.key] > 0)
+  if (shown.length === 0) {
+    return (
+      <span className="text-xs text-faint" aria-hidden="true">
+        —
+      </span>
+    )
+  }
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {shown.map((severity) => (
+        <Badge
+          key={severity.key}
+          tone={severity.tone}
+          className="tabular-nums"
+        >
+          {formatNumber(counts[severity.key])}
+        </Badge>
+      ))}
+    </span>
+  )
+}
+
+/** ReportStat is one number tile in a report's summary row. */
+export function ReportStat({
+  label,
+  value,
+  note,
+}: {
+  label: ReactNode
+  value: ReactNode
+  note?: ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 rounded-card border border-border-subtle bg-surface px-3 py-2.5">
+      <span className="text-xs text-muted">{label}</span>
+      <span className="text-xl font-semibold tabular-nums">{value}</span>
+      {note === undefined ? null : (
+        <span className="text-[0.6875rem] text-faint">{note}</span>
+      )}
+    </div>
+  )
 }
 
 /** ReportLoading is the panel a report shows while its query runs. */

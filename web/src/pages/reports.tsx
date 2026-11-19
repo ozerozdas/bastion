@@ -10,11 +10,15 @@ import { buttonVariants } from '../components/ui/button'
 import { useT } from '../lib/i18n'
 import { reportCatalog, type ReportDefinition, type ReportId } from '../lib/report-catalog'
 import type { AssetSearch, ReportSearch } from '../lib/urls'
+import { AuditReportPanel } from './reports/audit'
+import { CIHistoryReportPanel } from './reports/ci-history'
 import { CveInsightsReport } from './reports/cve-insights'
+import { LicensesReportPanel } from './reports/licenses-sbom'
 import { MalwareReportPanel } from './reports/malware'
 import { OwaspTop10Report } from './reports/owasp-top10'
 import { RuntimesReportPanel } from './reports/runtimes'
 import type { ReportPanelProps } from './reports/shared'
+import { SlaReportPanel } from './reports/sla'
 import { TrendReport } from './reports/trend'
 
 /** assetSearch keeps ?asset=<id> on a link; absent is every project. */
@@ -95,23 +99,25 @@ function ReportCard({
 }
 
 /**
- * reportPanels are the reports this build renders. An id missing here keeps the
- * Coming soon state, so the catalog can ship ahead of its panels.
+ * reportPanels are the reports this build renders, one per catalog id. Every
+ * report has a panel, so adding a catalog entry is a compile error until its
+ * panel exists too.
  */
-const reportPanels: Partial<
-  Record<ReportId, ComponentType<ReportPanelProps>>
-> = {
+const reportPanels: Record<ReportId, ComponentType<ReportPanelProps>> = {
+  'licenses-sbom': LicensesReportPanel,
   trend: TrendReport,
   'cve-insights': CveInsightsReport,
-  'owasp-top10': OwaspTop10Report,
   malware: MalwareReportPanel,
   runtimes: RuntimesReportPanel,
+  'ci-history': CIHistoryReportPanel,
+  audit: AuditReportPanel,
+  'owasp-top10': OwaspTop10Report,
+  sla: SlaReportPanel,
 }
 
 /**
  * ReportPage is one report (#190). The band carries the report's title and the
- * project switcher; the panel below is chosen by the report id, and a report
- * without a panel yet explains that it is on the way.
+ * project switcher; the panel below is chosen by the report id.
  */
 export function ReportPage() {
   const t = useT()
@@ -142,8 +148,7 @@ export function ReportPage() {
 
   const Panel = reportPanels[report.id]
 
-  return (
-    <>
+  return (    <>
       <BandHeader>
         <BandSummary
           title={t(report.titleKey)}
@@ -167,14 +172,7 @@ export function ReportPage() {
           }
         />
       </BandHeader>
-      {Panel === undefined ? (
-        <EmptyState
-          title={t('reports.comingSoon.title')}
-          body={t('reports.comingSoon.body')}
-        />
-      ) : (
-        <Panel search={search} />
-      )}
+      <Panel search={search} />
     </>
   )
 }
