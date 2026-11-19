@@ -181,6 +181,9 @@
         "https://www.cve.org/CVERecord?id=CVE-2020-7598",
         "https://www.npmjs.com/advisories/1179"
       ],
+      "cwe": [
+        "CWE-1321"
+      ],
       "scanner": "trivy",
       "scanners": [
         "trivy"
@@ -226,6 +229,10 @@
         "https://www.oracle.com/security-alerts/cpuapr2022.html",
         "https://www.oracle.com/security-alerts/cpujan2022.html",
         "https://www.oracle.com/security-alerts/cpuoct2021.html"
+      ],
+      "cwe": [
+        "CWE-770",
+        "CWE-1321"
       ],
       "scanner": "trivy",
       "scanners": [
@@ -273,6 +280,9 @@
         "https://www.oracle.com/security-alerts/cpujan2022.html",
         "https://www.oracle.com/security-alerts/cpujul2022.html",
         "https://www.oracle.com/security-alerts/cpuoct2021.html"
+      ],
+      "cwe": [
+        "CWE-94"
       ],
       "scanner": "trivy",
       "scanners": [
@@ -335,6 +345,9 @@
         "https://snyk.io/vuln/SNYK-JS-MINIMIST-559764",
         "https://stackoverflow.com/questions/8588563/adding-custom-properties-to-a-function/20278068#20278068",
         "https://www.cve.org/CVERecord?id=CVE-2021-44906"
+      ],
+      "cwe": [
+        "CWE-1321"
       ],
       "scanner": "trivy",
       "scanners": [
@@ -465,6 +478,9 @@
         "https://ubuntu.com/security/notices/USN-8411-1",
         "https://www.cve.org/CVERecord?id=CVE-2025-13465"
       ],
+      "cwe": [
+        "CWE-1321"
+      ],
       "scanner": "trivy",
       "scanners": [
         "trivy"
@@ -584,6 +600,9 @@
         "https://security.access.redhat.com/data/csaf/v2/vex/2026/cve-2026-4800.json",
         "https://ubuntu.com/security/notices/USN-8411-1",
         "https://www.cve.org/CVERecord?id=CVE-2026-4800"
+      ],
+      "cwe": [
+        "CWE-94"
       ],
       "scanner": "trivy",
       "scanners": [

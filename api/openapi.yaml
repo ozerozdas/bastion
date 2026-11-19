@@ -119,6 +119,11 @@ tags:
       dashboard dismissals. They are keyed by the localStorage key the UI uses,
       so the browser cache and the server copy stay interchangeable. The
       whitelist is fixed: an unknown key is rejected rather than stored.
+  - name: settings
+    description: |
+      Install-wide settings. SLA thresholds (#190) say how many days a finding
+      of each severity may stay open before it is overdue; the defaults are 7,
+      30, 90 and 180 days.
   - name: notifications
     description: |
       Scan notifications (#44/#45/#46). After a scan succeeds, bastion diffs it
@@ -2012,6 +2017,65 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/settings/sla:
+    get:
+      operationId: getSLASettings
+      summary: Read the SLA thresholds.
+      description: |
+        One entry per severity: how many days a finding of that severity may
+        stay open before it is overdue. The defaults are 7, 30, 90 and 180.
+      tags: [settings]
+      responses:
+        "200":
+          description: The stored thresholds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLAThresholds"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setSLASettings
+      summary: Replace the SLA thresholds.
+      description: |
+        Every severity is required. A value outside 1..3650 days is a 400, and
+        a rejected request stores nothing.
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SLAThresholds"
+      responses:
+        "200":
+          description: The stored thresholds after the write.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLAThresholds"
+        "400":
+          description: |
+            The body is missing, a severity is absent, or a value is outside
+            1..3650 days.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/notifications:
     get:
       operationId: getNotificationSettings
@@ -2315,6 +2379,441 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Dashboard"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/reports/owasp-top10:
+    get:
+      operationId: getOwaspTop10
+      summary: Latest open findings grouped by OWASP Top 10 2021 category.
+      description: |
+        Groups the latest open findings of the given type (vulnerability, SAST,
+        misconfiguration, secret) by the OWASP Top 10 2021 category their CWE
+        ids map to. The scope matches `GET /api/findings`: the newest succeeded
+        scan of every non-archived asset, with ignored findings left out.
+
+        Every category `A01` to `A10` is returned in order, with `count` 0 and
+        an empty `findings` list when it is empty, and `unmapped` last for
+        findings with no CWE or a CWE outside the mapping. A finding with
+        several mapped CWEs counts once, in the lowest-numbered category.
+      tags: [reports]
+      parameters:
+        - $ref: "#/components/parameters/AssetIDQuery"
+      responses:
+        "200":
+          description: The ten categories in order, then `unmapped`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OWASPTop10"
+        "400":
+          description: "`asset_id` is not a positive asset id."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/reports/cve-insights:
+    get:
+      operationId: getCVEInsights
+      summary: Assets affected by one CVE or GHSA id, with its EPSS score.
+      description: |
+        Latest open findings whose rule id is `cve`, across every non-archived
+        asset, or only `asset_id` when it is given. The scope matches
+        `GET /api/findings`: the newest succeeded scan of each asset, with
+        ignored findings left out. Advisories are matched by rule id; aliases
+        are merge-only and never stored.
+
+        `epss` is the id's FIRST.org prediction when the feed is on and scores
+        it, and `null` otherwise. An id nothing matches answers `200` with an
+        empty `assets` list.
+      tags: [reports]
+      parameters:
+        - name: cve
+          in: query
+          required: true
+          description: |
+            The advisory id to look up: `CVE-YYYY-N...` or
+            `GHSA-xxxx-xxxx-xxxx`, case-insensitive.
+          schema:
+            type: string
+            examples: ["CVE-2021-44228"]
+        - $ref: "#/components/parameters/AssetIDQuery"
+      responses:
+        "200":
+          description: The matches and the id's EPSS score.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CVEInsights"
+        "400":
+          description: |
+            `cve` is missing or not a CVE or GHSA id, or `asset_id` is not a
+            positive asset id.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/reports/trend:
+    get:
+      operationId: getReportTrend
+      summary: Per-asset daily open finding counts by severity.
+      description: |
+        One series per non-archived asset, with one point per day in the
+        window that has a succeeded scan. A day's point counts the open
+        findings of that day's last succeeded scan by severity. The scope
+        matches `GET /api/findings`: ignored findings are left out, including
+        retroactively from older scans, and licence `allow` findings stay
+        hidden. Licence `deny` findings keep the raised severity the findings
+        list shows.
+
+        Points are sorted by date ascending and series by `display_name`.
+        Days without a succeeded scan have no point.
+      tags: [reports]
+      parameters:
+        - $ref: "#/components/parameters/AssetIDQuery"
+        - name: days
+          in: query
+          required: false
+          description: |
+            Length of the window in days, ending today. Defaults to 90.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 90
+      responses:
+        "200":
+          description: The per-asset series.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportTrend"
+        "400":
+          description: "`asset_id` is not a positive asset id, or `days` is outside 1..365."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/reports/runtimes:
+    get:
+      operationId: getReportRuntimes
+      summary: End-of-life runtimes across the latest open findings.
+      description: |
+        Latest open end-of-life findings, grouped by runtime name and version,
+        with the assets that run them. The scope matches `GET /api/findings`:
+        the newest succeeded scan of every non-archived asset, with ignored
+        findings left out. The end-of-life date is parsed from the finding's
+        description and is `null` when the scanner reported none.
+      tags: [reports]
+      parameters:
+        - $ref: "#/components/parameters/AssetIDQuery"
+      responses:
+        "200":
+          description: The runtimes and the assets that run them.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimesReport"
+        "400":
+          description: "`asset_id` is not a positive asset id."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/reports/malware:
+    get:
+      operationId: getReportMalware
+      summary: Latest open malware findings.
+      description: |
+        Latest open findings of type `malware`, most severe first and then by
+        package name. The scope matches `GET /api/findings`: the newest
+        succeeded scan of every non-archived asset, with ignored findings left
+        out.
+      tags: [reports]
+      parameters:
+        - $ref: "#/components/parameters/AssetIDQuery"
+      responses:
+        "200":
+          description: The malware findings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MalwareReport"
+        "400":
+          description: "`asset_id` is not a positive asset id."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/reports/sla:
+    get:
+      operationId: getReportSLA
+      summary: SLA breaches and fix times.
+      description: |
+        Ages the latest open findings against the stored SLA thresholds and
+        reports which ones are overdue, plus how many findings were fixed in
+        the window.
+
+        An overdue entry is an open finding of the findings list's scope
+        (non-archived assets, ignore decisions applied) whose severity is
+        `critical`, `high`, `medium` or `low` and whose age since its first
+        appearance exceeds that severity's threshold. Findings of unknown
+        severity are left out. Entries are sorted by overdue days, most
+        overdue first.
+
+        A finding is fixed when its fingerprint appeared in some succeeded
+        scan of an asset but is absent from that asset's newest succeeded
+        scan. Its fix date is the finish time of the first succeeded scan
+        after its last appearance. `fixed_in_window` counts the fix dates in
+        the window, and `mean_time_to_fix_days` averages fix date minus first
+        appearance over those findings, or is `null` when none was fixed in
+        the window.
+      tags: [reports]
+      parameters:
+        - $ref: "#/components/parameters/AssetIDQuery"
+        - name: days
+          in: query
+          required: false
+          description: |
+            Length of the fix window in days, ending now. Defaults to 90.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 90
+      responses:
+        "200":
+          description: The SLA report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SLAReport"
+        "400":
+          description: "`asset_id` is not a positive asset id, or `days` is outside 1..365."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/reports/licenses:
+    get:
+      operationId: getReportLicenses
+      summary: Licence inventory with the effective allow/deny policy.
+      description: |
+        Latest open licence findings, grouped by licence name and the policy
+        that applies to them. The scope matches `GET /api/findings`: the newest
+        succeeded scan of every non-archived asset, with ignored findings left
+        out. Unlike the findings list, `allow` findings are included here: this
+        report is the whole licence inventory, not the issues view.
+
+        The scanner sets the finding's rule id to the licence name. `policy` is
+        the effective rule for the finding's asset: a per-asset rule overrides
+        the global one, and `none` means no rule matched. An entry's `packages`
+        counts its distinct package names and `assets` its distinct assets.
+        Entries with policy `deny` come first, then the rest by `packages`
+        descending.
+      tags: [reports]
+      parameters:
+        - $ref: "#/components/parameters/AssetIDQuery"
+      responses:
+        "200":
+          description: The licence inventory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LicensesReport"
+        "400":
+          description: "`asset_id` is not a positive asset id."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/reports/licenses.csv:
+    get:
+      operationId: downloadLicenses
+      summary: Download the licence inventory as CSV.
+      description: |
+        Writes the same licence inventory as `GET /api/reports/licenses`, one
+        row per finding, with the columns `license`, `policy`, `package`,
+        `version`, `ecosystem` and `asset`. The response is an attachment.
+
+        This operation is hand-written in `internal/httpapi/licenses.go` and
+        excluded from codegen (api/oapi-codegen.yaml): the generated strict
+        server cannot set the `Content-Disposition` header. The spec stays the
+        contract.
+      tags: [reports]
+      parameters:
+        - $ref: "#/components/parameters/AssetIDQuery"
+      responses:
+        "200":
+          description: The inventory as a CSV attachment.
+          headers:
+            Content-Disposition:
+              description: "`attachment` with a dated filename."
+              schema:
+                type: string
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: "`asset_id` is not a positive asset id."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/reports/audit:
+    get:
+      operationId: getReportAudit
+      summary: Audit pack for one asset or the whole fleet.
+      description: |
+        Composes the findings list, its severity summary and the fix plan into
+        one audit pack. The scope matches `GET /api/findings`: the newest
+        succeeded scan of every non-archived asset, with ignored findings left
+        out; `asset_id` narrows it to one asset.
+
+        `summary` counts every finding in scope by effective severity, while
+        `findings` is capped at 500 entries, most severe first, with
+        `truncated` telling whether the cap dropped any. `fix_plan` is the
+        asset's fix plan; it is empty when no `asset_id` was given. `asset` is
+        the requested asset, or `null` for the whole fleet.
+      tags: [reports]
+      parameters:
+        - $ref: "#/components/parameters/AssetIDQuery"
+      responses:
+        "200":
+          description: The audit pack.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReport"
+        "400":
+          description: "`asset_id` is not a positive asset id."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: "`asset_id` names no asset."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/reports/ci-history:
+    get:
+      operationId: getReportCIHistory
+      summary: CLI and API scan runs, newest first.
+      description: |
+        The scans triggered by `cli` or `api`, newest first, across
+        non-archived assets or only `asset_id` when it is given. UI-triggered
+        scans are left out, since this history is for CI pipelines.
+
+        `counts` is the raw severity count of the findings each scan recorded:
+        ignored findings are included and no licence policy applies, so the
+        numbers report what the run produced rather than today's view of it.
+        `duration_ms` is the finish minus start time, and `null` while either
+        is missing. `limit` defaults to 50 and accepts 1..200.
+      tags: [reports]
+      parameters:
+        - $ref: "#/components/parameters/AssetIDQuery"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of runs to return, newest first.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: The CI scan runs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CIHistoryReport"
+        "400":
+          description: "`asset_id` is not a positive asset id, or `limit` is outside 1..200."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "401":
           $ref: "#/components/responses/Problem"
         "403":
@@ -3565,7 +4064,7 @@ components:
         fields are absent when the scanner did not provide them.
       additionalProperties: false
       required:
-        [id, asset_id, scan_id, fingerprint, type, severity, title, occurrences, scanner, scanners, status, references]
+        [id, asset_id, scan_id, fingerprint, type, severity, title, occurrences, scanner, scanners, cwe, status, references]
       properties:
         id:
           type: integer
@@ -3622,6 +4121,13 @@ components:
             Every scanner that reported the finding. A CVE reported by both
             Trivy and OSV appears once with both entries; `scanner` is the
             primary one.
+          items:
+            type: string
+        cwe:
+          type: array
+          description: |
+            Common Weakness Enumeration ids the finding maps to, as canonical
+            `CWE-<n>` strings. `[]` when the scanner reported none.
           items:
             type: string
         status:
@@ -3999,6 +4505,499 @@ components:
             its status (a failed last scan is shown as failed).
           items:
             $ref: "#/components/schemas/LastScan"
+    OWASPTop10:
+      type: object
+      title: OWASPTop10
+      description: |
+        Latest open findings grouped by OWASP Top 10 2021 category. Every
+        category is present, in order, with `unmapped` last.
+      additionalProperties: false
+      required: [categories]
+      properties:
+        categories:
+          type: array
+          description: "`A01` to `A10` in order, then `unmapped`."
+          items:
+            $ref: "#/components/schemas/OWASPCategory"
+    OWASPCategory:
+      type: object
+      title: OWASPCategory
+      additionalProperties: false
+      required: [id, title, count, findings]
+      properties:
+        id:
+          type: string
+          description: The 2021 category id, or `unmapped`.
+          examples: ["A03"]
+        title:
+          type: string
+          examples: ["A03:2021 - Injection"]
+        count:
+          type: integer
+          minimum: 0
+        findings:
+          type: array
+          description: The category's open findings, most severe first.
+          items:
+            $ref: "#/components/schemas/Finding"
+    CVEInsights:
+      type: object
+      title: CVEInsights
+      description: |
+        Latest open findings matching one CVE or GHSA id, and the id's EPSS
+        prediction when the feed scores it.
+      additionalProperties: false
+      required: [cve, epss, assets]
+      properties:
+        cve:
+          type: string
+          description: The id the report matched; CVEs are upper-cased.
+          examples: ["CVE-2021-44228"]
+        epss:
+          description: |
+            FIRST.org's prediction for the id, or `null` when the feed is off
+            or does not score it.
+          anyOf:
+            - $ref: "#/components/schemas/EPSSScore"
+            - type: "null"
+        assets:
+          type: array
+          description: One entry per matching asset; empty when nothing matches.
+          items:
+            $ref: "#/components/schemas/CVEInsightAsset"
+    CVEInsightAsset:
+      type: object
+      title: CVEInsightAsset
+      additionalProperties: false
+      required: [asset_id, display_name, kind, severity]
+      properties:
+        asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+        display_name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/AssetKind"
+        severity:
+          $ref: "#/components/schemas/Severity"
+        package_name:
+          type: string
+        package_version:
+          type: string
+        fixed_version:
+          type: string
+        first_seen:
+          type: string
+          format: date-time
+          description: |
+            When the scan that first reported this finding for the asset
+            finished. Absent when that scan is unknown.
+    ReportTrend:
+      type: object
+      title: ReportTrend
+      additionalProperties: false
+      required: [series]
+      properties:
+        series:
+          type: array
+          description: One series per asset, sorted by `display_name`.
+          items:
+            $ref: "#/components/schemas/ReportTrendSeries"
+    ReportTrendSeries:
+      type: object
+      title: ReportTrendSeries
+      additionalProperties: false
+      required: [asset_id, display_name, points]
+      properties:
+        asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+        display_name:
+          type: string
+        points:
+          type: array
+          description: One point per scanned day, oldest first.
+          items:
+            $ref: "#/components/schemas/ReportTrendPoint"
+    ReportTrendPoint:
+      type: object
+      title: ReportTrendPoint
+      additionalProperties: false
+      required: [date, critical, high, medium, low, unknown]
+      properties:
+        date:
+          type: string
+          description: The day, as `YYYY-MM-DD`.
+          examples: ["2026-11-10"]
+        critical:
+          type: integer
+          minimum: 0
+        high:
+          type: integer
+          minimum: 0
+        medium:
+          type: integer
+          minimum: 0
+        low:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+    RuntimesReport:
+      type: object
+      title: RuntimesReport
+      additionalProperties: false
+      required: [runtimes]
+      properties:
+        runtimes:
+          type: array
+          description: One entry per runtime name and version.
+          items:
+            $ref: "#/components/schemas/RuntimeEntry"
+    RuntimeEntry:
+      type: object
+      title: RuntimeEntry
+      additionalProperties: false
+      required: [name, ecosystem, version, eol_date, fixed_version, assets]
+      properties:
+        name:
+          type: string
+        ecosystem:
+          type: string
+        version:
+          type: string
+        eol_date:
+          description: |
+            The end-of-life date as `YYYY-MM-DD`, or `null` when the scanner
+            reported none.
+          anyOf:
+            - type: string
+            - type: "null"
+        fixed_version:
+          description: |
+            The newest supported version, or `null` when the scanner reported
+            none.
+          anyOf:
+            - type: string
+            - type: "null"
+        assets:
+          type: array
+          description: The assets that run this runtime, sorted by name.
+          items:
+            $ref: "#/components/schemas/RuntimeAsset"
+    RuntimeAsset:
+      type: object
+      title: RuntimeAsset
+      additionalProperties: false
+      required: [asset_id, display_name]
+      properties:
+        asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+        display_name:
+          type: string
+    MalwareReport:
+      type: object
+      title: MalwareReport
+      additionalProperties: false
+      required: [findings]
+      properties:
+        findings:
+          type: array
+          description: The open malware findings, most severe first.
+          items:
+            $ref: "#/components/schemas/Finding"
+    SLAThresholds:
+      type: object
+      title: SLAThresholds
+      description: The days a finding of each severity may stay open.
+      additionalProperties: false
+      required: [critical, high, medium, low]
+      properties:
+        critical:
+          type: integer
+          minimum: 1
+          maximum: 3650
+        high:
+          type: integer
+          minimum: 1
+          maximum: 3650
+        medium:
+          type: integer
+          minimum: 1
+          maximum: 3650
+        low:
+          type: integer
+          minimum: 1
+          maximum: 3650
+    SLAReport:
+      type: object
+      title: SLAReport
+      description: |
+        Overdue open findings and the fix statistics of the window.
+      additionalProperties: false
+      required:
+        - thresholds
+        - overdue
+        - open_count
+        - overdue_count
+        - fixed_in_window
+      properties:
+        thresholds:
+          $ref: "#/components/schemas/SLAThresholds"
+        overdue:
+          type: array
+          description: Overdue findings, most overdue first.
+          items:
+            $ref: "#/components/schemas/SLAOverdueFinding"
+        open_count:
+          type: integer
+          minimum: 0
+          description: Open findings in scope, of every severity.
+        overdue_count:
+          type: integer
+          minimum: 0
+          description: Findings in `overdue`.
+        fixed_in_window:
+          type: integer
+          minimum: 0
+          description: |
+            Findings fixed in the window whose fix date falls inside it.
+        mean_time_to_fix_days:
+          description: |
+            Mean days from first appearance to fix over `fixed_in_window`, or
+            `null` when nothing was fixed in the window.
+          anyOf:
+            - type: number
+              format: double
+            - type: "null"
+    SLAOverdueFinding:
+      type: object
+      title: SLAOverdueFinding
+      additionalProperties: false
+      required: [finding, first_seen, age_days, threshold_days, overdue_days]
+      properties:
+        finding:
+          $ref: "#/components/schemas/Finding"
+        first_seen:
+          type: string
+          format: date-time
+          description: |
+            When the scan that first reported this finding for the asset
+            finished.
+        age_days:
+          type: integer
+          minimum: 0
+          description: Whole days since `first_seen`.
+        threshold_days:
+          type: integer
+          minimum: 1
+          description: The severity's allowed age in days.
+        overdue_days:
+          type: integer
+          minimum: 1
+          description: "`age_days` minus `threshold_days`."
+    LicensesReport:
+      type: object
+      title: LicensesReport
+      additionalProperties: false
+      required: [licenses]
+      properties:
+        licenses:
+          type: array
+          description: |
+            Licence entries, `deny` first and then by package count
+            descending.
+          items:
+            $ref: "#/components/schemas/LicenseEntry"
+    LicenseEntry:
+      type: object
+      title: LicenseEntry
+      description: One licence name and the policy that applies to it.
+      additionalProperties: false
+      required: [license, policy, packages, assets, items]
+      properties:
+        license:
+          type: string
+          description: The licence name, as the scanner reported it.
+        policy:
+          type: string
+          description: |
+            The effective rule: `allow`, `deny`, or `none` when no rule
+            matched.
+          enum: [allow, deny, none]
+          x-enum-varnames: [LicensePolicyAllow, LicensePolicyDeny, LicensePolicyNone]
+        packages:
+          type: integer
+          minimum: 0
+          description: Number of distinct package names.
+        assets:
+          type: integer
+          minimum: 0
+          description: Number of distinct assets.
+        items:
+          type: array
+          description: One entry per finding, by asset and package.
+          items:
+            $ref: "#/components/schemas/LicenseItem"
+    LicenseItem:
+      type: object
+      title: LicenseItem
+      additionalProperties: false
+      required: [package_name, package_version, ecosystem, asset_id, display_name]
+      properties:
+        package_name:
+          type: string
+        package_version:
+          type: string
+        ecosystem:
+          type: string
+        asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+        display_name:
+          type: string
+    AuditAsset:
+      type: object
+      title: AuditAsset
+      additionalProperties: false
+      required: [asset_id, display_name, kind]
+      properties:
+        asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+        display_name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/AssetKind"
+    AuditSummary:
+      type: object
+      title: AuditSummary
+      description: |
+        Findings in scope per effective severity; `total` counts them all,
+        including every finding dropped from `findings` by the 500-entry cap.
+      additionalProperties: false
+      required: [critical, high, medium, low, unknown, total]
+      properties:
+        critical:
+          type: integer
+          minimum: 0
+        high:
+          type: integer
+          minimum: 0
+        medium:
+          type: integer
+          minimum: 0
+        low:
+          type: integer
+          minimum: 0
+        unknown:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+    AuditReport:
+      type: object
+      title: AuditReport
+      additionalProperties: false
+      required: [generated_at, asset, summary, findings, fix_plan, truncated]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+          description: When the pack was built.
+        asset:
+          description: The requested asset, or `null` for the whole fleet.
+          anyOf:
+            - $ref: "#/components/schemas/AuditAsset"
+            - type: "null"
+        summary:
+          $ref: "#/components/schemas/AuditSummary"
+        findings:
+          type: array
+          description: Findings in scope, most severe first, capped at 500.
+          items:
+            $ref: "#/components/schemas/Finding"
+        fix_plan:
+          $ref: "#/components/schemas/FixPlan"
+        truncated:
+          type: boolean
+          description: Whether `findings` dropped findings over the cap.
+    CIHistoryReport:
+      type: object
+      title: CIHistoryReport
+      additionalProperties: false
+      required: [runs]
+      properties:
+        runs:
+          type: array
+          description: CLI and API scan runs, newest first.
+          items:
+            $ref: "#/components/schemas/CIRun"
+    CIRun:
+      type: object
+      title: CIRun
+      description: |
+        One CLI- or API-triggered scan. `counts` holds the findings the scan
+        recorded per raw severity: ignored findings are counted and no licence
+        policy applies, so it reports what the run produced.
+      additionalProperties: false
+      required: [scan_id, asset_id, display_name, trigger, status, duration_ms, counts, scanners]
+      properties:
+        scan_id:
+          type: integer
+          format: int64
+          minimum: 1
+        asset_id:
+          type: integer
+          format: int64
+          minimum: 1
+        display_name:
+          type: string
+        trigger:
+          type: string
+          description: Who started the scan.
+          enum: [cli, api]
+        status:
+          $ref: "#/components/schemas/ScanStatus"
+        started_at:
+          type: string
+          format: date-time
+          description: Absent while the scan is still queued.
+        finished_at:
+          type: string
+          format: date-time
+          description: Absent while the scan has not finished.
+        duration_ms:
+          description: Finish minus start in milliseconds, or `null`.
+          anyOf:
+            - type: integer
+              minimum: 0
+            - type: "null"
+        counts:
+          $ref: "#/components/schemas/SeverityTotals"
+        scanners:
+          type: array
+          description: The scan's scanner runs.
+          items:
+            $ref: "#/components/schemas/CIScannerRun"
+    CIScannerRun:
+      type: object
+      title: CIScannerRun
+      additionalProperties: false
+      required: [scanner, status]
+      properties:
+        scanner:
+          type: string
+        status:
+          $ref: "#/components/schemas/ScanStatus"
     SeverityTotals:
       type: object
       title: SeverityTotals

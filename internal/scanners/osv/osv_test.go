@@ -70,7 +70,7 @@ func TestMatchMalware(t *testing.T) {
 				Summary:          "Prototype pollution in -harseurl",
 				Details:          "A crafted property path pollutes Object.prototype.",
 				Aliases:          []string{"CVE-2021-99999"},
-				DatabaseSpecific: databaseSpecific{Severity: "MODERATE"},
+				DatabaseSpecific: databaseSpecific{Severity: "MODERATE", CWEIDs: []string{"CWE-1321", "CWE-20"}},
 			})
 		default:
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -146,6 +146,12 @@ func TestMatchMalware(t *testing.T) {
 	}
 	if want := []string{"CVE-2021-99999"}; !slices.Equal(v.Aliases, want) {
 		t.Errorf("non-MAL aliases = %v, want %v", v.Aliases, want)
+	}
+	if want := []string{"CWE-20", "CWE-1321"}; !slices.Equal(v.CWE, want) {
+		t.Errorf("non-MAL cwe = %v, want %v", v.CWE, want)
+	}
+	if len(f.CWE) != 0 {
+		t.Errorf("malware cwe = %v, want none", f.CWE)
 	}
 }
 

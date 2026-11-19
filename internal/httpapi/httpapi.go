@@ -334,6 +334,10 @@ func (s *Server) buildHandler() http.Handler {
 	// XLSX or JSON with a Content-Disposition attachment.
 	mux.HandleFunc("GET /api/findings/export", s.handleFindingsExport)
 
+	// The licence CSV download sets Content-Disposition too, so it is
+	// hand-written like the findings export.
+	mux.HandleFunc("GET /api/reports/licenses.csv", s.handleLicenseCSV)
+
 	// Unknown /api/* paths must not fall through to the UI handler.
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusNotFound, "Not Found",

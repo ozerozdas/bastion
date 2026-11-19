@@ -17,3 +17,4 @@ sql:
           purl: PURL
           cvss: CVSS
           epss: EPSS
+          cwe: CWE

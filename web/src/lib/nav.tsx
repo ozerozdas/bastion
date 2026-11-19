@@ -82,6 +82,13 @@ export const navItems: NavItem[] = [
     icon: SettingsIcon,
     section: 'settings',
   },
+  {
+    to: '/reports',
+    labelKey: 'nav.reports',
+    subtitleKey: 'nav.reports.subtitle',
+    icon: ReportsIcon,
+    section: 'settings',
+  },
 ]
 
 /** NavGroup is one heading and the entries under it. */
@@ -117,6 +124,8 @@ const legacyPathnames: Record<string, string> = {
 const sectionPathnames: { prefix: string; to: string }[] = [
   // The scan diff page is the Scans tab's detail view.
   { prefix: '/scans/', to: '/repositories' },
+  // A report page sits under Reports, not under the dashboard.
+  { prefix: '/reports/', to: '/reports' },
 ]
 
 /** navItemFor returns the nav entry for a pathname. */

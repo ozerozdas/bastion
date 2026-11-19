@@ -23,6 +23,7 @@ import { ContainersPage } from './pages/containers'
 import { DashboardPage } from './pages/dashboard'
 import { FindingsPage } from './pages/findings'
 import { ProjectsPage } from './pages/projects'
+import { ReportPage, ReportsPage } from './pages/reports'
 import { ScanDiffPage } from './pages/scan-diff'
 
 function RootLayout() {
@@ -127,19 +128,28 @@ const scanDiffRoute = createRoute({
   component: ScanDiffPage,
 })
 
-// The old URLs keep working: /security-reports is the page's previous path and
-// /reports is the short form named in #87. A bookmarked ?asset= id carries over
-// to the same filtered list.
-function redirectToFindings(search: { asset?: number }): never {
-  throw redirect({ to: '/findings', search, replace: true })
-}
-
-const legacyReportsRoute = createRoute({
+// Reports (#190) is the card grid under Settings & More; ?asset=<id> scopes
+// every report to one project.
+const reportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/reports',
   validateSearch: parseAssetSearch,
-  beforeLoad: ({ search }) => redirectToFindings(search),
+  component: ReportsPage,
 })
+
+// One report's page; the id picks the entry in the catalog.
+const reportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reports/$reportId',
+  validateSearch: parseAssetSearch,
+  component: ReportPage,
+})
+
+// The old URLs keep working: /security-reports is the page's previous path.
+// A bookmarked ?asset= id carries over to the same filtered findings list.
+function redirectToFindings(search: { asset?: number }): never {
+  throw redirect({ to: '/findings', search, replace: true })
+}
 
 const legacySecurityReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -167,7 +177,8 @@ const routeTree = rootRoute.addChildren([
   findingsRoute,
   assetFindingsRoute,
   scanDiffRoute,
-  legacyReportsRoute,
+  reportsRoute,
+  reportRoute,
   legacySecurityReportsRoute,
   historyRoute,
 ])

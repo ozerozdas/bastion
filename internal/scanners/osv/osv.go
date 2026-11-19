@@ -228,6 +228,7 @@ func (m *Matcher) findings(asset findings.Asset, inventory []findings.Package, i
 				Ecosystem:      p.Ecosystem,
 				Location:       p.Path,
 				Description:    detail.Details,
+				CWE:            findings.NormalizeCWEIDs(detail.DatabaseSpecific.CWEIDs),
 				Scanner:        m.Name(),
 				Aliases:        detail.Aliases,
 			}
@@ -417,7 +418,8 @@ type vulnerability struct {
 }
 
 // databaseSpecific carries the fields OSV stores per source. bastion consumes
-// only the severity OSV's own records publish there.
+// the severity and CWE ids OSV's own records publish there.
 type databaseSpecific struct {
-	Severity string `json:"severity"`
+	Severity string   `json:"severity"`
+	CWEIDs   []string `json:"cwe_ids"`
 }
