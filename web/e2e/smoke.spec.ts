@@ -322,6 +322,7 @@ test('drops a stale project id from the findings URL', async ({
   // One project: the page has something to fall back to when the id is gone.
   await page.getByRole('link', { name: 'Repositories', exact: true }).click()
   await page.getByRole('button', { name: 'Add repository' }).click()
+  await page.getByRole('button', { name: /^Local path/ }).click()
   await page.getByLabel('Or add a local path').fill(server.projectDir)
   await page.getByRole('button', { name: 'Add path' }).click()
 
@@ -359,6 +360,7 @@ test('adds a local path repository through the UI', async ({ page, server }) => 
 
   const name = basename(server.projectDir)
   await page.getByRole('button', { name: 'Add repository' }).click()
+  await page.getByRole('button', { name: /^Local path/ }).click()
   await page.getByLabel('Or add a local path').fill(server.projectDir)
   await page.getByRole('button', { name: 'Add path' }).click()
 
@@ -367,8 +369,10 @@ test('adds a local path repository through the UI', async ({ page, server }) => 
 
   const row = page.getByRole('row', { name: new RegExp(name) })
   await expect(row).toBeVisible()
-  // The row shows the directory's base name and keeps the absolute path in Ref.
-  await expect(row.getByText(server.projectDir, { exact: true })).toBeVisible()
+  // One line: the base name plus a local badge; the absolute path is its tooltip.
+  await expect(row.getByText(name, { exact: true }).first()).toBeVisible()
+  await expect(row.getByText('local', { exact: true })).toBeVisible()
+  await expect(row.getByTitle(server.projectDir)).toBeVisible()
   // The old Kind column is gone; the table starts with Repository.
   await expect(page.getByRole('columnheader', { name: 'Kind' })).toHaveCount(0)
 

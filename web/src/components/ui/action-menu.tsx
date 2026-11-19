@@ -58,6 +58,7 @@ export function ActionMenu({
   label,
   items,
   radio,
+  trailingItems,
   triggerRef,
   className,
 }: {
@@ -69,6 +70,8 @@ export function ActionMenu({
    * Each group renders as its own section under the items.
    */
   radio?: ActionMenuRadio | readonly ActionMenuRadio[]
+  /** Items that follow the radio groups, e.g. the destructive ones. */
+  trailingItems?: readonly ActionMenuItem[]
   /** The trigger, for callers that move focus back to it. */
   triggerRef?: RefObject<HTMLButtonElement | null>
   /** Extra classes for the trigger button. */
@@ -200,6 +203,64 @@ export function ActionMenu({
     close(true)
   }
 
+  // A menu row is a link, an off-app anchor or a button; long labels truncate
+  // so the menu never grows past its width.
+  function renderItem(item: ActionMenuItem) {
+    const content = <span className="min-w-0 flex-1 truncate">{item.label}</span>
+    if (item.to !== undefined) {
+      return (
+        <Link
+          key={item.key}
+          to={item.to}
+          search={item.search}
+          role="menuitem"
+          aria-disabled={item.disabled ? true : undefined}
+          className={cn(
+            itemClass,
+            item.destructive ? 'text-critical' : undefined,
+            item.disabled ? 'pointer-events-none opacity-50' : undefined,
+          )}
+        >
+          {content}
+        </Link>
+      )
+    }
+    if (item.href !== undefined) {
+      return (
+        <a
+          key={item.key}
+          href={item.href}
+          role="menuitem"
+          aria-disabled={item.disabled ? true : undefined}
+          className={cn(
+            itemClass,
+            item.destructive ? 'text-critical' : undefined,
+            item.disabled ? 'pointer-events-none opacity-50' : undefined,
+          )}
+        >
+          {content}
+        </a>
+      )
+    }
+    return (
+      <button
+        key={item.key}
+        type="button"
+        role="menuitem"
+        aria-disabled={item.disabled ? true : undefined}
+        disabled={item.disabled}
+        onClick={item.onSelect}
+        className={cn(
+          itemClass,
+          item.destructive ? 'text-critical' : undefined,
+          item.disabled ? 'pointer-events-none opacity-50' : undefined,
+        )}
+      >
+        {content}
+      </button>
+    )
+  }
+
   return (
     <span className="inline-flex">
       <button
@@ -249,64 +310,9 @@ export function ActionMenu({
               }}
               onClick={onMenuClick}
               onKeyDown={onKeyDown}
-              className="fixed z-50 flex min-w-[12rem] max-w-[16rem] flex-col rounded-md border border-border-strong bg-surface p-1 shadow-lg"
+              className="fixed z-50 flex max-h-[min(28rem,calc(100vh-1rem))] min-w-[12rem] max-w-[16rem] flex-col overflow-y-auto rounded-md border border-border-strong bg-surface p-1 shadow-lg"
             >
-              {items.map((item) => {
-                const content = <span className="flex-1">{item.label}</span>
-
-                if (item.to !== undefined) {
-                  return (
-                    <Link
-                      key={item.key}
-                      to={item.to}
-                      search={item.search}
-                      role="menuitem"
-                      aria-disabled={item.disabled ? true : undefined}
-                      className={cn(
-                        itemClass,
-                        item.destructive ? 'text-critical' : undefined,
-                        item.disabled ? 'pointer-events-none opacity-50' : undefined,
-                      )}
-                    >
-                      {content}
-                    </Link>
-                  )
-                }
-                if (item.href !== undefined) {
-                  return (
-                    <a
-                      key={item.key}
-                      href={item.href}
-                      role="menuitem"
-                      aria-disabled={item.disabled ? true : undefined}
-                      className={cn(
-                        itemClass,
-                        item.destructive ? 'text-critical' : undefined,
-                        item.disabled ? 'pointer-events-none opacity-50' : undefined,
-                      )}
-                    >
-                      {content}
-                    </a>
-                  )
-                }
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    role="menuitem"
-                    aria-disabled={item.disabled ? true : undefined}
-                    disabled={item.disabled}
-                    onClick={item.onSelect}
-                    className={cn(
-                      itemClass,
-                      item.destructive ? 'text-critical' : undefined,
-                      item.disabled ? 'pointer-events-none opacity-50' : undefined,
-                    )}
-                  >
-                    {content}
-                  </button>
-                )
-              })}
+              {items.map(renderItem)}
 
               {radios.map((group) => (
                 <div
@@ -340,12 +346,14 @@ export function ActionMenu({
                         <span aria-hidden="true" className="w-3 text-accent">
                           {checked ? '✓' : ''}
                         </span>
-                        <span className="flex-1">{option.label}</span>
+                        <span className="min-w-0 flex-1 truncate">{option.label}</span>
                       </button>
                     )
                   })}
                 </div>
               ))}
+
+              {trailingItems?.map(renderItem)}
             </div>,
             document.body,
           )

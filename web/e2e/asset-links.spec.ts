@@ -130,10 +130,10 @@ test('Containers shows the linked repository and unlinks it', async ({ page, ser
   await page.getByRole('menuitem', { name: 'Unlink' }).click()
   await unlinkRequest
 
-  // Unlinked, the row shows a dash and the menu offers the repositories.
+  // Unlinked, the row shows a dash and the menu offers the picker again.
   await row.getByRole('button', { name: `Actions for ${imageRef}` }).click()
   await expect(
-    page.getByRole('group', { name: `Link ${imageRef} to a repository` }),
+    page.getByRole('menuitem', { name: 'Link to repository…' }),
   ).toBeVisible()
   expect(problems).toEqual([])
 })
@@ -153,14 +153,16 @@ test('Containers links an image to a repository by hand', async ({ page, server 
     (request) =>
       request.url().endsWith('/api/assets/2/link') && request.method() === 'PUT',
   )
-  await page
-    .getByRole('group', { name: `Link ${imageRef} to a repository` })
-    .getByRole('menuitemradio', { name: 'acme/api' })
-    .click()
+  await page.getByRole('menuitem', { name: 'Link to repository…' }).click()
+
+  const dialog = page.getByRole('dialog', {
+    name: `Link ${imageRef} to a repository`,
+  })
+  await dialog.getByRole('searchbox').fill('acme')
+  await dialog.getByRole('radio', { name: /acme\/api/ }).check()
+  await dialog.getByRole('button', { name: 'Link', exact: true }).click()
 
   expect((await linkRequest).postDataJSON()).toEqual({ repo_asset_id: 1 })
-  // The radio leaves the menu open, so the new unlink item is already there.
-  await expect(page.getByRole('menuitem', { name: 'Unlink' })).toBeVisible()
   await expect(row.getByText('acme/api', { exact: true })).toBeVisible()
   expect(problems).toEqual([])
 })

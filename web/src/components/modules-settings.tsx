@@ -13,12 +13,11 @@ import { updateQuery, useSetUpdateConsent } from '../api/update'
 import { formatNumber, useT } from '../lib/i18n'
 import { cn } from '../lib/utils'
 import { Badge } from './ui/badge'
-import { InfoTip } from './ui/info-tip'
 import { Switch } from './ui/switch'
 
 const cardClass =
   'flex h-full w-full flex-col gap-2 rounded-card border border-border-subtle bg-surface p-4'
-const bodyClass = 'line-clamp-2 text-xs leading-relaxed text-muted'
+const bodyClass = 'text-xs leading-relaxed text-muted'
 
 /**
  * ModulesSettings is Configuration's Modules tab (#139): the opt-in scanners
@@ -72,10 +71,6 @@ function ModuleCard({
         <Badge tone={on ? 'ok' : 'neutral'}>
           {on ? t('settings.badge.on') : t('settings.badge.off')}
         </Badge>
-        <InfoTip
-          label={t('settings.module.about', { title })}
-          content={body}
-        />
         <div className="-my-1 -mr-1 ml-auto">
           <Switch
             label={title}

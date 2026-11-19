@@ -140,6 +140,10 @@ test('Containers adds and scans an ECR tag by its digest', async ({
   ).toHaveAttribute('aria-selected', 'true')
   const row = page.getByRole('row').filter({ hasText: 't2n-api:v1.2.3' })
   await expect(row).toBeVisible()
+  // Untracked rows still get the row menu (link/schedule before the scan).
+  await expect(
+    row.getByRole('button', { name: 'Actions for t2n-api:v1.2.3' }),
+  ).toBeVisible()
 
   const assetRequest = page.waitForRequest(
     (request) =>

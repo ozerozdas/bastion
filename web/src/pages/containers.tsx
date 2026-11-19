@@ -6,6 +6,7 @@ import {
   assetsQuery,
   useArchiveAsset,
   useClearAssetLink,
+  useEnsureImageAsset,
   useSetAssetLink,
   useSetAssetSchedule,
   type Asset,
@@ -31,6 +32,7 @@ import {
   type DataTableColumn,
 } from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
+import { LinkRepositoryDialog } from '../components/link-repository-dialog'
 import {
   BandHeader,
   BandMeta,
@@ -240,7 +242,9 @@ export function ContainersPage() {
             band={{ summary }}
           >
             {tab === 'docker' ? <DockerPanel assets={list} live={live} /> : null}
-            {tab === 'orphaned' ? <OrphanedImages assets={orphaned} /> : null}
+            {tab === 'orphaned' ? (
+          <OrphanedImages assets={orphaned} repos={repos} />
+        ) : null}
             {connection ? (
               <EcrConnection
                 connection={connection}
@@ -320,8 +324,10 @@ function DockerPanel({
   const setLink = useSetAssetLink()
   const clearLink = useClearAssetLink()
   const schedule = useSetAssetSchedule()
+  const track = useEnsureImageAsset()
   const tableSort = useTableSort()
   const [confirmingID, setConfirmingID] = useState<number | null>(null)
+  const [linkRow, setLinkRow] = useState<ContainerRow | null>(null)
 
   const rows: ContainerRow[] =
     images.data?.images.map((image) => ({
@@ -350,6 +356,12 @@ function DockerPanel({
     }
   }
 
+  /** imageID returns the tracked asset's id, creating it without a scan first. */
+  async function imageID(row: ContainerRow): Promise<number> {
+    if (row.asset) return row.asset.id
+    return track.mutateAsync({ ref: row.image.reference })
+  }
+
   const columns: DataTableColumn<ContainerRow>[] = [
     {
       id: 'image',
@@ -359,14 +371,26 @@ function DockerPanel({
       sortValue: (row) => row.image.reference,
       // One line per row: the full reference and the image id live in the
       // tooltip, so a long tag never grows the row.
-      cell: (row) => (
-        <span
-          className="block max-w-[28ch] truncate font-mono text-xs text-fg"
-          title={`${row.image.reference} · ${shortID(row.image.id)}`}
-        >
-          {row.image.reference}
-        </span>
-      ),
+      cell: (row) => {
+        const tracked = scannedAsset(row.asset)
+        return tracked === undefined ? (
+          <span
+            className="block max-w-[28ch] truncate font-mono text-xs text-fg"
+            title={t('asset.findings.scanFirst')}
+          >
+            {row.image.reference}
+          </span>
+        ) : (
+          <Link
+            to="/findings/$assetId"
+            params={{ assetId: String(tracked.id) }}
+            className="block max-w-[28ch] truncate font-mono text-xs text-fg hover:underline"
+            title={`${row.image.reference} · ${shortID(row.image.id)}`}
+          >
+            {row.image.reference}
+          </Link>
+        )
+      },
     },
     {
       id: 'size',
@@ -433,9 +457,12 @@ function DockerPanel({
       mobile: 'actions',
       cell: (row) => {
         const asset = row.asset
+        const name = asset?.display_name ?? row.image.reference
+        const tracking =
+          track.isPending && track.variables?.ref === row.image.reference
         const running = asset !== undefined && isRunning(asset, live.get(asset.id))
-        const items: ActionMenuItem[] =
-          asset === undefined
+        const items: ActionMenuItem[] = [
+          ...(asset === undefined
             ? []
             : [
                 {
@@ -444,6 +471,24 @@ function DockerPanel({
                   to: '/findings',
                   search: { asset: asset.id },
                 },
+              ]),
+          {
+            key: 'link',
+            label:
+              asset?.linked_repo === undefined
+                ? t('containers.link.action')
+                : t('containers.link.change'),
+            onSelect: () => {
+              setLink.reset()
+              clearLink.reset()
+              setLinkRow(row)
+            },
+          },
+        ]
+        const trailingItems: ActionMenuItem[] =
+          asset === undefined
+            ? []
+            : [
                 ...(asset.linked_repo === undefined
                   ? []
                   : [
@@ -465,48 +510,32 @@ function DockerPanel({
                   },
                 },
               ]
-        const radios: ActionMenuRadio[] =
-          asset === undefined
-            ? []
-            : [
-                ...(asset.linked_repo === undefined && repos.length > 0
-                  ? [
-                      {
-                        label: t('containers.link.aria', {
-                          name: asset.display_name,
-                        }),
-                        title: t('containers.link.to'),
-                        value: '',
-                        options: repos.map((repo) => ({
-                          value: String(repo.id),
-                          label: repo.ref,
-                        })),
-                        disabled: setLink.isPending,
-                        onChange: (value: string) =>
-                          setLink.mutate({
-                            imageId: asset.id,
-                            repoId: Number(value),
-                          }),
-                      },
-                    ]
-                  : []),
-                {
-                  label: t('schedule.aria', { name: asset.display_name }),
-                  title: t('containers.column.schedule'),
-                  value: asset.scan_schedule,
-                  options: [
-                    { value: 'off', label: t('schedule.off') },
-                    { value: 'daily', label: t('schedule.daily') },
-                    { value: 'weekly', label: t('schedule.weekly') },
-                  ],
-                  disabled: schedule.isPending,
-                  onChange: (value: string) =>
-                    schedule.mutate({
-                      id: asset.id,
-                      schedule: value as Asset['scan_schedule'],
-                    }),
-                },
-              ]
+        const radios: ActionMenuRadio[] = [
+          {
+            label: t('schedule.aria', { name }),
+            title: t('containers.column.schedule'),
+            value: asset?.scan_schedule ?? 'off',
+            options: [
+              { value: 'off', label: t('schedule.off') },
+              { value: 'daily', label: t('schedule.daily') },
+              { value: 'weekly', label: t('schedule.weekly') },
+            ],
+            disabled: schedule.isPending || tracking,
+            onChange: (value: string) => {
+              void (async () => {
+                try {
+                  const imageId = await imageID(row)
+                  schedule.mutate({
+                    id: imageId,
+                    schedule: value as Asset['scan_schedule'],
+                  })
+                } catch {
+                  // The track failure shows in the row's sub-row.
+                }
+              })()
+            },
+          },
+        ]
         return (
           <div className="flex items-center justify-end gap-1 whitespace-nowrap">
             <Button
@@ -518,15 +547,14 @@ function DockerPanel({
             >
               {scanning(row) ? t('containers.queueing') : t('containers.scan')}
             </Button>
-            {asset === undefined ? null : (
-              <ActionMenu
-                label={t('containers.actions.aria', { name: asset.display_name })}
-                // ponytail: the shared "⋯" trigger, turned upright.
-                className="rotate-90"
-                items={items}
-                radio={radios}
-              />
-            )}
+            <ActionMenu
+              label={t('containers.actions.aria', { name })}
+              // ponytail: the shared "⋯" trigger, turned upright.
+              className="rotate-90"
+              items={items}
+              radio={radios}
+              trailingItems={trailingItems}
+            />
           </div>
         )
       },
@@ -577,8 +605,8 @@ function DockerPanel({
             mobileCards
             renderRow={(row) => {
               const asset = row.asset
-              // The link and unlink controls live in the row's menu, so their
-              // failure gets the same sub-row an inline control had.
+              // The link, unlink and track controls live in the row's menu, so
+              // their failure gets the same sub-row an inline control had.
               const linkError =
                 asset === undefined
                   ? undefined
@@ -587,6 +615,11 @@ function DockerPanel({
                     : clearLink.isError && clearLink.variables === asset.id
                       ? clearLink.error
                       : undefined
+              const trackError =
+                track.isError &&
+                track.variables?.ref === row.image.reference
+                  ? track.error
+                  : undefined
               return (
                 <Fragment>
                   <DataTableRow cardMode>
@@ -621,6 +654,13 @@ function DockerPanel({
                       </td>
                     </tr>
                   ) : null}
+                  {trackError === undefined ? null : (
+                    <tr>
+                      <td colSpan={columns.length} className="pb-2">
+                        <ErrorNote error={trackError} />
+                      </td>
+                    </tr>
+                  )}
                   {linkError === undefined ? null : (
                     <tr>
                       <td colSpan={columns.length} className="pb-2">
@@ -641,6 +681,30 @@ function DockerPanel({
           />
         </section>
       ) : null}
+      {linkRow === null ? null : (
+        <LinkRepositoryDialog
+          name={linkRow.asset?.display_name ?? linkRow.image.reference}
+          repos={repos}
+          currentId={linkRow.asset?.linked_repo?.asset_id}
+          pending={track.isPending || setLink.isPending || clearLink.isPending}
+          onClose={() => setLinkRow(null)}
+          onConfirm={(repoId) => {
+            const row = linkRow
+            void (async () => {
+              try {
+                const imageId = await imageID(row)
+                if (repoId === undefined) {
+                  clearLink.mutate(imageId)
+                } else {
+                  setLink.mutate({ imageId, repoId })
+                }
+              } finally {
+                setLinkRow(null)
+              }
+            })()
+          }}
+        />
+      )}
     </>
   )
 }
@@ -672,10 +736,20 @@ function AWSHint() {
  * OrphanedImages lists ECR images whose AWS connection was removed. They no
  * longer appear under any connection, so this is where they can be archived.
  */
-function OrphanedImages({ assets }: { assets: Asset[] }) {
+function OrphanedImages({
+  assets,
+  repos,
+}: {
+  assets: Asset[]
+  repos: Asset[]
+}) {
   const t = useT()
   const archive = useArchiveAsset()
+  const setLink = useSetAssetLink()
+  const clearLink = useClearAssetLink()
+  const schedule = useSetAssetSchedule()
   const tableSort = useTableSort()
+  const [linkRow, setLinkRow] = useState<Asset | null>(null)
 
   const columns: DataTableColumn<Asset>[] = [
     {
@@ -685,14 +759,26 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
       mobile: 'primary',
       cellClassName: 'max-w-[44ch] py-2 pr-3 align-middle',
       sortValue: (asset) => asset.display_name,
-      cell: (asset) => (
-        <span
-          className="block max-w-[44ch] truncate font-mono text-xs text-fg"
-          title={asset.ref}
-        >
-          {asset.display_name}
-        </span>
-      ),
+      cell: (asset) => {
+        const tracked = scannedAsset(asset)
+        return tracked === undefined ? (
+          <span
+            className="block max-w-[44ch] truncate font-mono text-xs text-fg"
+            title={t('asset.findings.scanFirst')}
+          >
+            {asset.display_name}
+          </span>
+        ) : (
+          <Link
+            to="/findings/$assetId"
+            params={{ assetId: String(tracked.id) }}
+            className="block max-w-[44ch] truncate font-mono text-xs text-fg hover:underline"
+            title={asset.ref}
+          >
+            {asset.display_name}
+          </Link>
+        )
+      },
     },
     {
       id: 'open-findings',
@@ -713,7 +799,7 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
       cell: (asset) => {
         const archiving = archive.isPending && archive.variables === asset.id
         return (
-          <div className="flex items-center justify-end whitespace-nowrap">
+          <div className="flex items-center justify-end gap-1 whitespace-nowrap">
             <Button
               type="button"
               size="sm"
@@ -723,6 +809,58 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
             >
               {archiving ? t('containers.archiving') : t('containers.archive')}
             </Button>
+            <ActionMenu
+              label={t('containers.actions.aria', { name: asset.display_name })}
+              className="rotate-90"
+              items={[
+                {
+                  key: 'findings',
+                  label: t('containers.viewFindings'),
+                  to: '/findings',
+                  search: { asset: asset.id },
+                },
+                {
+                  key: 'link',
+                  label:
+                    asset.linked_repo === undefined
+                      ? t('containers.link.action')
+                      : t('containers.link.change'),
+                  onSelect: () => {
+                    setLink.reset()
+                    clearLink.reset()
+                    setLinkRow(asset)
+                  },
+                },
+              ]}
+              radio={{
+                label: t('schedule.aria', { name: asset.display_name }),
+                title: t('containers.column.schedule'),
+                value: asset.scan_schedule,
+                options: [
+                  { value: 'off', label: t('schedule.off') },
+                  { value: 'daily', label: t('schedule.daily') },
+                  { value: 'weekly', label: t('schedule.weekly') },
+                ],
+                disabled: schedule.isPending,
+                onChange: (value) =>
+                  schedule.mutate({
+                    id: asset.id,
+                    schedule: value as Asset['scan_schedule'],
+                  }),
+              }}
+              trailingItems={
+                asset.linked_repo === undefined
+                  ? []
+                  : [
+                      {
+                        key: 'unlink',
+                        label: t('containers.link.unlink'),
+                        disabled: clearLink.isPending,
+                        onSelect: () => clearLink.mutate(asset.id),
+                      },
+                    ]
+              }
+            />
           </div>
         )
       },
@@ -751,6 +889,21 @@ function OrphanedImages({ assets }: { assets: Asset[] }) {
           mobileCards
         />
       </section>
+      {linkRow === null ? null : (
+        <LinkRepositoryDialog
+          name={linkRow.display_name}
+          repos={repos}
+          currentId={linkRow.linked_repo?.asset_id}
+          pending={setLink.isPending || clearLink.isPending}
+          onClose={() => setLinkRow(null)}
+          onConfirm={(repoId) => {
+            const asset = linkRow
+            if (repoId === undefined) clearLink.mutate(asset.id)
+            else setLink.mutate({ imageId: asset.id, repoId })
+            setLinkRow(null)
+          }}
+        />
+      )}
     </section>
   )
 }
@@ -781,8 +934,10 @@ function EcrConnection({
   const setLink = useSetAssetLink()
   const clearLink = useClearAssetLink()
   const schedule = useSetAssetSchedule()
+  const track = useEnsureImageAsset()
   const tableSort = useTableSort()
   const [confirmingID, setConfirmingID] = useState<number | null>(null)
+  const [linkRow, setLinkRow] = useState<EcrRow | null>(null)
 
   const rows: EcrRow[] = (discover.data ?? []).flatMap((repository) =>
     repository.tags.map((tag) => ({
@@ -798,6 +953,16 @@ function EcrConnection({
     return scan.isPending && scan.variables?.ref === row.tag.ref
   }
 
+  /** imageID returns the tracked asset's id, creating it without a scan first. */
+  async function imageID(row: EcrRow): Promise<number> {
+    if (row.asset) return row.asset.id
+    return track.mutateAsync({
+      ref: row.tag.ref,
+      tag: row.tag.tags[0],
+      connectionId: connection.id,
+    })
+  }
+
   const columns: DataTableColumn<EcrRow>[] = [
     {
       id: 'image',
@@ -810,13 +975,25 @@ function EcrConnection({
         const primary = row.tag.tags[0] ?? ''
         const extra =
           row.tag.tags.length > 1 ? ` · ${row.tag.tags.slice(1).join(' · ')}` : ''
-        return (
+        const label = `${row.repository.name}:${primary}`
+        const title = `${row.repository.uri}:${primary} · ${shortID(row.tag.digest)}${extra}`
+        const tracked = scannedAsset(row.asset)
+        return tracked === undefined ? (
           <span
             className="block max-w-[32ch] truncate font-mono text-xs text-fg"
-            title={`${row.repository.uri}:${primary} · ${shortID(row.tag.digest)}${extra}`}
+            title={t('asset.findings.scanFirst')}
           >
-            {row.repository.name}:{primary}
+            {label}
           </span>
+        ) : (
+          <Link
+            to="/findings/$assetId"
+            params={{ assetId: String(tracked.id) }}
+            className="block max-w-[32ch] truncate font-mono text-xs text-fg hover:underline"
+            title={title}
+          >
+            {label}
+          </Link>
         )
       },
     },
@@ -887,9 +1064,11 @@ function EcrConnection({
       mobile: 'actions',
       cell: (row) => {
         const asset = row.asset
+        const name = asset?.display_name ?? `${row.repository.name}:${row.tag.tags[0] ?? ''}`
+        const tracking = track.isPending && track.variables?.ref === row.tag.ref
         const running = asset !== undefined && isRunning(asset, live.get(asset.id))
-        const items: ActionMenuItem[] =
-          asset === undefined
+        const items: ActionMenuItem[] = [
+          ...(asset === undefined
             ? []
             : [
                 {
@@ -898,6 +1077,24 @@ function EcrConnection({
                   to: '/findings',
                   search: { asset: asset.id },
                 },
+              ]),
+          {
+            key: 'link',
+            label:
+              asset?.linked_repo === undefined
+                ? t('containers.link.action')
+                : t('containers.link.change'),
+            onSelect: () => {
+              setLink.reset()
+              clearLink.reset()
+              setLinkRow(row)
+            },
+          },
+        ]
+        const trailingItems: ActionMenuItem[] =
+          asset === undefined
+            ? []
+            : [
                 ...(asset.linked_repo === undefined
                   ? []
                   : [
@@ -918,48 +1115,32 @@ function EcrConnection({
                   },
                 },
               ]
-        const radios: ActionMenuRadio[] =
-          asset === undefined
-            ? []
-            : [
-                ...(asset.linked_repo === undefined && repos.length > 0
-                  ? [
-                      {
-                        label: t('containers.link.aria', {
-                          name: asset.display_name,
-                        }),
-                        title: t('containers.link.to'),
-                        value: '',
-                        options: repos.map((repo) => ({
-                          value: String(repo.id),
-                          label: repo.ref,
-                        })),
-                        disabled: setLink.isPending,
-                        onChange: (value: string) =>
-                          setLink.mutate({
-                            imageId: asset.id,
-                            repoId: Number(value),
-                          }),
-                      },
-                    ]
-                  : []),
-                {
-                  label: t('schedule.aria', { name: asset.display_name }),
-                  title: t('containers.column.schedule'),
-                  value: asset.scan_schedule,
-                  options: [
-                    { value: 'off', label: t('schedule.off') },
-                    { value: 'daily', label: t('schedule.daily') },
-                    { value: 'weekly', label: t('schedule.weekly') },
-                  ],
-                  disabled: schedule.isPending,
-                  onChange: (value: string) =>
-                    schedule.mutate({
-                      id: asset.id,
-                      schedule: value as Asset['scan_schedule'],
-                    }),
-                },
-              ]
+        const radios: ActionMenuRadio[] = [
+          {
+            label: t('schedule.aria', { name }),
+            title: t('containers.column.schedule'),
+            value: asset?.scan_schedule ?? 'off',
+            options: [
+              { value: 'off', label: t('schedule.off') },
+              { value: 'daily', label: t('schedule.daily') },
+              { value: 'weekly', label: t('schedule.weekly') },
+            ],
+            disabled: schedule.isPending || tracking,
+            onChange: (value: string) => {
+              void (async () => {
+                try {
+                  const imageId = await imageID(row)
+                  schedule.mutate({
+                    id: imageId,
+                    schedule: value as Asset['scan_schedule'],
+                  })
+                } catch {
+                  // The track failure shows in the row's sub-row.
+                }
+              })()
+            },
+          },
+        ]
         return (
           <div className="flex items-center justify-end gap-1 whitespace-nowrap">
             <Button
@@ -975,15 +1156,14 @@ function EcrConnection({
                   ? t('containers.scan')
                   : t('containers.addAndScan')}
             </Button>
-            {asset === undefined ? null : (
-              <ActionMenu
-                label={t('containers.actions.aria', { name: asset.display_name })}
-                // ponytail: the shared "⋯" trigger, turned upright.
-                className="rotate-90"
-                items={items}
-                radio={radios}
-              />
-            )}
+            <ActionMenu
+              label={t('containers.actions.aria', { name })}
+              // ponytail: the shared "⋯" trigger, turned upright.
+              className="rotate-90"
+              items={items}
+              radio={radios}
+              trailingItems={trailingItems}
+            />
           </div>
         )
       },
@@ -1041,6 +1221,10 @@ function EcrConnection({
                     : clearLink.isError && clearLink.variables === asset.id
                       ? clearLink.error
                       : undefined
+              const trackError =
+                track.isError && track.variables?.ref === row.tag.ref
+                  ? track.error
+                  : undefined
               return (
                 <Fragment>
                   <DataTableRow cardMode>
@@ -1075,6 +1259,13 @@ function EcrConnection({
                       </td>
                     </tr>
                   ) : null}
+                  {trackError === undefined ? null : (
+                    <tr>
+                      <td colSpan={columns.length} className="pb-2">
+                        <ErrorNote error={trackError} />
+                      </td>
+                    </tr>
+                  )}
                   {linkError === undefined ? null : (
                     <tr>
                       <td colSpan={columns.length} className="pb-2">
@@ -1095,6 +1286,33 @@ function EcrConnection({
           />
         </section>
       ) : null}
+      {linkRow === null ? null : (
+        <LinkRepositoryDialog
+          name={
+            linkRow.asset?.display_name ??
+            `${linkRow.repository.name}:${linkRow.tag.tags[0] ?? ''}`
+          }
+          repos={repos}
+          currentId={linkRow.asset?.linked_repo?.asset_id}
+          pending={track.isPending || setLink.isPending || clearLink.isPending}
+          onClose={() => setLinkRow(null)}
+          onConfirm={(repoId) => {
+            const row = linkRow
+            void (async () => {
+              try {
+                const imageId = await imageID(row)
+                if (repoId === undefined) {
+                  clearLink.mutate(imageId)
+                } else {
+                  setLink.mutate({ imageId, repoId })
+                }
+              } finally {
+                setLinkRow(null)
+              }
+            })()
+          }}
+        />
+      )}
     </section>
   )
 }
@@ -1214,7 +1432,13 @@ function ScanCell({
   )
 }
 
-/** shortID trims the algorithm prefix and keeps the id readable in a row. */
+/** scannedAsset returns the tracked asset when it has a succeeded scan. */
+function scannedAsset(asset: Asset | undefined): Asset | undefined {
+  return asset?.last_scan?.status === 'succeeded' ? asset : undefined
+}
+
+/**
+/**shortID trims the algorithm prefix and keeps the id readable in a row. */
 function shortID(id: string): string {
   const value = id.startsWith('sha256:') ? id.slice('sha256:'.length) : id
   return value.slice(0, 12)

@@ -1,6 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type FormEvent,
+  type SVGProps,
+} from 'react'
 
 import {
   assetsQuery,
@@ -27,7 +35,7 @@ import {
   type DataTableSelection,
 } from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
-import { ClockIcon } from '../components/icons'
+import { BranchIcon, ClockIcon, ContainersIcon, FolderIcon, GitHubIcon } from '../components/icons'
 import {
   BandMeta,
   BandSummary,
@@ -417,18 +425,6 @@ function ProjectRow({
   const running = status === 'queued' || status === 'running'
   const images = asset.linked_images ?? []
   const findings = openFindingTotal(asset.open_counts)
-  // A repository's ref is its name, so the line under the name carries what
-  // the name cannot show twice: the branch, or the path behind a base name.
-  const refLine =
-    asset.default_branch === undefined
-      ? asset.ref
-      : asset.ref === asset.display_name
-        ? asset.default_branch
-        : `${asset.ref} · ${asset.default_branch}`
-  const refTitle =
-    asset.default_branch === undefined
-      ? asset.ref
-      : `${asset.ref} · ${asset.default_branch}`
   const scheduleLabel =
     asset.scan_schedule === 'daily' || asset.scan_schedule === 'weekly'
       ? t(`schedule.${asset.scan_schedule}`)
@@ -452,33 +448,60 @@ function ProjectRow({
   return (
     <Fragment>
       <DataTableRow selection={selection.row(asset)}>
-        <td data-mobile="primary" className="max-w-[34ch] py-2 pr-3 align-middle max-xl:max-w-[26ch]">
-          <div className="flex min-w-0 flex-col gap-0.5 leading-tight">
-            <span className="truncate font-medium" title={asset.display_name}>
-              {asset.display_name}
-            </span>
-            <span className="flex min-w-0 items-center gap-1.5 text-[0.8125rem] text-muted">
-              <span className="truncate font-mono" title={refTitle}>
-                {refLine}
+        <td data-mobile="primary" className="max-w-[38ch] py-2 pr-3 align-middle max-xl:max-w-[30ch]">
+          <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap leading-tight">
+            {asset.last_scan?.status === 'succeeded' ? (
+              <Link
+                to="/findings/$assetId"
+                params={{ assetId: String(asset.id) }}
+                className="min-w-0 truncate font-medium hover:underline"
+                title={asset.display_name}
+              >
+                {asset.display_name}
+              </Link>
+            ) : (
+              <span
+                className="min-w-0 truncate font-medium"
+                title={t('asset.findings.scanFirst')}
+              >
+                {asset.display_name}
               </span>
-              {scheduleLabel === null ? null : (
-                <span
-                  className="flex shrink-0 items-center gap-1 text-faint"
-                  title={t('schedule.aria', { name: asset.display_name })}
-                >
-                  <ClockIcon className="size-3" />
-                  {scheduleLabel}
+            )}
+            {asset.kind === 'path' ? (
+              <Badge title={asset.ref}>
+                <FolderIcon className="size-3 shrink-0" />
+                {t('repos.badge.local')}
+              </Badge>
+            ) : (
+              <Badge
+                className="max-w-[18ch]"
+                title={asset.default_branch ?? asset.ref}
+              >
+                <BranchIcon className="size-3 shrink-0" />
+                <span className="min-w-0 truncate font-mono">
+                  {asset.default_branch ?? '—'}
                 </span>
-              )}
-            </span>
+              </Badge>
+            )}
+            {scheduleLabel === null ? null : (
+              <Badge title={t('schedule.aria', { name: asset.display_name })}>
+                <ClockIcon className="size-3 shrink-0" />
+                {scheduleLabel}
+              </Badge>
+            )}
           </div>
         </td>
-        <td data-mobile="hidden" className="hidden py-2 pl-3 align-middle xl:table-cell">
-          {images.length === 0 ? null : (
+        <td data-mobile="hidden" className="hidden py-2 pl-3 align-middle whitespace-nowrap xl:table-cell">
+          {images.length === 0 ? (
+            <span className="text-faint">—</span>
+          ) : (
             <InfoTip
               label={t('repos.images.aria', { name: asset.display_name })}
               trigger={
-                <Badge className="tabular-nums">{images.length}</Badge>
+                <Badge className="tabular-nums">
+                  <ContainersIcon className="size-3 shrink-0" />
+                  {images.length}
+                </Badge>
               }
               className="size-auto"
               content={
@@ -502,7 +525,23 @@ function ProjectRow({
           data-mobile="status"
           className="status-cell-wide py-2 pl-3 align-middle whitespace-nowrap"
         >
-          {status ? (
+          {failed ? (
+            <InfoTip
+              label={t('repos.scanErrorAria', { name: asset.display_name })}
+              trigger={
+                <Badge tone={statusView.failed.tone}>
+                  {t(statusView.failed.labelKey)}
+                </Badge>
+              }
+              className="size-auto rounded-sm"
+              content={
+                <span className="flex max-w-[34ch] flex-col gap-1 text-xs">
+                  <span>{scanError ?? t('repos.scanFailedNoMessage')}</span>
+                  <span className="text-muted">{suggestFix(scanError)}</span>
+                </span>
+              }
+            />
+          ) : status ? (
             <Badge tone={statusView[status].tone}>
               {t(statusView[status].labelKey)}
             </Badge>
@@ -518,7 +557,7 @@ function ProjectRow({
             </span>
           ) : null}
         </td>
-        <td data-mobile="counts" className="py-2 pl-3 align-middle">
+        <td data-mobile="counts" className="py-2 pl-3 align-middle whitespace-nowrap">
           {lastScan === undefined && !liveActive ? (
             <span className="text-[0.8125rem] whitespace-nowrap text-faint">
               {t('repos.findings.notScanned')}
@@ -543,7 +582,7 @@ function ProjectRow({
             </span>
           )}
         </td>
-        <td data-mobile="actions" className="py-2 pl-3 align-middle">
+        <td data-mobile="actions" className="py-2 pl-3 align-middle whitespace-nowrap">
           <div className="flex items-center justify-end gap-1">
             {running && lastScan ? (
               <Button
@@ -649,14 +688,6 @@ function ProjectRow({
         </tr>
       ) : null}
 
-      {failed ? (
-        <tr>
-          <td colSpan={rowColSpan} className="pb-2">
-            <ScanFailure error={scanError} />
-          </td>
-        </tr>
-      ) : null}
-
       {start.isError ? (
         <tr>
           <td colSpan={rowColSpan} className="pb-2">
@@ -701,22 +732,6 @@ function ProjectRow({
 }
 
 /**
- * ScanFailure shows the failed scan's own message plus a next step. The hint
- * is derived from the text, because the API keeps the scanner's wording.
- */
-function ScanFailure({ error }: { error: string | undefined }) {
-  const t = useT()
-  return (
-    <p className="flex flex-col gap-0.5 text-xs">
-      <span className="text-critical">
-        {error ?? t('repos.scanFailedNoMessage')}
-      </span>
-      <span className="text-muted">{suggestFix(error)}</span>
-    </p>
-  )
-}
-
-/**
  * AddProjectDialog holds the add-source panel in a modal (#105). A native
  * <dialog> keeps focus trapped and closes on Escape without extra code, and a
  * successful add closes it by flipping `open` in the parent.
@@ -752,52 +767,120 @@ function AddProjectDialog({
   )
 }
 
-/** AddProjects is the dialog body: GitHub discovery plus a local path. */
+/** AddProjects is the dialog body: pick GitHub or a local path, then fill that form. */
 function AddProjects({ onDone }: { onDone: () => void }) {
   const t = useT()
+  const [step, setStep] = useState<'choose' | 'github' | 'path'>('choose')
   const connections = useQuery(connectionsQuery)
   const github = (connections.data ?? []).filter(
     (connection) => connection.kind === 'github',
   )
+  const title =
+    step === 'github'
+      ? t('repos.addDialog.choice.github.title')
+      : step === 'path'
+        ? t('repos.addDialog.choice.path.title')
+        : t('repos.addDialog.title')
 
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
           <h2 id="add-repositories" className="text-[0.8125rem] font-semibold">
-            {t('repos.addDialog.title')}
+            {title}
           </h2>
-          <p className="text-xs text-muted">{t('repos.addDialog.body')}</p>
+          {step === 'choose' ? (
+            <p className="text-xs text-muted">{t('repos.addDialog.body')}</p>
+          ) : null}
         </div>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
-          {t('common.close')}
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {step === 'choose' ? null : (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setStep('choose')}
+            >
+              <span aria-hidden="true">←</span>
+              {t('repos.addDialog.back')}
+            </Button>
+          )}
+          <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+            {t('common.close')}
+          </Button>
+        </div>
       </div>
 
-      {connections.isPending ? (
-        <p className="text-muted">{t('repos.loadingConnections')}</p>
-      ) : null}
+      {step === 'choose' ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <AddChoice
+            Icon={GitHubIcon}
+            title={t('repos.addDialog.choice.github.title')}
+            body={t('repos.addDialog.choice.github.body')}
+            onClick={() => setStep('github')}
+          />
+          <AddChoice
+            Icon={FolderIcon}
+            title={t('repos.addDialog.choice.path.title')}
+            body={t('repos.addDialog.choice.path.body')}
+            onClick={() => setStep('path')}
+          />
+        </div>
+      ) : step === 'github' ? (
+        <>
+          {connections.isPending ? (
+            <p className="text-muted">{t('repos.loadingConnections')}</p>
+          ) : null}
 
-      {connections.isError ? (
-        <ErrorNote error={connections.error} fix={t('common.reloadFix')} />
-      ) : null}
+          {connections.isError ? (
+            <ErrorNote error={connections.error} fix={t('common.reloadFix')} />
+          ) : null}
 
-      {connections.isSuccess && github.length === 0 ? (
-        <p className="text-xs text-muted">
-          {t('repos.noGithub.before')}{' '}
-          <Link to="/connections" className="underline">
-            {t('repos.noGithub.link')}
-          </Link>{' '}
-          {t('repos.noGithub.after')}
-        </p>
-      ) : null}
+          {connections.isSuccess && github.length === 0 ? (
+            <p className="text-xs text-muted">
+              {t('repos.noGithub.before')}{' '}
+              <Link to="/connections" className="underline">
+                {t('repos.noGithub.link')}
+              </Link>{' '}
+              {t('repos.noGithub.after')}
+            </p>
+          ) : null}
 
-      {github.length > 0 ? (
-        <DiscoverRepos connections={github} onAdded={onDone} />
-      ) : null}
-
-      <AddLocalPath onAdded={onDone} />
+          {github.length > 0 ? (
+            <DiscoverRepos connections={github} onAdded={onDone} />
+          ) : null}
+        </>
+      ) : (
+        <AddLocalPath onAdded={onDone} />
+      )}
     </div>
+  )
+}
+
+/** AddChoice is one large source button on the dialog's first step. */
+function AddChoice({
+  Icon,
+  title,
+  body,
+  onClick,
+}: {
+  Icon: ComponentType<SVGProps<SVGSVGElement>>
+  title: string
+  body: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-start gap-2 rounded-card border border-border-subtle p-4 text-left transition-colors hover:border-accent hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
+    >
+      <span className="flex items-center gap-2 text-[0.8125rem] font-medium">
+        <Icon className="size-5 shrink-0 text-fg" />
+        {title}
+      </span>
+      <span className="text-xs text-muted">{body}</span>
+    </button>
   )
 }
 
