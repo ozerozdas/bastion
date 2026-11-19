@@ -315,6 +315,18 @@
   --b-font-sans: "Segoe UI", "Helvetica Neue", "Noto Sans", Arial, sans-serif;
 }
 
+:root[data-font="geometric"] {
+  --b-font-sans: Avenir Next, Avenir, Futura, "Century Gothic", Montserrat, sans-serif;
+}
+
+:root[data-font="rounded"] {
+  --b-font-sans: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif;
+}
+
+:root[data-font="oldstyle"] {
+  --b-font-sans: "Iowan Old Style", Palatino, "Palatino Linotype", "Book Antiqua", Charter, serif;
+}
+
 :root[data-font="serif"] {
   --b-font-sans: Georgia, "Times New Roman", serif;
 }

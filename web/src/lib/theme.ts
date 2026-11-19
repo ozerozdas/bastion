@@ -67,12 +67,22 @@ export const modeOptions = [
 ] as const satisfies readonly { value: Mode; labelKey: string }[]
 
 /** FontFamily names the locally available stacks; nothing is downloaded. */
-export type FontFamily = 'system' | 'humanist' | 'serif' | 'mono'
+export type FontFamily =
+  | 'system'
+  | 'humanist'
+  | 'geometric'
+  | 'rounded'
+  | 'serif'
+  | 'oldstyle'
+  | 'mono'
 
 export const fontFamilyOptions = [
   { value: 'system', labelKey: 'font.system' },
   { value: 'humanist', labelKey: 'font.humanist' },
+  { value: 'geometric', labelKey: 'font.geometric' },
+  { value: 'rounded', labelKey: 'font.rounded' },
   { value: 'serif', labelKey: 'font.serif' },
+  { value: 'oldstyle', labelKey: 'font.oldstyle' },
   { value: 'mono', labelKey: 'font.mono' },
 ] as const satisfies readonly { value: FontFamily; labelKey: string }[]
 
@@ -136,7 +146,7 @@ export function storedFontSize(): FontSize {
 }
 
 export function storedWidth(): ContentWidth {
-  return storedOption(widthKey, widthOptions, 'full')
+  return storedOption(widthKey, widthOptions, 'wide')
 }
 
 /** resolveMode turns the System choice into the OS preference. */

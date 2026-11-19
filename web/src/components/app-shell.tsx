@@ -102,9 +102,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [isDesktop])
 
   return (
-    <div className="flex min-h-screen bg-bg text-fg">
+    <div className="flex min-h-screen bg-bg text-fg lg:bg-sidebar">
       {isDesktop ? (
-        <aside className="sticky top-0 flex h-screen w-[232px] shrink-0 flex-col gap-[18px] overflow-y-auto border-r border-border-subtle bg-sidebar px-3 py-4">
+        <aside className="sticky top-0 flex h-screen w-[232px] shrink-0 flex-col gap-[18px] overflow-y-auto bg-sidebar px-3 py-4">
           <SidebarContent current={current} counts={counts} />
         </aside>
       ) : null}
@@ -125,7 +125,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </SidebarDrawer>
       ) : null}
 
-      <main className="flex min-w-0 flex-1 flex-col">
+      {/* Desktop: the sidebar colour is the frame and the page sits inset in
+          it as one surface panel, so cards inside separate by border only. */}
+      <main className="flex min-w-0 flex-1 flex-col lg:my-2 lg:mr-2 lg:overflow-clip lg:rounded-xl lg:border lg:border-border-subtle lg:bg-surface">
         {/* Below lg the page titles live in their bands, so this bar keeps only
             the drawer button. */}
         <header className="flex min-h-14 items-center gap-x-3 border-b border-border-subtle px-4 py-2.5 sm:px-7 lg:hidden">
