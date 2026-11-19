@@ -24,6 +24,47 @@ export function parseAssetSearch(search: Record<string, unknown>): AssetSearch {
   return {}
 }
 
+/** reportTrendDays are the windows the trend report offers. */
+export const reportTrendDays = [30, 90, 180, 365] as const
+
+/** ReportTrendDays is one offered trend window, in days. */
+export type ReportTrendDays = (typeof reportTrendDays)[number]
+
+/** ReportSearch is a report page's scope: project, advisory and trend window. */
+export type ReportSearch = {
+  /** Narrows the report to one project; absent means the whole fleet. */
+  asset?: number
+  /** ?cve=<id> is the advisory the CVE insights report looks up. */
+  cve?: string
+  /** ?days=<n> is the trend window; absent is the API's 90-day default. */
+  days?: ReportTrendDays
+}
+
+/** MaxCveSearchLength caps the advisory id, so a pasted blob cannot fill the URL. */
+const maxCveSearchLength = 64
+
+/**
+ * parseReportSearch reads ?asset=<id>, ?cve=<id> and ?days=<n> from a report
+ * page. Malformed values are dropped, so a shared link with a stale window
+ * still opens the report instead of failing the route.
+ */
+export function parseReportSearch(
+  search: Record<string, unknown>,
+): ReportSearch {
+  const cve =
+    typeof search.cve === 'string'
+      ? [...search.cve.trim()].slice(0, maxCveSearchLength).join('')
+      : ''
+  const days = reportTrendDays.find(
+    (option) => String(option) === String(search.days),
+  )
+  return {
+    ...parseAssetSearch(search),
+    ...(cve === '' ? {} : { cve }),
+    ...(days === undefined ? {} : { days }),
+  }
+}
+
 /** SortOrder is the direction of a server-side sort. */
 export type SortOrder = 'asc' | 'desc'
 

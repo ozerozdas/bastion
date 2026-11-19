@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
+import type { ComponentType } from 'react'
 
 import { assetsQuery } from '../api/assets'
 import { EmptyState } from '../components/empty-state'
@@ -7,8 +8,14 @@ import { BandHeader, BandSummary } from '../components/page-band'
 import { ProjectSwitcher } from '../components/project-switcher'
 import { buttonVariants } from '../components/ui/button'
 import { useT } from '../lib/i18n'
-import { reportCatalog, type ReportDefinition } from '../lib/report-catalog'
-import type { AssetSearch } from '../lib/urls'
+import { reportCatalog, type ReportDefinition, type ReportId } from '../lib/report-catalog'
+import type { AssetSearch, ReportSearch } from '../lib/urls'
+import { CveInsightsReport } from './reports/cve-insights'
+import { MalwareReportPanel } from './reports/malware'
+import { OwaspTop10Report } from './reports/owasp-top10'
+import { RuntimesReportPanel } from './reports/runtimes'
+import type { ReportPanelProps } from './reports/shared'
+import { TrendReport } from './reports/trend'
 
 /** assetSearch keeps ?asset=<id> on a link; absent is every project. */
 function assetSearch(asset: number | undefined): AssetSearch {
@@ -88,9 +95,23 @@ function ReportCard({
 }
 
 /**
+ * reportPanels are the reports this build renders. An id missing here keeps the
+ * Coming soon state, so the catalog can ship ahead of its panels.
+ */
+const reportPanels: Partial<
+  Record<ReportId, ComponentType<ReportPanelProps>>
+> = {
+  trend: TrendReport,
+  'cve-insights': CveInsightsReport,
+  'owasp-top10': OwaspTop10Report,
+  malware: MalwareReportPanel,
+  runtimes: RuntimesReportPanel,
+}
+
+/**
  * ReportPage is one report (#190). The band carries the report's title and the
- * project switcher; the panels arrive in later milestones, so an empty state
- * explains what the page will show.
+ * project switcher; the panel below is chosen by the report id, and a report
+ * without a panel yet explains that it is on the way.
  */
 export function ReportPage() {
   const t = useT()
@@ -119,6 +140,8 @@ export function ReportPage() {
     )
   }
 
+  const Panel = reportPanels[report.id]
+
   return (
     <>
       <BandHeader>
@@ -130,21 +153,28 @@ export function ReportPage() {
               assets={assets.data ?? []}
               current={current}
               heading="none"
-              onChange={(assetId) =>
+              onChange={(assetId) => {
+                const nextSearch: ReportSearch = { ...search }
+                if (assetId === null) delete nextSearch.asset
+                else nextSearch.asset = assetId
                 void navigate({
                   to: '/reports/$reportId',
                   params: { reportId: report.id },
-                  search: assetSearch(assetId ?? undefined),
+                  search: nextSearch,
                 })
-              }
+              }}
             />
           }
         />
       </BandHeader>
-      <EmptyState
-        title={t('reports.comingSoon.title')}
-        body={t('reports.comingSoon.body')}
-      />
+      {Panel === undefined ? (
+        <EmptyState
+          title={t('reports.comingSoon.title')}
+          body={t('reports.comingSoon.body')}
+        />
+      ) : (
+        <Panel search={search} />
+      )}
     </>
   )
 }

@@ -7,6 +7,7 @@ import {
   parseConnectionsTab,
   parseFindingsSearch,
   parseProjectsTabSearch,
+  parseReportSearch,
   parseScanDiffSearch,
 } from './urls'
 
@@ -246,5 +247,32 @@ describe('parseConfigurationsTab', () => {
     expect(parseConfigurationsTab({ tab: 'docker' })).toEqual({})
     expect(parseConfigurationsTab({ tab: 1 })).toEqual({})
     expect(parseConfigurationsTab({ tab: ['ai'] })).toEqual({})
+  })
+})
+
+describe('parseReportSearch', () => {
+  it('keeps the project, the advisory and an offered trend window', () => {
+    expect(
+      parseReportSearch({ asset: '7', cve: ' CVE-2021-44228 ', days: '365' }),
+    ).toEqual({ asset: 7, cve: 'CVE-2021-44228', days: 365 })
+  })
+
+  it('keeps only the windows the trend report offers', () => {
+    expect(parseReportSearch({ days: '30' })).toEqual({ days: 30 })
+    expect(parseReportSearch({ days: '45' })).toEqual({})
+    expect(parseReportSearch({ days: 'abc' })).toEqual({})
+  })
+
+  it('drops a blank advisory and malformed ids instead of failing the route', () => {
+    expect(parseReportSearch({ cve: '   ' })).toEqual({})
+    expect(parseReportSearch({ cve: 7 })).toEqual({})
+    expect(parseReportSearch({ asset: 'abc', cve: 'GHSA-jfh8-c2jp-5v3q' })).toEqual({
+      cve: 'GHSA-jfh8-c2jp-5v3q',
+    })
+  })
+
+  it('caps a pasted advisory id', () => {
+    const cve = 'C'.repeat(100)
+    expect(parseReportSearch({ cve })).toEqual({ cve: 'C'.repeat(64) })
   })
 })

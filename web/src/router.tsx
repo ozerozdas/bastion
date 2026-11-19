@@ -14,6 +14,7 @@ import {
   parseContainersTab,
   parseFindingsSearch,
   parseProjectsTabSearch,
+  parseReportSearch,
   parseScanDiffSearch,
 } from './lib/urls'
 import { AssetFindingsPage } from './pages/asset-findings'
@@ -137,11 +138,12 @@ const reportsRoute = createRoute({
   component: ReportsPage,
 })
 
-// One report's page; the id picks the entry in the catalog.
+// One report's page; the id picks the entry in the catalog. ?asset=<id>,
+// ?cve=<id> and ?days=<n> scope the report itself (#190).
 const reportRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/reports/$reportId',
-  validateSearch: parseAssetSearch,
+  validateSearch: parseReportSearch,
   component: ReportPage,
 })
 
