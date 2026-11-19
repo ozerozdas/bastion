@@ -157,7 +157,9 @@ export function InfoTip({
             >
               {content}
             </div>,
-            document.body,
+            // An open <dialog> sits in the top layer, above anything in body;
+            // render inside it so the tip is not hidden behind the modal.
+            button.current?.closest('dialog') ?? document.body,
           )
         : null}
     </span>

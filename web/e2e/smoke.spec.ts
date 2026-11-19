@@ -39,7 +39,7 @@ const navPages = [
     label: 'Connections',
     path: '/connections',
     subtitle: 'GitHub, AWS and Docker sources',
-    marker: 'Add GitHub connection',
+    marker: 'New connection',
   },
 ]
 
@@ -221,7 +221,7 @@ test('Connections tabs live in the URL', async ({ page, server }) => {
   const registryTab = page.getByRole('tab', { name: 'Registry', exact: true })
   await expect(repositoryTab).toHaveAttribute('aria-selected', 'true')
   await expect(
-    page.getByRole('heading', { name: 'Add GitHub connection' }),
+    page.getByRole('button', { name: 'New connection' }),
   ).toBeVisible()
 
   // Registry is the bare path's alternative, so it is in the URL (#107).
@@ -229,10 +229,10 @@ test('Connections tabs live in the URL', async ({ page, server }) => {
   const origin = new URL(page.url()).origin
   await expect(page).toHaveURL(`${origin}/connections?tab=registry`)
   await expect(
-    page.getByRole('heading', { name: 'AWS' }),
+    page.getByRole('heading', { name: 'Local daemon' }),
   ).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'Add GitHub connection' }),
+    page.getByRole('list', { name: 'GitHub' }),
   ).toHaveCount(0)
 
   await page.reload()

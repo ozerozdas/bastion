@@ -46,11 +46,12 @@ test('first report: connect GitHub, add a repo, scan, read the report', async ({
     await pause()
 
     await page.getByRole('link', { name: 'Connections' }).click()
+    await page.getByRole('button', { name: 'New connection' }).click()
     await page.locator('#github-name').fill('github')
     await page.locator('#github-token').fill(token)
     await pause()
     await page.getByRole('button', { name: 'Add connection' }).click()
-    await expect(page.getByRole('button', { name: 'Test' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Actions for github' })).toBeVisible()
     mark('github connected')
     await pause()
 

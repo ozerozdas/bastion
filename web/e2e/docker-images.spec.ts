@@ -91,7 +91,7 @@ test('Connections shows a Docker status card and links to Containers', async ({
   await page.getByRole('tab', { name: 'Registry' }).click()
 
   // The card is status only: badge, reached host, image count, link out.
-  await expect(page.getByRole('heading', { name: 'Docker' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Local daemon' })).toBeVisible()
   await expect(page.getByText(dockerHost, { exact: true })).toBeVisible()
   await expect(page.getByText('2 images', { exact: true })).toBeVisible()
 
@@ -173,8 +173,8 @@ test('Containers explains when no Docker daemon is available', async ({
   // Connections still hides its Docker card, and AWS stays.
   await page.getByRole('link', { name: 'Connections', exact: true }).click()
   await page.getByRole('tab', { name: 'Registry' }).click()
-  await expect(page.getByRole('heading', { name: 'AWS' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Docker' })).toHaveCount(0)
+  // Without a daemon the card stays, muted.
+  await expect(page.getByText('not connected', { exact: true })).toBeVisible()
   expect(problems).toEqual([])
 })
 
