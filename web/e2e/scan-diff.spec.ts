@@ -123,7 +123,17 @@ test('compares two scans from the Scans tab (#17)', async ({ page, server }) => 
   ).toBeVisible()
   await expect(page.getByText('compared with scan #20')).toBeVisible()
 
-  // Three groups, each with its own rows.
+  // The band carries the change at a glance: group totals, the severity shift
+  // and the before/after bars, all from the diff already loaded.
+  await expect(page.getByLabel('Change totals')).toContainText('New')
+  await expect(
+    page.getByLabel('Findings by severity, before and after'),
+  ).toContainText('Critical')
+  await expect(
+    page.getByText('Scan #20 had 2 findings; scan #30 has 2 findings.'),
+  ).toBeVisible()
+
+  // Three groups, each with its own rows; persisting starts collapsed.
   const newRegion = page.getByRole('region', { name: 'New findings' })
   const fixedRegion = page.getByRole('region', { name: 'Fixed findings' })
   const persistingRegion = page.getByRole('region', {
@@ -133,7 +143,10 @@ test('compares two scans from the Scans tab (#17)', async ({ page, server }) => 
   await expect(newRegion.getByText('brand new')).toBeVisible()
   await expect(fixedRegion.locator('tbody tr')).toHaveCount(1)
   await expect(fixedRegion.getByText('gone now')).toBeVisible()
-  await expect(persistingRegion.locator('tbody tr')).toHaveCount(1)
+  const persistingDetails = persistingRegion.locator('details')
+  await expect(persistingDetails).toHaveJSProperty('open', false)
+  await persistingRegion.getByText('Persisting findings').click()
+  await expect(persistingDetails).toHaveJSProperty('open', true)
   await expect(persistingRegion.getByText('still here')).toBeVisible()
 
   // A fixed finding opens the shared drawer without decision controls.
