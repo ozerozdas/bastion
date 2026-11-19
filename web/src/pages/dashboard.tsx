@@ -164,7 +164,10 @@ export function DashboardPage() {
         />
       ) : null}
       <PageActions>
-        <LatestScan scans={data.last_scans} />
+        {/* The hero already fills a phone's first screen. */}
+        <span className="hidden sm:inline">
+          <LatestScan scans={data.last_scans} />
+        </span>
       </PageActions>
       <RiskSummary totals={data.totals_by_severity} />
       <RiskiestProjects assets={data.top_assets} />
@@ -178,7 +181,7 @@ export function DashboardPage() {
 }
 
 /** LatestScan says in the page header when the newest scan finished, or that one is running. */
-function LatestScan({ scans }: { scans: LastScan[] }) {
+export function LatestScan({ scans }: { scans: LastScan[] }) {
   const t = useT()
   if (scans.some((s) => s.status === 'queued' || s.status === 'running')) {
     return <span className="text-xs text-muted">{t('dashboard.header.scanning')}</span>

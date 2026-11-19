@@ -36,6 +36,8 @@ export type FilterBarProps = {
    * wrapping row from lg up. Children then take a row of their own below lg.
    */
   fieldGrid?: boolean
+  /** hideLabels keeps stacked labels for screen readers only; the controls speak for themselves. */
+  hideLabels?: boolean
   /** Content after the fields, e.g. a note about the view on screen. */
   children?: ReactNode
   /** Content under the row inside the card, e.g. an inline disclosure panel. */
@@ -86,6 +88,7 @@ export function FilterBar({
   layout = 'stacked',
   bordered = true,
   fieldGrid = false,
+  hideLabels = false,
   children,
   panel,
   activeFilters,
@@ -141,7 +144,10 @@ export function FilterBar({
 
     return (
       <div key={field.id} className={cn('flex flex-col gap-1', field.className)}>
-        <label htmlFor={field.id} className="text-xs font-medium text-muted">
+        <label
+          htmlFor={field.id}
+          className={cn('text-xs font-medium text-muted', hideLabels && 'sr-only')}
+        >
           {field.label}
         </label>
         {control}

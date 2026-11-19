@@ -20,8 +20,17 @@ export function Tabs<T extends string>({
   items,
   value,
   onChange,
+  head,
+  hideSingle = false,
   children,
 }: {
+  /** hideSingle drops the tab row when only one tab is offered. */
+  hideSingle?: boolean
+  /**
+   * head is content that shares a card with the tab row, above it, such as a
+   * project's summary. The panel still follows the tablist in reading order.
+   */
+  head?: ReactNode
   /** Accessible name of the tablist, e.g. "Projects views". */
   label: string
   items: readonly TabItem<T>[]
@@ -67,12 +76,15 @@ export function Tabs<T extends string>({
     buttons.current.get(target.value)?.focus()
   }
 
-  return (
-    <div className="flex flex-col gap-4">
+  const tablist = (
       <div
         role="tablist"
         aria-label={label}
-        className="flex items-center gap-1 border-b border-border-subtle"
+        className={cn(
+          'flex items-center gap-1',
+          // Inside the card the card's own edge is the line under the tabs.
+          head === undefined && 'border-b border-border-subtle',
+        )}
       >
         {items.map((item, index) => {
           const active = item.value === selected.value
@@ -107,6 +119,23 @@ export function Tabs<T extends string>({
           )
         })}
       </div>
+  )
+
+  // One tab is no choice: a caller that opts in shows just the content.
+  if (hideSingle && items.length < 2 && head === undefined) {
+    return <div className="flex flex-col gap-4">{children}</div>
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {head === undefined ? (
+        tablist
+      ) : (
+        <div className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface px-4 pt-4">
+          {head}
+          <div className="-mb-px -ml-2.5">{tablist}</div>
+        </div>
+      )}
 
       <div
         role="tabpanel"

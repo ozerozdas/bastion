@@ -81,9 +81,14 @@ test('renders every nav page without browser errors', async ({
     await expect(
       page.getByRole('heading', { level: 1, name: item.label }),
     ).toBeVisible()
-    await expect(
-      page.locator('header').getByText(item.subtitle, { exact: true }),
-    ).toBeVisible()
+    // The dashboard's hero and the Findings project switcher replace the
+    // subtitle, so the header leaves it out there.
+    const subtitle = page.locator('header').getByText(item.subtitle, { exact: true })
+    if (item.label === 'Dashboard' || item.label === 'Findings') {
+      await expect(subtitle).toHaveCount(0)
+    } else {
+      await expect(subtitle).toBeVisible()
+    }
     // The marker only renders once the page's first API call succeeded.
     await expect(
       page.getByText(item.marker, { exact: true }).first(),
@@ -309,7 +314,7 @@ test('drops a stale project id from the findings URL', async ({
 
   // The row's link opens the fleet-wide list filtered to that project.
   await page.goto(`${origin}/findings?asset=${assetId}`)
-  await expect(page.locator('#findings-project')).toHaveValue(assetId)
+  await expect(page).toHaveURL(`${origin}/findings/${assetId}`)
 
   // A removed project id must not stay in the address bar. With no id meaning
   // every project, an unknown id is dropped and the list shows them all.

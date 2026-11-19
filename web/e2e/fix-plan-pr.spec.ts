@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, test, watch } from './fixtures'
+import { expect, stubLicencePolicy, test, watch } from './fixtures'
 
 // Opening a manifest pull request (#47) is a deliberate two-step action: the
 // dialog explains what will happen on GitHub, and no request leaves the page
@@ -67,8 +67,9 @@ async function openFixPlan(page: Page, url: string) {
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
   await page.getByRole('link', { name: /^Findings/ }).click()
+  // Pick the project in the header, then its Fix plan tab.
+  await page.locator('#findings-project').selectOption('1')
   await page.getByRole('tab', { name: 'Fix plan' }).click()
-  await page.locator('#fix-plan-project').selectOption('1')
   await expect(page.getByRole('heading', { name: 'Fix plan' })).toBeVisible()
 }
 
@@ -76,6 +77,7 @@ test('open PR asks for confirmation before any request', async ({
   page,
   server,
 }) => {
+  await stubLicencePolicy(page)
   const problems = watch(page)
   let posted = 0
 
@@ -139,6 +141,7 @@ test('a recorded pull request replaces the Open PR button', async ({
   page,
   server,
 }) => {
+  await stubLicencePolicy(page)
   const problems = watch(page)
   const url = 'https://github.com/acme/app/pull/12'
 

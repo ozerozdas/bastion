@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 
-import { expect, test, watch } from './fixtures'
+import { expect, stubLicencePolicy, test, watch } from './fixtures'
 
 // The fix plan tab is stubbed: one package with two CVEs becomes one upgrade
 // step, and a package without a fixed version lands in "No fix available" (#27).
@@ -107,6 +107,7 @@ test('fix plan groups findings into one package upgrade per asset', async ({
   page,
   server,
 }) => {
+  await stubLicencePolicy(page)
   const problems = watch(page)
 
   await page.route('**/api/assets', (route) =>
@@ -129,10 +130,12 @@ test('fix plan groups findings into one package upgrade per asset', async ({
   )
 
   await openFindings(page, server.url)
-  await page.getByRole('tab', { name: 'Fix plan' }).click()
+  // The plan is per project, so the fleet-wide list has no tab for it.
+  await expect(page.getByRole('tab', { name: 'Fix plan' })).toHaveCount(0)
 
+  // An old link to the tab still lands on it.
   const origin = new URL(page.url()).origin
-  await expect(page).toHaveURL(`${origin}/findings?tab=fix-plan`)
+  await page.goto(`${origin}/findings?tab=fix-plan`)
   // Without a project there is no plan: the tab explains the next step.
   await expect(
     page.getByRole('heading', { name: 'Choose a project' }),

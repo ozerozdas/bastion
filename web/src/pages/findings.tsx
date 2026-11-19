@@ -1,6 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 
 import { assetsQuery } from '../api/assets'
 import { epssQuery } from '../api/epss'
@@ -34,6 +41,7 @@ import { GroupDrawer } from '../components/group-drawer'
 import { LicencePolicyCard } from '../components/licence-policy-card'
 import { Pager } from '../components/pager'
 import { PageActions } from '../components/app-shell'
+import { FilterIcon } from '../components/icons'
 import { Tabs } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
@@ -50,7 +58,38 @@ import {
   type FindingsView,
 } from '../lib/urls'
 import { cn } from '../lib/utils'
+import { dashboardQuery, openFindingTotal } from '../api/reports'
+import { LatestScan } from './dashboard'
 import { FixPlanPanel } from './fix-plan'
+
+/**
+ * HeaderSummary puts the open and critical totals and the last scan in the
+ * page header. It reads the dashboard report, which the sidebar count uses too,
+ * so the numbers match it whatever the filters below say.
+ */
+function HeaderSummary() {
+  const t = useT()
+  const report = useQuery(dashboardQuery)
+  if (!report.isSuccess) {
+    return null
+  }
+  const totals = report.data.totals_by_severity
+  return (
+    // Phones keep the header to the title and Export; the sidebar badge still
+    // carries the open count there.
+    <div className="hidden items-center gap-2 md:flex">
+      <LatestScan scans={report.data.last_scans} />
+      <Badge tone="neutral" className="tabular-nums">
+        {t('findings.header.open', { count: formatNumber(openFindingTotal(totals)) })}
+      </Badge>
+      {totals.critical > 0 ? (
+        <Badge tone="critical" className="tabular-nums">
+          {t('findings.header.critical', { count: formatNumber(totals.critical) })}
+        </Badge>
+      ) : null}
+    </div>
+  )
+}
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
@@ -215,7 +254,9 @@ export function findingColumns(
       id: 'package',
       header: t('findings.column.package'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3',
+      // A capped width keeps a long path from widening the column and so
+      // squeezing the Finding title into many lines; the full path is a title.
+      cellClassName: 'max-w-[34ch] py-2 pl-3',
       sortable: true,
       mobile: 'secondary',
       mobileLabel: t('findings.column.package'),
@@ -230,7 +271,9 @@ export function findingColumns(
         return (
           <>
             {packageLabel ? (
-              <span className="font-mono text-xs break-all">{packageLabel}</span>
+              <span className="block truncate font-mono text-xs" title={packageLabel}>
+                {packageLabel}
+              </span>
             ) : null}
             {finding.fixed_version ? (
               <span className="block text-xs text-muted">
@@ -253,14 +296,16 @@ export function findingColumns(
       id: 'finding',
       header: t('findings.column.finding'),
       headerClassName: 'pl-3',
-      cellClassName: 'max-w-[38ch] py-2 pl-3',
+      // A floor stops the title being squeezed; at most two lines, the rest
+      // is in the cell title.
+      cellClassName: 'min-w-[28ch] max-w-[44ch] py-2 pl-3',
       sortable: true,
       sortKey: 'title',
       mobile: 'primary',
       cellTitle: (finding) => finding.title,
       cell: (finding) => (
         <>
-          <span className="block">{finding.title}</span>
+          <span className="line-clamp-2">{finding.title}</span>
           {finding.occurrences > 1 ? (
             <span className="text-xs text-faint tabular-nums">
               {t('findings.occurrences', { count: finding.occurrences })}
@@ -296,7 +341,7 @@ function groupedColumns(
       id: 'severity',
       header: t('findings.column.severity'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pr-3 pl-3 whitespace-nowrap',
+      cellClassName: 'py-1.5 pr-3 pl-3 whitespace-nowrap',
       sortable: true,
       defaultSortDirection: 'desc',
       mobile: 'status',
@@ -310,14 +355,14 @@ function groupedColumns(
       id: 'rule',
       header: t('findings.column.finding'),
       headerClassName: 'pl-3',
-      cellClassName: 'max-w-[46ch] py-2 pl-3',
+      cellClassName: 'min-w-[28ch] max-w-[46ch] py-1.5 pl-3',
       sortable: true,
       sortKey: 'title',
       mobile: 'primary',
       cellTitle: (group) => group.title,
       cell: (group) => (
         <>
-          <span className="block">{group.title}</span>
+          <span className="line-clamp-2">{group.title}</span>
           <span className="font-mono text-xs text-muted">
             {group.rule_id ??
               t('findings.group.findingFallback', {
@@ -331,7 +376,7 @@ function groupedColumns(
       id: 'projects',
       header: t('findings.column.projects'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3 whitespace-nowrap',
+      cellClassName: 'py-1.5 pl-3 whitespace-nowrap',
       sortable: true,
       sortKey: 'project',
       defaultSortDirection: 'desc',
@@ -349,7 +394,7 @@ function groupedColumns(
       id: 'fixed',
       header: t('findings.column.fixedIn'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap',
+      cellClassName: 'py-1.5 pl-3 font-mono text-xs whitespace-nowrap',
       mobile: 'secondary',
       mobileLabel: t('findings.column.fixedIn'),
       cellTitle: (group) =>
@@ -454,7 +499,7 @@ function FindingsExportMenu({
  * per rule across projects, is the default (#90, #106); a project filter
  * forces single, and the toggle only appears for the fleet-wide list.
  */
-export function FindingsPage() {
+export function FindingsPage({ hero }: { hero?: ReactNode } = {}) {
   const t = useT()
   const languageCode = useLanguage()
   // The asset page carries its project in the path; the list works the same.
@@ -606,15 +651,18 @@ export function FindingsPage() {
     () => new Map(assetList.map((asset) => [asset.id, asset.display_name])),
     [assetList],
   )
+  // On a project's own page the project is fixed by the path, so its column,
+  // filter and chip would only repeat it.
+  const pinned = assetId !== undefined
   const columns = useMemo(
     () =>
       findingColumns(
         assetNames,
         epss.data?.enabled === true,
         reachability.data?.enabled === true,
-      ),
+      ).filter((column) => !pinned || column.id !== 'project'),
     // The headers and fallbacks are translated, so a language switch rebuilds.
-    [assetNames, epss.data?.enabled, reachability.data?.enabled, languageCode],
+    [assetNames, epss.data?.enabled, reachability.data?.enabled, languageCode, pinned],
   )
   const groupColumns = useMemo(
     () => groupedColumns(assetNames),
@@ -848,23 +896,6 @@ export function FindingsPage() {
     setCheckedGroups(new Set())
   }
 
-  // A control and its chip clear through the same handler, so state and URL
-  // cannot drift apart when one is used instead of the other.
-  function changeAsset(value: string) {
-    // A project filter forces single, so the view leaves the URL with it.
-    void navigate({
-      to: '/findings',
-      search: {
-        ...(value === '' ? {} : { asset: Number(value) }),
-        ...(search.q === undefined ? {} : { q: search.q }),
-        ...(search.size === undefined ? {} : { size: search.size }),
-        ...(search.sort === undefined ? {} : { sort: search.sort }),
-        ...(search.order === undefined ? {} : { order: search.order }),
-      },
-      replace: true,
-    })
-    clearSelection()
-  }
   function changeType(value: string) {
     setType(value as FindingType | '')
     narrowed()
@@ -933,31 +964,8 @@ export function FindingsPage() {
       ],
       onChange: changeStatus,
     },
-    {
-      id: 'findings-project',
-      label: t('findings.filter.project'),
-      value: selected === undefined ? '' : String(selected.id),
-      className: 'w-full lg:w-52',
-      options: [
-        { value: '', label: t('findings.filter.allProjects') },
-        // Grouped by asset kind, so images are not mixed into repositories.
-        ...assetList
-          .filter((asset) => asset.kind !== 'image')
-          .map((asset) => ({
-            value: String(asset.id),
-            label: asset.display_name,
-            group: t('findings.filter.group.repositories'),
-          })),
-        ...assetList
-          .filter((asset) => asset.kind === 'image')
-          .map((asset) => ({
-            value: String(asset.id),
-            label: asset.display_name,
-            group: t('findings.filter.group.images'),
-          })),
-      ],
-      onChange: changeAsset,
-    },
+    // The project is not here: picking one opens its page, so the picker
+    // lives next to the page title (ProjectSwitcher in the app shell).
   ]
 
   const moreFilters: FilterField[] = [
@@ -1035,11 +1043,6 @@ export function FindingsPage() {
       setQueryInput(''),
     )
   }
-  if (selected !== undefined) {
-    addChip('asset', t('findings.filter.project'), selected.display_name, () =>
-      changeAsset(''),
-    )
-  }
   if (type !== '') {
     addChip('type', t('findings.filter.type'), t(typeLabels[type]), () =>
       changeType(''),
@@ -1114,9 +1117,8 @@ export function FindingsPage() {
     setDependency('')
     setHideTests(false)
     setHideMaintenance(false)
+    // The project is a page, picked in the header, not a filter to clear.
     narrowed()
-    // The asset lives in the URL, so it clears through the same navigate.
-    if (search.asset !== undefined) changeAsset('')
   }
 
   const selection: DataTableSelection<Finding> = {
@@ -1159,7 +1161,7 @@ export function FindingsPage() {
       checked: checkedGroups.has(group.key),
       onChange: () => toggleGroupChecked(group.key),
       label: t('findings.selectGroupRow', { title: group.title }),
-      cellClassName: 'py-2',
+      cellClassName: 'py-1.5',
       checkboxClassName: 'cursor-pointer align-middle',
     }),
     headerClassName: 'w-6',
@@ -1167,6 +1169,12 @@ export function FindingsPage() {
 
   return (
     <>
+      {/* Fleet-wide totals would mislead on one project's page. */}
+      {assetId === undefined ? (
+        <PageActions>
+          <HeaderSummary />
+        </PageActions>
+      ) : null}
       {tab === 'findings' ? (
         <PageActions>
           <FindingsExportMenu
@@ -1188,27 +1196,44 @@ export function FindingsPage() {
       ) : null}
       <Tabs
         label={t('findings.tabs.aria')}
-        items={[
-          { value: 'findings', label: t('findings.tabs.findings') },
-          { value: 'fix-plan', label: t('findings.tabs.fixPlan') },
-        ]}
+        // The fix plan is per project, so the fleet-wide list offers no tab for
+        // it; an old ?tab=fix-plan link still gets both, to find its way back.
+        items={
+          pinned || tab === 'fix-plan'
+            ? [
+                { value: 'findings', label: t('findings.tabs.findings') },
+                { value: 'fix-plan', label: t('findings.tabs.fixPlan') },
+              ]
+            : [{ value: 'findings', label: t('findings.tabs.findings') }]
+        }
         value={tab}
         onChange={changeTab}
+        head={hero}
+        hideSingle
       >
         {tab === 'fix-plan' ? (
-          <FixPlanPanel assetList={assetList} selected={selected} />
+          <FixPlanPanel
+            assetList={assetList}
+            selected={selected}
+            pinned={assetId !== undefined}
+          />
         ) : (
           <>
-      {selected === undefined ? null : (
+      {/* A project's own page keeps its policy in the hero. */}
+      {selected === undefined || pinned ? null : (
         <LicencePolicyCard
           assetId={selected.id}
           title={t('licence.forProject', { project: selected.display_name })}
         />
       )}
+      {/* Filters, count and table share one card so they read as one block. */}
+      <div className="flex flex-col gap-4 rounded-card border border-border-subtle bg-surface p-4">
       <FilterBar
         label={t('findings.filter.aria')}
         fields={filters}
         fieldGrid
+        bordered={false}
+        hideLabels
         panel={
           <div
             id={moreFiltersId}
@@ -1281,9 +1306,11 @@ export function FindingsPage() {
                 ? t('findings.filter.more')
                 : t('findings.filter.moreActive', { count: hiddenCount })
             }
+            title={t('findings.filter.more')}
             onClick={() => setShowMore((open) => !open)}
+            className={cn(showMore && 'bg-hover')}
           >
-            {t('findings.filter.more')}
+            <FilterIcon className="size-3.5" />
             {hiddenCount === 0 ? null : (
               <span
                 aria-hidden="true"
@@ -1343,13 +1370,13 @@ export function FindingsPage() {
       </FilterBar>
 
       {findings.isPending ? (
-        <section className="rounded-card border border-border-subtle bg-surface p-4">
+        <section className="border-t border-border-subtle pt-4">
           <p className="text-muted">{t('findings.loading')}</p>
         </section>
       ) : null}
 
       {findings.isError ? (
-        <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
+        <section className="flex flex-col gap-1 border-t border-border-subtle pt-4">
           <h2 className="text-[0.8125rem] font-semibold">
             {t('findings.failed')}
           </h2>
@@ -1358,7 +1385,7 @@ export function FindingsPage() {
       ) : null}
 
       {list !== undefined && total === 0 ? (
-        <section className="rounded-card border border-border-subtle bg-surface p-8">
+        <section className="border-t border-border-subtle px-4 pt-8 pb-4">
           <h2
             ref={findingsHeading}
             tabIndex={-1}
@@ -1387,7 +1414,7 @@ export function FindingsPage() {
       {list !== undefined && total > 0 ? (
         <section
           aria-labelledby="findings-heading"
-          className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
+          className="flex flex-col gap-3 border-t border-border-subtle pt-4"
         >
           <div className="flex flex-wrap items-baseline gap-2.5">
             <h2
@@ -1472,6 +1499,7 @@ export function FindingsPage() {
           />
         </section>
       ) : null}
+      </div>
 
       {openGroup ? (
         <GroupDrawer

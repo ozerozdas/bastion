@@ -346,7 +346,7 @@ function fixPlan(assetId: number): S['FixPlan'] {
       factors: [
         { name: 'severity', value: score, detail: `${String(members.length)} open findings` },
         { name: 'epss', value: 1.4, detail: 'highest EPSS 14%' },
-        { name: 'reachability', value: 1.5, detail: 'called from your code' },
+        { name: 'reachability', value: 1.5, detail: 'reachable' },
       ],
       ...(name === 'axios' ? { pull_request: { number: 214, url: 'https://github.com/acme/payments-api/pull/214', state: 'open' as const } } : {}),
     })

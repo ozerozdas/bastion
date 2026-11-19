@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, useRouterState } from '@tanstack/react-router'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   useEffect,
   useRef,
@@ -15,7 +15,8 @@ import { CloseIcon, MenuIcon, MoonIcon, SettingsIcon, SunIcon } from './icons'
 import { SettingsDialog } from './settings-dialog'
 import { TrivyDBChip } from './trivy-db-chip'
 import { UpdateNotice } from './update-notice'
-import { assetsQuery } from '../api/assets'
+import { assetsQuery, type Asset } from '../api/assets'
+import type { FindingsSearch } from '../lib/urls'
 import { dashboardQuery, openFindingTotal } from '../api/reports'
 import { useT } from '../lib/i18n'
 import {
@@ -73,6 +74,67 @@ export function PageActions({ children }: { children: ReactNode }) {
 }
 
 /**
+ * ProjectSwitcher sits after the Findings title: picking a project opens its
+ * page and "All projects" returns to the fleet-wide list. It keeps the tab and
+ * the list state that make sense on either page.
+ */
+function ProjectSwitcher({
+  assets,
+  current,
+}: {
+  assets: readonly Asset[]
+  current: Asset | undefined
+}) {
+  const t = useT()
+  const navigate = useNavigate()
+  const search = useRouterState({ select: (state) => state.location.search }) as FindingsSearch
+  const kept = {
+    ...(search.tab === undefined ? {} : { tab: search.tab }),
+    ...(search.q === undefined ? {} : { q: search.q }),
+    ...(search.size === undefined ? {} : { size: search.size }),
+    ...(search.sort === undefined ? {} : { sort: search.sort }),
+    ...(search.order === undefined ? {} : { order: search.order }),
+  }
+  const repos = assets.filter((asset) => asset.kind !== 'image')
+  const images = assets.filter((asset) => asset.kind === 'image')
+
+  return (
+    <select
+      id="findings-project"
+      aria-label={t('findings.filter.project')}
+      value={current === undefined ? '' : String(current.id)}
+      onChange={(event) => {
+        const value = event.target.value
+        void (value === ''
+          ? navigate({ to: '/findings', search: { ...kept, tab: undefined } })
+          : navigate({ to: '/findings/$assetId', params: { assetId: value }, search: kept }))
+      }}
+      className="h-8 max-w-[min(26rem,50vw)] min-w-0 truncate rounded-md border border-transparent bg-transparent pr-6 pl-1.5 text-[0.9375rem] font-semibold text-fg hover:border-border-subtle hover:bg-hover"
+    >
+      <option value="">{t('findings.filter.allProjects')}</option>
+      {repos.length > 0 ? (
+        <optgroup label={t('findings.filter.group.repositories')}>
+          {repos.map((asset) => (
+            <option key={asset.id} value={asset.id}>
+              {asset.display_name}
+            </option>
+          ))}
+        </optgroup>
+      ) : null}
+      {images.length > 0 ? (
+        <optgroup label={t('findings.filter.group.images')}>
+          {images.map((asset) => (
+            <option key={asset.id} value={asset.id}>
+              {asset.display_name}
+            </option>
+          ))}
+        </optgroup>
+      ) : null}
+    </select>
+  )
+}
+
+/**
  * AppShell is the concept's layout: a fixed 232px sidebar with the ADR-007
  * sections, a 56px header for the page title, and a scrolling page area.
  */
@@ -102,6 +164,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       ? openFindingTotal(dashboard.data.totals_by_severity)
       : undefined,
   }
+
+  // A project's findings page names the project after its section.
+  const pageAssetId = /^\/findings\/(\d+)/.exec(pathname)?.[1]
+  const pageAsset =
+    pageAssetId === undefined
+      ? undefined
+      : assets.data?.find((asset) => asset.id === Number(pageAssetId))
+  const onFindings = pathname === '/findings' || pageAssetId !== undefined
 
   // A link inside the drawer navigates and the drawer must not stay over the
   // page it just opened; the same goes when the viewport grows past lg.
@@ -171,10 +241,22 @@ export function AppShell({ children }: { children: ReactNode }) {
             tabIndex={-1}
             className="shrink-0 text-[0.9375rem] font-semibold focus:outline-none"
           >
-            {t(current.labelKey)}
+            {pageAsset ? (
+              <Link to="/findings" className="text-muted hover:text-fg hover:underline">
+                {t(current.labelKey)}
+              </Link>
+            ) : (
+              t(current.labelKey)
+            )}
           </h1>
-          {/* The dashboard hero states this itself. */}
-          {pathname === '/' ? null : (
+          {onFindings ? (
+            <>
+              <span aria-hidden="true" className="-mx-1.5 text-faint">›</span>
+              <ProjectSwitcher assets={assets.data ?? []} current={pageAsset} />
+            </>
+          ) : null}
+          {/* The dashboard hero and the project switcher say this themselves. */}
+          {pathname === '/' || onFindings ? null : (
             <span className="min-w-0 text-faint">{t(current.subtitleKey)}</span>
           )}
           <div id={pageActionsId} className="ml-auto flex items-center gap-2" />

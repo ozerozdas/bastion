@@ -24,7 +24,7 @@ import { ErrorNote } from '../components/error-note'
 import { FilterBar } from '../components/filter-bar'
 import { FindingDrawer } from '../components/finding-drawer'
 import { useDrawerFocus } from '../components/drawer-focus'
-import { SeverityCountBadges } from '../components/severity-counts'
+import { OpenSeverityCounts } from '../components/severity-counts'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { severityLabel, severityTone } from '../lib/finding-labels'
@@ -40,9 +40,12 @@ import { manifestPath } from '../lib/manifests'
 export function FixPlanPanel({
   assetList,
   selected,
+  pinned = false,
 }: {
   assetList: readonly Asset[]
   selected: Asset | undefined
+  /** pinned hides the project picker: the page's path already names the project. */
+  pinned?: boolean
 }) {
   const t = useT()
   const navigate = useNavigate()
@@ -74,8 +77,16 @@ export function FixPlanPanel({
     (finding) => finding.fingerprint === openFingerprint,
   )
 
+  const steps = plan.data?.steps ?? []
+  const noFix = plan.data?.no_fix ?? []
+  // A column that is a dash on every row says nothing; show EPSS only when
+  // some step has a score.
+  const showEPSS =
+    epss.data?.enabled === true && steps.some((step) => step.max_epss !== undefined)
+
   return (
     <>
+      {pinned ? null : (
       <FilterBar
         label={t('fixPlan.filter.aria')}
         fields={[
@@ -106,12 +117,11 @@ export function FixPlanPanel({
           },
         ]}
       >
-        <p className="ml-auto text-xs text-faint">
-          {selected === undefined
-            ? t('fixPlan.scope.grouped')
-            : t('fixPlan.scope.one', { project: selected.display_name })}
-        </p>
+        {selected === undefined ? (
+          <p className="ml-auto text-xs text-faint">{t('fixPlan.scope.grouped')}</p>
+        ) : null}
       </FilterBar>
+      )}
 
       {selected === undefined ? (
         <EmptyState
@@ -148,10 +158,17 @@ export function FixPlanPanel({
         </section>
       ) : null}
 
-      {plan.isSuccess && plan.data.steps.length > 0 ? (
+      {/* The upgrades and the packages without a fix are two halves of one
+          answer, so they share a card. */}
+      {selected !== undefined && (steps.length > 0 || noFix.length > 0) ? (
+        <div className="flex flex-col gap-4 rounded-card border border-border-subtle bg-surface p-4">
+          <p className="text-xs text-faint">
+            {t('fixPlan.scope.one', { project: selected.display_name })}
+          </p>
+      {steps.length > 0 ? (
         <section
           aria-labelledby="fix-plan-heading"
-          className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
+          className="flex flex-col gap-3"
         >
           <div className="flex flex-wrap items-baseline gap-2.5">
             <h2 id="fix-plan-heading" className="text-[0.8125rem] font-semibold">
@@ -159,9 +176,9 @@ export function FixPlanPanel({
             </h2>
             <span className="text-faint">
               {t('fixPlan.summary', {
-                count: plan.data.steps.length,
-                upgrades: plan.data.steps.length,
-                findings: plan.data.steps.reduce(
+                count: steps.length,
+                upgrades: steps.length,
+                findings: steps.reduce(
                   (total, step) => total + step.finding_count,
                   0,
                 ),
@@ -169,10 +186,10 @@ export function FixPlanPanel({
             </span>
           </div>
           <PlanTable
-            rows={plan.data.steps}
+            rows={steps}
             columns={stepColumns(
               expanded,
-              epss.data?.enabled === true,
+              showEPSS,
               canOpenPullRequest ? setPrStep : undefined,
             )}
             rowKey={(step) => planRowKey('step', step.ecosystem, step.package)}
@@ -189,10 +206,14 @@ export function FixPlanPanel({
         </section>
       ) : null}
 
-      {plan.isSuccess && plan.data.no_fix.length > 0 ? (
+      {noFix.length > 0 ? (
         <section
           aria-labelledby="fix-plan-no-fix-heading"
-          className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
+          className={
+            steps.length > 0
+              ? 'flex flex-col gap-3 border-t border-border-subtle pt-4'
+              : 'flex flex-col gap-3'
+          }
         >
           <div className="flex flex-wrap items-baseline gap-2.5">
             <h2
@@ -203,12 +224,12 @@ export function FixPlanPanel({
             </h2>
             <span className="text-faint">
               {t('fixPlan.noFix.subtitle', {
-                count: plan.data.no_fix.length,
+                count: noFix.length,
               })}
             </span>
           </div>
           <PlanTable
-            rows={plan.data.no_fix}
+            rows={noFix}
             columns={noFixColumns(expanded)}
             rowKey={(group) =>
               planRowKey('no-fix', group.ecosystem, group.package)
@@ -224,6 +245,8 @@ export function FixPlanPanel({
             )}
           />
         </section>
+      ) : null}
+        </div>
       ) : null}
 
       {openFinding ? (
@@ -285,6 +308,9 @@ function stepColumns(
           <span className="font-mono text-muted">{installed(step)}</span>{' '}
           <span aria-hidden="true">→</span>{' '}
           <span className="font-mono font-medium">{step.target_version}</span>
+          <span className="ml-1.5 rounded border border-border-subtle px-1 font-mono text-[0.6875rem] text-muted">
+            {step.ecosystem}
+          </span>
           {step.approximate ? (
             <span
               className="ml-1.5 text-xs text-faint"
@@ -295,13 +321,6 @@ function stepColumns(
           ) : null}
         </span>
       ),
-    },
-    {
-      id: 'ecosystem',
-      header: t('fixPlan.column.ecosystem'),
-      headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3 font-mono text-xs text-muted',
-      cell: (step) => step.ecosystem,
     },
     ...(showEPSS
       ? [
@@ -331,7 +350,7 @@ function stepColumns(
           <span className="text-[0.8125rem] tabular-nums">
             {t('fixPlan.findingCount', { count: step.finding_count })}
           </span>
-          <SeverityCountBadges counts={step.severity_counts} />
+          <OpenSeverityCounts counts={step.severity_counts} />
         </span>
       ),
     },
@@ -389,7 +408,7 @@ function noFixColumns(
           <span className="text-[0.8125rem] tabular-nums">
             {t('fixPlan.findingCount', { count: group.finding_count })}
           </span>
-          <SeverityCountBadges counts={group.severity_counts} />
+          <OpenSeverityCounts counts={group.severity_counts} />
         </span>
       ),
     },
@@ -433,21 +452,41 @@ function scoreFactor(factor: FixPlanFactor): string {
     case 'epss':
       return factor.value > 1
         ? t('fixPlan.factor.epss', { value: factor.value.toFixed(1) })
-        : factor.detail
+        : factorDetail(factor.detail)
     case 'latest_image':
       return factor.value > 1
         ? t('fixPlan.factor.latestImage', { value: factor.value.toFixed(1) })
-        : factor.detail
+        : factorDetail(factor.detail)
     case 'reachability':
       return factor.value === 1
-        ? factor.detail
-        : t('fixPlan.factor.reachability', { detail: factor.detail })
+        ? factorDetail(factor.detail)
+        : t('fixPlan.factor.reachability', { detail: factorDetail(factor.detail) })
     default:
       return t('fixPlan.factor.other', {
         name: factor.name,
         value: factor.value,
       })
   }
+}
+
+/**
+ * factorDetailKeys translates the fixed English details internal/fixplan
+ * writes. An unknown detail is shown as the API sent it.
+ */
+const factorDetailKeys: Record<string, string> = {
+  'EPSS off': 'fixPlan.detail.epssOff',
+  'no EPSS score': 'fixPlan.detail.noEpss',
+  'no image link': 'fixPlan.detail.noImageLink',
+  'in latest image': 'fixPlan.detail.inLatestImage',
+  'not in latest image': 'fixPlan.detail.notInLatestImage',
+  reachable: 'fixPlan.detail.reachable',
+  unreachable: 'fixPlan.detail.unreachable',
+  'reachability unknown': 'fixPlan.detail.reachabilityUnknown',
+}
+
+function factorDetail(detail: string): string {
+  const key = factorDetailKeys[detail]
+  return key === undefined ? detail : t(key)
 }
 
 /** scoreTitle spells out every factor with its detail for the tooltip. */
