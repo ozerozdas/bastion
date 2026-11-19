@@ -164,7 +164,7 @@ export function DashboardPage() {
       ) : null}
       <RiskSummary totals={data.totals_by_severity} />
       <RiskiestProjects assets={data.top_assets} />
-      <div className="grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <FindingsByType totals={data.totals_by_type} />
         <Trend trends={data.trend} names={names} />
       </div>
@@ -172,6 +172,9 @@ export function DashboardPage() {
     </div>
   )
 }
+
+// Same frame as RiskSummary so every dashboard block reads as its own card.
+const CARD = 'rounded-card border border-border-subtle bg-surface px-4 py-3.5'
 
 /** SectionHeading names a block and carries its secondary explanation. */
 function SectionHeading({
@@ -437,7 +440,7 @@ function FindingsByType({ totals }: { totals: TypeTotals }) {
   const max = Math.max(1, ...rows.map((row) => row.count))
 
   return (
-    <section aria-labelledby="by-type-heading" className="flex flex-col gap-3">
+    <section aria-labelledby="by-type-heading" className={`flex flex-col gap-3 ${CARD}`}>
       <SectionHeading id="by-type-heading" title={t('dashboard.byType.title')} />
       {rows.length === 0 ? (
         <p className="text-xs text-muted">{t('dashboard.byType.empty')}</p>
@@ -474,7 +477,7 @@ function FindingsByType({ totals }: { totals: TypeTotals }) {
 function RiskiestProjects({ assets }: { assets: AssetRisk[] }) {
   const t = useT()
   return (
-    <section aria-labelledby="riskiest-heading" className="flex flex-col gap-2">
+    <section aria-labelledby="riskiest-heading" className={`flex flex-col gap-2 ${CARD}`}>
       <SectionHeading
         id="riskiest-heading"
         title={t('dashboard.riskiest.title')}
@@ -558,7 +561,7 @@ function Trend({
 }) {
   const t = useT()
   return (
-    <section aria-labelledby="trend-heading" className="flex flex-col gap-3">
+    <section aria-labelledby="trend-heading" className={`flex flex-col gap-3 ${CARD}`}>
       <SectionHeading
         id="trend-heading"
         title={t('dashboard.trend.title')}
@@ -611,7 +614,7 @@ function Trend({
 function LastScans({ scans }: { scans: LastScan[] }) {
   const t = useT()
   return (
-    <section aria-labelledby="last-scans-heading" className="flex flex-col gap-2">
+    <section aria-labelledby="last-scans-heading" className={`flex flex-col gap-2 ${CARD}`}>
       <SectionHeading
         id="last-scans-heading"
         title={t('dashboard.lastScans.title')}
