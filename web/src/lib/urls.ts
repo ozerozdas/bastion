@@ -274,3 +274,39 @@ export function parseConnectionsTab(
 ): ConnectionsSearch {
   return search.tab === 'registry' ? { tab: 'registry' } : {}
 }
+
+/** ConfigurationsTab names the Configuration page's sections. */
+export type ConfigurationsTab =
+  | 'modules'
+  | 'policies'
+  | 'notifications'
+  | 'ai'
+  | 'mcp'
+  | 'appearance'
+
+/** ConfigurationsSearch is the Configuration route's search params. */
+export type ConfigurationsSearch = {
+  /** ?tab=<section>; absent is Modules. */
+  tab?: Exclude<ConfigurationsTab, 'modules'>
+}
+
+/**
+ * parseConfigurationsTab reads ?tab=<section> from the Configuration route.
+ * Modules is the default, so its URL stays the bare path, and an unknown tab
+ * falls back to it rather than showing an empty panel.
+ */
+export function parseConfigurationsTab(
+  search: Record<string, unknown>,
+): ConfigurationsSearch {
+  const raw = search.tab
+  if (
+    raw === 'policies' ||
+    raw === 'notifications' ||
+    raw === 'ai' ||
+    raw === 'mcp' ||
+    raw === 'appearance'
+  ) {
+    return { tab: raw }
+  }
+  return {}
+}

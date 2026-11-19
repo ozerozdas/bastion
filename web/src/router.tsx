@@ -9,6 +9,7 @@ import {
 import { AppShell } from './components/app-shell'
 import {
   parseAssetSearch,
+  parseConfigurationsTab,
   parseConnectionsTab,
   parseContainersTab,
   parseFindingsSearch,
@@ -16,6 +17,7 @@ import {
   parseScanDiffSearch,
 } from './lib/urls'
 import { AssetFindingsPage } from './pages/asset-findings'
+import { ConfigurationsPage } from './pages/configurations'
 import { ConnectionsPage } from './pages/connections'
 import { ContainersPage } from './pages/containers'
 import { DashboardPage } from './pages/dashboard'
@@ -57,6 +59,14 @@ const containersRoute = createRoute({
   // one available, which depends on the daemon and the connections (#120).
   validateSearch: parseContainersTab,
   component: ContainersPage,
+})
+
+const configurationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/configurations',
+  // ?tab=<section> picks the settings panel; the bare path is Modules (#139).
+  validateSearch: parseConfigurationsTab,
+  component: ConfigurationsPage,
 })
 
 const repositoriesRoute = createRoute({
@@ -150,6 +160,7 @@ const historyRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   connectionsRoute,
+  configurationsRoute,
   containersRoute,
   repositoriesRoute,
   legacyProjectsRoute,

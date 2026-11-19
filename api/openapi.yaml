@@ -2183,6 +2183,59 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/llm/models:
+    get:
+      operationId: listLLMModels
+      summary: List the models the local endpoint offers.
+      description: |
+        Calls `GET {endpoint}/models` on an OpenAI-compatible endpoint and
+        returns the ids it reports, sorted and deduplicated, so the settings
+        form can offer them. The endpoint is optional and defaults to the saved
+        one; it is validated exactly like a save, so only http(s) on a loopback
+        IP literal or `localhost` is accepted and no name is resolved. The
+        server makes the call, because the UI's CSP forbids the browser from
+        reaching the model server. A slow, unreachable or failing endpoint is a
+        502; an endpoint that saving would refuse is a 400.
+      tags: [llm]
+      parameters:
+        - name: endpoint
+          in: query
+          required: false
+          description: |
+            The endpoint to ask instead of the saved one. Same loopback rule as
+            `PUT /api/llm`.
+          schema:
+            type: string
+            maxLength: 2048
+      responses:
+        "200":
+          description: The model ids the endpoint reported.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LLMModels"
+        "400":
+          description: |
+            The endpoint is not loopback http(s) or is malformed; nothing was
+            called.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "502":
+          description: The local endpoint failed or could not be reached.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /api/assets/{assetId}/findings/{fingerprint}/explain:
     post:
       operationId: explainFinding
@@ -3037,6 +3090,22 @@ components:
           description: |
             The model name the server expects, for example `llama3.1`. Empty
             until the user chooses one; an explanation requires it.
+    LLMModels:
+      type: object
+      title: LLMModels
+      description: |
+        The model ids the local endpoint reported, sorted and deduplicated. An
+        empty list is a valid answer: the server is reachable but has no model
+        yet.
+      additionalProperties: false
+      required: [models]
+      properties:
+        models:
+          type: array
+          maxItems: 500
+          description: Model ids, sorted.
+          items:
+            type: string
     SetLLMSettingsRequest:
       type: object
       title: SetLLMSettingsRequest

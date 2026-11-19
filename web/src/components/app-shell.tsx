@@ -11,8 +11,7 @@ import { createPortal } from 'react-dom'
 
 import { useDrawerFocus } from './drawer-focus'
 import { HealthChip } from './health-chip'
-import { CloseIcon, MenuIcon, MoonIcon, SettingsIcon, SunIcon } from './icons'
-import { SettingsDialog } from './settings-dialog'
+import { CloseIcon, MenuIcon, MoonIcon, SunIcon } from './icons'
 import { TrivyDBChip } from './trivy-db-chip'
 import { UpdateNotice } from './update-notice'
 import { assetsQuery, type Asset } from '../api/assets'
@@ -142,7 +141,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const t = useT()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const current = navItemFor(pathname)
-  const [configOpen, setConfigOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
   // The route the drawer was opened from; a route change closes it and moves
@@ -191,12 +189,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen bg-bg text-fg">
       {isDesktop ? (
         <aside className="sticky top-0 flex h-screen w-[232px] shrink-0 flex-col gap-[18px] overflow-y-auto border-r border-border-subtle bg-sidebar px-3 py-4">
-          <SidebarContent
-            current={current}
-            counts={counts}
-            configOpen={configOpen}
-            onOpenConfig={() => setConfigOpen(true)}
-          />
+          <SidebarContent current={current} counts={counts} />
         </aside>
       ) : null}
 
@@ -210,12 +203,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           <SidebarContent
             current={current}
             counts={counts}
-            configOpen={configOpen}
-            onOpenConfig={() => {
-              // The settings modal replaces the drawer; focus follows it.
-              setDrawerOpen(false)
-              setConfigOpen(true)
-            }}
             onClose={() => setDrawerOpen(false)}
           />
         </SidebarDrawer>
@@ -265,10 +252,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </div>
       </main>
-
-      {configOpen ? (
-        <SettingsDialog onClose={() => setConfigOpen(false)} />
-      ) : null}
     </div>
   )
 }
@@ -280,14 +263,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 function SidebarContent({
   current,
   counts,
-  configOpen,
-  onOpenConfig,
   onClose,
 }: {
   current: NavItem
   counts: NavCounts
-  configOpen: boolean
-  onOpenConfig: () => void
   onClose?: () => void
 }) {
   const t = useT()
@@ -368,18 +347,6 @@ function SidebarContent({
                 </Link>
               )
             })}
-            {group.section === 'settings' ? (
-              <button
-                type="button"
-                aria-haspopup="dialog"
-                aria-expanded={configOpen}
-                onClick={onOpenConfig}
-                className={cn(navItemClass, configOpen && navItemActiveClass)}
-              >
-                <SettingsIcon />
-                {t('app.configuration')}
-              </button>
-            ) : null}
           </div>
         ))}
       </nav>

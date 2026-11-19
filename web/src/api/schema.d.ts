@@ -1064,6 +1064,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/llm/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the models the local endpoint offers.
+         * @description Calls `GET {endpoint}/models` on an OpenAI-compatible endpoint and
+         *     returns the ids it reports, sorted and deduplicated, so the settings
+         *     form can offer them. The endpoint is optional and defaults to the saved
+         *     one; it is validated exactly like a save, so only http(s) on a loopback
+         *     IP literal or `localhost` is accepted and no name is resolved. The
+         *     server makes the call, because the UI's CSP forbids the browser from
+         *     reaching the model server. A slow, unreachable or failing endpoint is a
+         *     502; an endpoint that saving would refuse is a 400.
+         */
+        get: operations["listLLMModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assets/{assetId}/findings/{fingerprint}/explain": {
         parameters: {
             query?: never;
@@ -1538,6 +1565,16 @@ export interface components {
              *     until the user chooses one; an explanation requires it.
              */
             model: string;
+        };
+        /**
+         * LLMModels
+         * @description The model ids the local endpoint reported, sorted and deduplicated. An
+         *     empty list is a valid answer: the server is reachable but has no model
+         *     yet.
+         */
+        LLMModels: {
+            /** @description Model ids, sorted. */
+            models: string[];
         };
         /**
          * SetLLMSettingsRequest
@@ -4969,6 +5006,57 @@ export interface operations {
                 };
             };
             500: components["responses"]["Problem"];
+        };
+    };
+    listLLMModels: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The endpoint to ask instead of the saved one. Same loopback rule as
+                 *     `PUT /api/llm`.
+                 */
+                endpoint?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The model ids the endpoint reported. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMModels"];
+                };
+            };
+            /**
+             * @description The endpoint is not loopback http(s) or is malformed; nothing was
+             *     called.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+            /** @description The local endpoint failed or could not be reached. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     explainFinding: {

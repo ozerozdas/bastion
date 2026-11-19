@@ -177,13 +177,21 @@ export async function stubLicencePolicy(page: Page): Promise<void> {
 }
 
 /**
- * openConfiguration opens the sidebar's Configuration modal (#139, #142),
- * where the opt-in modules, the global licence policy and the appearance
- * preferences live.
+ * openConfiguration opens the Configuration page (#139, #142) from the
+ * sidebar, where the modules, policies, notifications, local model, MCP setup
+ * and appearance preferences live. A tab name picks its panel.
  */
-export async function openConfiguration(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Configuration' }).click()
-  await expect(page.getByRole('dialog', { name: 'Configuration' })).toBeVisible()
+export async function openConfiguration(
+  page: Page,
+  tab?: 'Modules' | 'Policies' | 'Notifications' | 'AI' | 'MCP' | 'Appearance',
+): Promise<void> {
+  await page.getByRole('link', { name: 'Configuration', exact: true }).click()
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Configuration' }),
+  ).toBeVisible()
+  if (tab !== undefined) {
+    await page.getByRole('tab', { name: tab, exact: true }).click()
+  }
 }
 
 export { expect }

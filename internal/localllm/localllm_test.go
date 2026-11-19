@@ -337,6 +337,120 @@ func enabledService(t *testing.T, endpoint string) *Service {
 	return service
 }
 
+// TestModelsListsSortedAndDeduped calls the fake server's /models and checks
+// the ids are trimmed, deduplicated and sorted.
+func TestModelsListsSortedAndDeduped(t *testing.T) {
+	var path string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		_, _ = io.WriteString(w, `{"data":[{"id":"qwen3:14b"},{"id":" llama3.1 "},{"id":"mistral-nemo"},{"id":"qwen3:14b"},{"id":""}]}`)
+	}))
+	t.Cleanup(server.Close)
+
+	models, err := newService(t).Models(t.Context(), server.URL+"/v1")
+	if err != nil {
+		t.Fatalf("Models: %v", err)
+	}
+	want := []string{"llama3.1", "mistral-nemo", "qwen3:14b"}
+	if len(models) != len(want) {
+		t.Fatalf("models = %v, want %v", models, want)
+	}
+	for i := range want {
+		if models[i] != want[i] {
+			t.Fatalf("models = %v, want %v", models, want)
+		}
+	}
+	if path != "/v1/models" {
+		t.Errorf("path = %q, want /v1/models", path)
+	}
+}
+
+// TestModelsDefaultsToTheStoredEndpoint proves an empty endpoint asks the saved
+// one rather than nothing.
+func TestModelsDefaultsToTheStoredEndpoint(t *testing.T) {
+	var path string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		_, _ = io.WriteString(w, `{"data":[{"id":"llama3.1"}]}`)
+	}))
+	t.Cleanup(server.Close)
+
+	service := newService(t)
+	endpoint := server.URL + "/v1"
+	if _, err := service.Update(UpdateInput{Endpoint: &endpoint}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	models, err := service.Models(t.Context(), "")
+	if err != nil {
+		t.Fatalf("Models: %v", err)
+	}
+	if len(models) != 1 || models[0] != "llama3.1" {
+		t.Fatalf("models = %v, want the stored endpoint's list", models)
+	}
+	if path != "/v1/models" {
+		t.Errorf("path = %q, want /v1/models", path)
+	}
+}
+
+// TestModelsRefusesNonLoopbackEndpoint is the SSRF boundary on the listing
+// path: an endpoint that saving would refuse is never dialed.
+func TestModelsRefusesNonLoopbackEndpoint(t *testing.T) {
+	for _, endpoint := range []string{
+		"http://example.com/v1",
+		"http://192.168.1.10:11434/v1",
+		"http://0.0.0.0:11434/v1",
+		"ftp://127.0.0.1/v1",
+	} {
+		if _, err := newService(t).Models(t.Context(), endpoint); !errors.Is(err, ErrInvalid) {
+			t.Errorf("Models(%q) = %v, want ErrInvalid", endpoint, err)
+		}
+	}
+}
+
+// TestModelsReportsAnUpstreamError covers a server that answers with a status,
+// keeping its message, and carries a redirect refusal for free.
+func TestModelsReportsAnUpstreamError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, `{"error":{"message":"model registry unavailable"}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	_, err := newService(t).Models(t.Context(), server.URL)
+	if !errors.Is(err, ErrUpstream) || !strings.Contains(err.Error(), "model registry unavailable") {
+		t.Fatalf("Models = %v, want ErrUpstream naming the cause", err)
+	}
+}
+
+// TestModelsRefusesRedirects proves a listing cannot be pointed at another
+// host, exactly like an explanation.
+func TestModelsRefusesRedirects(t *testing.T) {
+	var reached bool
+	var mu sync.Mutex
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		reached = true
+		mu.Unlock()
+		_, _ = io.WriteString(w, `{"data":[{"id":"x"}]}`)
+	}))
+	t.Cleanup(target.Close)
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	t.Cleanup(redirector.Close)
+
+	_, err := newService(t).Models(t.Context(), redirector.URL)
+	if !errors.Is(err, ErrUpstream) {
+		t.Fatalf("Models through a redirect = %v, want ErrUpstream", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if reached {
+		t.Error("the redirect target was called; redirects must be refused")
+	}
+}
+
 func TestDialLiteralPinsLocalhost(t *testing.T) {
 	cases := map[string]string{
 		"http://localhost:11434/v1": "http://127.0.0.1:11434/v1",

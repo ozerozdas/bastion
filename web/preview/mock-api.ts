@@ -446,6 +446,10 @@ function route(method: string, path: string, query: URLSearchParams, body: Recor
 
   switch (key) {
     case 'GET health': return { status: 'ok', version: '0.6.0-preview' }
+    case 'GET llm':
+      // The model list the AI tab offers next to its free-text field.
+      if (rawId === 'models') return { models: ['llama3.1', 'qwen3:14b', 'mistral-nemo'] }
+      return NOT_FOUND
     case 'GET mcp': return { command: 'bastion', args: ['mcp'] }
     case 'GET update':
       if (rawId) return NOT_FOUND

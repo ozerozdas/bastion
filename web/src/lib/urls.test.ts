@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isHttpsUrl,
   parseAssetSearch,
+  parseConfigurationsTab,
   parseConnectionsTab,
   parseFindingsSearch,
   parseProjectsTabSearch,
@@ -225,5 +226,25 @@ describe('parseConnectionsTab', () => {
     expect(parseConnectionsTab({ tab: 'docker' })).toEqual({})
     expect(parseConnectionsTab({ tab: 1 })).toEqual({})
     expect(parseConnectionsTab({ tab: ['registry'] })).toEqual({})
+  })
+})
+
+describe('parseConfigurationsTab', () => {
+  it('keeps a named section so the URL stays copyable and reload-safe', () => {
+    for (const tab of ['policies', 'notifications', 'ai', 'mcp', 'appearance'] as const) {
+      expect(parseConfigurationsTab({ tab })).toEqual({ tab })
+    }
+  })
+
+  it('treats the default Modules tab as the bare path', () => {
+    expect(parseConfigurationsTab({})).toEqual({})
+    expect(parseConfigurationsTab({ tab: undefined })).toEqual({})
+    expect(parseConfigurationsTab({ tab: 'modules' })).toEqual({})
+  })
+
+  it('drops an unknown tab instead of showing an empty panel', () => {
+    expect(parseConfigurationsTab({ tab: 'docker' })).toEqual({})
+    expect(parseConfigurationsTab({ tab: 1 })).toEqual({})
+    expect(parseConfigurationsTab({ tab: ['ai'] })).toEqual({})
   })
 })

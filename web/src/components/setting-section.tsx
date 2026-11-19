@@ -20,7 +20,7 @@ export function SettingSection({
   return (
     <section
       aria-label={title}
-      className="flex flex-col gap-1.5 rounded-md border border-border-subtle bg-bg p-3"
+      className="flex flex-col gap-1.5 rounded-card border border-border-subtle bg-surface p-4"
     >
       <div className="flex items-center gap-2">
         <h3 className="text-[0.8125rem] font-semibold">{title}</h3>

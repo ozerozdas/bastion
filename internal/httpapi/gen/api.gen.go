@@ -1713,6 +1713,14 @@ type Health struct {
 // HealthStatus Always `ok` while the server is accepting requests.
 type HealthStatus string
 
+// LLMModels The model ids the local endpoint reported, sorted and deduplicated. An
+// empty list is a valid answer: the server is reachable but has no model
+// yet.
+type LLMModels struct {
+	// Models Model ids, sorted.
+	Models []string `json:"models"`
+}
+
 // LLMSettings The stored local-model choices (ADR-003, #48). The endpoint is an
 // OpenAI-compatible base URL on the loopback interface; there is no
 // credential.
@@ -2459,6 +2467,13 @@ type SetLicencePolicyParams struct {
 	AssetId *LicencePolicyAssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
 }
 
+// ListLLMModelsParams defines parameters for ListLLMModels.
+type ListLLMModelsParams struct {
+	// Endpoint The endpoint to ask instead of the saved one. Same loopback rule as
+	// `PUT /api/llm`.
+	Endpoint *string `form:"endpoint,omitempty" json:"endpoint,omitempty"`
+}
+
 // ListScansParams defines parameters for ListScans.
 type ListScansParams struct {
 	// AssetId Only findings of this asset.
@@ -2819,6 +2834,9 @@ type ServerInterface interface {
 	// SetLLMSettings Store the local-model settings.
 	// (PUT /api/llm)
 	SetLLMSettings(w http.ResponseWriter, r *http.Request)
+	// ListLLMModels List the models the local endpoint offers.
+	// (GET /api/llm/models)
+	ListLLMModels(w http.ResponseWriter, r *http.Request, params ListLLMModelsParams)
 	// GetMCPSetup Report the command that starts the MCP server.
 	// (GET /api/mcp)
 	GetMCPSetup(w http.ResponseWriter, r *http.Request)
@@ -3805,6 +3823,39 @@ func (siw *ServerInterfaceWrapper) SetLLMSettings(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListLLMModels operation middleware
+func (siw *ServerInterfaceWrapper) ListLLMModels(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListLLMModelsParams
+
+	// ------------- Optional query parameter "endpoint" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "endpoint", r.URL.Query(), &params.Endpoint, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "endpoint"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "endpoint", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListLLMModels(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMCPSetup operation middleware
 func (siw *ServerInterfaceWrapper) GetMCPSetup(w http.ResponseWriter, r *http.Request) {
 
@@ -4491,6 +4542,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications/test", wrapper.SendTestNotification)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/llm", wrapper.GetLLMSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/llm", wrapper.SetLLMSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/llm/models", wrapper.ListLLMModels)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assets/{assetId}/findings/{fingerprint}/explain", wrapper.ExplainFinding)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/dashboard", wrapper.GetDashboard)
 
@@ -8999,6 +9051,147 @@ func (response SetLLMSettings500ApplicationProblemPlusJSONResponse) VisitSetLLMS
 	return err
 }
 
+type ListLLMModelsRequestObject struct {
+	Params ListLLMModelsParams
+}
+
+type ListLLMModelsResponseObject interface {
+	VisitListLLMModelsResponse(w http.ResponseWriter) error
+}
+
+type ListLLMModels200JSONResponse LLMModels
+
+func (response ListLLMModels200JSONResponse) VisitListLLMModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLLMModels400ApplicationProblemPlusJSONResponse Problem
+
+func (response ListLLMModels400ApplicationProblemPlusJSONResponse) VisitListLLMModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLLMModels401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListLLMModels401ApplicationProblemPlusJSONResponse) VisitListLLMModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLLMModels403ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListLLMModels403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListLLMModels403ResponseHeaders
+}
+
+func (response ListLLMModels403ApplicationProblemPlusJSONResponse) VisitListLLMModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLLMModels421ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListLLMModels421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListLLMModels421ResponseHeaders
+}
+
+func (response ListLLMModels421ApplicationProblemPlusJSONResponse) VisitListLLMModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLLMModels500ResponseHeaders struct {
+	ContentType *string
+}
+
+type ListLLMModels500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers ListLLMModels500ResponseHeaders
+}
+
+func (response ListLLMModels500ApplicationProblemPlusJSONResponse) VisitListLLMModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLLMModels502ApplicationProblemPlusJSONResponse Problem
+
+func (response ListLLMModels502ApplicationProblemPlusJSONResponse) VisitListLLMModelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMCPSetupRequestObject struct {
 }
 
@@ -12044,6 +12237,9 @@ type StrictServerInterface interface {
 	// SetLLMSettings Store the local-model settings.
 	// (PUT /api/llm)
 	SetLLMSettings(ctx context.Context, request SetLLMSettingsRequestObject) (SetLLMSettingsResponseObject, error)
+	// ListLLMModels List the models the local endpoint offers.
+	// (GET /api/llm/models)
+	ListLLMModels(ctx context.Context, request ListLLMModelsRequestObject) (ListLLMModelsResponseObject, error)
 	// GetMCPSetup Report the command that starts the MCP server.
 	// (GET /api/mcp)
 	GetMCPSetup(ctx context.Context, request GetMCPSetupRequestObject) (GetMCPSetupResponseObject, error)
@@ -13068,6 +13264,32 @@ func (sh *strictHandler) SetLLMSettings(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetLLMSettingsResponseObject); ok {
 		if err := validResponse.VisitSetLLMSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListLLMModels operation middleware
+func (sh *strictHandler) ListLLMModels(w http.ResponseWriter, r *http.Request, params ListLLMModelsParams) {
+	var request ListLLMModelsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListLLMModels(ctx, request.(ListLLMModelsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListLLMModels")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListLLMModelsResponseObject); ok {
+		if err := validResponse.VisitListLLMModelsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

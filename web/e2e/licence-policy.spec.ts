@@ -11,7 +11,7 @@ test('edits the global licence policy', async ({ page, server }) => {
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
 
-  await openConfiguration(page)
+  await openConfiguration(page, 'Policies')
 
   const card = page.getByRole('region', { name: 'Licence policy' })
   await expect(card).toBeVisible()
@@ -26,12 +26,9 @@ test('edits the global licence policy', async ({ page, server }) => {
 
   await expect(card.getByText('2 allowed · 1 denied')).toBeVisible()
 
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-
   // The policy is stored, not just local state.
   await page.reload()
-  await openConfiguration(page)
+  await openConfiguration(page, 'Policies')
   const reloaded = page.getByRole('region', { name: 'Licence policy' })
   await expect(reloaded.getByText('2 allowed · 1 denied')).toBeVisible()
 

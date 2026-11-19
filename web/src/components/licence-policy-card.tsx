@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import {
@@ -8,6 +15,7 @@ import {
 } from '../api/licence-policy'
 import { useT } from '../lib/i18n'
 import { ErrorNote } from './error-note'
+import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 
 const textareaClass =
@@ -53,10 +61,16 @@ export function LicencePolicyEditor({
   assetId,
   policy,
   description,
+  heading,
 }: {
   assetId?: number
   policy: LicencePolicy
   description?: string
+  /**
+   * A card heading. With it the editor takes the roomy page layout: the
+   * heading and an Edit button share the top row, and both lists are shown.
+   */
+  heading?: ReactNode
 }) {
   const t = useT()
   const save = useSetLicencePolicy(assetId)
@@ -95,7 +109,7 @@ export function LicencePolicyEditor({
   const denied = policy.deny.length
 
   if (editing) {
-    return (
+    const form = (
       <form onSubmit={submit} className="flex flex-col gap-1.5">
         <label htmlFor={allowId} className="text-[0.6875rem] text-muted">
           {t('licence.allowed')}
@@ -139,17 +153,53 @@ export function LicencePolicyEditor({
         {save.isError ? <ErrorNote error={save.error} /> : null}
       </form>
     )
+    return heading ? (
+      <>
+        <div className="flex items-center gap-2">{heading}</div>
+        {form}
+      </>
+    ) : (
+      form
+    )
+  }
+
+  const summary =
+    allowed === 0 && denied === 0
+      ? assetId === undefined
+        ? t('licence.noRulesGlobal')
+        : t('licence.noRulesAsset')
+      : t('licence.counts', { allowed, denied })
+
+  if (heading) {
+    return (
+      <>
+        <div className="flex items-center gap-2">
+          {heading}
+          <Button
+            ref={editButton}
+            type="button"
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            onClick={startEditing}
+          >
+            {t('licence.edit')}
+          </Button>
+        </div>
+        <p className="text-xs text-muted tabular-nums">{summary}</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <LicenceList title={t('licence.allowed')} items={policy.allow} tone="ok" />
+          <LicenceList title={t('licence.denied')} items={policy.deny} tone="critical" />
+        </div>
+      </>
+    )
   }
 
   return (
     <>
       <div className="flex items-start justify-between gap-2">
         <p className="text-[0.6875rem] text-muted tabular-nums">
-          {allowed === 0 && denied === 0
-            ? assetId === undefined
-              ? t('licence.noRulesGlobal')
-              : t('licence.noRulesAsset')
-            : t('licence.counts', { allowed, denied })}
+          {summary}
         </p>
         <button
           ref={editButton}
@@ -164,6 +214,38 @@ export function LicencePolicyEditor({
         {description ?? t('licence.defaultDescription')}
       </p>
     </>
+  )
+}
+
+/** LicenceList is one side of the policy as badges, for the page layout. */
+function LicenceList({
+  title,
+  items,
+  tone,
+}: {
+  title: string
+  items: string[]
+  tone: 'ok' | 'critical'
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-border-subtle bg-bg p-3">
+      <h3 className="text-[0.6875rem] font-semibold tracking-[0.08em] text-faint uppercase">
+        {title} <span className="tabular-nums">({items.length})</span>
+      </h3>
+      {items.length === 0 ? (
+        <p className="text-xs text-faint">—</p>
+      ) : (
+        <ul className="flex flex-wrap gap-1">
+          {items.map((item) => (
+            <li key={item}>
+              <Badge tone={tone} className="font-mono">
+                {item}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

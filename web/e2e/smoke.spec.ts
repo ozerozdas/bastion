@@ -41,6 +41,12 @@ const navPages = [
     subtitle: 'GitHub, AWS and Docker sources',
     marker: 'New connection',
   },
+  {
+    label: 'Configuration',
+    path: '/configurations',
+    subtitle: 'Modules, policies and appearance',
+    marker: 'EPSS exploit scores',
+  },
 ]
 
 /** openSession exchanges the startup token and lands on the dashboard. */
@@ -123,17 +129,18 @@ test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => 
     'Repositories',
     'Containers',
     'Connections',
+    'Configuration',
   ])
 
   // Scan History is a tab now, not a sidebar entry.
   await expect(aside.getByRole('link', { name: /Scan History/ })).toHaveCount(0)
 
-  // Configuration is the SETTINGS action, next to Connections (#142); the old
+  // Configuration is a settings page, next to Connections (#142); the old
   // standalone button above the Local · version footer is gone.
   await expect(
     aside
       .getByRole('group', { name: 'SETTINGS' })
-      .getByRole('button', { name: 'Configuration' }),
+      .getByRole('link', { name: 'Configuration' }),
   ).toBeVisible()
   await expect(
     aside.getByRole('button', { name: 'Settings', exact: true }),

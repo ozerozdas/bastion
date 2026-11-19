@@ -67,13 +67,14 @@ test('turns the release check on in Configuration and remembers it', async ({
   await openConfiguration(page)
   const section = page.getByRole('region', { name: 'Release check' })
   await expect(section.getByText('Off', { exact: true })).toBeVisible()
-  await section.getByRole('button', { name: 'Turn on release check' }).click()
+  const toggle = section.getByRole('switch', { name: 'Release check' })
+  await toggle.click()
   await expect(section.getByText('On', { exact: true })).toBeVisible()
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
 
-  await page.keyboard.press('Escape')
   await page.reload()
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Dashboard' }),
+    page.getByRole('heading', { level: 1, name: 'Configuration' }),
   ).toBeVisible()
   await openConfiguration(page)
   await expect(

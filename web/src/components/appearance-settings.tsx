@@ -46,53 +46,55 @@ export function AppearanceSettings() {
   const width = useSyncExternalStore(subscribeAppearance, storedWidth)
 
   return (
-    <div className="flex flex-col gap-3">
-      <SettingSection title={t('appearance.theme.title')}>
-        <div
-          role="radiogroup"
-          aria-label={t('appearance.theme.aria')}
-          className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3"
-        >
-          {themeOptions.map((option) => (
-            <label
-              key={option.value}
-              className={cn(
-                'flex cursor-pointer flex-col gap-1.5 rounded-md border bg-bg p-2 transition-colors',
-                'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-muted',
-                theme === option.value
-                  ? 'border-accent bg-hover'
-                  : 'border-border-subtle hover:bg-hover',
-              )}
-            >
-              <input
-                type="radio"
-                name="appearance-theme"
-                value={option.value}
-                checked={theme === option.value}
-                onChange={() => setTheme(option.value)}
-                className="sr-only"
-              />
-              <span
-                aria-hidden="true"
-                className="theme-swatch"
-                data-theme-preview={option.value}
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <SettingSection title={t('appearance.theme.title')}>
+          <div
+            role="radiogroup"
+            aria-label={t('appearance.theme.aria')}
+            className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3"
+          >
+            {themeOptions.map((option) => (
+              <label
+                key={option.value}
+                className={cn(
+                  'flex cursor-pointer flex-col gap-1.5 rounded-md border bg-bg p-2 transition-colors',
+                  'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-muted',
+                  theme === option.value
+                    ? 'border-accent bg-hover'
+                    : 'border-border-subtle hover:bg-hover',
+                )}
               >
-                <span
-                  className="theme-swatch-half"
-                  data-swatch-mode="light"
+                <input
+                  type="radio"
+                  name="appearance-theme"
+                  value={option.value}
+                  checked={theme === option.value}
+                  onChange={() => setTheme(option.value)}
+                  className="sr-only"
                 />
-                <span className="theme-swatch-half" data-swatch-mode="dark" />
-              </span>
-              <span className="text-[0.8125rem] font-medium">
-                {t(option.labelKey)}
-              </span>
-              <span className="text-[0.6875rem] leading-snug text-muted">
-                {t(option.hintKey)}
-              </span>
-            </label>
-          ))}
-        </div>
-      </SettingSection>
+                <span
+                  aria-hidden="true"
+                  className="theme-swatch"
+                  data-theme-preview={option.value}
+                >
+                  <span
+                    className="theme-swatch-half"
+                    data-swatch-mode="light"
+                  />
+                  <span className="theme-swatch-half" data-swatch-mode="dark" />
+                </span>
+                <span className="text-[0.8125rem] font-medium">
+                  {t(option.labelKey)}
+                </span>
+                <span className="text-[0.6875rem] leading-snug text-muted">
+                  {t(option.hintKey)}
+                </span>
+              </label>
+            ))}
+          </div>
+        </SettingSection>
+      </div>
 
       <SettingSection
         title={t('appearance.mode.title')}

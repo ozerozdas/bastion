@@ -8,8 +8,8 @@ import {
   mcpClients,
   type MCPClientId,
 } from '../lib/mcp-setup'
-import { SettingSection } from './setting-section'
 import { Button } from './ui/button'
+import { InfoTip } from './ui/info-tip'
 
 /** clientLocations names where each client keeps its MCP configuration. */
 const clientLocations: Record<MCPClientId, string> = {
@@ -22,9 +22,9 @@ const clientLocations: Record<MCPClientId, string> = {
 }
 
 /**
- * MCPSettings is the Configuration modal's MCP tab (#163): what `bastion mcp`
- * exposes and a copy-ready setup snippet for each supported client. The
- * selected client is local state; it is not a stored preference.
+ * MCPSettings is Configuration's MCP tab (#163): what `bastion mcp` exposes
+ * and a copy-ready setup snippet for each supported client. The selected
+ * client is local state; it is not a stored preference.
  */
 export function MCPSettings() {
   const t = useT()
@@ -50,51 +50,61 @@ export function MCPSettings() {
   }
 
   return (
-    <SettingSection title={t('settings.mcp.title')}>
-      <p className="text-[0.6875rem] leading-relaxed text-muted">
-        {t('settings.mcp.body')}
-      </p>
+    <section
+      aria-label={t('settings.mcp.title')}
+      className="flex w-full max-w-2xl flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
+    >
+      <div className="flex items-center gap-2">
+        <h2 className="text-[0.9375rem] font-semibold">
+          {t('settings.mcp.title')}
+        </h2>
+        <InfoTip
+          label={t('settings.module.about', {
+            title: t('settings.mcp.title'),
+          })}
+          content={t('settings.mcp.body')}
+        />
+      </div>
 
-      <label
-        htmlFor="mcp-client"
-        className="mt-1 text-[0.6875rem] text-muted"
-      >
-        {t('settings.mcp.client')}
-      </label>
-      <select
-        id="mcp-client"
-        aria-label={t('settings.mcp.client')}
-        value={client}
-        onChange={(event) => {
-          setClient(event.target.value as MCPClientId)
-          setCopied(false)
-        }}
-        className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg"
-      >
-        {mcpClients.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.name}
-          </option>
-        ))}
-      </select>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="mcp-client" className="text-xs font-medium text-muted">
+          {t('settings.mcp.client')}
+        </label>
+        <select
+          id="mcp-client"
+          aria-label={t('settings.mcp.client')}
+          value={client}
+          onChange={(event) => {
+            setClient(event.target.value as MCPClientId)
+            setCopied(false)
+          }}
+          className="h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg"
+        >
+          {mcpClients.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name}
+            </option>
+          ))}
+        </select>
+      </div>
 
-      <p className="mt-1 font-mono text-[0.625rem] text-faint">
+      <p className="font-mono text-[0.625rem] text-faint">
         {t(clientLocations[client])}
       </p>
       <pre className="max-h-56 overflow-auto rounded-md border border-border-subtle bg-bg p-2 font-mono text-[0.625rem] leading-relaxed text-fg">
         {snippet}
       </pre>
 
-      <div className="mt-1 flex flex-wrap items-center gap-2">
-        <Button type="button" size="sm" variant="outline" onClick={copy}>
-          {copied ? t('settings.mcp.copied') : t('settings.mcp.copy')}
-        </Button>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {client === 'opencode' ? (
           <p className="min-w-0 text-[0.625rem] leading-relaxed text-faint">
             {t('settings.mcp.opencodeNote')}
           </p>
         ) : null}
+        <Button type="button" variant="outline" onClick={copy}>
+          {copied ? t('settings.mcp.copied') : t('settings.mcp.copy')}
+        </Button>
       </div>
-    </SettingSection>
+    </section>
   )
 }
