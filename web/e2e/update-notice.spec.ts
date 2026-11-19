@@ -114,6 +114,9 @@ test('shows the update command, release notes and a per-version dismiss', async 
   await openSession(page, server.url)
 
   await expect(page.getByText('v0.1.2 is available', { exact: true })).toBeVisible()
+  // "bastion update" is offered first; the Homebrew tab shows the server's line.
+  await expect(page.getByText('bastion update', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Homebrew' }).click()
   await expect(
     page.getByText(release.command, { exact: true }),
   ).toBeVisible()
@@ -124,7 +127,10 @@ test('shows the update command, release notes and a per-version dismiss', async 
   await expect(notes).toHaveAttribute('rel', /noopener/)
 
   await page.getByRole('button', { name: 'Copy update command' }).click()
-  await expect(page.getByText('Copied', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copied' })).toBeVisible()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    release.command,
+  )
 
   await page.getByRole('button', { name: 'Dismiss update notice' }).click()
   await expect(page.getByText('v0.1.2 is available', { exact: true })).toHaveCount(0)

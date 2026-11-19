@@ -210,6 +210,7 @@
   "update.dismiss": "Dismiss",
   "update.youHave": "You have {version}.",
   "update.copyAria": "Copy update command",
+  "update.methodAria": "Update method",
   "update.copied": "Copied",
   "update.copy": "Copy",
   "update.releaseNotes": "Release notes",
