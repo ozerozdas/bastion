@@ -464,7 +464,8 @@ body {
    * switches into circles and checkboxes into 40px native boxes on
    * touch-capable desktops. A switch grows its hit box with an invisible ring.
    */
-  [role="switch"] {
+  /* button[...] matches button[aria-label]'s specificity so this rule wins. */
+  button[role="switch"] {
     min-height: 0;
     min-width: 0;
   }
