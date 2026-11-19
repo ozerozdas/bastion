@@ -657,7 +657,7 @@ test('searches findings by text and keeps the search in the URL', async ({
   const rows = page.locator('tbody tr')
 
   // The search settles into ?q= after the debounce and narrows the list.
-  await page.getByRole('searchbox', { name: 'Search' }).fill('CVE-2022')
+  await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('CVE-2022')
   await expect(page).toHaveURL(`${origin}/findings?q=CVE-2022`)
   await expect(rows).toHaveCount(1)
   await expect(rows.nth(0)).toContainText('High in alpha')
@@ -670,7 +670,7 @@ test('searches findings by text and keeps the search in the URL', async ({
   await expect(rows).toHaveCount(1)
 
   // Clearing it drops the param and restores the severity-filtered groups.
-  await page.getByRole('searchbox', { name: 'Search' }).fill('')
+  await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('')
   await expect(page).toHaveURL(`${origin}/findings`)
   await expect(rows).toHaveCount(2)
 

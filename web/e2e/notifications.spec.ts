@@ -108,7 +108,7 @@ test('Notifications saves a webhook and never renders the URL', async ({
     threshold: 'high',
     slack_enabled: true,
     slack_configured: false,
-    email_enabled: false,
+    email_enabled: true,
     smtp_host: '',
     smtp_port: 587,
     smtp_username: '',
