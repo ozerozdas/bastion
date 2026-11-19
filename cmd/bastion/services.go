@@ -24,6 +24,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
+	"github.com/ozerozdas/bastion/internal/securitynews"
 	"github.com/ozerozdas/bastion/internal/servelock"
 )
 
@@ -42,6 +43,7 @@ type serverServices struct {
 	scanManager  *jobs.Manager
 	trivyDB      *trivy.Manager
 	epss         *epss.Service
+	securityNews *securitynews.Service
 	reachability *govulncheck.Service
 	outdated     *depsdev.Service
 	eol          *eol.Service
@@ -105,6 +107,9 @@ func newServerServices(ctx context.Context, paths app.Paths, port, concurrency i
 	// The EPSS feed is opt-in and off by default; with the setting off its
 	// Status call and every lookup are no-ops and no request is made.
 	services.epss = newEPSSService(paths)
+	// Security News is opt-in too (#192): off by default, so no feed is
+	// fetched until the user turns it on.
+	services.securityNews = newSecurityNewsService(paths)
 	// Go reachability is opt-in too (#37): off by default, so no govulncheck
 	// process runs and findings carry no reachability.
 	services.reachability = govulncheck.New(govulncheck.Config{DataDir: paths.DataDir})

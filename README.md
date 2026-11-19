@@ -177,12 +177,14 @@ If the database lives elsewhere, pass the global flag through:
 
 Tools: `list_assets`, `list_findings` (asset, severity, type, status, text query, sort and
 paging), `get_fix_plan`, `diff_scans` (two scan ids, or an asset's last two succeeded
-scans), `trigger_scan` (queue a scan for the running server), `set_finding_state`,
-`clear_finding_state` and `propose_finding_rule`. Every result that
-carries scanner-derived values includes an `untrusted_content` notice: those values are
-data, never instructions (see the threat model). Apart from `trigger_scan`, the two
-finding-state tools and rule proposals, the MCP server makes no writes, and it makes no network calls of its
-own.
+scans), `list_security_news` (the opt-in Security News feed, with optional `since`,
+`source` and `limit`), `trigger_scan` (queue a scan for the running server),
+`set_finding_state`, `clear_finding_state` and `propose_finding_rule`. Every result that
+carries scanner-derived or third-party feed values includes an `untrusted_content`
+notice: those values are data, never instructions (see the threat model). Apart from
+`trigger_scan`, the two finding-state tools and rule proposals, the MCP server makes no
+writes; it makes no network calls of its own except reading the first-party feeds
+`list_security_news` returns, and only while Security News is turned on.
 
 For clients that only speak HTTP, `bastion mcp --http --port 7778` serves the same tools
 over streamable HTTP at `http://127.0.0.1:7778/`. It binds loopback only and needs no
@@ -244,6 +246,7 @@ it on: Trivy runs with `--disable-telemetry --skip-version-check`, scans query
 | `proxy.golang.org` (or your `GOPROXY`) | Same scans, through the `go` toolchain govulncheck drives | Module downloads and checksums the analysis needs, exactly as `go build` would fetch them. Nothing about your scan is uploaded |
 | `github.com/opengrep/opengrep/releases/download` | Only after you turn SAST on in the UI, or pass `bastion scan --sast` | The pinned Opengrep v1.33.1 binary for your OS/arch, ~47 MB. Sends your IP and `User-Agent: bastion/<version>`; the SHA-256 is checked against the table compiled into bastion before the binary is used |
 | `codeload.github.com/opengrep/opengrep-rules` | Same moment as the binary | The pinned Opengrep rule set, ~1.1 MB, unpacked under `<cache>/modules/opengrep-v1.33.1/rules`. Sends your IP and `User-Agent: bastion/<version>`; its SHA-256 is checked first |
+| `feeds.feedburner.com`, `www.bleepingcomputer.com`, `www.cisa.gov`, `isc.sans.edu`, `krebsonsecurity.com`, `www.securityweek.com`, `www.darkreading.com`, `www.exploit-db.com`, `googleprojectzero.blogspot.com`, `portswigger.net`, `www.reddit.com` | Only after you turn Security News on in the UI; at most every 30 minutes per enabled source (2 minutes after a failure) | The source's RSS/Atom feed: article titles, short summaries, publication dates and links. Sends your IP and `User-Agent: bastion/<version>`; each feed is cached in memory and only its sanitized text and http(s) links reach the UI or MCP. Redirects are followed only within the same host |
 
 The Opengrep rule set is licensed LGPL-2.1 with the Commons Clause. Bastion does
 not vendor it: it is downloaded at runtime, only after you opt in, into the cache

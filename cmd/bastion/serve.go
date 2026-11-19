@@ -146,6 +146,7 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		Update:        updateChecker,
 		TrivyDB:       services.trivyDB,
 		EPSS:          services.epss,
+		SecurityNews:  services.securityNews,
 		Reachability:  services.reachability,
 		SAST:          services.sast,
 		Outdated:      services.outdated,

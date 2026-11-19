@@ -17,11 +17,14 @@ import { UpdateNotice } from './update-notice'
 import { useDelayedClose } from './ui/presence'
 import { assetsQuery } from '../api/assets'
 import { dashboardQuery, openFindingTotal } from '../api/reports'
+import { securityNewsQuery } from '../api/security-news'
 import { useT } from '../lib/i18n'
 import {
   navBadge,
   navGroups,
   navItemFor,
+  navItems,
+  securityNewsNavItem,
   type NavCounts,
   type NavItem,
 } from '../lib/nav'
@@ -228,6 +231,10 @@ function SidebarContent({
   onClose?: () => void
 }) {
   const t = useT()
+  const news = useQuery(securityNewsQuery)
+  const items = news.data?.enabled === true
+    ? [...navItems, securityNewsNavItem]
+    : navItems
   return (
     <>
       <div className="flex items-center gap-2.5 px-2 py-1">
@@ -250,7 +257,7 @@ function SidebarContent({
       <SidebarSearch />
 
       <nav aria-label={t('app.nav.primary')} className="flex flex-col gap-3">
-        {navGroups().map((group) => (
+        {navGroups(items).map((group) => (
           <div
             key={group.section}
             role={group.labelKey === null ? undefined : 'group'}

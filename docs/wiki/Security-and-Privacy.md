@@ -18,6 +18,7 @@ it on.
 | `codeload.github.com` | Redirect of the tarball call | The repository archive |
 | `endoflife.date` | Scans that detect an OS or Go runtime, **only after you turn the End-of-life check on** | Release cycles of that product, cached for a day. Sends the product name only |
 | `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed |
+| `feeds.feedburner.com`, `www.bleepingcomputer.com`, `www.cisa.gov`, `isc.sans.edu`, `krebsonsecurity.com`, `www.securityweek.com`, `www.darkreading.com`, `www.exploit-db.com`, `googleprojectzero.blogspot.com`, `portswigger.net`, `www.reddit.com` | **Only after you turn Security News on**; at most every 30 minutes per enabled source (2 minutes after a failure) | The source's RSS/Atom feed: titles, short plain-text summaries, dates and links. Sends your IP and `User-Agent: bastion/<version>`; each feed is cached in memory, HTML is stripped, and only http(s) links are kept. Redirects stay on the same host |
 
 GitHub is contacted in the background only by the daily release check; every scan,
 discovery and download call happens on your action. Opening the UI downloads nothing: the

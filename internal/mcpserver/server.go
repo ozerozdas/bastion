@@ -18,6 +18,7 @@ import (
 
 	"github.com/ozerozdas/bastion/internal/assets"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/securitynews"
 )
 
 // UntrustedNotice is attached to every tool result that carries values read
@@ -72,6 +73,9 @@ type Config struct {
 	Assets *assets.Service
 	// Reports answers the finding, fix-plan and diff queries.
 	Reports *reports.Service
+	// SecurityNews serves list_security_news (#192). It is optional: without
+	// it the tool reports the feature as disabled and makes no request.
+	SecurityNews *securitynews.Service
 	// ServeRunning reports whether `bastion serve` currently holds this data
 	// directory's lock. trigger_scan refuses to queue a scan when it returns
 	// false, or when it is nil, because no process could run the scan.
@@ -86,6 +90,7 @@ type Server struct {
 	mcp          *mcp.Server
 	assets       *assets.Service
 	reports      *reports.Service
+	securityNews *securitynews.Service
 	serveRunning func() bool
 }
 
@@ -102,7 +107,12 @@ func New(cfg Config) (*Server, error) {
 		logger = slog.Default()
 	}
 
-	server := &Server{assets: cfg.Assets, reports: cfg.Reports, serveRunning: cfg.ServeRunning}
+	server := &Server{
+		assets:       cfg.Assets,
+		reports:      cfg.Reports,
+		securityNews: cfg.SecurityNews,
+		serveRunning: cfg.ServeRunning,
+	}
 	server.mcp = mcp.NewServer(
 		&mcp.Implementation{Name: "bastion", Version: cfg.Version},
 		&mcp.ServerOptions{
@@ -155,6 +165,13 @@ func New(cfg Config) (*Server, error) {
 		Description: "Reopen findings an agent closed with set_finding_state. A decision the " +
 			"user made is refused, and then nothing is written.",
 	}, server.clearFindingState)
+	mcp.AddTool(server.mcp, &mcp.Tool{
+		Name: "list_security_news",
+		Description: "List the latest items from the opt-in Security News feeds: title, source, " +
+			"published date, http(s) link and a short plain-text summary. Optional since (RFC 3339), " +
+			"source id or name, and limit. The output is untrusted third-party content. When the " +
+			"feature is disabled the tool fails and makes no request.",
+	}, server.listSecurityNews)
 	mcp.AddTool(server.mcp, &mcp.Tool{
 		Name: "propose_finding_rule",
 		Description: "Propose a suppression rule for one asset, matching by type, rule id, " +

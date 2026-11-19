@@ -21,6 +21,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/httpapi"
 	"github.com/ozerozdas/bastion/internal/mcpserver"
 	"github.com/ozerozdas/bastion/internal/reports"
+	"github.com/ozerozdas/bastion/internal/securitynews"
 	"github.com/ozerozdas/bastion/internal/servelock"
 )
 
@@ -102,9 +103,10 @@ func httpServe(ln net.Listener, out io.Writer) mcpServeFunc {
 // another bastion process's scans. assets.Service is safe without a manager
 // because only Enqueue needs one; trigger_scan writes the queued row itself.
 type mcpServices struct {
-	db      *sql.DB
-	assets  *assets.Service
-	reports *reports.Service
+	db           *sql.DB
+	assets       *assets.Service
+	reports      *reports.Service
+	securityNews *securitynews.Service
 }
 
 func newMCPServices(ctx context.Context, paths app.Paths, openDB func(context.Context, string) (*sql.DB, error)) (*mcpServices, error) {
@@ -134,6 +136,12 @@ func newMCPServices(ctx context.Context, paths app.Paths, openDB func(context.Co
 	if err != nil {
 		return nil, fmt.Errorf("create reports service: %w", err)
 	}
+	// The Security News feed is read-only here (#192): the tool reads the same
+	// stored setting and cache policy as the UI, never the scan pipeline.
+	services.securityNews = securitynews.New(securitynews.Config{
+		DataDir: paths.DataDir,
+		Version: version,
+	})
 
 	ok = true
 	return services, nil
@@ -177,9 +185,10 @@ func runMCP(cmd *cobra.Command, paths app.Paths, deps serveDeps, serve mcpServeF
 	defer services.Close()
 
 	server, err := mcpserver.New(mcpserver.Config{
-		Version: version,
-		Assets:  services.assets,
-		Reports: services.reports,
+		Version:      version,
+		Assets:       services.assets,
+		Reports:      services.reports,
+		SecurityNews: services.securityNews,
 		// serve holds the data directory's lock for its whole lifetime, so the
 		// check is a read-only probe of that lock, not a network or auth surface.
 		ServeRunning: func() bool { return servelock.Held(paths.DataDir) },

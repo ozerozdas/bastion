@@ -55,7 +55,7 @@ func TestSetSASTEnabledStartsInstall(t *testing.T) {
 			return nil
 		},
 	})
-	ts := newTestServerWithConfig(t, nil, nil, nil, nil, nil, service)
+	ts := newTestServerWithConfig(t, nil, nil, nil, nil, nil, service, nil)
 	cookie := ts.login(t)
 
 	status := readSASTStatus(t, ts.doJSON(t, http.MethodPut, "/api/sast", `{"enabled":true}`, cookie, true))
@@ -77,7 +77,7 @@ func TestSetSASTEnabledReportsInstallFailure(t *testing.T) {
 		Spawn:      func(f func()) { f() },
 		Install:    func(context.Context) error { return errors.New("network is down") },
 	})
-	ts := newTestServerWithConfig(t, nil, nil, nil, nil, nil, service)
+	ts := newTestServerWithConfig(t, nil, nil, nil, nil, nil, service, nil)
 	cookie := ts.login(t)
 
 	status := readSASTStatus(t, ts.doJSON(t, http.MethodPut, "/api/sast", `{"enabled":true}`, cookie, true))

@@ -83,6 +83,14 @@ tags:
       unchanged. Turning it on starts one background download and later
       repository scans include `sast` findings; image scans never do.
       `GET /api/sast` never blocks on the network.
+  - name: security-news
+    description: |
+      The opt-in Security News feed (#192): a fixed set of well-known security
+      RSS/Atom sources. Off by default; with the setting off no request is
+      made. Each enabled source is cached for 30 minutes and fetched on the
+      server. Feed content is untrusted external input: only a plain-text
+      title and summary, the source, the publication date and an http(s) link
+      are returned.
   - name: connections
     description: |
       Credentialed integrations used to discover and fetch sources. Tokens live
@@ -351,6 +359,67 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EPSSStatus"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/security-news:
+    get:
+      operationId: getSecurityNews
+      summary: Read the Security News feed.
+      description: |
+        Returns the opt-in setting, the preset sources with their toggles and
+        the latest items of every enabled source, newest first. The feature is
+        off by default; with the setting off no request is made and `items` is
+        empty. Each source refreshes at most every 30 minutes; a failed source
+        reports `error` and the other sources keep their items. Feed content is
+        sanitized: only a plain-text title and summary, the source, the
+        publication date and an http(s) link are returned.
+      tags: [security-news]
+      responses:
+        "200":
+          description: The current Security News feed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityNewsFeed"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setSecurityNews
+      summary: Store the Security News setting and source selection.
+      description: |
+        Only the UI calls this. `enabled: false` stops every future request and
+        clears the cached feed. With `enabled: true` and no `sources` list the
+        recommended sources are selected; an explicit list, including an empty
+        one, is stored as sent. An unknown source id is rejected with 400 and
+        nothing is written.
+      tags: [security-news]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetSecurityNewsRequest"
+      responses:
+        "200":
+          description: The setting and source selection were stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecurityNewsSettings"
         "400":
           $ref: "#/components/responses/Problem"
         "401":
@@ -3270,6 +3339,117 @@ components:
           description: |
             True opts in to the daily FIRST.org download; false turns it off and
             stops every future request.
+    SecurityNewsSource:
+      type: object
+      title: SecurityNewsSource
+      description: One preset feed source and its toggle.
+      additionalProperties: false
+      required: [id, name, recommended, enabled]
+      properties:
+        id:
+          type: string
+          description: Stable source id used by the MCP `source` filter.
+          examples: ["the-hacker-news"]
+        name:
+          type: string
+          description: Display name shown in the UI.
+          examples: ["The Hacker News"]
+        recommended:
+          type: boolean
+          description: |
+            True for the sources selected by default when the feature is
+            enabled for the first time.
+        enabled:
+          type: boolean
+          description: Whether this source is fetched while the feature is on.
+        error:
+          type: string
+          description: |
+            Why the last fetch failed. The other sources keep their items.
+    SecurityNewsItem:
+      type: object
+      title: SecurityNewsItem
+      description: |
+        One sanitized feed entry. The title and summary are plain text, and the
+        link is always an absolute http(s) URL.
+      additionalProperties: false
+      required: [title, source, source_id, published, link, summary]
+      properties:
+        title:
+          type: string
+          maxLength: 300
+        source:
+          type: string
+          description: The source's display name.
+        source_id:
+          type: string
+          description: The source's stable id.
+        published:
+          type: string
+          format: date-time
+          description: |
+            The feed's publication date. An entry without a parsable date has
+            the zero timestamp `0001-01-01T00:00:00Z` and sorts last.
+        link:
+          type: string
+          format: uri
+          description: Absolute http(s) link to the original article.
+        summary:
+          type: string
+          maxLength: 280
+          description: Plain-text summary, at most 280 characters.
+    SecurityNewsSettings:
+      type: object
+      title: SecurityNewsSettings
+      description: The stored feature switch and source selection.
+      additionalProperties: false
+      required: [enabled, sources]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            False makes no request. The feature is off by default.
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/SecurityNewsSource"
+    SecurityNewsFeed:
+      type: object
+      title: SecurityNewsFeed
+      description: The Security News setting, sources and latest items.
+      additionalProperties: false
+      required: [enabled, sources, items]
+      properties:
+        enabled:
+          type: boolean
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/SecurityNewsSource"
+        items:
+          type: array
+          description: |
+            The enabled sources' items, newest first, at most 100. Empty while
+            the feature is off.
+          items:
+            $ref: "#/components/schemas/SecurityNewsItem"
+    SetSecurityNewsRequest:
+      type: object
+      title: SetSecurityNewsRequest
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: True turns the feed on; false stops every future request.
+        sources:
+          type: array
+          description: |
+            Source ids to enable. Omitted keeps the current selection, or the
+            recommended set when the feature was never configured; an empty
+            list disables every source.
+          items:
+            type: string
     FindingRuleStatus:
       type: string
       title: FindingRuleStatus

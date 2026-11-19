@@ -26,6 +26,7 @@ import { FindingsPage } from './pages/findings'
 import { ProjectsPage } from './pages/projects'
 import { ReportPage, ReportsPage } from './pages/reports'
 import { ScanDiffPage } from './pages/scan-diff'
+import { SecurityNewsPage } from './pages/security-news'
 
 function RootLayout() {
   return (
@@ -129,6 +130,14 @@ const scanDiffRoute = createRoute({
   component: ScanDiffPage,
 })
 
+// Security News (#192) is the full opt-in feed; the sidebar entry appears only
+// while the feature is on.
+const securityNewsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/security-news',
+  component: SecurityNewsPage,
+})
+
 // Reports (#190) is the card grid under Settings & More; ?asset=<id> scopes
 // every report to one project.
 const reportsRoute = createRoute({
@@ -181,6 +190,7 @@ const routeTree = rootRoute.addChildren([
   scanDiffRoute,
   reportsRoute,
   reportRoute,
+  securityNewsRoute,
   legacySecurityReportsRoute,
   historyRoute,
 ])

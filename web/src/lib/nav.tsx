@@ -91,6 +91,18 @@ export const navItems: NavItem[] = [
   },
 ]
 
+/**
+ * securityNewsNavItem is added to the sidebar only while the feature is on
+ * (#192). It stays out of navItems so the nav layout tests describe the
+ * always-present entries.
+ */
+export const securityNewsNavItem: NavItem = {
+  to: '/security-news',
+  labelKey: 'nav.securityNews',
+  subtitleKey: 'nav.securityNews.subtitle',
+  icon: ReportsIcon,
+}
+
 /** NavGroup is one heading and the entries under it. */
 export type NavGroup = {
   section: NavSection
@@ -135,6 +147,7 @@ export function navItemFor(pathname: string): NavItem {
     item.to === '/' ? path === '/' : path.startsWith(item.to),
   )
   if (match !== undefined) return match
+  if (path.startsWith(securityNewsNavItem.to)) return securityNewsNavItem
   const section = sectionPathnames.find((entry) => path.startsWith(entry.prefix))
   return navItems.find((item) => item.to === section?.to) ?? navItems[0]
 }

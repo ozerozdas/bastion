@@ -13,6 +13,7 @@ import { updateQuery, useSetUpdateConsent } from '../api/update'
 import { formatNumber, useT } from '../lib/i18n'
 import { cn } from '../lib/utils'
 import { Badge } from './ui/badge'
+import { SecurityNewsSettings } from './security-news-settings'
 import { Switch } from './ui/switch'
 
 const cardClass =
@@ -27,14 +28,17 @@ const bodyClass = 'text-xs leading-relaxed text-muted'
  */
 export function ModulesSettings() {
   return (
-    <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      <EPSSCard />
-      <ReachabilityCard />
-      <OutdatedCard />
-      <EOLCard />
-      <SASTCard />
-      <ReleaseCheckCard />
-    </ul>
+    <div className="flex flex-col gap-4">
+      <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <EPSSCard />
+        <ReachabilityCard />
+        <OutdatedCard />
+        <EOLCard />
+        <SASTCard />
+        <ReleaseCheckCard />
+      </ul>
+      <SecurityNewsSettings />
+    </div>
   )
 }
 

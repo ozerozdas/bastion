@@ -16,6 +16,10 @@ import {
 } from '../api/reports'
 import { scansQuery } from '../api/scans'
 import { EmptyState } from '../components/empty-state'
+import {
+  SecurityNewsRecommendation,
+  SecurityNewsSection,
+} from '../components/security-news'
 import { BandHeader, BandSummary } from '../components/page-band'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
@@ -164,6 +168,7 @@ export function DashboardPage() {
               </>
             )}
           </EmptyState>
+          <SecurityNewsSection />
         </div>
       </>
     )
@@ -189,6 +194,7 @@ export function DashboardPage() {
           <Trend trends={data.trend} names={names} />
         </div>
         <LastScans scans={data.last_scans} />
+        <SecurityNewsSection />
       </div>
     </>
   )
@@ -342,6 +348,7 @@ function GetStartedStrip({
           ))}
         </ol>
       ) : null}
+      <SecurityNewsRecommendation />
     </section>
   )
 }
