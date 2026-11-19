@@ -31,14 +31,25 @@ export type FilterBarProps = {
   layout?: 'stacked' | 'inline'
   /** bordered draws the card surface the reports page uses. */
   bordered?: boolean
+  /**
+   * Fields flow in one column on phones, two between sm and lg, and the usual
+   * wrapping row from lg up. Children then take a row of their own below lg.
+   */
+  fieldGrid?: boolean
+  /** hideLabels keeps stacked labels for screen readers only; the controls speak for themselves. */
+  hideLabels?: boolean
   /** Content after the fields, e.g. a note about the view on screen. */
   children?: ReactNode
+  /** Content under the row inside the card, e.g. an inline disclosure panel. */
+  panel?: ReactNode
+  /** Content under the panel inside the card, e.g. removable filter chips. */
+  activeFilters?: ReactNode
 }
 
 const stackedInput =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
 const inlineSelect =
-  'h-8 rounded-md border border-border-strong bg-surface px-2 text-[0.8125rem] text-fg'
+  'h-8 max-w-full min-w-0 rounded-md border border-border-strong bg-surface px-2 text-[0.8125rem] text-fg'
 
 /** optionNodes renders options, folding consecutive same-group ones into an optgroup. */
 function optionNodes(options: readonly FilterOption[]): ReactNode[] {
@@ -76,69 +87,93 @@ export function FilterBar({
   label,
   layout = 'stacked',
   bordered = true,
+  fieldGrid = false,
+  hideLabels = false,
   children,
+  panel,
+  activeFilters,
 }: FilterBarProps) {
   const stacked = layout === 'stacked'
   // Findings has always wrapped its filters in a section; the Scans tab's inline
   // row is a plain div on the page.
   const Wrapper = stacked ? 'section' : 'div'
+  const card = bordered && 'rounded-card border border-border-subtle bg-surface p-4'
+  const row = cn(
+    stacked ? 'items-end gap-3' : 'items-center gap-2',
+    fieldGrid && stacked
+      ? 'grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap'
+      : 'flex flex-wrap',
+  )
+
+  const fieldNodes = fields.map((field) => {
+    const control =
+      field.kind === 'search' ? (
+        <input
+          id={field.id}
+          type="search"
+          value={field.value}
+          onChange={(event) => field.onChange(event.target.value)}
+          placeholder={field.placeholder}
+          autoComplete="off"
+          spellCheck={false}
+          // The API refuses a q above 200 characters; keep the box inside it.
+          maxLength={200}
+          className={stacked ? stackedInput : inlineSelect}
+        />
+      ) : (
+        <select
+          id={field.id}
+          value={field.value}
+          onChange={(event) => field.onChange(event.target.value)}
+          className={stacked ? stackedInput : inlineSelect}
+        >
+          {optionNodes(field.options)}
+        </select>
+      )
+
+    if (!stacked) {
+      return (
+        <Fragment key={field.id}>
+          <label htmlFor={field.id} className="text-xs text-muted">
+            {field.label}
+          </label>
+          {control}
+        </Fragment>
+      )
+    }
+
+    return (
+      <div key={field.id} className={cn('flex flex-col gap-1', field.className)}>
+        <label
+          htmlFor={field.id}
+          className={cn('text-xs font-medium text-muted', hideLabels && 'sr-only')}
+        >
+          {field.label}
+        </label>
+        {control}
+      </div>
+    )
+  })
+
+  // A page with a panel or chips keeps them inside the card, so the row becomes
+  // one line of a column instead of the wrapper itself.
+  if (panel === undefined && activeFilters === undefined) {
+    return (
+      <Wrapper aria-label={label} className={cn(row, card)}>
+        {fieldNodes}
+        {children}
+      </Wrapper>
+    )
+  }
 
   return (
-    <Wrapper
-      aria-label={label}
-      className={cn(
-        'flex flex-wrap',
-        stacked ? 'items-end gap-3' : 'items-center gap-2',
-        bordered && 'rounded-card border border-border-subtle bg-surface p-4',
-      )}
-    >
-      {fields.map((field) => {
-        const control =
-          field.kind === 'search' ? (
-            <input
-              id={field.id}
-              type="search"
-              value={field.value}
-              onChange={(event) => field.onChange(event.target.value)}
-              placeholder={field.placeholder}
-              autoComplete="off"
-              spellCheck={false}
-              // The API refuses a q above 200 characters; keep the box inside it.
-              maxLength={200}
-              className={stacked ? stackedInput : inlineSelect}
-            />
-          ) : (
-            <select
-              id={field.id}
-              value={field.value}
-              onChange={(event) => field.onChange(event.target.value)}
-              className={stacked ? stackedInput : inlineSelect}
-            >
-              {optionNodes(field.options)}
-            </select>
-          )
-
-        if (!stacked) {
-          return (
-            <Fragment key={field.id}>
-              <label htmlFor={field.id} className="text-xs text-muted">
-                {field.label}
-              </label>
-              {control}
-            </Fragment>
-          )
-        }
-
-        return (
-          <div key={field.id} className={cn('flex flex-col gap-1', field.className)}>
-            <label htmlFor={field.id} className="text-xs font-medium text-muted">
-              {field.label}
-            </label>
-            {control}
-          </div>
-        )
-      })}
-      {children}
+    <Wrapper aria-label={label} className={cn('flex flex-col gap-3', card)}>
+      <div className={row}>
+        {fieldNodes}
+        {children}
+      </div>
+      {panel}
+      {activeFilters}
     </Wrapper>
   )
 }

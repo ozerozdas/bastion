@@ -66,6 +66,7 @@ type Finding struct {
 	CreatedAt       string
 	Scanners        string
 	Reachability    sql.NullString
+	CWE             string
 }
 
 type FindingRule struct {
@@ -155,4 +156,9 @@ type ScannerRun struct {
 	Error          sql.NullString
 	RawPath        sql.NullString
 	Warning        sql.NullString
+}
+
+type SlaThreshold struct {
+	Severity string
+	Days     int64
 }

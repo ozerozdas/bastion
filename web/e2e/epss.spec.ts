@@ -102,10 +102,11 @@ test('EPSS is off by default and renders no scores', async ({ page, server }) =>
   await expect(card).toBeVisible()
   await expect(card.getByText('Off', { exact: true })).toBeVisible()
   await expect(
-    card.getByRole('button', { name: 'Turn on EPSS exploit scores' }),
-  ).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+    card.getByRole('switch', { name: 'EPSS exploit scores' }),
+  ).toHaveAttribute('aria-checked', 'false')
+  // Back to the findings list the page was opened from.
+  await page.goBack()
+  await expect(page.locator('#page-heading')).toBeVisible()
 
   await expect(page.getByRole('columnheader', { name: 'EPSS' })).toHaveCount(0)
 
@@ -125,12 +126,11 @@ test('turning EPSS on shows the feed and the finding score', async ({
   await openFindings(page, server.url)
 
   await openConfiguration(page)
-  await page
-    .getByRole('button', { name: 'Turn on EPSS exploit scores' })
-    .click()
+  await page.getByRole('switch', { name: 'EPSS exploit scores' }).click()
 
   await expect(page.getByText('406,615 CVEs · 2026-11-15')).toBeVisible()
-  await page.keyboard.press('Escape')
+  await page.goBack()
+  await expect(page.locator('#page-heading')).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'EPSS' })).toBeVisible()
   await expect(page.getByRole('cell', { name: /1\.00/ })).toBeVisible()
 

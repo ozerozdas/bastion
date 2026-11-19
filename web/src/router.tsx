@@ -9,18 +9,22 @@ import {
 import { AppShell } from './components/app-shell'
 import {
   parseAssetSearch,
+  parseConfigurationsTab,
   parseConnectionsTab,
   parseContainersTab,
   parseFindingsSearch,
   parseProjectsTabSearch,
+  parseReportSearch,
   parseScanDiffSearch,
 } from './lib/urls'
 import { AssetFindingsPage } from './pages/asset-findings'
+import { ConfigurationsPage } from './pages/configurations'
 import { ConnectionsPage } from './pages/connections'
 import { ContainersPage } from './pages/containers'
 import { DashboardPage } from './pages/dashboard'
 import { FindingsPage } from './pages/findings'
 import { ProjectsPage } from './pages/projects'
+import { ReportPage, ReportsPage } from './pages/reports'
 import { ScanDiffPage } from './pages/scan-diff'
 
 function RootLayout() {
@@ -57,6 +61,14 @@ const containersRoute = createRoute({
   // one available, which depends on the daemon and the connections (#120).
   validateSearch: parseContainersTab,
   component: ContainersPage,
+})
+
+const configurationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/configurations',
+  // ?tab=<section> picks the settings panel; the bare path is Modules (#139).
+  validateSearch: parseConfigurationsTab,
+  component: ConfigurationsPage,
 })
 
 const repositoriesRoute = createRoute({
@@ -117,19 +129,29 @@ const scanDiffRoute = createRoute({
   component: ScanDiffPage,
 })
 
-// The old URLs keep working: /security-reports is the page's previous path and
-// /reports is the short form named in #87. A bookmarked ?asset= id carries over
-// to the same filtered list.
-function redirectToFindings(search: { asset?: number }): never {
-  throw redirect({ to: '/findings', search, replace: true })
-}
-
-const legacyReportsRoute = createRoute({
+// Reports (#190) is the card grid under Settings & More; ?asset=<id> scopes
+// every report to one project.
+const reportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/reports',
   validateSearch: parseAssetSearch,
-  beforeLoad: ({ search }) => redirectToFindings(search),
+  component: ReportsPage,
 })
+
+// One report's page; the id picks the entry in the catalog. ?asset=<id>,
+// ?cve=<id> and ?days=<n> scope the report itself (#190).
+const reportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reports/$reportId',
+  validateSearch: parseReportSearch,
+  component: ReportPage,
+})
+
+// The old URLs keep working: /security-reports is the page's previous path.
+// A bookmarked ?asset= id carries over to the same filtered findings list.
+function redirectToFindings(search: { asset?: number }): never {
+  throw redirect({ to: '/findings', search, replace: true })
+}
 
 const legacySecurityReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -150,13 +172,15 @@ const historyRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   connectionsRoute,
+  configurationsRoute,
   containersRoute,
   repositoriesRoute,
   legacyProjectsRoute,
   findingsRoute,
   assetFindingsRoute,
   scanDiffRoute,
-  legacyReportsRoute,
+  reportsRoute,
+  reportRoute,
   legacySecurityReportsRoute,
   historyRoute,
 ])

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore, type ReactNode } from 'react'
 
 import { assetsQuery } from '../api/assets'
 import { ApiError } from '../api/client'
@@ -16,13 +16,16 @@ import {
 } from '../api/reports'
 import { scansQuery } from '../api/scans'
 import { EmptyState } from '../components/empty-state'
+import { BandHeader, BandSummary } from '../components/page-band'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { InfoTip } from '../components/ui/info-tip'
 import {
   getStartedState,
   isCliStepDone,
   isGetStartedDismissed,
   type GetStartedState,
+  type GetStartedStep,
 } from '../lib/get-started'
 import { useT } from '../lib/i18n'
 import {
@@ -32,18 +35,6 @@ import {
   subscribePreferences,
 } from '../lib/preferences'
 import { formatDateTime, relativeTime } from '../lib/time'
-
-/** severityTiles is the fixed order of the four severity totals (§7.1). */
-const severityTiles: {
-  key: keyof SeverityTotals
-  labelKey: string
-  mark: string
-}[] = [
-  { key: 'critical', labelKey: 'severity.critical', mark: 'bg-critical' },
-  { key: 'high', labelKey: 'severity.high', mark: 'bg-high' },
-  { key: 'medium', labelKey: 'severity.medium', mark: 'bg-medium' },
-  { key: 'low', labelKey: 'severity.low', mark: 'bg-low' },
-]
 
 /** typeLabels maps the API's type keys to the words shown in the UI. */
 const typeLabels: { key: keyof TypeTotals; labelKey: string }[] = [
@@ -106,22 +97,36 @@ export function DashboardPage() {
     setPreference(cliDonePreference, '1')
   }
 
+  // Every page's title lives in its band; the meta line carries what the old
+  // header bar showed.
+  const band = (meta?: ReactNode) => (
+    <BandHeader>
+      <BandSummary title={t('nav.dashboard')} meta={meta} />
+    </BandHeader>
+  )
+
   if (dashboard.status === 'pending') {
     return (
-      <section className="rounded-card border border-border-subtle bg-surface p-4">
-        <p className="text-muted">{t('dashboard.loading')}</p>
-      </section>
+      <>
+        {band()}
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <p className="text-muted">{t('dashboard.loading')}</p>
+        </section>
+      </>
     )
   }
 
   if (dashboard.status === 'error') {
     return (
-      <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[0.8125rem] font-semibold">
-          {t('dashboard.failed')}
-        </h2>
-        <ErrorNote error={dashboard.error} />
-      </section>
+      <>
+        {band()}
+        <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
+          <h2 className="text-[0.8125rem] font-semibold">
+            {t('dashboard.failed')}
+          </h2>
+          <ErrorNote error={dashboard.error} />
+        </section>
+      </>
     )
   }
 
@@ -132,191 +137,115 @@ export function DashboardPage() {
   if (data.last_scans.length === 0) {
     return (
       <>
-        {checklist?.visible === true ? (
-          <GetStartedCard
-            state={checklist}
-            onDismiss={dismissChecklist}
-            onCliDone={markCliStep}
-          />
-        ) : null}
-        <EmptyState
-          title={t('dashboard.noScans.title')}
-          body={t('dashboard.noScans.body')}
-        >
-          {checklist === undefined || checklist.visible ? null : (
-            <>
-              <Link to="/connections" className={buttonVariants()}>
-                {t('dashboard.connectGithub')}
-              </Link>
-              <Link
-                to="/repositories"
-                className={buttonVariants({ variant: 'outline' })}
-              >
-                {t('dashboard.addLocalPath')}
-              </Link>
-            </>
-          )}
-        </EmptyState>
+        {band()}
+        <div className="flex flex-col gap-6">
+          {checklist?.visible === true ? (
+            <GetStartedStrip
+              state={checklist}
+              onDismiss={dismissChecklist}
+              onCliDone={markCliStep}
+            />
+          ) : null}
+          <EmptyState
+            title={t('dashboard.noScans.title')}
+            body={t('dashboard.noScans.body')}
+          >
+            {checklist === undefined || checklist.visible ? null : (
+              <>
+                <Link to="/connections" className={buttonVariants()}>
+                  {t('dashboard.connectGithub')}
+                </Link>
+                <Link
+                  to="/repositories"
+                  className={buttonVariants({ variant: 'outline' })}
+                >
+                  {t('dashboard.addLocalPath')}
+                </Link>
+              </>
+            )}
+          </EmptyState>
+        </div>
       </>
     )
   }
 
   const names = assetNames(data.last_scans, data.top_assets)
-  const total = openFindingTotal(data.totals_by_severity)
 
   return (
     <>
-      {checklist?.visible === true ? (
-        <GetStartedCard
-          state={checklist}
-          onDismiss={dismissChecklist}
-          onCliDone={markCliStep}
-        />
-      ) : null}
-      <section
-        aria-labelledby="severity-heading"
-        className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
-      >
-        <div className="flex flex-wrap items-baseline gap-2.5">
-          <h2 id="severity-heading" className="text-[0.8125rem] font-semibold">
-            {t('dashboard.openFindings')}
-          </h2>
-          <span className="text-faint">
-            {t('dashboard.openFindings.scope', { total })}
-          </span>
+      {band(<LatestScan scans={data.last_scans} />)}
+      <div className="flex flex-col gap-6">
+        {checklist?.visible === true ? (
+          <GetStartedStrip
+            state={checklist}
+            onDismiss={dismissChecklist}
+            onCliDone={markCliStep}
+          />
+        ) : null}
+        <RiskSummary totals={data.totals_by_severity} />
+        <RiskiestProjects assets={data.top_assets} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <FindingsByType totals={data.totals_by_type} />
+          <Trend trends={data.trend} names={names} />
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
-          {severityTiles.map((tile) => (
-            <SeverityTile
-              key={tile.key}
-              count={data.totals_by_severity[tile.key]}
-              label={t(tile.labelKey)}
-              mark={tile.mark}
-            />
-          ))}
-          {data.totals_by_severity.unknown > 0 ? (
-            <SeverityTile
-              count={data.totals_by_severity.unknown}
-              label={t('severity.unknown')}
-              mark="bg-border-strong"
-            />
-          ) : null}
-        </div>
-      </section>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <FindingsByType totals={data.totals_by_type} />
-        <RiskiestAssets assets={data.top_assets} />
+        <LastScans scans={data.last_scans} />
       </div>
-
-      <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
-        <div className="flex flex-col gap-0.5">
-          <h2 className="text-[0.8125rem] font-semibold">
-            {t('dashboard.trend.title')}
-          </h2>
-          <p className="text-xs text-muted">{t('dashboard.trend.body')}</p>
-        </div>
-        {data.trend.length === 0 ? (
-          <p className="text-xs text-muted">{t('dashboard.trend.empty')}</p>
-        ) : (
-          <ul className="flex flex-col divide-y divide-border-subtle">
-            {data.trend.map((trend) => (
-              <li
-                key={trend.asset_id}
-                className="-mx-2 flex items-center justify-between gap-4 rounded px-2 py-2 hover:bg-hover"
-              >
-                <Link
-                  to="/findings"
-                  search={{ asset: trend.asset_id }}
-                  className="truncate text-[0.8125rem] hover:underline"
-                >
-                  {names.get(trend.asset_id) ??
-                    t('asset.fallback', { id: trend.asset_id })}
-                </Link>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-faint tabular-nums">
-                    {t('dashboard.trend.open', {
-                      count: trend.scans.at(-1)?.critical_high_open ?? 0,
-                    })}
-                  </span>
-                  <Sparkline
-                    trend={trend}
-                    label={
-                      names.get(trend.asset_id) ??
-                      t('asset.fallback', { id: trend.asset_id })
-                    }
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
-        <div className="flex flex-wrap items-baseline gap-2.5">
-          <h2 className="text-[0.8125rem] font-semibold">
-            {t('dashboard.lastScans.title')}
-          </h2>
-          <span className="text-faint">{t('dashboard.lastScans.subtitle')}</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-[0.8125rem]">
-            <thead className="text-xs text-faint">
-              <tr>
-                <th className="pb-2 font-medium">
-                  {t('dashboard.column.project')}
-                </th>
-                <th className="status-cell pb-2 font-medium">
-                  {t('dashboard.column.status')}
-                </th>
-                <th className="pb-2 text-right font-medium">
-                  {t('dashboard.column.lastScan')}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {data.last_scans.map((scan) => {
-                const status = statusView[scan.status]
-                return (
-                  <tr key={scan.asset_id} className="hover:bg-hover">
-                    <td className="py-2 pr-3">
-                      <Link
-                        to="/findings"
-                        search={{ asset: scan.asset_id }}
-                        className="hover:underline"
-                      >
-                        {scan.display_name}
-                      </Link>
-                    </td>
-                    <td className="status-cell py-2 pr-3">
-                      <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
-                    </td>
-                    <td
-                      className="py-2 text-right whitespace-nowrap text-muted tabular-nums"
-                      title={
-                        scan.finished_at
-                          ? formatDateTime(scan.finished_at)
-                          : undefined
-                      }
-                    >
-                      {scan.finished_at
-                        ? relativeTime(scan.finished_at)
-                        : t('dashboard.notFinished')}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </>
   )
 }
 
-/** GetStartedCard is the four-step checklist; each step links to where it is done. */
-function GetStartedCard({
+/** LatestScan says in the page header when the newest scan finished, or that one is running. */
+export function LatestScan({ scans }: { scans: LastScan[] }) {
+  const t = useT()
+  if (scans.some((s) => s.status === 'queued' || s.status === 'running')) {
+    return <span className="text-xs text-muted">{t('dashboard.header.scanning')}</span>
+  }
+  // ISO timestamps sort as strings.
+  const newest = scans
+    .map((s) => s.finished_at)
+    .filter((f): f is string => f !== undefined)
+    .sort()
+    .at(-1)
+  if (!newest) {
+    return null
+  }
+  return (
+    <span className="text-xs text-faint tabular-nums" title={formatDateTime(newest)}>
+      {t('dashboard.header.lastScan', { when: relativeTime(newest) })}
+    </span>
+  )
+}
+
+// Same frame as RiskSummary so every dashboard block reads as its own card.
+const CARD = 'rounded-card border border-border-subtle bg-surface px-4 py-3.5'
+
+/** SectionHeading names a block and carries its secondary explanation. */
+function SectionHeading({
+  id,
+  title,
+  tip,
+}: {
+  id: string
+  title: string
+  tip?: { label: string; content: string }
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <h2 id={id} className="text-[0.8125rem] font-semibold">
+        {title}
+      </h2>
+      {tip === undefined ? null : (
+        <InfoTip label={tip.label} content={tip.content} />
+      )}
+    </div>
+  )
+}
+
+/**
+ * GetStartedStrip is the checklist as one line: progress, the next open step,
+ * and a disclosure with every step's own action when it is needed.
+ */
+function GetStartedStrip({
   state,
   onDismiss,
   onCliDone,
@@ -326,32 +255,65 @@ function GetStartedCard({
   onCliDone: () => void
 }) {
   const t = useT()
+  const [open, setOpen] = useState(false)
+  const next = state.steps.find((step) => !step.done)
+  const percent = Math.round((state.doneCount / state.total) * 100)
+  const linkClass =
+    'underline underline-offset-2 hover:text-accent'
   return (
     <section
       aria-labelledby="get-started-heading"
-      className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
+      className="flex flex-col gap-2 rounded-card border border-border-subtle bg-surface px-4 py-2.5"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-col gap-0.5">
-          <h2 id="get-started-heading" className="text-[0.8125rem] font-semibold">
-            {t('dashboard.getStarted.title')}
-          </h2>
-          <p className="text-xs text-muted">
-            {t('dashboard.getStarted.body', {
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 id="get-started-heading" className="text-[0.8125rem] font-semibold">
+          {t('dashboard.getStarted.title')}
+        </h2>
+        <span className="flex items-center gap-2 text-xs text-muted">
+          <span
+            aria-hidden="true"
+            className="h-1 w-16 overflow-hidden rounded-full bg-hover"
+          >
+            <span
+              className="block h-1 rounded-full bg-ok"
+              style={{ width: `${String(percent)}%` }}
+            />
+          </span>
+          <span className="tabular-nums">
+            {t('dashboard.getStarted.progress', {
               done: state.doneCount,
               total: state.total,
             })}
-          </p>
+          </span>
+        </span>
+        {next === undefined ? null : (
+          <span className="text-xs text-muted">
+            {t('dashboard.getStarted.next')}{' '}
+            <GetStartedStepLink
+              step={next}
+              onCliDone={onCliDone}
+              className={`text-[0.8125rem] ${linkClass}`}
+            />
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-expanded={open}
+            onClick={() => setOpen((shown) => !shown)}
+          >
+            {t('dashboard.getStarted.steps')}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={onDismiss}>
+            {t('dashboard.getStarted.dismiss')}
+          </Button>
         </div>
-        <Button type="button" size="sm" variant="ghost" onClick={onDismiss}>
-          {t('dashboard.getStarted.dismiss')}
-        </Button>
       </div>
-      <ol className="flex flex-col gap-2.5">
-        {state.steps.map((step, index) => {
-          const titleClass =
-            'text-[0.8125rem] underline underline-offset-2 hover:text-accent'
-          return (
+      {open ? (
+        <ol className="flex flex-col gap-2.5 border-t border-border-subtle pt-2.5">
+          {state.steps.map((step, index) => (
             <li key={step.id} className="flex items-start gap-2.5">
               <span
                 aria-hidden="true"
@@ -365,23 +327,11 @@ function GetStartedCard({
               </span>
               <div className="flex min-w-0 flex-col gap-0.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  {step.href ? (
-                    <a
-                      href={step.href}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={onCliDone}
-                      className={titleClass}
-                    >
-                      {step.title}
-                    </a>
-                  ) : step.to ? (
-                    <Link to={step.to} className={titleClass}>
-                      {step.title}
-                    </Link>
-                  ) : (
-                    <span className="text-[0.8125rem]">{step.title}</span>
-                  )}
+                  <GetStartedStepLink
+                    step={step}
+                    onCliDone={onCliDone}
+                    className={`text-[0.8125rem] ${linkClass}`}
+                  />
                   {step.done ? (
                     <Badge tone="ok">{t('dashboard.getStarted.done')}</Badge>
                   ) : null}
@@ -389,31 +339,119 @@ function GetStartedCard({
                 <p className="text-xs text-muted">{step.hint}</p>
               </div>
             </li>
-          )
-        })}
-      </ol>
+          ))}
+        </ol>
+      ) : null}
     </section>
   )
 }
 
-/** SeverityTile is one calm number with a small severity mark (§7). */
-function SeverityTile({
-  count,
-  label,
-  mark,
+/** GetStartedStepLink keeps each step's own action: a route or the CLI docs. */
+function GetStartedStepLink({
+  step,
+  onCliDone,
+  className,
 }: {
-  count: number
-  label: string
-  mark: string
+  step: GetStartedStep
+  onCliDone: () => void
+  className: string
 }) {
+  if (step.href !== undefined) {
+    return (
+      <a
+        href={step.href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={onCliDone}
+        className={className}
+      >
+        {step.title}
+      </a>
+    )
+  }
+  if (step.to !== undefined) {
+    return (
+      <Link to={step.to} className={className}>
+        {step.title}
+      </Link>
+    )
+  }
+  return <span className={className}>{step.title}</span>
+}
+
+/**
+ * RiskSummary is the dashboard hero: the total and a one-line verdict on the
+ * left, the per-severity breakdown on the right, and one segmented bar that
+ * shows the mix at a glance.
+ */
+function RiskSummary({ totals }: { totals: SeverityTotals }) {
+  const t = useT()
+  const total = openFindingTotal(totals)
+  const rows = [
+    { key: 'critical', count: totals.critical, label: t('severity.critical'), mark: 'bg-critical', strong: true },
+    { key: 'high', count: totals.high, label: t('severity.high'), mark: 'bg-high', strong: true },
+    { key: 'medium', count: totals.medium, label: t('severity.medium'), mark: 'bg-medium', strong: false },
+    { key: 'low', count: totals.low, label: t('severity.low'), mark: 'bg-low', strong: false },
+    { key: 'unknown', count: totals.unknown, label: t('severity.unknown'), mark: 'bg-border-strong', strong: false },
+  ].filter((r) => r.key !== 'unknown' || r.count > 0)
   return (
-    <div className="flex flex-col gap-1.5 rounded-md border border-border-subtle bg-bg px-3 py-2.5">
-      <span className="flex items-center gap-1.5 text-xs text-muted">
-        <span aria-hidden="true" className={`size-1.5 rounded-full ${mark}`} />
-        {label}
-      </span>
-      <span className="text-xl font-semibold tabular-nums">{count}</span>
-    </div>
+    <section
+      aria-labelledby="severity-heading"
+      className="flex flex-col gap-5 rounded-card border border-border-subtle bg-surface px-5 py-5 sm:px-6"
+    >
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-2">
+          <SectionHeading
+            id="severity-heading"
+            title={t('dashboard.openFindings')}
+            tip={{
+              label: t('dashboard.openFindings.scopeAria'),
+              content: t('dashboard.openFindings.scope', { total }),
+            }}
+          />
+          <div className="flex items-baseline gap-3">
+            <span className="text-[2.5rem] leading-none font-semibold tracking-tight tabular-nums">
+              {total}
+            </span>
+            <Link to="/findings" className="text-[0.8125rem] text-muted hover:text-fg hover:underline">
+              {t('dashboard.hero.viewAll')}
+            </Link>
+          </div>
+          <p className="text-[0.8125rem] text-muted">
+            {t('dashboard.hero.headline', { critical: totals.critical, high: totals.high })}
+          </p>
+        </div>
+        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-5 lg:w-[34rem]">
+          {rows.map((r) => (
+            <li
+              key={r.key}
+              className={`flex flex-col gap-1.5 rounded-md px-3 py-2.5 ${r.strong ? 'bg-hover' : ''}`}
+            >
+              <span
+                className={`leading-none tabular-nums ${
+                  r.strong ? 'text-[1.5rem] font-semibold' : 'text-[1.125rem] font-medium text-muted'
+                }`}
+              >
+                {r.count}
+              </span>
+              <span className="flex items-center gap-1.5 text-xs text-muted">
+                <span aria-hidden="true" className={`size-1.5 rounded-full ${r.mark}`} />
+                {r.label}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      {total > 0 ? (
+        <div aria-hidden="true" className="flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full">
+          {rows.map((r) =>
+            r.count > 0 ? (
+              <span key={r.key} className={r.mark} style={{ flexGrow: r.count }} />
+            ) : null,
+          )}
+        </div>
+      ) : null}
+    </section>
   )
 }
 
@@ -426,10 +464,8 @@ function FindingsByType({ totals }: { totals: TypeTotals }) {
   const max = Math.max(1, ...rows.map((row) => row.count))
 
   return (
-    <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
-      <h2 className="text-[0.8125rem] font-semibold">
-        {t('dashboard.byType.title')}
-      </h2>
+    <section aria-labelledby="by-type-heading" className={`flex flex-col gap-3 ${CARD}`}>
+      <SectionHeading id="by-type-heading" title={t('dashboard.byType.title')} />
       {rows.length === 0 ? (
         <p className="text-xs text-muted">{t('dashboard.byType.empty')}</p>
       ) : (
@@ -461,64 +497,72 @@ function FindingsByType({ totals }: { totals: TypeTotals }) {
   )
 }
 
-/** RiskiestAssets is the top five by score, with per-severity counts. */
-function RiskiestAssets({ assets }: { assets: AssetRisk[] }) {
+/** RiskiestProjects is the top five by score, as compact full-width rows. */
+function RiskiestProjects({ assets }: { assets: AssetRisk[] }) {
   const t = useT()
   return (
-    <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
-      <div className="flex flex-wrap items-baseline gap-2.5">
-        <h2 className="text-[0.8125rem] font-semibold">
-          {t('dashboard.riskiest.title')}
-        </h2>
-        <span className="text-faint">{t('dashboard.riskiest.subtitle')}</span>
-      </div>
+    <section aria-labelledby="riskiest-heading" className={`flex flex-col gap-2 ${CARD}`}>
+      <SectionHeading
+        id="riskiest-heading"
+        title={t('dashboard.riskiest.title')}
+        tip={{
+          label: t('dashboard.riskiest.aria'),
+          content: t('dashboard.riskiest.subtitle'),
+        }}
+      />
       {assets.length === 0 ? (
         <p className="text-xs text-muted">{t('dashboard.riskiest.empty')}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-[0.8125rem]">
+          <table className="w-full text-left text-[0.875rem]">
             <thead className="text-xs text-faint">
               <tr>
-                <th className="pb-2 font-medium">
+                <th className="w-full border-b border-border-subtle pb-1.5 font-medium">
                   {t('dashboard.column.project')}
                 </th>
-                <th className="pb-2 text-right font-medium">
+                <th className="border-b border-border-subtle pb-1.5 pl-4 text-right font-medium">
                   {t('dashboard.column.score')}
                 </th>
-                <th className="pb-2 pl-3 font-medium">
+                <th className="border-b border-border-subtle pb-1.5 pl-4 font-medium whitespace-nowrap">
                   {t('severity.critical')}
                 </th>
-                <th className="pb-2 pl-2 font-medium">{t('severity.high')}</th>
-                <th className="pb-2 pl-2 font-medium">
+                <th className="border-b border-border-subtle pb-1.5 pl-3 font-medium whitespace-nowrap">
+                  {t('severity.high')}
+                </th>
+                <th className="hidden border-b border-border-subtle pb-1.5 pl-3 font-medium whitespace-nowrap sm:table-cell">
                   {t('severity.medium')}
                 </th>
-                <th className="pb-2 pl-2 font-medium">{t('severity.low')}</th>
+                <th className="hidden border-b border-border-subtle pb-1.5 pl-3 font-medium whitespace-nowrap sm:table-cell">
+                  {t('severity.low')}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
               {assets.map((asset) => (
                 <tr key={asset.asset_id} className="hover:bg-hover">
-                  <td className="py-2 pr-3">
+                  <td className="w-full max-w-0 py-1.5 pr-3">
                     <Link
                       to="/findings"
                       search={{ asset: asset.asset_id }}
-                      className="hover:underline"
+                      className="block truncate hover:underline"
                       title={`${asset.kind}: ${asset.display_name}`}
                     >
                       {asset.display_name}
                     </Link>
                   </td>
-                  <td className="py-2 text-right text-muted tabular-nums">{asset.score}</td>
-                  <td className="py-2 pl-3">
+                  <td className="py-1.5 pl-4 text-right text-muted tabular-nums">
+                    {asset.score}
+                  </td>
+                  <td className="py-1.5 pl-4 whitespace-nowrap">
                     <CountBadge count={asset.critical} tone="critical" />
                   </td>
-                  <td className="py-2 pl-2">
+                  <td className="py-1.5 pl-3 whitespace-nowrap">
                     <CountBadge count={asset.high} tone="high" />
                   </td>
-                  <td className="py-2 pl-2">
+                  <td className="hidden py-1.5 pl-3 whitespace-nowrap sm:table-cell">
                     <CountBadge count={asset.medium} tone="medium" />
                   </td>
-                  <td className="py-2 pl-2">
+                  <td className="hidden py-1.5 pl-3 whitespace-nowrap sm:table-cell">
                     <CountBadge count={asset.low} tone="low" />
                   </td>
                 </tr>
@@ -527,6 +571,133 @@ function RiskiestAssets({ assets }: { assets: AssetRisk[] }) {
           </table>
         </div>
       )}
+    </section>
+  )
+}
+
+/** Trend plots each project's open critical and high count, newest scan last. */
+function Trend({
+  trends,
+  names,
+}: {
+  trends: AssetTrend[]
+  names: Map<number, string>
+}) {
+  const t = useT()
+  return (
+    <section aria-labelledby="trend-heading" className={`flex flex-col gap-3 ${CARD}`}>
+      <SectionHeading
+        id="trend-heading"
+        title={t('dashboard.trend.title')}
+        tip={{
+          label: t('dashboard.trend.aria'),
+          content: t('dashboard.trend.body'),
+        }}
+      />
+      {trends.length === 0 ? (
+        <p className="text-xs text-muted">{t('dashboard.trend.empty')}</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border-subtle">
+          {trends.map((trend) => {
+            const name =
+              names.get(trend.asset_id) ??
+              t('asset.fallback', { id: trend.asset_id })
+            return (
+              <li
+                key={trend.asset_id}
+                // No negative margin: it pushed the row 8px past the grid
+                // column, so the dashboard grid scrolled sideways at 1440.
+                className="flex items-center justify-between gap-4 rounded py-1.5 hover:bg-hover"
+              >
+                <Link
+                  to="/findings"
+                  search={{ asset: trend.asset_id }}
+                  title={name}
+                  className="min-w-0 truncate text-[0.875rem] hover:underline"
+                >
+                  {name}
+                </Link>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="whitespace-nowrap text-xs text-faint tabular-nums">
+                    {t('dashboard.trend.open', {
+                      count: trend.scans.at(-1)?.critical_high_open ?? 0,
+                    })}
+                  </span>
+                  <Sparkline trend={trend} label={name} />
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/** LastScans shows the newest scan of every project and how it ended. */
+function LastScans({ scans }: { scans: LastScan[] }) {
+  const t = useT()
+  return (
+    <section aria-labelledby="last-scans-heading" className={`flex flex-col gap-2 ${CARD}`}>
+      <SectionHeading
+        id="last-scans-heading"
+        title={t('dashboard.lastScans.title')}
+        tip={{
+          label: t('dashboard.lastScans.aria'),
+          content: t('dashboard.lastScans.subtitle'),
+        }}
+      />
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-[0.8125rem]">
+          <thead className="text-xs text-faint">
+            <tr>
+              <th className="border-b border-border-subtle pb-1.5 font-medium">
+                {t('dashboard.column.project')}
+              </th>
+              <th className="status-cell border-b border-border-subtle pb-1.5 font-medium">
+                {t('dashboard.column.status')}
+              </th>
+              <th className="hidden border-b border-border-subtle pb-1.5 text-right font-medium sm:table-cell">
+                {t('dashboard.column.lastScan')}
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border-subtle">
+            {scans.map((scan) => {
+              const status = statusView[scan.status]
+              return (
+                <tr key={scan.asset_id} className="hover:bg-hover">
+                  <td className="w-full max-w-0 py-1.5 pr-3">
+                    <Link
+                      to="/findings"
+                      search={{ asset: scan.asset_id }}
+                      className="block truncate hover:underline"
+                      title={scan.display_name}
+                    >
+                      {scan.display_name}
+                    </Link>
+                  </td>
+                  <td className="status-cell py-1.5 pr-3">
+                    <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
+                  </td>
+                  <td
+                    className="hidden py-1.5 text-right whitespace-nowrap text-muted tabular-nums sm:table-cell"
+                    title={
+                      scan.finished_at
+                        ? formatDateTime(scan.finished_at)
+                        : undefined
+                    }
+                  >
+                    {scan.finished_at
+                      ? relativeTime(scan.finished_at)
+                      : t('dashboard.notFinished')}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </section>
   )
 }

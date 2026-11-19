@@ -4,7 +4,7 @@ import type * as React from 'react'
 import { cn } from '../../lib/utils'
 
 export const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex touch-control items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
@@ -14,8 +14,8 @@ export const buttonVariants = cva(
         ghost: 'text-muted hover:bg-hover hover:text-fg',
       },
       size: {
-        default: 'h-8 px-3 text-[0.8125rem]',
-        sm: 'h-7 px-2 text-xs',
+        default: 'h-8 px-3 text-[0.875rem]',
+        sm: 'h-7 px-2 text-[0.8125rem]',
       },
     },
     defaultVariants: {

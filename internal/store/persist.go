@@ -307,6 +307,10 @@ func newFindingParams(scanID, assetID, firstSeen int64, f findings.Finding, crea
 	if err != nil {
 		return sqlcdb.InsertFindingParams{}, err
 	}
+	cwe, err := cweJSON(f.CWE)
+	if err != nil {
+		return sqlcdb.InsertFindingParams{}, err
+	}
 	occurrences := int64(f.Occurrences)
 	if occurrences < 1 {
 		// One finding per fingerprint per scan; a caller that does not merge
@@ -331,6 +335,7 @@ func newFindingParams(scanID, assetID, firstSeen int64, f findings.Finding, crea
 		ReferencesJSON:  references,
 		Scanner:         f.Scanner,
 		Scanners:        scanners,
+		CWE:             cwe,
 		FirstSeenScanID: sql.NullInt64{Int64: firstSeen, Valid: true},
 		CreatedAt:       createdAt,
 	}
@@ -370,6 +375,21 @@ func scannersJSON(scanners []string, primary string) (string, error) {
 	encoded, err := json.Marshal(list)
 	if err != nil {
 		return "", fmt.Errorf("encode scanners: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// cweJSON encodes the finding's weakness ids. The list is normalized first, so
+// a caller that did not go through a scanner adapter still stores canonical
+// ids. An empty list matches the column default.
+func cweJSON(ids []string) (string, error) {
+	normalized := findings.NormalizeCWEIDs(ids)
+	if len(normalized) == 0 {
+		return "[]", nil
+	}
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		return "", fmt.Errorf("encode cwe: %w", err)
 	}
 	return string(encoded), nil
 }

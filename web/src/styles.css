@@ -32,6 +32,22 @@
 
   --b-font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --b-font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+
+  /*
+   * Motion. Every transition in the app reads these, so the timing stays one
+   * system instead of a different curve per component: fast for the things the
+   * pointer touches all day (tooltips, hover, press), the middle for panels
+   * that carry a decision (menus, dialogs), slow only for the large surfaces
+   * (the mobile drawer) where a short slide would look like a jump cut.
+   * Exits reuse a shorter duration than entrances, so a dismissed panel does
+   * not sit on screen after the user has moved on.
+   */
+  --b-motion-fast: 120ms;
+  --b-motion: 160ms;
+  --b-motion-slow: 220ms;
+  --b-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --b-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --b-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -299,6 +315,18 @@
   --b-font-sans: "Segoe UI", "Helvetica Neue", "Noto Sans", Arial, sans-serif;
 }
 
+:root[data-font="geometric"] {
+  --b-font-sans: Avenir Next, Avenir, Futura, "Century Gothic", Montserrat, sans-serif;
+}
+
+:root[data-font="rounded"] {
+  --b-font-sans: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif;
+}
+
+:root[data-font="oldstyle"] {
+  --b-font-sans: "Iowan Old Style", Palatino, "Palatino Linotype", "Book Antiqua", Charter, serif;
+}
+
 :root[data-font="serif"] {
   --b-font-sans: Georgia, "Times New Roman", serif;
 }
@@ -322,6 +350,21 @@
 
 :root[data-font-size="xlarge"] {
   font-size: 20px;
+}
+
+/* Content width: "full" fills the window; the others center the page. */
+:root[data-width="wide"] .page-content,
+:root[data-width="wide"] .page-band-inner {
+  max-width: 1600px;
+  margin-inline: auto;
+  width: 100%;
+}
+
+:root[data-width="narrow"] .page-content,
+:root[data-width="narrow"] .page-band-inner {
+  max-width: 1200px;
+  margin-inline: auto;
+  width: 100%;
 }
 
 @theme inline {
@@ -361,7 +404,7 @@ body {
   background: var(--b-bg);
   color: var(--b-fg);
   font-family: var(--font-sans);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
@@ -385,6 +428,201 @@ body {
 .status-cell-wide {
   width: 15rem;
   white-space: nowrap;
+}
+
+/*
+ * Touch: a coarse pointer needs a fingertip-sized target even where a mouse
+ * does not. Only the hit box grows here, so fine-pointer layouts are unchanged.
+ * `touch-control` is on every Button and every Link styled as one.
+ */
+@media (pointer: coarse) {
+  button,
+  select,
+  textarea,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  [role="tab"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  nav a,
+  nav button,
+  .touch-control {
+    min-height: 2.5rem;
+  }
+
+  /* Icon-only controls are narrower than a fingertip as well. */
+  button[aria-label],
+  button[aria-haspopup],
+  [role="tab"],
+  nav a,
+  nav button,
+  .touch-control {
+    min-width: 2.5rem;
+  }
+
+  /*
+   * Switches and checkboxes keep their drawn size: enlarging them turned
+   * switches into circles and checkboxes into 40px native boxes on
+   * touch-capable desktops. A switch grows its hit box with an invisible ring.
+   */
+  [role="switch"] {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  [role="switch"]::before {
+    content: "";
+    position: absolute;
+    inset: -11px -4px;
+  }
+}
+
+/*
+ * Between md and xl the wide status column keeps only the space its badge and
+ * time need, so the tables fit before the xl layout restores the full width.
+ */
+@media (width < 80rem) {
+  .status-cell-wide {
+    width: auto;
+    min-width: 8.5rem;
+  }
+}
+
+/*
+ * Below md an opted-in data table (DataTable's `mobileCards`) becomes a list of
+ * compact cards: each row is a flex line whose cells stack in role order, while
+ * the <table> markup, and every desktop width, stay exactly as they were. Roles
+ * come from data-mobile on each cell; a column without one is hidden here.
+ */
+
+/* The card field label is a real span, not CSS content, so the table keeps its
+ * semantics below md; on the desktop table the header already says it. */
+.data-table-card-label {
+  display: none;
+}
+
+@media (width < 48rem) {
+  .data-table-cards {
+    display: block;
+  }
+
+  /* Headers go; the select-all control stays when the table has one. */
+  .data-table-cards thead {
+    display: none;
+  }
+
+  .data-table-cards thead:has(th[data-mobile="select"]) {
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .data-table-cards thead tr {
+    display: flex;
+    align-items: center;
+  }
+
+  .data-table-cards thead th {
+    display: none;
+  }
+
+  .data-table-cards thead th[data-mobile="select"] {
+    display: block;
+    padding: 0 0 0 0.25rem;
+  }
+
+  .data-table-cards tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .data-table-cards tbody > tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem 0.5rem;
+    border-bottom: 0;
+  }
+
+  .data-table-cards tbody > tr:not(:has(> td[colspan])) {
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--b-border-subtle);
+    border-radius: 8px;
+  }
+
+  /* A confirmation or error row belongs under its card, never in a card of its own. */
+  .data-table-cards tbody > tr:has(> td[colspan]) {
+    display: block;
+    padding: 0 0.25rem;
+  }
+
+  .data-table-cards td {
+    display: block;
+    width: auto;
+    max-width: none;
+    padding: 0;
+  }
+
+  .data-table-cards td[data-mobile="hidden"] {
+    display: none;
+  }
+
+  .data-table-cards td[data-mobile="select"] {
+    order: 0;
+  }
+
+  .data-table-cards td[data-mobile="primary"] {
+    order: 1;
+    flex: 1 1 6rem;
+    min-width: 0;
+  }
+
+  .data-table-cards td[data-mobile="secondary"] {
+    order: 2;
+    flex: 1 1 100%;
+    min-width: 0;
+    font-size: 0.8125rem;
+    white-space: normal;
+  }
+
+  /* A value that truncates on a wide table can wrap once its card is narrow. */
+  .data-table-cards td[data-mobile="secondary"] .truncate {
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+  }
+
+  .data-table-cards td[data-mobile="status"] {
+    order: 3;
+    flex: 0 1 auto;
+    white-space: normal;
+  }
+
+  .data-table-cards td[data-mobile="counts"] {
+    order: 4;
+    flex: 0 1 auto;
+  }
+
+  .data-table-cards td[data-mobile="actions"] {
+    order: 5;
+    flex: 1 1 100%;
+    white-space: normal;
+  }
+
+  /* A secondary value keeps its meaning when its header is not on screen. */
+  .data-table-cards .data-table-card-label {
+    display: inline;
+    color: var(--b-faint);
+  }
+
+  .data-table-cards .data-table-card-label::after {
+    content: ': ';
+  }
+
+  /* A secondary value with nothing in it (a scan without an error) leaves no
+     labelled gap; the cell says so through data-empty. */
+  .data-table-cards td[data-empty] {
+    display: none;
+  }
 }
 
 /*
@@ -468,4 +706,336 @@ body {
 dialog::backdrop {
   background: rgb(0 0 0 / 0.55);
   backdrop-filter: blur(1.5px);
+}
+
+/*
+ * Motion, in one place so every overlay enters and leaves the same way.
+ *
+ * Native <dialog> does its own open/close: with @starting-style for the entry
+ * and allow-discrete on display/overlay, the top layer holds the dialog just
+ * long enough for the exit to play before the element is removed.
+ */
+dialog {
+  opacity: 0;
+  transform: scale(0.97);
+  transition:
+    opacity var(--b-motion) var(--b-ease-out),
+    transform var(--b-motion) var(--b-ease-out),
+    overlay var(--b-motion) allow-discrete,
+    display var(--b-motion) allow-discrete;
+}
+
+dialog[open] {
+  opacity: 1;
+  transform: none;
+}
+
+/* A dialog that is closing has left the interaction: the page underneath is
+   usable again at once, even while the panel fades out. */
+dialog:not([open]) {
+  pointer-events: none;
+  transition-duration: var(--b-motion-fast);
+}
+
+@starting-style {
+  dialog[open] {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+dialog::backdrop {
+  opacity: 0;
+  transition:
+    opacity var(--b-motion) var(--b-ease-out),
+    overlay var(--b-motion) allow-discrete,
+    display var(--b-motion) allow-discrete;
+}
+
+dialog[open]::backdrop {
+  opacity: 1;
+}
+
+dialog:not([open])::backdrop {
+  pointer-events: none;
+  transition-duration: var(--b-motion-fast);
+}
+
+@starting-style {
+  dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/*
+ * React overlays (the finding and group drawers, the pull-request dialog and
+ * the mobile navigation drawer) are mounted and unmounted by state rather than
+ * by <dialog>. They enter with a short animation and leave by a transition set
+ * while their wrapper carries data-closing, which the close hook applies for
+ * one exit duration before it unmounts them.
+ */
+.overlay-scrim {
+  animation: scrim-in var(--b-motion) var(--b-ease-out);
+  transition: opacity var(--b-motion) var(--b-ease-out);
+}
+
+[data-closing] > .overlay-scrim {
+  opacity: 0;
+}
+
+.panel-side,
+.panel-sheet,
+.panel-modal {
+  transition:
+    opacity var(--b-motion) var(--b-ease-out),
+    transform var(--b-motion) var(--b-ease-out);
+}
+
+/* The right-hand drawers slide out the way they came in. */
+.panel-side {
+  animation: panel-side-in var(--b-motion-slow) var(--b-ease-drawer);
+}
+
+[data-closing] .panel-side {
+  opacity: 0;
+  transform: translateX(100%);
+}
+
+/* The navigation drawer comes from the left edge it belongs to. */
+.panel-sheet {
+  animation: panel-sheet-in var(--b-motion-slow) var(--b-ease-drawer);
+}
+
+[data-closing] .panel-sheet {
+  opacity: 0;
+  transform: translateX(-100%);
+}
+
+/* A centered confirmation scales in place; it is not anchored to anything. */
+.panel-modal {
+  animation: panel-modal-in var(--b-motion-slow) var(--b-ease-out);
+}
+
+[data-closing] .panel-modal {
+  opacity: 0;
+  transform: scale(0.97);
+}
+
+/*
+ * Popovers: menus and tooltips scale from the corner nearest their trigger,
+ * which the component sets as transform-origin from the measured placement.
+ * Exits are quicker than entries, and an exiting menu no longer takes clicks.
+ */
+.menu-pop {
+  animation: pop-in var(--b-motion) var(--b-ease-out);
+  transform-origin: top right;
+  transition:
+    opacity var(--b-motion-fast) var(--b-ease-out),
+    transform var(--b-motion-fast) var(--b-ease-out);
+}
+
+.menu-pop[data-closing] {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.97);
+}
+
+.info-pop {
+  animation: pop-in var(--b-motion-fast) var(--b-ease-out);
+  transition:
+    opacity var(--b-motion-fast) var(--b-ease-out),
+    transform var(--b-motion-fast) var(--b-ease-out);
+}
+
+.info-pop[data-closing] {
+  opacity: 0;
+  transform: scale(0.98);
+}
+
+/*
+ * Collapsibles: native <details> can animate its content only through
+ * ::details-content. interpolate-size lets block-size go from 0 to auto, so no
+ * height is measured in JS. Browsers without support keep the instant toggle.
+ */
+@supports selector(::details-content) {
+  :root {
+    interpolate-size: allow-keywords;
+  }
+
+  details::details-content {
+    block-size: 0;
+    overflow: hidden;
+    content-visibility: hidden;
+    transition:
+      block-size var(--b-motion-slow) var(--b-ease-out),
+      content-visibility var(--b-motion-slow) allow-discrete;
+  }
+
+  details[open]::details-content {
+    block-size: auto;
+    content-visibility: visible;
+  }
+}
+
+/* A row's detail unfolding under it, and the update card arriving in the sidebar. */
+.plan-detail,
+.notice-in {
+  animation: rise-in var(--b-motion) var(--b-ease-out);
+}
+
+.notice-in {
+  animation-duration: var(--b-motion-slow);
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes panel-side-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+@keyframes panel-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes panel-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/*
+ * Reduced motion: keep the state changes (colour, opacity) and drop every
+ * movement and duration, rather than asking the user to sit through them.
+ * The close hook reads the same query, so overlays still leave at once.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --b-motion-fast: 0ms;
+    --b-motion: 0ms;
+    --b-motion-slow: 0ms;
+  }
+
+  *,
+  ::before,
+  ::after,
+  ::backdrop,
+  ::details-content {
+    animation-delay: 0ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Printable report (#190). The audit report marks its root `.print-report`, so
+ * the frame around it disappears only while that page is open: the sidebar,
+ * the mobile header, the portalled band and every control marked `.print-hide`
+ * are left out, leaving white paper with the report itself.
+ */
+@media print {
+  body:has(.print-report) {
+    background: #fff !important;
+    color: #000;
+  }
+
+  body:has(.print-report) aside,
+  body:has(.print-report) main > header,
+  body:has(.print-report) nav,
+  body:has(.print-report) #page-band,
+  .print-report .print-hide {
+    display: none !important;
+  }
+
+  body:has(.print-report) main {
+    margin: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+  }
+
+  body:has(.print-report) .page-content {
+    gap: 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-report {
+    gap: 14px;
+    color: #000;
+    /* The app's palette is theme-aware; printing is always black on white. */
+    --b-bg: #fff;
+    --b-surface: #fff;
+    --b-fg: #000;
+    --b-muted: #333;
+    --b-faint: #555;
+    --b-border-subtle: #d4d4d4;
+    --b-border-strong: #b4b4b4;
+    --b-hover: #f2f2f2;
+    /* Severity stays legible on paper: the light-theme values, not the theme
+       the screen happened to be in (a dark accent is unreadable on white). */
+    --b-critical: #c81e1e;
+    --b-high: #b9410c;
+    --b-medium: #946006;
+    --b-low: #2155d6;
+    --b-ok: #146c34;
+  }
+
+  .print-report .print-avoid {
+    break-inside: avoid;
+  }
+
+  .print-report h2,
+  .print-report h3 {
+    break-after: avoid;
+  }
+
+  .print-report .rounded-card {
+    border-color: #d4d4d4 !important;
+    background: #fff !important;
+  }
+
+  .print-report table {
+    font-size: 9.5pt;
+  }
+
+  .print-report thead {
+    display: table-header-group;
+  }
+
+  .print-report a {
+    color: #000;
+    text-decoration: none;
+  }
+
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
 }

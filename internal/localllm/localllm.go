@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,10 @@ const (
 	// DefaultTimeout bounds one explanation. A local model on a busy machine
 	// can take a while to produce its first token.
 	DefaultTimeout = 60 * time.Second
+
+	// ModelsTimeout bounds the model-list call the settings form makes. The
+	// list is a convenience, so a slow server must not hold the page open.
+	ModelsTimeout = 5 * time.Second
 
 	// MaxResponseBytes caps the response body read from the model server, so a
 	// broken or hostile local server cannot exhaust memory.
@@ -64,6 +69,10 @@ const (
 	// maxModelLength and maxEndpointLength reject garbage before it is stored.
 	maxModelLength    = 200
 	maxEndpointLength = 2048
+
+	// maxModels caps one listing so a hostile or broken local server cannot
+	// fill the UI's picker. The needle is bounded by MaxResponseBytes too.
+	maxModels = 500
 
 	// TruncatedMarker ends a value this package shortened.
 	TruncatedMarker = " …[truncated by bastion]"
@@ -348,6 +357,82 @@ func (s *Service) Explain(ctx context.Context, in ExplainInput) (Result, error) 
 	return Result{Text: clipText(text), Model: model}, nil
 }
 
+// Models lists the model ids the endpoint offers through `GET {endpoint}/models`.
+// An empty endpoint means the stored one. The endpoint is validated with the
+// same rules as a save and the request goes through the service's own client,
+// so it never leaves the machine and a redirect is still refused.
+//
+// The ids are trimmed, deduplicated and sorted; an empty list is a valid answer
+// when the server is reachable but has no model yet.
+func (s *Service) Models(ctx context.Context, endpoint string) ([]string, error) {
+	if strings.TrimSpace(endpoint) == "" {
+		endpoint = s.Settings().Endpoint
+	}
+	base, err := NormalizeEndpoint(endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, ModelsTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		dialLiteral(base)+"/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("localllm: build request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrUpstream, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("%w: read response: %w", ErrUpstream, err)
+	}
+	if len(raw) > MaxResponseBytes {
+		return nil, fmt.Errorf("%w: the response is larger than %d bytes", ErrUpstream, MaxResponseBytes)
+	}
+
+	var decoded modelsResponse
+	decodeErr := json.Unmarshal(raw, &decoded)
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		// Ollama names the cause in the body, exactly like a chat call.
+		if decodeErr == nil && decoded.Error != "" {
+			return nil, fmt.Errorf("%w: HTTP %d: %s", ErrUpstream, resp.StatusCode, decoded.Error)
+		}
+		return nil, fmt.Errorf("%w: the endpoint returned HTTP %d", ErrUpstream, resp.StatusCode)
+	}
+	if decodeErr != nil {
+		return nil, fmt.Errorf("%w: decode response: %w", ErrUpstream, decodeErr)
+	}
+	if decoded.Error != "" {
+		return nil, fmt.Errorf("%w: %s", ErrUpstream, decoded.Error)
+	}
+
+	seen := make(map[string]struct{}, len(decoded.Data))
+	models := make([]string, 0, len(decoded.Data))
+	for _, item := range decoded.Data {
+		id := strings.TrimSpace(item.ID)
+		if id == "" || len(id) > maxModelLength {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		models = append(models, id)
+	}
+	sort.Strings(models)
+	if len(models) > maxModels {
+		models = models[:maxModels]
+	}
+	return models, nil
+}
+
 // chatRequest is the OpenAI-compatible request. It deliberately has no tools
 // or functions member: the model can only answer with text.
 type chatRequest struct {
@@ -374,6 +459,16 @@ type chatResponse struct {
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
+	Error upstreamError `json:"error"`
+}
+
+// modelsResponse is the OpenAI-compatible model list shape:
+// {"data": [{"id": "llama3.1"}, ...]}. Ollama's native errors are a plain
+// string in `error`, which upstreamError accepts too.
+type modelsResponse struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
 	Error upstreamError `json:"error"`
 }
 

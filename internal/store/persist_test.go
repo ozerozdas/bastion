@@ -416,6 +416,76 @@ func TestScanLifecycleAndListing(t *testing.T) {
 }
 
 // timeAt is a fixed UTC timestamp for deterministic assertions.
+func TestSaveScanResultPersistsCWE(t *testing.T) {
+	ctx := context.Background()
+	db, _ := openTestDB(t)
+	queries := sqlcdb.New(db)
+
+	asset := createTestAsset(ctx, t, queries)
+	finding := testFinding(asset.ID, findings.TypeVulnerability, "CVE-2026-0003", findings.SeverityHigh)
+	// Deliberately messy input: persist stores canonical, unique, sorted ids.
+	finding.CWE = []string{"CWE-89: SQL Injection", "cwe-79", "CWE-79"}
+
+	scan := createTestScan(ctx, t, queries, asset.ID)
+	if err := store.SaveScanResult(ctx, db, scan.ID, store.ScanResult{
+		Status:     store.ScanStatusSucceeded,
+		TargetRef:  "sha-abc123",
+		FinishedAt: timeAt(10),
+		Findings:   []findings.Finding{finding},
+	}); err != nil {
+		t.Fatalf("SaveScanResult: %v", err)
+	}
+
+	rows, err := queries.ListFindingsByScan(ctx, sqlcdb.ListFindingsByScanParams{ScanID: scan.ID})
+	if err != nil {
+		t.Fatalf("ListFindingsByScan: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("findings = %d, want 1", len(rows))
+	}
+	if want := `["CWE-79","CWE-89"]`; rows[0].CWE != want {
+		t.Fatalf("stored cwe = %s, want %s", rows[0].CWE, want)
+	}
+
+	report, err := store.LoadScanReport(ctx, db, scan.ID)
+	if err != nil {
+		t.Fatalf("LoadScanReport: %v", err)
+	}
+	if len(report.Findings) != 1 {
+		t.Fatalf("report findings = %d, want 1", len(report.Findings))
+	}
+	if want := []string{"CWE-79", "CWE-89"}; !slices.Equal(report.Findings[0].CWE, want) {
+		t.Fatalf("roundtripped cwe = %v, want %v", report.Findings[0].CWE, want)
+	}
+}
+
+func TestSaveScanResultStoresEmptyCWE(t *testing.T) {
+	ctx := context.Background()
+	db, _ := openTestDB(t)
+	queries := sqlcdb.New(db)
+
+	asset := createTestAsset(ctx, t, queries)
+	finding := testFinding(asset.ID, findings.TypeVulnerability, "CVE-2026-0004", findings.SeverityMedium)
+
+	scan := createTestScan(ctx, t, queries, asset.ID)
+	if err := store.SaveScanResult(ctx, db, scan.ID, store.ScanResult{
+		Status:     store.ScanStatusSucceeded,
+		TargetRef:  "sha-abc123",
+		FinishedAt: timeAt(10),
+		Findings:   []findings.Finding{finding},
+	}); err != nil {
+		t.Fatalf("SaveScanResult: %v", err)
+	}
+
+	rows, err := queries.ListFindingsByScan(ctx, sqlcdb.ListFindingsByScanParams{ScanID: scan.ID})
+	if err != nil {
+		t.Fatalf("ListFindingsByScan: %v", err)
+	}
+	if len(rows) != 1 || rows[0].CWE != "[]" {
+		t.Fatalf("stored cwe = %q, want the column default []", rows[0].CWE)
+	}
+}
+
 func timeAt(hour int) time.Time {
 	return time.Date(2026, time.November, 11, hour, 0, 0, 0, time.UTC)
 }

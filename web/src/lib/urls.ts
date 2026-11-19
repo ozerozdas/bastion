@@ -24,6 +24,58 @@ export function parseAssetSearch(search: Record<string, unknown>): AssetSearch {
   return {}
 }
 
+/** reportTrendDays are the windows the trend report offers. */
+export const reportTrendDays = [30, 90, 180, 365] as const
+
+/** ReportTrendDays is one offered trend window, in days. */
+export type ReportTrendDays = (typeof reportTrendDays)[number]
+
+/** reportTriggers are the surfaces a scan can be started from. */
+export const reportTriggers = ['ui', 'cli', 'api'] as const
+
+/** ReportTrigger is one of them: the app, the CLI or the API. */
+export type ReportTrigger = (typeof reportTriggers)[number]
+
+/** ReportSearch is a report page's scope: project, advisory, window and trigger. */
+export type ReportSearch = {
+  /** Narrows the report to one project; absent means the whole fleet. */
+  asset?: number
+  /** ?cve=<id> is the advisory the CVE insights report looks up. */
+  cve?: string
+  /** ?days=<n> is the trend window; absent is the API's 90-day default. */
+  days?: ReportTrendDays
+  /** ?trigger=<ui|cli|api> filters the scan history; absent is every surface. */
+  trigger?: ReportTrigger
+}
+
+/** MaxCveSearchLength caps the advisory id, so a pasted blob cannot fill the URL. */
+const maxCveSearchLength = 64
+
+/**
+ * parseReportSearch reads ?asset=<id>, ?cve=<id>, ?days=<n> and
+ * ?trigger=<ui|cli|api> from a report page. Malformed values are dropped, so a
+ * shared link with a stale window still opens the report instead of failing the
+ * route.
+ */
+export function parseReportSearch(
+  search: Record<string, unknown>,
+): ReportSearch {
+  const cve =
+    typeof search.cve === 'string'
+      ? [...search.cve.trim()].slice(0, maxCveSearchLength).join('')
+      : ''
+  const days = reportTrendDays.find(
+    (option) => String(option) === String(search.days),
+  )
+  const trigger = reportTriggers.find((option) => option === search.trigger)
+  return {
+    ...parseAssetSearch(search),
+    ...(cve === '' ? {} : { cve }),
+    ...(days === undefined ? {} : { days }),
+    ...(trigger === undefined ? {} : { trigger }),
+  }
+}
+
 /** SortOrder is the direction of a server-side sort. */
 export type SortOrder = 'asc' | 'desc'
 
@@ -273,4 +325,42 @@ export function parseConnectionsTab(
   search: Record<string, unknown>,
 ): ConnectionsSearch {
   return search.tab === 'registry' ? { tab: 'registry' } : {}
+}
+
+/** ConfigurationsTab names the Configuration page's sections. */
+export type ConfigurationsTab =
+  | 'modules'
+  | 'policies'
+  | 'notifications'
+  | 'ai'
+  | 'mcp'
+  | 'appearance'
+  | 'about'
+
+/** ConfigurationsSearch is the Configuration route's search params. */
+export type ConfigurationsSearch = {
+  /** ?tab=<section>; absent is Modules. */
+  tab?: Exclude<ConfigurationsTab, 'modules'>
+}
+
+/**
+ * parseConfigurationsTab reads ?tab=<section> from the Configuration route.
+ * Modules is the default, so its URL stays the bare path, and an unknown tab
+ * falls back to it rather than showing an empty panel.
+ */
+export function parseConfigurationsTab(
+  search: Record<string, unknown>,
+): ConfigurationsSearch {
+  const raw = search.tab
+  if (
+    raw === 'policies' ||
+    raw === 'notifications' ||
+    raw === 'ai' ||
+    raw === 'mcp' ||
+    raw === 'appearance' ||
+    raw === 'about'
+  ) {
+    return { tab: raw }
+  }
+  return {}
 }

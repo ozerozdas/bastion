@@ -1,6 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 
 import { assetsQuery } from '../api/assets'
 import { epssQuery } from '../api/epss'
@@ -28,15 +35,19 @@ import {
 } from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
 import { ErrorNote } from '../components/error-note'
+import { BandHeader, BandSummary } from '../components/page-band'
+import { ProjectSwitcher } from '../components/project-switcher'
 import { FilterBar, type FilterField } from '../components/filter-bar'
 import { FindingDrawer } from '../components/finding-drawer'
 import { GroupDrawer } from '../components/group-drawer'
 import { LicencePolicyCard } from '../components/licence-policy-card'
 import { Pager } from '../components/pager'
-import { PageActions } from '../components/app-shell'
+import { FilterIcon } from '../components/icons'
 import { Tabs } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { InfoTip } from '../components/ui/info-tip'
+import { usePresence } from '../components/ui/presence'
 import { severityLabel, severityTone, stateLabels, typeLabels } from '../lib/finding-labels'
 import { expiryDate, expiryValue, type ExpiryChoice } from '../lib/expiry'
 import { epssLabel, percentileLabel } from '../lib/epss'
@@ -50,6 +61,7 @@ import {
 } from '../lib/urls'
 import { cn } from '../lib/utils'
 import { FixPlanPanel } from './fix-plan'
+
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
@@ -68,6 +80,9 @@ const severityOptions: Severity[] = ['critical', 'high', 'medium', 'low', 'unkno
 
 /** searchDebounceMs keeps a search from querying the API on every keystroke. */
 const searchDebounceMs = 300
+
+/** moreFiltersId ties the Filters button to the panel it opens. */
+const moreFiltersId = 'findings-more-filters'
 
 /**
  * findingColumns builds the table for the projects on screen. The Project
@@ -91,6 +106,7 @@ export function findingColumns(
       cellClassName: 'py-2 pr-3 pl-3',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'status',
       cell: (finding) => (
         <Badge tone={severityTone[finding.severity]}>
           {severityLabel(finding.severity)}
@@ -105,6 +121,7 @@ export function findingColumns(
             headerClassName: 'pl-3',
             cellClassName:
               'py-2 pl-3 whitespace-nowrap tabular-nums text-[0.8125rem]',
+            mobile: 'hidden',
             cell: (finding: Finding) =>
               finding.epss ? (
                 <span title={epssLabel(finding.epss)}>
@@ -129,6 +146,7 @@ export function findingColumns(
             header: t('findings.column.reach'),
             headerClassName: 'pl-3',
             cellClassName: 'py-2 pl-3 whitespace-nowrap',
+            mobile: 'hidden',
             cell: (finding: Finding) =>
               finding.reachability ? (
                 <Badge
@@ -154,6 +172,8 @@ export function findingColumns(
       headerClassName: 'pl-3',
       cellClassName: 'max-w-[22ch] py-2 pl-3',
       sortable: true,
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.project'),
       cellTitle: projectName,
       cell: (finding) => (
         <span className="block truncate">{projectName(finding)}</span>
@@ -165,6 +185,8 @@ export function findingColumns(
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 whitespace-nowrap',
       sortable: true,
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.type'),
       cell: (finding) => (
         <>
           {t(typeLabels[finding.type])}
@@ -196,14 +218,20 @@ export function findingColumns(
       header: t('findings.column.rule'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap text-muted',
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.rule'),
       cell: (finding) => finding.rule_id ?? '—',
     },
     {
       id: 'package',
       header: t('findings.column.package'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3',
+      // A capped width keeps a long path from widening the column and so
+      // squeezing the Finding title into many lines; the full path is a title.
+      cellClassName: 'max-w-[34ch] py-2 pl-3',
       sortable: true,
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.package'),
       cell: (finding) => {
         const packageLabel =
           finding.package_name === undefined
@@ -215,7 +243,9 @@ export function findingColumns(
         return (
           <>
             {packageLabel ? (
-              <span className="font-mono text-xs break-all">{packageLabel}</span>
+              <span className="block truncate font-mono text-xs" title={packageLabel}>
+                {packageLabel}
+              </span>
             ) : null}
             {finding.fixed_version ? (
               <span className="block text-xs text-muted">
@@ -238,12 +268,16 @@ export function findingColumns(
       id: 'finding',
       header: t('findings.column.finding'),
       headerClassName: 'pl-3',
-      cellClassName: 'max-w-[38ch] py-2 pl-3',
+      // A floor stops the title being squeezed; at most two lines, the rest
+      // is in the cell title.
+      cellClassName: 'min-w-[28ch] max-w-[44ch] py-2 pl-3',
       sortable: true,
       sortKey: 'title',
+      mobile: 'primary',
+      cellTitle: (finding) => finding.title,
       cell: (finding) => (
         <>
-          <span className="block">{finding.title}</span>
+          <span className="line-clamp-2">{finding.title}</span>
           {finding.occurrences > 1 ? (
             <span className="text-xs text-faint tabular-nums">
               {t('findings.occurrences', { count: finding.occurrences })}
@@ -257,6 +291,7 @@ export function findingColumns(
       header: t('findings.column.scanner'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap text-muted',
+      mobile: 'hidden',
       cell: (finding) => finding.scanner,
     },
   ]
@@ -278,9 +313,10 @@ function groupedColumns(
       id: 'severity',
       header: t('findings.column.severity'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pr-3 pl-3 whitespace-nowrap',
+      cellClassName: 'py-1.5 pr-3 pl-3 whitespace-nowrap',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'status',
       cell: (group) => (
         <Badge tone={severityTone[group.severity]}>
           {severityLabel(group.severity)}
@@ -291,12 +327,14 @@ function groupedColumns(
       id: 'rule',
       header: t('findings.column.finding'),
       headerClassName: 'pl-3',
-      cellClassName: 'max-w-[46ch] py-2 pl-3',
+      cellClassName: 'min-w-[28ch] max-w-[46ch] py-1.5 pl-3',
       sortable: true,
       sortKey: 'title',
+      mobile: 'primary',
+      cellTitle: (group) => group.title,
       cell: (group) => (
         <>
-          <span className="block">{group.title}</span>
+          <span className="line-clamp-2">{group.title}</span>
           <span className="font-mono text-xs text-muted">
             {group.rule_id ??
               t('findings.group.findingFallback', {
@@ -310,10 +348,12 @@ function groupedColumns(
       id: 'projects',
       header: t('findings.column.projects'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3 whitespace-nowrap',
+      cellClassName: 'py-1.5 pl-3 whitespace-nowrap',
       sortable: true,
       sortKey: 'project',
       defaultSortDirection: 'desc',
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.projects'),
       cellTitle: (group) =>
         group.asset_ids
           .map(
@@ -326,7 +366,9 @@ function groupedColumns(
       id: 'fixed',
       header: t('findings.column.fixedIn'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3 font-mono text-xs whitespace-nowrap',
+      cellClassName: 'py-1.5 pl-3 font-mono text-xs whitespace-nowrap',
+      mobile: 'secondary',
+      mobileLabel: t('findings.column.fixedIn'),
       cellTitle: (group) =>
         group.fixed_versions.length > 1
           ? group.fixed_versions.join(', ')
@@ -367,6 +409,8 @@ function FindingsExportMenu({
   const t = useT()
   const [open, setOpen] = useState(false)
   const menu = useRef<HTMLDivElement>(null)
+  // Kept for one exit so the menu closes the way it opened.
+  const { mounted, closing } = usePresence(open, 120)
 
   // A menu closes on an outside click or Escape, like every other popover.
   useEffect(() => {
@@ -399,11 +443,12 @@ function FindingsExportMenu({
       >
         {t('findings.export')}
       </Button>
-      {open ? (
+      {mounted ? (
         <div
           role="menu"
           aria-label={t('findings.export.aria')}
-          className="absolute right-0 z-20 mt-1 flex w-28 flex-col rounded-md border border-border-strong bg-surface p-1 shadow-lg"
+          data-closing={closing ? '' : undefined}
+          className="menu-pop absolute right-0 z-20 mt-1 flex w-28 flex-col rounded-md border border-border-strong bg-surface p-1 shadow-lg"
         >
           {exportFormats.map(({ format, label }) => (
             <a
@@ -429,7 +474,12 @@ function FindingsExportMenu({
  * per rule across projects, is the default (#90, #106); a project filter
  * forces single, and the toggle only appears for the fleet-wide list.
  */
-export function FindingsPage() {
+export function FindingsPage({
+  band,
+}: {
+  /** Builds a project's band summary, with the Export menu in its actions. */
+  band?: (actions: ReactNode) => ReactNode
+} = {}) {
   const t = useT()
   const languageCode = useLanguage()
   // The asset page carries its project in the path; the list works the same.
@@ -458,6 +508,8 @@ export function FindingsPage() {
   const [dependency, setDependency] = useState<'' | 'direct' | 'indirect'>('')
   const [hideTests, setHideTests] = useState(false)
   const [hideMaintenance, setHideMaintenance] = useState(false)
+  // The row shows the common filters; the disclosure reveals the rest.
+  const [showMore, setShowMore] = useState(false)
   // The search box is local while typing and debounces into ?q=; the ref holds
   // the value the URL already has, so a URL-driven change can be told apart.
   const [queryInput, setQueryInput] = useState(search.q ?? '')
@@ -579,15 +631,18 @@ export function FindingsPage() {
     () => new Map(assetList.map((asset) => [asset.id, asset.display_name])),
     [assetList],
   )
+  // On a project's own page the project is fixed by the path, so its column,
+  // filter and chip would only repeat it.
+  const pinned = assetId !== undefined
   const columns = useMemo(
     () =>
       findingColumns(
         assetNames,
         epss.data?.enabled === true,
         reachability.data?.enabled === true,
-      ),
+      ).filter((column) => !pinned || column.id !== 'project'),
     // The headers and fallbacks are translated, so a language switch rebuilds.
-    [assetNames, epss.data?.enabled, reachability.data?.enabled, languageCode],
+    [assetNames, epss.data?.enabled, reachability.data?.enabled, languageCode, pinned],
   )
   const groupColumns = useMemo(
     () => groupedColumns(assetNames),
@@ -626,35 +681,55 @@ export function FindingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, page, pageSize, navigate, search.asset, search.view, search.size])
 
+  // The fleet list's band is the project selector; early states still owe the
+  // page its title, so they render it above their message.
+  const emptyBand = (
+    <BandHeader>
+      <BandSummary
+        heading="none"
+        title={<ProjectSwitcher assets={assetList} current={undefined} />}
+      />
+    </BandHeader>
+  )
+
   if (assets.isPending) {
     return (
-      <section className="rounded-card border border-border-subtle bg-surface p-4">
-        <p className="text-muted">{t('findings.loading')}</p>
-      </section>
+      <>
+        {emptyBand}
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <p className="text-muted">{t('findings.loading')}</p>
+        </section>
+      </>
     )
   }
 
   if (assets.isError) {
     return (
-      <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[0.8125rem] font-semibold">
-          {t('findings.assetsFailed')}
-        </h2>
-        <ErrorNote error={assets.error} />
-      </section>
+      <>
+        {emptyBand}
+        <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
+          <h2 className="text-[0.8125rem] font-semibold">
+            {t('findings.assetsFailed')}
+          </h2>
+          <ErrorNote error={assets.error} />
+        </section>
+      </>
     )
   }
 
   if (assetList.length === 0) {
     return (
-      <EmptyState
-        title={t('findings.empty.title')}
-        body={t('findings.empty.body')}
-      >
-        <Link to="/repositories" className={buttonVariants()}>
-          {t('findings.empty.action')}
-        </Link>
-      </EmptyState>
+      <>
+        {emptyBand}
+        <EmptyState
+          title={t('findings.empty.title')}
+          body={t('findings.empty.body')}
+        >
+          <Link to="/repositories" className={buttonVariants()}>
+            {t('findings.empty.action')}
+          </Link>
+        </EmptyState>
+      </>
     )
   }
 
@@ -821,6 +896,37 @@ export function FindingsPage() {
     setCheckedGroups(new Set())
   }
 
+  function changeType(value: string) {
+    setType(value as FindingType | '')
+    narrowed()
+  }
+  function changeSeverity(value: string) {
+    setSeverity(value as Severity | '')
+    narrowed()
+  }
+  function changeStatus(value: string) {
+    setStatusChoice(value as FindingStatus | 'agent')
+    narrowed()
+  }
+  function changeFix(value: string) {
+    setFix(value as typeof fix)
+    narrowed()
+  }
+  function changeDependency(value: string) {
+    setDependency(value as typeof dependency)
+    narrowed()
+  }
+  function changeHideTests(value: boolean) {
+    setHideTests(value)
+    narrowed()
+  }
+  function changeHideMaintenance(value: boolean) {
+    setHideMaintenance(value)
+    narrowed()
+  }
+
+  // The row keeps the filters that answer most questions; the rest wait behind
+  // the Filters disclosure, which counts how many of them are active.
   const filters: FilterField[] = [
     {
       id: 'findings-search',
@@ -828,49 +934,41 @@ export function FindingsPage() {
       kind: 'search',
       placeholder: t('findings.filter.searchPlaceholder'),
       value: queryInput,
-      className: 'w-64',
+      className: 'w-full lg:w-52',
       options: [],
       onChange: setQueryInput,
     },
     {
-      id: 'findings-project',
-      label: t('findings.filter.project'),
-      value: selected === undefined ? '' : String(selected.id),
-      className: 'w-64',
+      id: 'findings-severity',
+      label: t('findings.filter.severity'),
+      value: severity,
+      className: 'w-full lg:w-48',
       options: [
-        { value: '', label: t('findings.filter.allProjects') },
-        // Grouped by asset kind, so images are not mixed into repositories.
-        ...assetList
-          .filter((asset) => asset.kind !== 'image')
-          .map((asset) => ({
-            value: String(asset.id),
-            label: asset.display_name,
-            group: t('findings.filter.group.repositories'),
-          })),
-        ...assetList
-          .filter((asset) => asset.kind === 'image')
-          .map((asset) => ({
-            value: String(asset.id),
-            label: asset.display_name,
-            group: t('findings.filter.group.images'),
-          })),
+        { value: '', label: t('findings.filter.allSeverities') },
+        ...severityOptions.map((option) => ({
+          value: option,
+          label: severityLabel(option),
+        })),
       ],
-      onChange: (value) => {
-        // A project filter forces single, so the view leaves the URL with it.
-        void navigate({
-          to: '/findings',
-          search: {
-            ...(value === '' ? {} : { asset: Number(value) }),
-            ...(search.q === undefined ? {} : { q: search.q }),
-            ...(search.size === undefined ? {} : { size: search.size }),
-            ...(search.sort === undefined ? {} : { sort: search.sort }),
-            ...(search.order === undefined ? {} : { order: search.order }),
-          },
-          replace: true,
-        })
-        clearSelection()
-      },
+      onChange: changeSeverity,
     },
+    {
+      id: 'findings-status',
+      label: t('findings.filter.status'),
+      value: statusChoice,
+      className: 'w-full lg:w-40',
+      options: [
+        { value: 'open', label: t('findings.filter.open') },
+        { value: 'ignored', label: t('findings.filter.ignored') },
+        { value: 'agent', label: t('findings.filter.agent') },
+      ],
+      onChange: changeStatus,
+    },
+    // The project is not here: picking one opens its page, so the picker
+    // lives next to the page title (ProjectSwitcher in the app shell).
+  ]
+
+  const moreFilters: FilterField[] = [
     {
       id: 'findings-type',
       label: t('findings.filter.type'),
@@ -883,50 +981,7 @@ export function FindingsPage() {
           label: t(typeLabels[option]),
         })),
       ],
-      onChange: (value) => {
-        setType(value as FindingType | '')
-        resetPage()
-        setOpenFingerprint(null)
-        setOpenGroupKey(null)
-        setChecked(new Set())
-        setCheckedGroups(new Set())
-      },
-    },
-    {
-      id: 'findings-severity',
-      label: t('findings.filter.severity'),
-      value: severity,
-      className: 'w-40',
-      options: [
-        { value: '', label: t('findings.filter.allSeverities') },
-        ...severityOptions.map((option) => ({
-          value: option,
-          label: severityLabel(option),
-        })),
-      ],
-      onChange: (value) => {
-        setSeverity(value as Severity | '')
-        resetPage()
-        setOpenFingerprint(null)
-        setOpenGroupKey(null)
-        setChecked(new Set())
-        setCheckedGroups(new Set())
-      },
-    },
-    {
-      id: 'findings-status',
-      label: t('findings.filter.status'),
-      value: statusChoice,
-      className: 'w-44',
-      options: [
-        { value: 'open', label: t('findings.filter.open') },
-        { value: 'ignored', label: t('findings.filter.ignored') },
-        { value: 'agent', label: t('findings.filter.agent') },
-      ],
-      onChange: (value) => {
-        setStatusChoice(value as FindingStatus | 'agent')
-        narrowed()
-      },
+      onChange: changeType,
     },
     {
       id: 'findings-fix',
@@ -938,10 +993,7 @@ export function FindingsPage() {
         { value: 'available', label: t('findings.filter.fixAvailable') },
         { value: 'none', label: t('findings.filter.fixNone') },
       ],
-      onChange: (value) => {
-        setFix(value as typeof fix)
-        narrowed()
-      },
+      onChange: changeFix,
     },
     {
       id: 'findings-dependency',
@@ -953,12 +1005,121 @@ export function FindingsPage() {
         { value: 'direct', label: t('findings.filter.dependencyDirect') },
         { value: 'indirect', label: t('findings.filter.dependencyIndirect') },
       ],
-      onChange: (value) => {
-        setDependency(value as typeof dependency)
-        narrowed()
-      },
+      onChange: changeDependency,
     },
   ]
+
+  // Every non-default filter is a chip below the row, so what narrows the list
+  // stays readable and removable without reopening the panel. Status keeps its
+  // default Open, which is not a filter the user set.
+  const activeChips: {
+    key: string
+    text: string
+    removeLabel: string
+    onRemove: () => void
+  }[] = []
+  function addChip(
+    key: string,
+    label: string,
+    value: string | undefined,
+    onRemove: () => void,
+  ) {
+    activeChips.push({
+      key,
+      text:
+        value === undefined
+          ? label
+          : t('findings.filter.chip', { filter: label, value }),
+      removeLabel:
+        value === undefined
+          ? t('findings.filter.removeChip', { filter: label })
+          : t('findings.filter.removeChipValue', { filter: label, value }),
+      onRemove,
+    })
+  }
+  const trimmedQuery = queryInput.trim()
+  if (trimmedQuery !== '') {
+    addChip('q', t('findings.filter.search'), trimmedQuery, () =>
+      setQueryInput(''),
+    )
+  }
+  if (type !== '') {
+    addChip('type', t('findings.filter.type'), t(typeLabels[type]), () =>
+      changeType(''),
+    )
+  }
+  if (severity !== '') {
+    addChip('severity', t('findings.filter.severity'), severityLabel(severity), () =>
+      changeSeverity(''),
+    )
+  }
+  if (statusChoice !== 'open') {
+    addChip(
+      'status',
+      t('findings.filter.status'),
+      t(
+        statusChoice === 'ignored'
+          ? 'findings.filter.ignored'
+          : 'findings.filter.agent',
+      ),
+      () => changeStatus('open'),
+    )
+  }
+  if (fix !== '') {
+    addChip(
+      'fix',
+      t('findings.filter.fix'),
+      t(
+        fix === 'available'
+          ? 'findings.filter.fixAvailable'
+          : 'findings.filter.fixNone',
+      ),
+      () => changeFix(''),
+    )
+  }
+  if (dependency !== '') {
+    addChip(
+      'dependency',
+      t('findings.filter.dependency'),
+      t(
+        dependency === 'direct'
+          ? 'findings.filter.dependencyDirect'
+          : 'findings.filter.dependencyIndirect',
+      ),
+      () => changeDependency(''),
+    )
+  }
+  if (hideTests) {
+    addChip('hideTests', t('findings.filter.hideTests'), undefined, () =>
+      changeHideTests(false),
+    )
+  }
+  if (hideMaintenance) {
+    addChip('hideMaintenance', t('findings.filter.hideMaintenance'), undefined, () =>
+      changeHideMaintenance(false),
+    )
+  }
+
+  // The disclosure badge counts the filters that are not in the row.
+  const hiddenCount =
+    (type === '' ? 0 : 1) +
+    (fix === '' ? 0 : 1) +
+    (dependency === '' ? 0 : 1) +
+    (hideTests ? 1 : 0) +
+    (hideMaintenance ? 1 : 0)
+
+  function clearFilters() {
+    setQueryInput('')
+    setType('')
+    setSeverity('')
+    setStatusChoice('open')
+    setFix('')
+    setDependency('')
+    setHideTests(false)
+    setHideMaintenance(false)
+    // The project is a page, picked in the header, not a filter to clear.
+    narrowed()
+  }
 
   const selection: DataTableSelection<Finding> = {
     all: {
@@ -1000,121 +1161,236 @@ export function FindingsPage() {
       checked: checkedGroups.has(group.key),
       onChange: () => toggleGroupChecked(group.key),
       label: t('findings.selectGroupRow', { title: group.title }),
-      cellClassName: 'py-2',
+      cellClassName: 'py-1.5',
       checkboxClassName: 'cursor-pointer align-middle',
     }),
     headerClassName: 'w-6',
   }
 
+  const exportMenu =
+    tab === 'findings' ? (
+      <FindingsExportMenu
+        filter={{
+          assetId: selected?.id,
+          type: type === '' ? undefined : type,
+          severity: severity === '' ? undefined : severity,
+          status,
+          decidedBy,
+          fix: fix === '' ? undefined : fix,
+          dependency: dependency === '' ? undefined : dependency,
+          hideTests,
+          hideMaintenance,
+          q: search.q,
+        }}
+        view={grouped ? 'grouped' : 'single'}
+      />
+    ) : null
+  // A project page supplies its summary through `band`, with the Export menu
+  // placed in its actions. The fleet list gets the same band here: the title
+  // is the project selector (showing "All assets") and Export sits on the right.
+  const projectBand = band === undefined ? undefined : band(exportMenu)
+  const selector = <ProjectSwitcher assets={assetList} current={selected} />
+
   return (
     <>
-      {tab === 'findings' ? (
-        <PageActions>
-          <FindingsExportMenu
-            filter={{
-              assetId: selected?.id,
-              type: type === '' ? undefined : type,
-              severity: severity === '' ? undefined : severity,
-              status,
-              decidedBy,
-              fix: fix === '' ? undefined : fix,
-              dependency: dependency === '' ? undefined : dependency,
-              hideTests,
-              hideMaintenance,
-              q: search.q,
-            }}
-            view={grouped ? 'grouped' : 'single'}
+      {projectBand === undefined || projectBand === null ? (
+        <BandHeader>
+          <BandSummary
+            heading="none"
+            title={selector}
+            actions={exportMenu}
           />
-        </PageActions>
+        </BandHeader>
       ) : null}
       <Tabs
         label={t('findings.tabs.aria')}
-        items={[
-          { value: 'findings', label: t('findings.tabs.findings') },
-          { value: 'fix-plan', label: t('findings.tabs.fixPlan') },
-        ]}
+        // The fix plan is per project, so the fleet-wide list offers no tab for
+        // it; an old ?tab=fix-plan link still gets both, to find its way back.
+        items={
+          pinned || tab === 'fix-plan'
+            ? [
+                { value: 'findings', label: t('findings.tabs.findings') },
+                { value: 'fix-plan', label: t('findings.tabs.fixPlan') },
+              ]
+            : [{ value: 'findings', label: t('findings.tabs.findings') }]
+        }
         value={tab}
         onChange={changeTab}
+        // A project page shares its band with the tab row; the fleet list has
+        // no tab row of its own.
+        band={
+          projectBand === undefined || projectBand === null
+            ? undefined
+            : { summary: projectBand }
+        }
+        hideSingle
       >
         {tab === 'fix-plan' ? (
-          <FixPlanPanel assetList={assetList} selected={selected} />
+          <FixPlanPanel
+            assetList={assetList}
+            selected={selected}
+            pinned={assetId !== undefined}
+          />
         ) : (
           <>
-      {selected === undefined ? null : (
+      {/* A project's own page keeps its policy in the band. */}
+      {selected === undefined || pinned ? null : (
         <LicencePolicyCard
           assetId={selected.id}
           title={t('licence.forProject', { project: selected.display_name })}
         />
       )}
-      <FilterBar label={t('findings.filter.aria')} fields={filters}>
-        <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
-          <input
-            type="checkbox"
-            checked={hideTests}
-            onChange={(event) => {
-              setHideTests(event.target.checked)
-              narrowed()
-            }}
-          />
-          {t('findings.filter.hideTests')}
-        </label>
-        <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
-          <input
-            type="checkbox"
-            checked={hideMaintenance}
-            onChange={(event) => {
-              setHideMaintenance(event.target.checked)
-              narrowed()
-            }}
-          />
-          {t('findings.filter.hideMaintenance')}
-        </label>
-        {/* Grouping folds a rule across projects, so it is only offered while
-            every project is in the list (#106). */}
-        {search.asset === undefined ? (
+      {/* Filters, count and table share one card so they read as one block. */}
+      <div className="flex flex-col gap-4 rounded-card border border-border-subtle bg-surface p-4">
+      <FilterBar
+        label={t('findings.filter.aria')}
+        fields={filters}
+        fieldGrid
+        bordered={false}
+        hideLabels
+        panel={
           <div
-            role="group"
-            aria-label={t('findings.view.aria')}
-            className="flex items-center gap-1 rounded-md border border-border-subtle bg-bg p-0.5"
+            id={moreFiltersId}
+            hidden={!showMore}
+            className={cn(
+              'flex-col gap-3 border-t border-border-subtle pt-3',
+              showMore ? 'flex' : 'hidden',
+            )}
           >
-            {(['single', 'grouped'] as const).map((option) => {
-              const active = grouped === (option === 'grouped')
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setView(option)}
-                  className={cn(
-                    'rounded px-2.5 py-1 text-[0.8125rem] transition-colors',
-                    active
-                      ? 'bg-surface text-fg shadow-sm'
-                      : 'text-muted hover:text-fg',
-                  )}
-                >
-                  {option === 'single'
-                    ? t('findings.view.single')
-                    : t('findings.view.grouped')}
-                </button>
-              )
-            })}
+            <FilterBar
+              label={t('findings.filter.moreAria')}
+              fields={moreFilters}
+              bordered={false}
+            />
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
+                <input
+                  type="checkbox"
+                  checked={hideTests}
+                  onChange={(event) => changeHideTests(event.target.checked)}
+                />
+                {t('findings.filter.hideTests')}
+              </label>
+              <label className="flex items-center gap-1.5 text-[0.8125rem] text-muted">
+                <input
+                  type="checkbox"
+                  checked={hideMaintenance}
+                  onChange={(event) =>
+                    changeHideMaintenance(event.target.checked)
+                  }
+                />
+                {t('findings.filter.hideMaintenance')}
+              </label>
+            </div>
           </div>
-        ) : null}
-        <p className="ml-auto text-xs text-faint">
-          {selected === undefined
-            ? t('findings.scope.all')
-            : t('findings.scope.one', { project: selected.display_name })}
-        </p>
+        }
+        activeFilters={
+          activeChips.length === 0 ? undefined : (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {activeChips.map((chip) => (
+                <FilterChip
+                  key={chip.key}
+                  text={chip.text}
+                  removeLabel={chip.removeLabel}
+                  onRemove={chip.onRemove}
+                />
+              ))}
+              {activeChips.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="rounded px-1 text-xs text-muted underline-offset-2 hover:text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
+                >
+                  {t('findings.filter.clearAll')}
+                </button>
+              ) : null}
+            </div>
+          )
+        }
+      >
+        <div className="ml-auto flex flex-wrap items-center gap-2 sm:max-lg:col-span-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-expanded={showMore}
+            aria-controls={moreFiltersId}
+            aria-label={
+              hiddenCount === 0
+                ? t('findings.filter.more')
+                : t('findings.filter.moreActive', { count: hiddenCount })
+            }
+            title={t('findings.filter.more')}
+            onClick={() => setShowMore((open) => !open)}
+            className={cn(showMore && 'bg-hover')}
+          >
+            <FilterIcon className="size-3.5" />
+            {hiddenCount === 0 ? null : (
+              <span
+                aria-hidden="true"
+                className="min-w-[18px] rounded-full bg-bg px-1 text-center font-mono text-[0.6875rem] leading-[16px] tabular-nums"
+              >
+                {hiddenCount}
+              </span>
+            )}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={cn(
+                'size-3 transition-transform',
+                showMore && 'rotate-180',
+              )}
+            >
+              <path d="M2.5 4.5 6 8l3.5-3.5" />
+            </svg>
+          </Button>
+          {/* Grouping folds a rule across projects, so it is only offered while
+              every project is in the list (#106). */}
+          {search.asset === undefined ? (
+            <div
+              role="group"
+              aria-label={t('findings.view.aria')}
+              className="flex items-center gap-1 rounded-md border border-border-subtle bg-bg p-0.5"
+            >
+              {(['single', 'grouped'] as const).map((option) => {
+                const active = grouped === (option === 'grouped')
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setView(option)}
+                    className={cn(
+                      'rounded px-2.5 py-1 text-[0.8125rem] transition-colors',
+                      active
+                        ? 'bg-surface text-fg shadow-sm'
+                        : 'text-muted hover:text-fg',
+                    )}
+                  >
+                    {option === 'single'
+                      ? t('findings.view.single')
+                      : t('findings.view.grouped')}
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
+        </div>
       </FilterBar>
 
       {findings.isPending ? (
-        <section className="rounded-card border border-border-subtle bg-surface p-4">
+        <section className="border-t border-border-subtle pt-4">
           <p className="text-muted">{t('findings.loading')}</p>
         </section>
       ) : null}
 
       {findings.isError ? (
-        <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
+        <section className="flex flex-col gap-1 border-t border-border-subtle pt-4">
           <h2 className="text-[0.8125rem] font-semibold">
             {t('findings.failed')}
           </h2>
@@ -1123,7 +1399,7 @@ export function FindingsPage() {
       ) : null}
 
       {list !== undefined && total === 0 ? (
-        <section className="rounded-card border border-border-subtle bg-surface p-8">
+        <section className="border-t border-border-subtle px-4 pt-8 pb-4">
           <h2
             ref={findingsHeading}
             tabIndex={-1}
@@ -1152,7 +1428,7 @@ export function FindingsPage() {
       {list !== undefined && total > 0 ? (
         <section
           aria-labelledby="findings-heading"
-          className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
+          className="flex flex-col gap-3 border-t border-border-subtle pt-4"
         >
           <div className="flex flex-wrap items-baseline gap-2.5">
             <h2
@@ -1172,6 +1448,18 @@ export function FindingsPage() {
                 : selected === undefined
                   ? t('findings.count.all', { total: formatNumber(total) })
                   : t('findings.count.one', { total: formatNumber(total) })}
+            </span>
+            <span className="self-center">
+              <InfoTip
+                label={t('findings.scope.aria')}
+                content={
+                  selected === undefined
+                    ? t('findings.scope.all')
+                    : t('findings.scope.one', {
+                        project: selected.display_name,
+                      })
+                }
+              />
             </span>
           </div>
           {checkedFindings.length > 0 ? (
@@ -1198,6 +1486,7 @@ export function FindingsPage() {
                 setOpenGroupKey(group.key)
               }}
               bodyRef={groupFocus.bodyRef}
+              mobileCards
             />
           ) : (
             <DataTable
@@ -1212,6 +1501,7 @@ export function FindingsPage() {
                 setOpenFingerprint(finding.fingerprint)
               }}
               bodyRef={rowFocus.bodyRef}
+              mobileCards
             />
           )}
           <Pager
@@ -1223,6 +1513,7 @@ export function FindingsPage() {
           />
         </section>
       ) : null}
+      </div>
 
       {openGroup ? (
         <GroupDrawer
@@ -1256,6 +1547,45 @@ export function FindingsPage() {
         )}
       </Tabs>
     </>
+  )
+}
+
+/**
+ * FilterChip names one active filter and removes it from the row itself. The
+ * visible text stays short; the accessible name of the remove button reads the
+ * filter and its value, so a list of chips can be worked through blind.
+ */
+function FilterChip({
+  text,
+  removeLabel,
+  onRemove,
+}: {
+  text: string
+  removeLabel: string
+  onRemove: () => void
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-bg py-0.5 pr-1 pl-2.5 text-xs text-muted">
+      {text}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={removeLabel}
+        className="inline-flex size-4 items-center justify-center rounded-full text-faint hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-muted"
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          className="size-2.5"
+        >
+          <path d="M3 3l6 6M9 3l-6 6" />
+        </svg>
+      </button>
+    </span>
   )
 }
 

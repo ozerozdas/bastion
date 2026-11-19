@@ -22,13 +22,15 @@ const findings = navItems.find(
 const label = (item: NavItem) => t(item.labelKey)
 
 describe('navItems', () => {
-  it('follows ADR-007: Findings before the ASSETS group, Connections last', () => {
+  it('follows ADR-007: Findings before the ASSETS group, Configuration last', () => {
     expect(navItems.map(label)).toEqual([
       'Dashboard',
       'Findings',
       'Repositories',
       'Containers',
       'Connections',
+      'Configuration',
+      'Reports',
     ])
   })
 
@@ -38,7 +40,7 @@ describe('navItems', () => {
 })
 
 describe('navGroups', () => {
-  it('splits the entries into an unheaded top group, ASSETS and SETTINGS', () => {
+  it('splits the entries into an unheaded top group, ASSETS and SETTINGS & MORE', () => {
     expect(
       navGroups().map((group) => ({
         section: group.section,
@@ -48,7 +50,11 @@ describe('navGroups', () => {
     ).toEqual([
       { section: 'main', label: null, items: ['Dashboard', 'Findings'] },
       { section: 'assets', label: 'ASSETS', items: ['Repositories', 'Containers'] },
-      { section: 'settings', label: 'SETTINGS', items: ['Connections'] },
+      {
+        section: 'settings',
+        label: 'SETTINGS & MORE',
+        items: ['Connections', 'Configuration', 'Reports'],
+      },
     ])
   })
 
@@ -72,6 +78,15 @@ describe('navItemFor', () => {
 
   it('resolves the Containers route', () => {
     expect(label(navItemFor('/containers'))).toBe('Containers')
+  })
+
+  it('resolves the Configuration route', () => {
+    expect(label(navItemFor('/configurations'))).toBe('Configuration')
+  })
+
+  it('resolves the Reports route and its report pages', () => {
+    expect(label(navItemFor('/reports'))).toBe('Reports')
+    expect(label(navItemFor('/reports/trend'))).toBe('Reports')
   })
 
   it('resolves the redirecting Scan History URL to Repositories', () => {

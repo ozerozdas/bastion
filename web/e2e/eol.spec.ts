@@ -23,8 +23,11 @@ test('End-of-life check is off by default and toggles on', async ({
   await expect(card.getByText('Off', { exact: true })).toBeVisible()
   await expect(card.getByText(/endoflife\.date/)).toBeVisible()
 
-  await card.getByRole('button', { name: 'Turn on End-of-life check' }).click()
+  const toggle = card.getByRole('switch', { name: 'End-of-life check' })
+  await expect(toggle).toHaveAttribute('aria-checked', 'false')
+  await toggle.click()
   await expect(card.getByText('On', { exact: true })).toBeVisible()
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
 
   expect(problems).toEqual([])
 })

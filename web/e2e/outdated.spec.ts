@@ -38,14 +38,15 @@ test('Outdated packages is off by default and toggles on', async ({
     card.getByText(/api\.deps\.dev/),
   ).toBeVisible()
 
-  await card.getByRole('button', { name: 'Turn on Outdated packages' }).click()
+  const toggle = card.getByRole('switch', { name: 'Outdated packages' })
+  await expect(toggle).toHaveAttribute('aria-checked', 'false')
+  await toggle.click()
 
   await expect(card.getByText('On', { exact: true })).toBeVisible()
-  await expect(
-    card.getByRole('button', { name: 'Turn off Outdated packages' }),
-  ).toBeVisible()
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
 
-  await page.keyboard.press('Escape')
+  // Leaving the page with the sidebar keeps the saved choice: no modal lingers.
+  await page.getByRole('link', { name: 'Dashboard', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 
   expect(problems).toEqual([])

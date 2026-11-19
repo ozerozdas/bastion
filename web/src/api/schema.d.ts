@@ -980,6 +980,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/sla": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the SLA thresholds.
+         * @description One entry per severity: how many days a finding of that severity may
+         *     stay open before it is overdue. The defaults are 7, 30, 90 and 180.
+         */
+        get: operations["getSLASettings"];
+        /**
+         * Replace the SLA thresholds.
+         * @description Every severity is required. A value outside 1..3650 days is a 400, and
+         *     a rejected request stores nothing.
+         */
+        put: operations["setSLASettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notifications": {
         parameters: {
             query?: never;
@@ -1064,6 +1090,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/llm/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the models the local endpoint offers.
+         * @description Calls `GET {endpoint}/models` on an OpenAI-compatible endpoint and
+         *     returns the ids it reports, sorted and deduplicated, so the settings
+         *     form can offer them. The endpoint is optional and defaults to the saved
+         *     one; it is validated exactly like a save, so only http(s) on a loopback
+         *     IP literal or `localhost` is accepted and no name is resolved. The
+         *     server makes the call, because the UI's CSP forbids the browser from
+         *     reaching the model server. A slow, unreachable or failing endpoint is a
+         *     502; an endpoint that saving would refuse is a 400.
+         */
+        get: operations["listLLMModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assets/{assetId}/findings/{fingerprint}/explain": {
         parameters: {
             query?: never;
@@ -1109,6 +1162,295 @@ export interface paths {
          *     points of the trend (retroactive) rather than only from the newest point.
          */
         get: operations["getDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/owasp-top10": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest open findings grouped by OWASP Top 10 2021 category.
+         * @description Groups the latest open findings of the given type (vulnerability, SAST,
+         *     misconfiguration, secret) by the OWASP Top 10 2021 category their CWE
+         *     ids map to. The scope matches `GET /api/findings`: the newest succeeded
+         *     scan of every non-archived asset, with ignored findings left out.
+         *
+         *     Every category `A01` to `A10` is returned in order, with `count` 0 and
+         *     an empty `findings` list when it is empty, and `unmapped` last for
+         *     findings with no CWE or a CWE outside the mapping. A finding with
+         *     several mapped CWEs counts once, in the lowest-numbered category.
+         */
+        get: operations["getOwaspTop10"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/cve-insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Assets affected by one CVE or GHSA id, with its EPSS score.
+         * @description Latest open findings whose rule id is `cve`, across every non-archived
+         *     asset, or only `asset_id` when it is given. The scope matches
+         *     `GET /api/findings`: the newest succeeded scan of each asset, with
+         *     ignored findings left out. Advisories are matched by rule id; aliases
+         *     are merge-only and never stored.
+         *
+         *     `epss` is the id's FIRST.org prediction when the feed is on and scores
+         *     it, and `null` otherwise. An id nothing matches answers `200` with an
+         *     empty `assets` list.
+         */
+        get: operations["getCVEInsights"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per-asset daily open finding counts by severity.
+         * @description One series per non-archived asset, with one point per day in the
+         *     window that has a succeeded scan. A day's point counts the open
+         *     findings of that day's last succeeded scan by severity. The scope
+         *     matches `GET /api/findings`: ignored findings are left out, including
+         *     retroactively from older scans, and licence `allow` findings stay
+         *     hidden. Licence `deny` findings keep the raised severity the findings
+         *     list shows.
+         *
+         *     Points are sorted by date ascending and series by `display_name`.
+         *     Days without a succeeded scan have no point.
+         */
+        get: operations["getReportTrend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/runtimes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * End-of-life runtimes across the latest open findings.
+         * @description Latest open end-of-life findings, grouped by runtime name and version,
+         *     with the assets that run them. The scope matches `GET /api/findings`:
+         *     the newest succeeded scan of every non-archived asset, with ignored
+         *     findings left out. The end-of-life date is parsed from the finding's
+         *     description and is `null` when the scanner reported none.
+         */
+        get: operations["getReportRuntimes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/malware": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest open malware findings.
+         * @description Latest open findings of type `malware`, most severe first and then by
+         *     package name. The scope matches `GET /api/findings`: the newest
+         *     succeeded scan of every non-archived asset, with ignored findings left
+         *     out.
+         */
+        get: operations["getReportMalware"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/sla": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * SLA breaches and fix times.
+         * @description Ages the latest open findings against the stored SLA thresholds and
+         *     reports which ones are overdue, plus how many findings were fixed in
+         *     the window.
+         *
+         *     An overdue entry is an open finding of the findings list's scope
+         *     (non-archived assets, ignore decisions applied) whose severity is
+         *     `critical`, `high`, `medium` or `low` and whose age since its first
+         *     appearance exceeds that severity's threshold. Findings of unknown
+         *     severity are left out. Entries are sorted by overdue days, most
+         *     overdue first and capped at 500; `overdue_truncated` says the cap
+         *     dropped some.
+         *
+         *     A finding is fixed when its fingerprint appeared in some succeeded
+         *     scan of an asset but is absent from that asset's newest succeeded
+         *     scan. Its fix date is the finish time of the first succeeded scan
+         *     after its last appearance. `fixed_in_window` counts the fix dates in
+         *     the window, and `mean_time_to_fix_days` averages fix date minus first
+         *     appearance over those findings, or is `null` when none was fixed in
+         *     the window.
+         */
+        get: operations["getReportSLA"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/licenses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Licence inventory with the effective allow/deny policy.
+         * @description Latest open licence findings, grouped by licence name and the policy
+         *     that applies to them. The scope matches `GET /api/findings`: the newest
+         *     succeeded scan of every non-archived asset. Unlike the findings list,
+         *     `allow` findings are included and so are findings with a live ignore
+         *     decision: this report is the whole licence inventory, not the issues
+         *     view. An ignored item carries `ignored: true` and the decision in
+         *     `state`; an expired decision no longer counts.
+         *
+         *     The scanner sets the finding's rule id to the licence name. `policy` is
+         *     the effective rule for the finding's asset: a per-asset rule overrides
+         *     the global one, and `none` means no rule matched. An entry's `packages`
+         *     counts its distinct package names, `ignored_packages` the distinct
+         *     package names under a live decision, and `assets` its distinct assets.
+         *     Entries with policy `deny` come first, then the rest by `packages`
+         *     descending.
+         */
+        get: operations["getReportLicenses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/licenses.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the licence inventory as CSV.
+         * @description Writes the same licence inventory as `GET /api/reports/licenses`, one
+         *     row per finding, with the columns `license`, `policy`, `package`,
+         *     `version`, `ecosystem`, `asset` and `ignored`. The response is an
+         *     attachment.
+         *
+         *     This operation is hand-written in `internal/httpapi/licenses.go` and
+         *     excluded from codegen (api/oapi-codegen.yaml): the generated strict
+         *     server cannot set the `Content-Disposition` header. The spec stays the
+         *     contract.
+         */
+        get: operations["downloadLicenses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit pack for one asset or the whole fleet.
+         * @description Composes the findings list, its severity summary and the fix plan into
+         *     one audit pack. The scope matches `GET /api/findings`: the newest
+         *     succeeded scan of every non-archived asset, with ignored findings left
+         *     out; `asset_id` narrows it to one asset.
+         *
+         *     `summary` counts every finding in scope by effective severity, while
+         *     `findings` is capped at 500 entries, most severe first, with
+         *     `truncated` telling whether the cap dropped any. `fix_plan` is the
+         *     asset's fix plan; it is empty when no `asset_id` was given. `asset` is
+         *     the requested asset, or `null` for the whole fleet.
+         */
+        get: operations["getReportAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/ci-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scan runs of every trigger, newest first.
+         * @description The scans of non-archived assets, newest first, or only `asset_id`
+         *     when it is given. Every trigger is listed; `trigger` narrows the
+         *     history to the runs the UI, the CLI or the API started.
+         *
+         *     `counts` is the raw severity count of the findings each scan recorded:
+         *     ignored findings are included and no licence policy applies, so the
+         *     numbers report what the run produced rather than today's view of it.
+         *     `duration_ms` is the finish minus start time, and `null` while either
+         *     is missing. `limit` defaults to 50 and accepts 1..200.
+         */
+        get: operations["getReportCIHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1540,6 +1882,16 @@ export interface components {
             model: string;
         };
         /**
+         * LLMModels
+         * @description The model ids the local endpoint reported, sorted and deduplicated. An
+         *     empty list is a valid answer: the server is reachable but has no model
+         *     yet.
+         */
+        LLMModels: {
+            /** @description Model ids, sorted. */
+            models: string[];
+        };
+        /**
          * SetLLMSettingsRequest
          * @description The settable local-model fields. Omitted fields are left untouched.
          */
@@ -1958,6 +2310,11 @@ export interface components {
              *     primary one.
              */
             scanners: string[];
+            /**
+             * @description Common Weakness Enumeration ids the finding maps to, as canonical
+             *     `CWE-<n>` strings. `[]` when the scanner reported none.
+             */
+            cwe: string[];
             status: components["schemas"]["FindingStatus"];
             state?: components["schemas"]["FindingState"];
             /** @description The reason recorded with the decision in `state`. */
@@ -2238,6 +2595,304 @@ export interface components {
              *     its status (a failed last scan is shown as failed).
              */
             last_scans: components["schemas"]["LastScan"][];
+        };
+        /**
+         * OWASPTop10
+         * @description Latest open findings grouped by OWASP Top 10 2021 category. Every
+         *     category is present, in order, with `unmapped` last.
+         */
+        OWASPTop10: {
+            /** @description `A01` to `A10` in order, then `unmapped`. */
+            categories: components["schemas"]["OWASPCategory"][];
+        };
+        /** OWASPCategory */
+        OWASPCategory: {
+            /**
+             * @description The 2021 category id, or `unmapped`.
+             * @example A03
+             */
+            id: string;
+            /** @example A03:2021 - Injection */
+            title: string;
+            /** @description Every open finding in the category, including any the cap dropped. */
+            count: number;
+            /** @description The category's open findings, most severe first, capped at 50. */
+            findings: components["schemas"]["Finding"][];
+            /** @description `count` exceeds the 50 findings the category carries. */
+            truncated: boolean;
+        };
+        /**
+         * CVEInsights
+         * @description Latest open findings matching one CVE or GHSA id, and the id's EPSS
+         *     prediction when the feed scores it.
+         */
+        CVEInsights: {
+            /**
+             * @description The id the report matched; CVEs are upper-cased.
+             * @example CVE-2021-44228
+             */
+            cve: string;
+            /**
+             * @description FIRST.org's prediction for the id, or `null` when the feed is off
+             *     or does not score it.
+             */
+            epss: components["schemas"]["EPSSScore"] | null;
+            /** @description One entry per matching asset; empty when nothing matches. */
+            assets: components["schemas"]["CVEInsightAsset"][];
+        };
+        /** CVEInsightAsset */
+        CVEInsightAsset: {
+            /** Format: int64 */
+            asset_id: number;
+            display_name: string;
+            kind: components["schemas"]["AssetKind"];
+            severity: components["schemas"]["Severity"];
+            package_name?: string;
+            package_version?: string;
+            fixed_version?: string;
+            /**
+             * Format: date-time
+             * @description When the scan that first reported this finding for the asset
+             *     finished. Absent when that scan is unknown.
+             */
+            first_seen?: string;
+        };
+        /** ReportTrend */
+        ReportTrend: {
+            /** @description One series per asset, sorted by `display_name`. */
+            series: components["schemas"]["ReportTrendSeries"][];
+        };
+        /** ReportTrendSeries */
+        ReportTrendSeries: {
+            /** Format: int64 */
+            asset_id: number;
+            display_name: string;
+            /** @description One point per scanned day, oldest first. */
+            points: components["schemas"]["ReportTrendPoint"][];
+        };
+        /** ReportTrendPoint */
+        ReportTrendPoint: {
+            /**
+             * @description The day, as `YYYY-MM-DD`.
+             * @example 2026-11-10
+             */
+            date: string;
+            critical: number;
+            high: number;
+            medium: number;
+            low: number;
+            unknown: number;
+        };
+        /** RuntimesReport */
+        RuntimesReport: {
+            /** @description One entry per runtime name and version. */
+            runtimes: components["schemas"]["RuntimeEntry"][];
+        };
+        /** RuntimeEntry */
+        RuntimeEntry: {
+            name: string;
+            ecosystem: string;
+            version: string;
+            /**
+             * @description The end-of-life date as `YYYY-MM-DD`, or `null` when the scanner
+             *     reported none.
+             */
+            eol_date: string | null;
+            /**
+             * @description The newest supported version, or `null` when the scanner reported
+             *     none.
+             */
+            fixed_version: string | null;
+            /** @description The assets that run this runtime, sorted by name. */
+            assets: components["schemas"]["RuntimeAsset"][];
+        };
+        /** RuntimeAsset */
+        RuntimeAsset: {
+            /** Format: int64 */
+            asset_id: number;
+            display_name: string;
+        };
+        /** MalwareReport */
+        MalwareReport: {
+            /** @description The open malware findings, most severe first. */
+            findings: components["schemas"]["Finding"][];
+        };
+        /**
+         * SLAThresholds
+         * @description The days a finding of each severity may stay open.
+         */
+        SLAThresholds: {
+            critical: number;
+            high: number;
+            medium: number;
+            low: number;
+        };
+        /**
+         * SLAReport
+         * @description Overdue open findings and the fix statistics of the window.
+         */
+        SLAReport: {
+            thresholds: components["schemas"]["SLAThresholds"];
+            /** @description Overdue findings, most overdue first, capped at 500. */
+            overdue: components["schemas"]["SLAOverdueFinding"][];
+            /** @description Open findings in scope, of every severity. */
+            open_count: number;
+            /** @description Findings in `overdue`. */
+            overdue_count: number;
+            /** @description More findings are overdue than the 500 `overdue` carries. */
+            overdue_truncated: boolean;
+            /** @description Findings fixed in the window whose fix date falls inside it. */
+            fixed_in_window: number;
+            /**
+             * @description Mean days from first appearance to fix over `fixed_in_window`, or
+             *     `null` when nothing was fixed in the window.
+             */
+            mean_time_to_fix_days?: number | null;
+        };
+        /** SLAOverdueFinding */
+        SLAOverdueFinding: {
+            finding: components["schemas"]["Finding"];
+            /**
+             * Format: date-time
+             * @description When the scan that first reported this finding for the asset
+             *     finished.
+             */
+            first_seen: string;
+            /** @description Whole days since `first_seen`. */
+            age_days: number;
+            /** @description The severity's allowed age in days. */
+            threshold_days: number;
+            /** @description `age_days` minus `threshold_days`. */
+            overdue_days: number;
+        };
+        /** LicensesReport */
+        LicensesReport: {
+            /**
+             * @description Licence entries, `deny` first and then by package count
+             *     descending.
+             */
+            licenses: components["schemas"]["LicenseEntry"][];
+        };
+        /**
+         * LicenseEntry
+         * @description One licence name and the policy that applies to it.
+         */
+        LicenseEntry: {
+            /** @description The licence name, as the scanner reported it. */
+            license: string;
+            /**
+             * @description The effective rule: `allow`, `deny`, or `none` when no rule
+             *     matched.
+             * @enum {string}
+             */
+            policy: "allow" | "deny" | "none";
+            /** @description Number of distinct package names. */
+            packages: number;
+            /** @description Number of distinct package names under a live finding decision. */
+            ignored_packages: number;
+            /** @description Number of distinct assets. */
+            assets: number;
+            /** @description One entry per finding, by asset and package. */
+            items: components["schemas"]["LicenseItem"][];
+        };
+        /** LicenseItem */
+        LicenseItem: {
+            package_name: string;
+            package_version: string;
+            ecosystem: string;
+            /** Format: int64 */
+            asset_id: number;
+            display_name: string;
+            /**
+             * @description True while a live finding decision covers this finding, so the
+             *     inventory can show it without hiding it.
+             */
+            ignored: boolean;
+            /**
+             * @description The live decision behind `ignored`, or `null` when the finding has
+             *     none.
+             */
+            state: components["schemas"]["FindingState"] | null;
+        };
+        /** AuditAsset */
+        AuditAsset: {
+            /** Format: int64 */
+            asset_id: number;
+            display_name: string;
+            kind: components["schemas"]["AssetKind"];
+        };
+        /**
+         * AuditSummary
+         * @description Findings in scope per effective severity; `total` counts them all,
+         *     including every finding dropped from `findings` by the 500-entry cap.
+         */
+        AuditSummary: {
+            critical: number;
+            high: number;
+            medium: number;
+            low: number;
+            unknown: number;
+            total: number;
+        };
+        /** AuditReport */
+        AuditReport: {
+            /**
+             * Format: date-time
+             * @description When the pack was built.
+             */
+            generated_at: string;
+            /** @description The requested asset, or `null` for the whole fleet. */
+            asset: components["schemas"]["AuditAsset"] | null;
+            summary: components["schemas"]["AuditSummary"];
+            /** @description Findings in scope, most severe first, capped at 500. */
+            findings: components["schemas"]["Finding"][];
+            fix_plan: components["schemas"]["FixPlan"];
+            /** @description Whether `findings` dropped findings over the cap. */
+            truncated: boolean;
+        };
+        /** CIHistoryReport */
+        CIHistoryReport: {
+            /** @description Scan runs, newest first. */
+            runs: components["schemas"]["CIRun"][];
+        };
+        /**
+         * CIRun
+         * @description One scan the history lists. `counts` holds the findings the scan
+         *     recorded per raw severity: ignored findings are counted and no licence
+         *     policy applies, so it reports what the run produced.
+         */
+        CIRun: {
+            /** Format: int64 */
+            scan_id: number;
+            /** Format: int64 */
+            asset_id: number;
+            display_name: string;
+            /**
+             * @description Who started the scan.
+             * @enum {string}
+             */
+            trigger: "ui" | "cli" | "api";
+            status: components["schemas"]["ScanStatus"];
+            /**
+             * Format: date-time
+             * @description Absent while the scan is still queued.
+             */
+            started_at?: string;
+            /**
+             * Format: date-time
+             * @description Absent while the scan has not finished.
+             */
+            finished_at?: string;
+            /** @description Finish minus start in milliseconds, or `null`. */
+            duration_ms: number | null;
+            counts: components["schemas"]["SeverityTotals"];
+            /** @description The scan's scanner runs. */
+            scanners: components["schemas"]["CIScannerRun"][];
+        };
+        /** CIScannerRun */
+        CIScannerRun: {
+            scanner: string;
+            status: components["schemas"]["ScanStatus"];
         };
         /**
          * SeverityTotals
@@ -4789,6 +5444,70 @@ export interface operations {
             500: components["responses"]["Problem"];
         };
     };
+    getSLASettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stored thresholds. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SLAThresholds"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setSLASettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SLAThresholds"];
+            };
+        };
+        responses: {
+            /** @description The stored thresholds after the write. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SLAThresholds"];
+                };
+            };
+            /**
+             * @description The body is missing, a severity is absent, or a value is outside
+             *     1..3650 days.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
     getNotificationSettings: {
         parameters: {
             query?: never;
@@ -4971,6 +5690,57 @@ export interface operations {
             500: components["responses"]["Problem"];
         };
     };
+    listLLMModels: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The endpoint to ask instead of the saved one. Same loopback rule as
+                 *     `PUT /api/llm`.
+                 */
+                endpoint?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The model ids the endpoint reported. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMModels"];
+                };
+            };
+            /**
+             * @description The endpoint is not loopback http(s) or is malformed; nothing was
+             *     called.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+            /** @description The local endpoint failed or could not be reached. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     explainFinding: {
         parameters: {
             query?: never;
@@ -5046,6 +5816,393 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getOwaspTop10: {
+        parameters: {
+            query?: {
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ten categories in order, then `unmapped`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OWASPTop10"];
+                };
+            };
+            /** @description `asset_id` is not a positive asset id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getCVEInsights: {
+        parameters: {
+            query: {
+                /**
+                 * @description The advisory id to look up: `CVE-YYYY-N...` or
+                 *     `GHSA-xxxx-xxxx-xxxx`, case-insensitive.
+                 */
+                cve: string;
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The matches and the id's EPSS score. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CVEInsights"];
+                };
+            };
+            /**
+             * @description `cve` is missing or not a CVE or GHSA id, or `asset_id` is not a
+             *     positive asset id.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getReportTrend: {
+        parameters: {
+            query?: {
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+                /** @description Length of the window in days, ending today. Defaults to 90. */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The per-asset series. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportTrend"];
+                };
+            };
+            /** @description `asset_id` is not a positive asset id, or `days` is outside 1..365. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getReportRuntimes: {
+        parameters: {
+            query?: {
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The runtimes and the assets that run them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimesReport"];
+                };
+            };
+            /** @description `asset_id` is not a positive asset id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getReportMalware: {
+        parameters: {
+            query?: {
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The malware findings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MalwareReport"];
+                };
+            };
+            /** @description `asset_id` is not a positive asset id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getReportSLA: {
+        parameters: {
+            query?: {
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+                /** @description Length of the fix window in days, ending now. Defaults to 90. */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The SLA report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SLAReport"];
+                };
+            };
+            /** @description `asset_id` is not a positive asset id, or `days` is outside 1..365. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getReportLicenses: {
+        parameters: {
+            query?: {
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The licence inventory. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicensesReport"];
+                };
+            };
+            /** @description `asset_id` is not a positive asset id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    downloadLicenses: {
+        parameters: {
+            query?: {
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The inventory as a CSV attachment. */
+            200: {
+                headers: {
+                    /** @description `attachment` with a dated filename. */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description `asset_id` is not a positive asset id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getReportAudit: {
+        parameters: {
+            query?: {
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The audit pack. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditReport"];
+                };
+            };
+            /** @description `asset_id` is not a positive asset id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description `asset_id` names no asset. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getReportCIHistory: {
+        parameters: {
+            query?: {
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+                /** @description Only list the runs this trigger started; absent lists every scan. */
+                trigger?: "ui" | "cli" | "api";
+                /** @description Maximum number of runs to return, newest first. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scan runs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CIHistoryReport"];
+                };
+            };
+            /** @description `asset_id` is not a positive asset id, `trigger` is unknown, or `limit` is outside 1..200. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             401: components["responses"]["Problem"];

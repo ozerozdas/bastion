@@ -39,7 +39,13 @@ const navPages = [
     label: 'Connections',
     path: '/connections',
     subtitle: 'GitHub, AWS and Docker sources',
-    marker: 'Add GitHub connection',
+    marker: 'New connection',
+  },
+  {
+    label: 'Configuration',
+    path: '/configurations',
+    subtitle: 'Modules, policies and appearance',
+    marker: 'EPSS exploit scores',
   },
 ]
 
@@ -78,12 +84,30 @@ test('renders every nav page without browser errors', async ({
   for (const item of navPages) {
     await page.getByRole('link', { name: item.label, exact: true }).click()
 
+    // Every page's title is in its band. Findings' title is its project
+    // selector, so its heading text is the selected option, not the nav label.
+    await expect(page.locator('#page-heading')).toBeVisible()
     await expect(
-      page.getByRole('heading', { level: 1, name: item.label }),
+      page.getByRole('heading', {
+        level: 1,
+        name: item.label === 'Findings' ? 'All assets' : item.label,
+      }),
     ).toBeVisible()
-    await expect(
-      page.locator('header').getByText(item.subtitle, { exact: true }),
-    ).toBeVisible()
+    // Every page's title is in its band, so the header bar carries no title or
+    // subtitle at any width; it exists only for the mobile drawer button.
+    const subtitle = page.locator('header').getByText(item.subtitle, { exact: true })
+    await expect(subtitle).toHaveCount(0)
+    const bandSubtitles = [
+      'Repositories',
+      'Containers',
+      'Connections',
+      'Configuration',
+    ]
+    if (bandSubtitles.includes(item.label)) {
+      await expect(
+        page.locator('#page-band').getByText(item.subtitle, { exact: true }),
+      ).toBeVisible()
+    }
     // The marker only renders once the page's first API call succeeded.
     await expect(
       page.getByText(item.marker, { exact: true }).first(),
@@ -94,7 +118,7 @@ test('renders every nav page without browser errors', async ({
   expect(problems).toEqual([])
 })
 
-test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => {
+test('groups the sidebar into ASSETS and SETTINGS & MORE', async ({ page, server }) => {
   const problems = watch(page)
   await openSession(page, server)
 
@@ -103,10 +127,11 @@ test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => 
     aside.getByRole('heading', { name: 'ASSETS', exact: true }),
   ).toBeVisible()
   await expect(
-    aside.getByRole('heading', { name: 'SETTINGS', exact: true }),
+    aside.getByRole('heading', { name: 'SETTINGS & MORE', exact: true }),
   ).toBeVisible()
 
-  // Order is the ADR-007 one: Findings moved up, Connections moved down.
+  // Order is the ADR-007 one: Findings moved up, Connections moved down, and
+  // Reports sits after Configuration.
   const labels = await aside
     .getByRole('link')
     .evaluateAll((links) =>
@@ -118,17 +143,19 @@ test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => 
     'Repositories',
     'Containers',
     'Connections',
+    'Configuration',
+    'Reports',
   ])
 
   // Scan History is a tab now, not a sidebar entry.
   await expect(aside.getByRole('link', { name: /Scan History/ })).toHaveCount(0)
 
-  // Configuration is the SETTINGS action, next to Connections (#142); the old
+  // Configuration is a settings page, next to Connections (#142); the old
   // standalone button above the Local · version footer is gone.
   await expect(
     aside
-      .getByRole('group', { name: 'SETTINGS' })
-      .getByRole('button', { name: 'Configuration' }),
+      .getByRole('group', { name: 'SETTINGS & MORE' })
+      .getByRole('link', { name: 'Configuration' }),
   ).toBeVisible()
   await expect(
     aside.getByRole('button', { name: 'Settings', exact: true }),
@@ -154,6 +181,13 @@ test('Repositories tabs live in the URL and move with arrow keys', async ({
   await expect(
     page.getByRole('heading', { level: 1, name: 'Repositories' }),
   ).toBeVisible()
+  // The tab row sits on the page band's bottom edge, under its title.
+  const band = page.locator('#page-band')
+  await expect(
+    band.getByRole('heading', { level: 1, name: 'Repositories' }),
+  ).toBeVisible()
+  await expect(band.getByText('Scheduled', { exact: true })).toBeVisible()
+  await expect(band.getByRole('tablist')).toBeVisible()
 
   const origin = new URL(page.url()).origin
 
@@ -216,7 +250,7 @@ test('Connections tabs live in the URL', async ({ page, server }) => {
   const registryTab = page.getByRole('tab', { name: 'Registry', exact: true })
   await expect(repositoryTab).toHaveAttribute('aria-selected', 'true')
   await expect(
-    page.getByRole('heading', { name: 'Add GitHub connection' }),
+    page.getByRole('button', { name: 'New connection' }),
   ).toBeVisible()
 
   // Registry is the bare path's alternative, so it is in the URL (#107).
@@ -224,10 +258,10 @@ test('Connections tabs live in the URL', async ({ page, server }) => {
   const origin = new URL(page.url()).origin
   await expect(page).toHaveURL(`${origin}/connections?tab=registry`)
   await expect(
-    page.getByRole('heading', { name: 'AWS' }),
+    page.getByRole('heading', { name: 'Local daemon' }),
   ).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'Add GitHub connection' }),
+    page.getByRole('list', { name: 'GitHub' }),
   ).toHaveCount(0)
 
   await page.reload()
@@ -290,13 +324,15 @@ test('drops a stale project id from the findings URL', async ({
   // One project: the page has something to fall back to when the id is gone.
   await page.getByRole('link', { name: 'Repositories', exact: true }).click()
   await page.getByRole('button', { name: 'Add repository' }).click()
+  await page.getByRole('button', { name: /^Local path/ }).click()
   await page.getByLabel('Or add a local path').fill(server.projectDir)
   await page.getByRole('button', { name: 'Add path' }).click()
 
   const name = basename(server.projectDir)
-  const findingsLink = page
-    .getByRole('row', { name: new RegExp(name) })
-    .getByRole('link', { name: 'View findings' })
+  const row = page.getByRole('row', { name: new RegExp(name) })
+  // View findings moved into the row's ⋯ menu; the item is still a link.
+  await row.getByRole('button', { name: `Actions for ${name}` }).click()
+  const findingsLink = page.getByRole('menuitem', { name: 'View findings' })
   await expect(findingsLink).toBeVisible()
 
   const origin = new URL(page.url()).origin
@@ -308,7 +344,7 @@ test('drops a stale project id from the findings URL', async ({
 
   // The row's link opens the fleet-wide list filtered to that project.
   await page.goto(`${origin}/findings?asset=${assetId}`)
-  await expect(page.locator('#findings-project')).toHaveValue(assetId)
+  await expect(page).toHaveURL(`${origin}/findings/${assetId}`)
 
   // A removed project id must not stay in the address bar. With no id meaning
   // every project, an unknown id is dropped and the list shows them all.
@@ -326,6 +362,7 @@ test('adds a local path repository through the UI', async ({ page, server }) => 
 
   const name = basename(server.projectDir)
   await page.getByRole('button', { name: 'Add repository' }).click()
+  await page.getByRole('button', { name: /^Local path/ }).click()
   await page.getByLabel('Or add a local path').fill(server.projectDir)
   await page.getByRole('button', { name: 'Add path' }).click()
 
@@ -334,8 +371,10 @@ test('adds a local path repository through the UI', async ({ page, server }) => 
 
   const row = page.getByRole('row', { name: new RegExp(name) })
   await expect(row).toBeVisible()
-  // The row shows the directory's base name and keeps the absolute path in Ref.
-  await expect(row.getByText(server.projectDir, { exact: true })).toBeVisible()
+  // One line: the base name plus a local badge; the absolute path is its tooltip.
+  await expect(row.getByText(name, { exact: true }).first()).toBeVisible()
+  await expect(row.getByText('local', { exact: true })).toBeVisible()
+  await expect(row.getByTitle(server.projectDir)).toBeVisible()
   // The old Kind column is gone; the table starts with Repository.
   await expect(page.getByRole('columnheader', { name: 'Kind' })).toHaveCount(0)
 

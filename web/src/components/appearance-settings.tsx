@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 
 import { SettingSection } from './setting-section'
+import { InfoTip } from './ui/info-tip'
 import { languageOptions, setLanguage, useLanguage, useT } from '../lib/i18n'
 import {
   fontFamilyOptions,
@@ -10,12 +11,15 @@ import {
   setFontSize,
   setMode,
   setTheme,
+  setWidth,
   storedFontFamily,
   storedFontSize,
   storedMode,
   storedTheme,
+  storedWidth,
   subscribeAppearance,
   themeOptions,
+  widthOptions,
   type FontFamily,
 } from '../lib/theme'
 import { cn } from '../lib/utils'
@@ -39,57 +43,68 @@ export function AppearanceSettings() {
   const mode = useSyncExternalStore(subscribeAppearance, storedMode)
   const family = useSyncExternalStore(subscribeAppearance, storedFontFamily)
   const size = useSyncExternalStore(subscribeAppearance, storedFontSize)
+  const width = useSyncExternalStore(subscribeAppearance, storedWidth)
 
   return (
-    <div className="flex flex-col gap-3">
-      <SettingSection title={t('appearance.theme.title')}>
-        <div
-          role="radiogroup"
-          aria-label={t('appearance.theme.aria')}
-          className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3"
-        >
-          {themeOptions.map((option) => (
-            <label
-              key={option.value}
-              className={cn(
-                'flex cursor-pointer flex-col gap-1.5 rounded-md border bg-bg p-2 transition-colors',
-                'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-muted',
-                theme === option.value
-                  ? 'border-accent bg-hover'
-                  : 'border-border-subtle hover:bg-hover',
-              )}
-            >
-              <input
-                type="radio"
-                name="appearance-theme"
-                value={option.value}
-                checked={theme === option.value}
-                onChange={() => setTheme(option.value)}
-                className="sr-only"
-              />
-              <span
-                aria-hidden="true"
-                className="theme-swatch"
-                data-theme-preview={option.value}
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <SettingSection title={t('appearance.theme.title')}>
+          <div
+            role="radiogroup"
+            aria-label={t('appearance.theme.aria')}
+            className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3"
+          >
+            {themeOptions.map((option) => (
+              <label
+                key={option.value}
+                className={cn(
+                  'flex cursor-pointer flex-col gap-1.5 rounded-md border bg-bg p-2 transition-colors',
+                  'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-muted',
+                  theme === option.value
+                    ? 'border-accent bg-hover'
+                    : 'border-border-subtle hover:bg-hover',
+                )}
               >
-                <span
-                  className="theme-swatch-half"
-                  data-swatch-mode="light"
+                <input
+                  type="radio"
+                  name="appearance-theme"
+                  value={option.value}
+                  checked={theme === option.value}
+                  onChange={() => setTheme(option.value)}
+                  className="sr-only"
                 />
-                <span className="theme-swatch-half" data-swatch-mode="dark" />
-              </span>
-              <span className="text-[0.8125rem] font-medium">
-                {t(option.labelKey)}
-              </span>
-              <span className="text-[0.6875rem] leading-snug text-muted">
-                {t(option.hintKey)}
-              </span>
-            </label>
-          ))}
-        </div>
-      </SettingSection>
+                <span
+                  aria-hidden="true"
+                  className="theme-swatch"
+                  data-theme-preview={option.value}
+                >
+                  <span
+                    className="theme-swatch-half"
+                    data-swatch-mode="light"
+                  />
+                  <span className="theme-swatch-half" data-swatch-mode="dark" />
+                </span>
+                <span className="text-[0.8125rem] font-medium">
+                  {t(option.labelKey)}
+                </span>
+                <span className="text-[0.6875rem] leading-snug text-muted">
+                  {t(option.hintKey)}
+                </span>
+              </label>
+            ))}
+          </div>
+        </SettingSection>
+      </div>
 
-      <SettingSection title={t('appearance.mode.title')}>
+      <SettingSection
+        title={t('appearance.mode.title')}
+        tip={
+          <InfoTip
+            label={t('appearance.mode.hintAria')}
+            content={t('appearance.mode.hint')}
+          />
+        }
+      >
         <div
           role="group"
           aria-label={t('appearance.mode.aria')}
@@ -110,12 +125,17 @@ export function AppearanceSettings() {
             </button>
           ))}
         </div>
-        <p className="text-[0.6875rem] text-muted">
-          {t('appearance.mode.hint')}
-        </p>
       </SettingSection>
 
-      <SettingSection title={t('appearance.fontFamily.title')}>
+      <SettingSection
+        title={t('appearance.fontFamily.title')}
+        tip={
+          <InfoTip
+            label={t('appearance.fontFamily.hintAria')}
+            content={t('appearance.fontFamily.hint')}
+          />
+        }
+      >
         <select
           aria-label={t('appearance.fontFamily.aria')}
           value={family}
@@ -130,9 +150,6 @@ export function AppearanceSettings() {
             </option>
           ))}
         </select>
-        <p className="text-[0.6875rem] text-muted">
-          {t('appearance.fontFamily.hint')}
-        </p>
       </SettingSection>
 
       <SettingSection title={t('appearance.fontSize.title')}>
@@ -158,7 +175,38 @@ export function AppearanceSettings() {
         </div>
       </SettingSection>
 
-      <SettingSection title={t('appearance.language.title')}>
+      <SettingSection title={t('appearance.width.title')}>
+        <div
+          role="group"
+          aria-label={t('appearance.width.title')}
+          className="mt-0.5 flex gap-1"
+        >
+          {widthOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={width === option.value}
+              onClick={() => setWidth(option.value)}
+              className={cn(
+                choiceClass,
+                width === option.value ? choiceOn : choiceOff,
+              )}
+            >
+              {t(option.labelKey)}
+            </button>
+          ))}
+        </div>
+      </SettingSection>
+
+      <SettingSection
+        title={t('appearance.language.title')}
+        tip={
+          <InfoTip
+            label={t('appearance.language.hintAria')}
+            content={t('appearance.language.hint')}
+          />
+        }
+      >
         <select
           aria-label={t('appearance.language.aria')}
           value={language}
@@ -171,9 +219,6 @@ export function AppearanceSettings() {
             </option>
           ))}
         </select>
-        <p className="text-[0.6875rem] text-muted">
-          {t('appearance.language.hint')}
-        </p>
       </SettingSection>
     </div>
   )

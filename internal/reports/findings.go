@@ -69,9 +69,12 @@ type Finding struct {
 	Occurrences    int
 	Scanner        string
 	Scanners       []string
-	Status         string
-	State          string
-	Reason         string
+	// CWE lists the Common Weakness Enumeration ids the finding maps to, as
+	// canonical "CWE-<n>" strings; empty when the scanner reported none.
+	CWE    []string
+	Status string
+	State  string
+	Reason string
 	// DecidedBy is who made the decision: user or agent, empty without one.
 	DecidedBy string
 	// RuleRef is the suppression rule that closed the finding, 0 without one.
@@ -286,6 +289,10 @@ func (s *Service) listFindings(ctx context.Context, filter Filter, by Sort, limi
 		if err != nil {
 			return nil, fmt.Errorf("reports: finding %d: %w", row.ID, err)
 		}
+		cwe, err := decodeCWE(row.CWE)
+		if err != nil {
+			return nil, fmt.Errorf("reports: finding %d: %w", row.ID, err)
+		}
 		finding := Finding{
 			ID:             row.ID,
 			AssetID:        row.AssetID,
@@ -303,6 +310,7 @@ func (s *Service) listFindings(ctx context.Context, filter Filter, by Sort, limi
 			Occurrences:    int(row.Occurrences),
 			Scanner:        row.Scanner,
 			Scanners:       scanners,
+			CWE:            cwe,
 			Status:         row.Status,
 			State:          row.State.String,
 			Reason:         row.Reason.String,
@@ -511,6 +519,22 @@ func decodeScanners(raw string) ([]string, error) {
 		scanners = make([]string, 0)
 	}
 	return scanners, nil
+}
+
+// decodeCWE decodes the JSON array of CWE ids stored with a finding. The column
+// default is "[]", so an old row yields an empty slice.
+func decodeCWE(raw string) ([]string, error) {
+	ids := make([]string, 0)
+	if raw == "" {
+		return ids, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+		return nil, fmt.Errorf("decode cwe %q: %w", raw, err)
+	}
+	if ids == nil {
+		ids = make([]string, 0)
+	}
+	return ids, nil
 }
 
 // licencePolicyValue reads the generated query's licence_policy column. sqlc

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -93,6 +94,47 @@ func TestTitleIsTruncated(t *testing.T) {
 	runes := []rune(fs[0].Title)
 	if len(runes) != maxTitleRunes+1 || !strings.HasSuffix(fs[0].Title, "…") {
 		t.Fatalf("title length = %d, want %d plus an ellipsis", len(runes), maxTitleRunes+1)
+	}
+}
+
+func TestParseCWE(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata string
+		want     []string
+	}{
+		{
+			name:     "one string with its title",
+			metadata: `"cwe": "CWE-79: Improper Neutralization of Input During Web Page Generation"`,
+			want:     []string{"CWE-79"},
+		},
+		{
+			name:     "a list of strings",
+			metadata: `"cwe": ["CWE-89: Improper Neutralization of Special Elements", "CWE-20: Improper Input Validation"]`,
+			want:     []string{"CWE-20", "CWE-89"},
+		},
+		{
+			name:     "no cwe metadata",
+			metadata: `"category": "security"`,
+			want:     nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			document := fmt.Sprintf(`{"results":[{"check_id":"rules.python.eval","path":"/repo/app.py",
+				"start":{"line":1},"extra":{"message":"eval","severity":"WARNING","lines":"eval(x)",
+				"metadata":{%s}}}]}`, tt.metadata)
+			fs, _, err := parse([]byte(document), "/repo", goldenAsset())
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if len(fs) != 1 {
+				t.Fatalf("findings = %d, want 1", len(fs))
+			}
+			if !slices.Equal(fs[0].CWE, tt.want) {
+				t.Fatalf("cwe = %v, want %v", fs[0].CWE, tt.want)
+			}
+		})
 	}
 }
 

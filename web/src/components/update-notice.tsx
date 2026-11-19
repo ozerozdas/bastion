@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { updateQuery, type UpdateStatus } from '../api/update'
 import { useT } from '../lib/i18n'
 import { dismissUpdate, isUpdateDismissed } from '../lib/update-dismiss'
-import { Button } from './ui/button'
+import { cn } from '../lib/utils'
+import { CheckIcon, CloseIcon, CopyIcon } from './icons'
 
 /**
  * UpdateNotice is the sidebar's release alert, directly above the version chip.
@@ -27,6 +28,27 @@ export function UpdateNotice() {
   return null
 }
 
+/**
+ * Ways to update. "bastion update" comes first: it replaces the binary in
+ * place and, on a Homebrew install, prints the brew command instead, so no
+ * separate Homebrew option is offered.
+ */
+const methods = [
+  { value: 'bastion', label: 'bastion' },
+  { value: 'curl', label: 'curl' },
+] as const
+
+type Method = (typeof methods)[number]['value']
+
+function commandFor(method: Method): string {
+  switch (method) {
+    case 'bastion':
+      return 'bastion update'
+    case 'curl':
+      return 'curl -fsSL https://raw.githubusercontent.com/ozerozdas/bastion/master/install.sh | sh'
+  }
+}
+
 /** UpdateAvailableCard shows the release and the command that installs it. */
 function UpdateAvailableCard({
   status,
@@ -39,6 +61,7 @@ function UpdateAvailableCard({
   const [dismissed, setDismissed] = useState(() =>
     isUpdateDismissed(window.localStorage, latest),
   )
+  const [method, setMethod] = useState<Method>('bastion')
   const [copied, setCopied] = useState(false)
 
   if (dismissed) {
@@ -46,7 +69,10 @@ function UpdateAvailableCard({
   }
 
   const version = latest.startsWith('v') ? latest : `v${latest}`
-  const command = status.command
+  const current = status.current.startsWith('v')
+    ? status.current
+    : `v${status.current}`
+  const command = commandFor(method)
 
   const dismiss = () => {
     dismissUpdate(window.localStorage, latest)
@@ -54,74 +80,98 @@ function UpdateAvailableCard({
   }
 
   const copy = async () => {
-    if (!command) {
-      return
-    }
     try {
       await navigator.clipboard.writeText(command)
       setCopied(true)
     } catch {
       // Clipboard access can be denied outside a secure context; leaving the
-      // label unchanged is better than claiming a copy that did not happen.
+      // icon unchanged is better than claiming a copy that did not happen.
     }
   }
 
   return (
     <section
       aria-label={t('update.aria')}
-      className="flex flex-col gap-1.5 rounded-lg border border-border-subtle bg-surface p-2.5"
+      className="notice-in flex flex-col gap-2.5 rounded-lg border border-border-subtle bg-surface p-3"
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium">
-          {t('update.available', { version })}
-        </p>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <p className="text-[0.8125rem] font-semibold">
+            {t('update.available', { version })}
+          </p>
+          <p className="text-[0.6875rem] text-muted">
+            {t('update.youHave', { version: current })}
+            {status.release_url ? (
+              <>
+                {' · '}
+                <a
+                  href={status.release_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 hover:text-fg"
+                >
+                  {t('update.releaseNotes')}
+                </a>
+              </>
+            ) : null}
+          </p>
+        </div>
         <button
           type="button"
           aria-label={t('update.dismissAria')}
           title={t('update.dismiss')}
           onClick={dismiss}
-          className="-mt-1 -mr-1 flex size-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
+          className="-mt-1 -mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
         >
-          <span aria-hidden="true">×</span>
+          <CloseIcon className="size-3.5" />
         </button>
       </div>
-      <p className="text-[0.6875rem] text-muted">
-        {t('update.youHave', {
-          version: status.current.startsWith('v')
-            ? status.current
-            : `v${status.current}`,
-        })}
-      </p>
 
-      {command ? (
-        <div className="flex min-w-0 items-center gap-1.5">
-          <code className="min-w-0 flex-1 overflow-x-auto rounded-md border border-border-strong bg-bg px-2 py-1 font-mono text-[0.625rem] whitespace-nowrap">
+      <div className="flex flex-col gap-1.5">
+        <div
+          role="group"
+          aria-label={t('update.methodAria')}
+          className="flex rounded-md bg-hover p-0.5"
+        >
+          {methods.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={method === option.value}
+              onClick={() => {
+                setMethod(option.value)
+                setCopied(false)
+              }}
+              className={cn(
+                'flex-1 rounded-[5px] px-1.5 py-0.5 text-[0.6875rem] transition-colors',
+                method === option.value
+                  ? 'bg-surface font-medium text-fg shadow-sm'
+                  : 'text-muted hover:text-fg',
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-start gap-1 rounded-md border border-border-subtle bg-bg py-1 pr-1 pl-2">
+          <code className="min-w-0 flex-1 py-0.5 font-mono text-[0.6875rem] leading-snug break-all">
             {command}
           </code>
-          <Button
+          <button
             type="button"
-            size="sm"
-            variant="outline"
             onClick={() => void copy()}
-            aria-label={t('update.copyAria')}
+            aria-label={copied ? t('update.copied') : t('update.copyAria')}
+            title={copied ? t('update.copied') : t('update.copy')}
+            className="flex size-6 shrink-0 items-center justify-center rounded text-muted transition-colors hover:bg-hover hover:text-fg"
           >
-            <span aria-live="polite">
-              {copied ? t('update.copied') : t('update.copy')}
-            </span>
-          </Button>
+            {copied ? (
+              <CheckIcon className="size-3.5 text-ok" />
+            ) : (
+              <CopyIcon className="size-3.5" />
+            )}
+          </button>
         </div>
-      ) : null}
-
-      {status.release_url ? (
-        <a
-          href={status.release_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="self-start text-[0.6875rem] text-muted underline underline-offset-2 hover:text-fg"
-        >
-          {t('update.releaseNotes')}
-        </a>
-      ) : null}
+      </div>
     </section>
   )
 }

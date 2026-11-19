@@ -4,12 +4,10 @@ import { useState, type ReactNode } from 'react'
 
 import type { Asset } from '../api/assets'
 import { ApiError } from '../api/client'
-import { epssQuery } from '../api/epss'
 import { allFindingsQuery, type Finding } from '../api/findings'
 import {
   fixPlanQuery,
   useOpenFixPlanPullRequest,
-  type FixPlanFactor,
   type FixPlanNoFix,
   type FixPlanPullRequestRequest,
   type FixPlanStep,
@@ -24,11 +22,11 @@ import { ErrorNote } from '../components/error-note'
 import { FilterBar } from '../components/filter-bar'
 import { FindingDrawer } from '../components/finding-drawer'
 import { useDrawerFocus } from '../components/drawer-focus'
-import { SeverityCountBadges } from '../components/severity-counts'
+import { OpenSeverityCounts } from '../components/severity-counts'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
+import { useDelayedClose } from '../components/ui/presence'
 import { severityLabel, severityTone } from '../lib/finding-labels'
-import { epssLabel } from '../lib/epss'
 import { t, useT } from '../lib/i18n'
 import { manifestPath } from '../lib/manifests'
 
@@ -40,9 +38,12 @@ import { manifestPath } from '../lib/manifests'
 export function FixPlanPanel({
   assetList,
   selected,
+  pinned = false,
 }: {
   assetList: readonly Asset[]
   selected: Asset | undefined
+  /** pinned hides the project picker: the page's path already names the project. */
+  pinned?: boolean
 }) {
   const t = useT()
   const navigate = useNavigate()
@@ -55,7 +56,6 @@ export function FixPlanPanel({
     selected?.kind === 'repo' && selected.connection_id !== undefined
 
   const plan = useQuery(fixPlanQuery(selected?.id))
-  const epss = useQuery(epssQuery)
   // The plan carries finding ids; the list supplies the rows the drawer needs.
   const findings = useQuery({
     ...allFindingsQuery({ assetId: selected?.id, type: 'vulnerability', status: 'open' }),
@@ -74,8 +74,12 @@ export function FixPlanPanel({
     (finding) => finding.fingerprint === openFingerprint,
   )
 
+  const steps = plan.data?.steps ?? []
+  const noFix = plan.data?.no_fix ?? []
+
   return (
     <>
+      {pinned ? null : (
       <FilterBar
         label={t('fixPlan.filter.aria')}
         fields={[
@@ -106,12 +110,11 @@ export function FixPlanPanel({
           },
         ]}
       >
-        <p className="ml-auto text-xs text-faint">
-          {selected === undefined
-            ? t('fixPlan.scope.grouped')
-            : t('fixPlan.scope.one', { project: selected.display_name })}
-        </p>
+        {selected === undefined ? (
+          <p className="ml-auto text-xs text-faint">{t('fixPlan.scope.grouped')}</p>
+        ) : null}
       </FilterBar>
+      )}
 
       {selected === undefined ? (
         <EmptyState
@@ -148,33 +151,43 @@ export function FixPlanPanel({
         </section>
       ) : null}
 
-      {plan.isSuccess && plan.data.steps.length > 0 ? (
+      {/* The upgrades and the packages without a fix are two halves of one
+          answer, so they share a card. */}
+      {selected !== undefined && (steps.length > 0 || noFix.length > 0) ? (
+        <div className="flex flex-col gap-4 rounded-card border border-border-subtle bg-surface p-4">
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-baseline gap-2.5">
+              <h2
+                id="fix-plan-heading"
+                className="text-[0.9375rem] font-semibold"
+              >
+                {t('fixPlan.title')}
+              </h2>
+              {steps.length > 0 ? (
+                <span className="text-xs text-muted">
+                  {t('fixPlan.summary', {
+                    count: steps.length,
+                    upgrades: steps.length,
+                    findings: steps.reduce(
+                      (total, step) => total + step.finding_count,
+                      0,
+                    ),
+                  })}
+                </span>
+              ) : null}
+            </div>
+            <p className="text-xs text-faint">
+              {t('fixPlan.scope.one', { project: selected.display_name })}
+            </p>
+          </div>
+      {steps.length > 0 ? (
         <section
           aria-labelledby="fix-plan-heading"
-          className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
+          className="flex flex-col gap-3"
         >
-          <div className="flex flex-wrap items-baseline gap-2.5">
-            <h2 id="fix-plan-heading" className="text-[0.8125rem] font-semibold">
-              {t('fixPlan.title')}
-            </h2>
-            <span className="text-faint">
-              {t('fixPlan.summary', {
-                count: plan.data.steps.length,
-                upgrades: plan.data.steps.length,
-                findings: plan.data.steps.reduce(
-                  (total, step) => total + step.finding_count,
-                  0,
-                ),
-              })}
-            </span>
-          </div>
           <PlanTable
-            rows={plan.data.steps}
-            columns={stepColumns(
-              expanded,
-              epss.data?.enabled === true,
-              canOpenPullRequest ? setPrStep : undefined,
-            )}
+            rows={steps}
+            columns={stepColumns(expanded, toggle, canOpenPullRequest ? setPrStep : undefined)}
             rowKey={(step) => planRowKey('step', step.ecosystem, step.package)}
             expanded={expanded}
             onToggle={toggle}
@@ -189,10 +202,14 @@ export function FixPlanPanel({
         </section>
       ) : null}
 
-      {plan.isSuccess && plan.data.no_fix.length > 0 ? (
+      {noFix.length > 0 ? (
         <section
           aria-labelledby="fix-plan-no-fix-heading"
-          className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
+          className={
+            steps.length > 0
+              ? 'flex flex-col gap-3 border-t border-border-subtle pt-4'
+              : 'flex flex-col gap-3'
+          }
         >
           <div className="flex flex-wrap items-baseline gap-2.5">
             <h2
@@ -203,13 +220,13 @@ export function FixPlanPanel({
             </h2>
             <span className="text-faint">
               {t('fixPlan.noFix.subtitle', {
-                count: plan.data.no_fix.length,
+                count: noFix.length,
               })}
             </span>
           </div>
           <PlanTable
-            rows={plan.data.no_fix}
-            columns={noFixColumns(expanded)}
+            rows={noFix}
+            columns={noFixColumns(expanded, toggle)}
             rowKey={(group) =>
               planRowKey('no-fix', group.ecosystem, group.package)
             }
@@ -224,6 +241,8 @@ export function FixPlanPanel({
             )}
           />
         </section>
+      ) : null}
+        </div>
       ) : null}
 
       {openFinding ? (
@@ -251,203 +270,235 @@ function planRowKey(prefix: string, ecosystem: string, pkg: string): string {
   return `${prefix}\u0000${ecosystem}\u0000${pkg}`
 }
 
-/** stepColumns is the fix plan row: the upgrade, its ecosystem and what it closes. */
+/** cellClass keeps every plan cell on one line, aligned to the row's middle. */
+const cellClass = 'py-2 pl-3 align-middle whitespace-nowrap'
+
+/** packageCell is a package's name with its ecosystem and approximate marker. */
+function packageCell(
+  pkg: string,
+  ecosystem: string,
+  approximate = false,
+): ReactNode {
+  return (
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      <span
+        className="max-w-[24ch] truncate font-mono text-[0.8125rem] font-medium"
+        title={pkg}
+      >
+        {pkg || '—'}
+      </span>
+      <Badge>{ecosystem}</Badge>
+      {approximate ? (
+        <Badge title={t('fixPlan.approximateTitle')}>
+          {t('fixPlan.approximate')}
+        </Badge>
+      ) : null}
+    </span>
+  )
+}
+
+/**
+ * upgradeCell is the compact "from → target": the installed version (or the
+ * first one, with a +N chip for the rest) and the target in an ok badge. Every
+ * installed version stays in the tooltip.
+ */
+function upgradeCell(step: FixPlanStep): ReactNode {
+  const versions = step.installed_versions
+  const first = versions[0]
+  const rest = versions.length - 1
+  const all = versions.length > 0 ? versions.join(', ') : t('fixPlan.unknownVersion')
+  return (
+    <span
+      className="flex items-center gap-1.5 font-mono text-[0.8125rem]"
+      title={all}
+    >
+      <span className="text-muted">{first ?? t('fixPlan.unknownVersion')}</span>
+      {rest > 0 ? (
+        <span
+          className="rounded border border-border-subtle px-1 text-[0.6875rem] whitespace-nowrap text-muted"
+          title={all}
+        >
+          +{rest}
+        </span>
+      ) : null}
+      <span aria-hidden="true" className="text-faint">
+        →
+      </span>
+      <Badge tone="ok" className="font-mono">
+        {step.target_version}
+      </Badge>
+    </span>
+  )
+}
+
+/** closesCell is the finding count and the severity mix on one line. */
+function closesCell(
+  count: number,
+  counts: FixPlanStep['severity_counts'],
+): ReactNode {
+  return (
+    <span className="flex items-center gap-2 whitespace-nowrap">
+      <span className="text-[0.8125rem] tabular-nums">
+        {t('fixPlan.findingCount', { count })}
+      </span>
+      <OpenSeverityCounts counts={counts} />
+    </span>
+  )
+}
+
+/** ExpandAction toggles the findings under a plan row without opening the row. */
+function ExpandAction({
+  open,
+  count,
+  onToggle,
+}: {
+  open: boolean
+  count: number
+  onToggle: () => void
+}) {
+  const t = useT()
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation()
+        onToggle()
+      }}
+      onKeyDown={(event) => event.stopPropagation()}
+      className="rounded px-1.5 py-0.5 text-xs whitespace-nowrap text-muted hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
+    >
+      {open ? t('fixPlan.hide') : t('fixPlan.show', { count })}
+    </button>
+  )
+}
+
+/** stepColumns is the fix plan row: package, upgrade, what it closes, score and actions. */
 function stepColumns(
   expanded: ReadonlySet<string>,
-  showEPSS = false,
+  onToggle: (key: string) => void,
   onOpenPullRequest?: (step: FixPlanStep) => void,
 ): DataTableColumn<FixPlanStep>[] {
   return [
     {
-      id: 'score',
-      header: t('fixPlan.column.score'),
+      id: 'package',
+      header: t('fixPlan.column.package'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3 align-top whitespace-nowrap',
-      cell: (step) => (
-        <span className="flex flex-col gap-0.5">
-          <span className="text-[0.8125rem] font-medium tabular-nums">
-            {Math.round(step.score)}
-          </span>
-          <span className="text-[0.6875rem] text-faint" title={scoreTitle(step)}>
-            {scoreFactors(step.factors)}
-          </span>
-        </span>
-      ),
+      cellClassName: cellClass,
+      cell: (step) =>
+        packageCell(step.package, step.ecosystem, step.approximate),
     },
     {
       id: 'upgrade',
       header: t('fixPlan.column.upgrade'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3',
-      cell: (step) => (
-        <span className="text-[0.8125rem]">
-          {t('fixPlan.upgrade')} <span className="font-mono">{step.package}</span>{' '}
-          <span className="font-mono text-muted">{installed(step)}</span>{' '}
-          <span aria-hidden="true">→</span>{' '}
-          <span className="font-mono font-medium">{step.target_version}</span>
-          {step.approximate ? (
-            <span
-              className="ml-1.5 text-xs text-faint"
-              title={t('fixPlan.approximateTitle')}
-            >
-              {t('fixPlan.approximate')}
-            </span>
-          ) : null}
-        </span>
-      ),
+      cellClassName: cellClass,
+      cell: (step) => upgradeCell(step),
     },
-    {
-      id: 'ecosystem',
-      header: t('fixPlan.column.ecosystem'),
-      headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3 font-mono text-xs text-muted',
-      cell: (step) => step.ecosystem,
-    },
-    ...(showEPSS
-      ? [
-          {
-            id: 'epss',
-            header: t('fixPlan.column.maxEpss'),
-            headerClassName: 'pl-3',
-            cellClassName: 'py-2 pl-3 whitespace-nowrap text-[0.8125rem] tabular-nums',
-            cell: (step: FixPlanStep) =>
-              step.max_epss ? (
-                <span title={epssLabel(step.max_epss)}>
-                  {step.max_epss.score.toFixed(2)}
-                </span>
-              ) : (
-                <span className="text-faint">—</span>
-              ),
-          } satisfies DataTableColumn<FixPlanStep>,
-        ]
-      : []),
     {
       id: 'closes',
       header: t('fixPlan.column.closes'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3',
+      cellClassName: cellClass,
+      cell: (step) => closesCell(step.finding_count, step.severity_counts),
+    },
+    {
+      id: 'score',
+      header: t('fixPlan.column.score'),
+      headerClassName: 'pl-3',
+      cellClassName: `${cellClass} tabular-nums`,
       cell: (step) => (
-        <span className="flex items-center gap-2">
-          <span className="text-[0.8125rem] tabular-nums">
-            {t('fixPlan.findingCount', { count: step.finding_count })}
-          </span>
-          <SeverityCountBadges counts={step.severity_counts} />
+        <span
+          className="text-[0.8125rem] font-medium"
+          title={scoreTitle(step)}
+        >
+          {Math.round(step.score)}
         </span>
       ),
     },
-    ...(onOpenPullRequest !== undefined
-      ? [
-          {
-            id: 'pull-request',
-            header: '',
-            headerClassName: 'pl-3',
-            cellClassName: 'py-2 pl-3 text-right whitespace-nowrap',
-            cell: (step: FixPlanStep) => <StepPullRequestAction step={step} onOpen={onOpenPullRequest} />,
-          } satisfies DataTableColumn<FixPlanStep>,
-        ]
-      : []),
     {
-      id: 'details',
-      header: '',
-      headerClassName: 'pl-3',
-      cellClassName:
-        'py-2 pr-3 pl-3 text-right text-xs whitespace-nowrap text-muted',
-      cell: (step) =>
-        expanded.has(planRowKey('step', step.ecosystem, step.package))
-          ? t('fixPlan.hide')
-          : t('fixPlan.show', { count: step.finding_count }),
+      id: 'actions',
+      header: t('fixPlan.column.actions'),
+      headerClassName: 'pl-3 pr-3 text-right',
+      cellClassName: 'py-2 pr-3 pl-3 align-middle text-right',
+      cell: (step) => {
+        const key = planRowKey('step', step.ecosystem, step.package)
+        return (
+          <span className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+            {onOpenPullRequest === undefined ? null : (
+              <StepPullRequestAction step={step} onOpen={onOpenPullRequest} />
+            )}
+            <ExpandAction
+              open={expanded.has(key)}
+              count={step.finding_count}
+              onToggle={() => onToggle(key)}
+            />
+          </span>
+        )
+      },
     },
   ]
 }
 
-/** noFixColumns is the "No fix available" row: the package and its findings. */
+/** noFixColumns keeps the plan's columns aligned: package, dashes, closes, actions. */
 function noFixColumns(
   expanded: ReadonlySet<string>,
+  onToggle: (key: string) => void,
 ): DataTableColumn<FixPlanNoFix>[] {
   return [
     {
       id: 'package',
       header: t('fixPlan.column.package'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3',
-      cell: (group) => (
-        <span className="text-[0.8125rem]">
-          <span className="font-mono">{group.package || '—'}</span>{' '}
-          <span className="font-mono text-xs text-muted">
-            {group.ecosystem}
-          </span>
-        </span>
-      ),
+      cellClassName: cellClass,
+      cell: (group) => packageCell(group.package, group.ecosystem),
+    },
+    {
+      id: 'upgrade',
+      header: t('fixPlan.column.upgrade'),
+      headerClassName: 'pl-3',
+      cellClassName: cellClass,
+      cell: () => <span className="text-faint">—</span>,
     },
     {
       id: 'closes',
-      header: t('fixPlan.column.findings'),
+      header: t('fixPlan.column.closes'),
       headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3',
-      cell: (group) => (
-        <span className="flex items-center gap-2">
-          <span className="text-[0.8125rem] tabular-nums">
-            {t('fixPlan.findingCount', { count: group.finding_count })}
-          </span>
-          <SeverityCountBadges counts={group.severity_counts} />
-        </span>
-      ),
+      cellClassName: cellClass,
+      cell: (group) => closesCell(group.finding_count, group.severity_counts),
     },
     {
-      id: 'details',
-      header: '',
+      id: 'score',
+      header: t('fixPlan.column.score'),
       headerClassName: 'pl-3',
-      cellClassName:
-        'py-2 pr-3 pl-3 text-right text-xs whitespace-nowrap text-muted',
-      cell: (group) =>
-        expanded.has(planRowKey('no-fix', group.ecosystem, group.package))
-          ? t('fixPlan.hide')
-          : t('fixPlan.show', { count: group.finding_count }),
+      cellClassName: `${cellClass} tabular-nums`,
+      cell: () => <span className="text-faint">—</span>,
+    },
+    {
+      id: 'actions',
+      header: t('fixPlan.column.actions'),
+      headerClassName: 'pl-3 pr-3 text-right',
+      cellClassName: 'py-2 pr-3 pl-3 align-middle text-right',
+      cell: (group) => {
+        const key = planRowKey('no-fix', group.ecosystem, group.package)
+        return (
+          <span className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+            <ExpandAction
+              open={expanded.has(key)}
+              count={group.finding_count}
+              onToggle={() => onToggle(key)}
+            />
+          </span>
+        )
+      },
     },
   ]
 }
 
-/** installed joins the group's installed versions for the row sentence. */
+/** installed joins the group's installed versions for the pull request dialog. */
 function installed(step: FixPlanStep): string {
   return step.installed_versions.length > 0
     ? step.installed_versions.join(', ')
     : t('fixPlan.unknownVersion')
-}
-
-/** scoreFactors is the one-line explanation next to a step's score. */
-function scoreFactors(factors: readonly FixPlanFactor[]): string {
-  return factors.map(scoreFactor).join(' × ')
-}
-
-/**
- * scoreFactor labels one factor the way the row reads: "severity 17 × EPSS 4.2
- * × latest image 1.5". A factor that does not apply says so in words instead
- * of printing its 1x multiplier.
- */
-function scoreFactor(factor: FixPlanFactor): string {
-  switch (factor.name) {
-    case 'severity':
-      return t('fixPlan.factor.severity', {
-        value: Math.round(factor.value),
-      })
-    case 'epss':
-      return factor.value > 1
-        ? t('fixPlan.factor.epss', { value: factor.value.toFixed(1) })
-        : factor.detail
-    case 'latest_image':
-      return factor.value > 1
-        ? t('fixPlan.factor.latestImage', { value: factor.value.toFixed(1) })
-        : factor.detail
-    case 'reachability':
-      return factor.value === 1
-        ? factor.detail
-        : t('fixPlan.factor.reachability', { detail: factor.detail })
-    default:
-      return t('fixPlan.factor.other', {
-        name: factor.name,
-        value: factor.value,
-      })
-  }
 }
 
 /** scoreTitle spells out every factor with its detail for the tooltip. */
@@ -506,7 +557,9 @@ function PlanTable<T>({
             </DataTableRow>
             {open ? (
               <tr className="bg-bg">
-                <td colSpan={columns.length}>{detail(row)}</td>
+                <td colSpan={columns.length}>
+                  <div className="plan-detail">{detail(row)}</div>
+                </td>
               </tr>
             ) : null}
           </>
@@ -649,7 +702,8 @@ function PullRequestDialog({
   onClose: () => void
 }) {
   const t = useT()
-  const { panel, onKeyDown } = useDrawerFocus(onClose)
+  const { close, closing } = useDelayedClose(onClose)
+  const { panel, onKeyDown } = useDrawerFocus(close)
   const open = useOpenFixPlanPullRequest(asset.id)
 
   const ecosystem = manifestEcosystem(step.ecosystem)
@@ -672,10 +726,10 @@ function PullRequestDialog({
       : undefined
 
   return (
-    <div className="fixed inset-0 z-40">
+    <div className="fixed inset-0 z-40" data-closing={closing ? '' : undefined}>
       <div
         aria-hidden="true"
-        onClick={onClose}
+        onClick={close}
         className="absolute inset-0 overlay-scrim"
       />
       <div
@@ -685,7 +739,7 @@ function PullRequestDialog({
         aria-labelledby="fix-plan-pr-title"
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="absolute inset-x-4 top-[12vh] mx-auto flex max-h-[76vh] max-w-[520px] flex-col gap-4 overflow-y-auto rounded-xl border border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
+        className="panel-modal absolute inset-x-4 top-[12vh] mx-auto flex max-h-[76vh] max-w-[520px] flex-col gap-4 overflow-y-auto rounded-xl border border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
       >
         <h2 id="fix-plan-pr-title" className="text-[0.9375rem] font-semibold">
           {t('fixPlan.pr.title')}
@@ -708,7 +762,7 @@ function PullRequestDialog({
               {open.data.url}
             </a>
             <div className="flex justify-end">
-              <Button type="button" onClick={onClose}>
+              <Button type="button" onClick={close}>
                 {t('common.close')}
               </Button>
             </div>
@@ -755,7 +809,7 @@ function PullRequestDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={onClose}
+                onClick={close}
                 disabled={open.isPending}
               >
                 {t('common.cancel')}
