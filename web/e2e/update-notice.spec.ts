@@ -67,13 +67,14 @@ test('turns the release check on in Configuration and remembers it', async ({
   await openConfiguration(page)
   const section = page.getByRole('region', { name: 'Release check' })
   await expect(section.getByText('Off', { exact: true })).toBeVisible()
-  await section.getByRole('button', { name: 'Turn on release check' }).click()
+  const toggle = section.getByRole('switch', { name: 'Release check' })
+  await toggle.click()
   await expect(section.getByText('On', { exact: true })).toBeVisible()
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
 
-  await page.keyboard.press('Escape')
   await page.reload()
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Dashboard' }),
+    page.getByRole('heading', { level: 1, name: 'Configuration' }),
   ).toBeVisible()
   await openConfiguration(page)
   await expect(
@@ -114,9 +115,11 @@ test('shows the update command, release notes and a per-version dismiss', async 
   await openSession(page, server.url)
 
   await expect(page.getByText('v0.1.2 is available', { exact: true })).toBeVisible()
-  await expect(
-    page.getByText(release.command, { exact: true }),
-  ).toBeVisible()
+  // "bastion update" is offered first; curl is the only alternative.
+  await expect(page.getByText('bastion update', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Homebrew' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'curl' }).click()
+  await expect(page.getByText(/install\.sh \| sh$/)).toBeVisible()
 
   const notes = page.getByRole('link', { name: 'Release notes' })
   await expect(notes).toHaveAttribute('href', release.release_url)
@@ -124,7 +127,10 @@ test('shows the update command, release notes and a per-version dismiss', async 
   await expect(notes).toHaveAttribute('rel', /noopener/)
 
   await page.getByRole('button', { name: 'Copy update command' }).click()
-  await expect(page.getByText('Copied', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Copied' })).toBeVisible()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(
+    /install\.sh \| sh$/,
+  )
 
   await page.getByRole('button', { name: 'Dismiss update notice' }).click()
   await expect(page.getByText('v0.1.2 is available', { exact: true })).toHaveCount(0)

@@ -32,15 +32,19 @@ test('adds a rule and approves an agent proposal', async ({ page, server }) => {
   await expect(
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
-  await openConfiguration(page)
+  await openConfiguration(page, 'Policies')
 
   const card = page.getByRole('region', { name: 'Noise rules' })
   await card.getByRole('button', { name: 'Approve' }).click()
-  await expect(card.getByText('Closes 3 findings')).toBeVisible()
+  // The approved rule moves to the rules table with its closed count.
+  await expect(card.getByRole('cell', { name: '3', exact: true })).toBeVisible()
 
-  await card.getByLabel('Path').fill('*/tests/*')
-  await card.getByLabel('Reason').fill('test code')
-  await card.getByRole('button', { name: 'Add rule' }).click()
+  // The add form lives in a dialog opened from the card header.
+  await card.getByRole('button', { name: 'Add', exact: true }).click()
+  const form = page.getByRole('dialog', { name: 'Add a rule' })
+  await form.getByLabel('Path').fill('*/tests/*')
+  await form.getByLabel('Reason').fill('test code')
+  await form.getByRole('button', { name: 'Add rule' }).click()
   await expect.poll(() => created.length).toBe(1)
   expect(created[0]).toMatchObject({ path_glob: '*/tests/*', reason: 'test code' })
 

@@ -1,6 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useState, type FormEvent } from 'react'
+import {
+  useRef,
+  useState,
+  type ComponentType,
+  type FormEvent,
+  type ReactNode,
+  type SVGProps,
+} from 'react'
 
 import { ApiError } from '../api/client'
 import { dockerImagesQuery } from '../api/docker'
@@ -14,11 +21,21 @@ import {
   type ConnectionStatus,
 } from '../api/connections'
 import { EmptyState } from '../components/empty-state'
+import { BandSummary } from '../components/page-band'
+import {
+  BitbucketIcon,
+  ContainersIcon,
+  GitHubIcon,
+  GitLabIcon,
+} from '../components/icons'
+import { ActionMenu } from '../components/ui/action-menu'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
+import { InfoTip } from '../components/ui/info-tip'
 import { Tabs, type TabItem } from '../components/ui/tabs'
 import { formatLocalDate, t, useT } from '../lib/i18n'
 import type { ConnectionsTab } from '../lib/urls'
+import { cn } from '../lib/utils'
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
@@ -57,6 +74,14 @@ export function ConnectionsPage() {
           search: next === 'registry' ? { tab: 'registry' } : {},
           replace: true,
         })
+      }}
+      band={{
+        summary: (
+          <BandSummary
+            title={t('nav.connections')}
+            subtitle={t('nav.connections.subtitle')}
+          />
+        ),
       }}
     >
       {tab === 'registry' ? <RegistryPanel /> : <RepositoryPanel />}
@@ -108,45 +133,292 @@ function RepositoryPanel() {
         </EmptyState>
       ) : null}
 
-      {github.length > 0 ? (
-        <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
-          <div className="flex flex-wrap items-baseline gap-2.5">
-            <h2 className="text-[0.8125rem] font-semibold">
-              {t('connections.github.title')}
-            </h2>
-            <span className="text-faint">
-              {t('connections.github.subtitle')}
-            </span>
-          </div>
-          <ul className="flex flex-col divide-y divide-border-subtle">
-            {github.map((connection) => (
-              <ConnectionRow key={connection.id} connection={connection} />
-            ))}
-          </ul>
-        </section>
+      {connections.isSuccess ? (
+        <ul
+          aria-label={t('connections.github.title')}
+          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        >
+          {github.map((connection) => (
+            <ConnectionRow key={connection.id} connection={connection} />
+          ))}
+          <li>
+            <AddConnectionCard providers={repositoryProviders}>
+              {(close) => <AddGitHubForm onAdded={close} />}
+            </AddConnectionCard>
+          </li>
+        </ul>
       ) : null}
-
-      <AddGitHubForm />
     </>
   )
 }
 
-/** RegistryPanel is §8's registry sources: AWS accounts and the local daemon. */
-function RegistryPanel() {
+type Provider = {
+  value: string
+  label: string
+  Icon: ComponentType<SVGProps<SVGSVGElement>>
+  ready: boolean
+}
+
+/** Repository providers; only GitHub is wired, the rest show what is coming. */
+const repositoryProviders: Provider[] = [
+  { value: 'github', label: 'GitHub', Icon: GitHubIcon, ready: true },
+  { value: 'gitlab', label: 'GitLab', Icon: GitLabIcon, ready: false },
+  { value: 'bitbucket', label: 'Bitbucket', Icon: BitbucketIcon, ready: false },
+]
+
+/** Registry providers; Docker is detected, not added, so only AWS is here. */
+const registryProviders: Provider[] = [
+  { value: 'aws', label: 'AWS ECR', Icon: ContainersIcon, ready: true },
+  { value: 'ghcr', label: 'GHCR', Icon: GitHubIcon, ready: false },
+  { value: 'dockerhub', label: 'Docker Hub', Icon: ContainersIcon, ready: false },
+  { value: 'gar', label: 'Google Artifact Registry', Icon: ContainersIcon, ready: false },
+  { value: 'acr', label: 'Azure ACR', Icon: ContainersIcon, ready: false },
+]
+
+/** Common ECR regions for the region field; any other value can be typed. */
+const awsRegions = [
+  'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'ca-central-1',
+  'eu-central-1', 'eu-west-1', 'eu-west-2', 'eu-west-3', 'eu-north-1',
+  'eu-south-1', 'ap-south-1', 'ap-northeast-1', 'ap-northeast-2',
+  'ap-southeast-1', 'ap-southeast-2', 'sa-east-1', 'me-central-1',
+]
+
+/**
+ * AddConnectionCard is the dashed "new connection" tile; it opens the add
+ * form in a dialog with a provider picker. children gets the close callback.
+ */
+function AddConnectionCard({
+  providers,
+  children,
+}: {
+  providers: Provider[]
+  children: (close: () => void) => ReactNode
+}) {
+  const t = useT()
+  // ponytail: native <dialog> gives the focus trap, Escape and backdrop for free.
+  const dialog = useRef<HTMLDialogElement>(null)
+  const title = t('connections.new')
+  const close = () => dialog.current?.close()
+
   return (
     <>
-      <AWSPanel />
-      <AddAWSForm />
-      <DockerPanel />
+      <button
+        type="button"
+        onClick={() => dialog.current?.showModal()}
+        className="flex h-full min-h-24 w-full flex-col items-center justify-center gap-1 rounded-card border border-dashed border-border-strong p-4 text-muted transition-colors hover:bg-hover hover:text-fg"
+      >
+        <span aria-hidden="true" className="text-xl leading-none">
+          +
+        </span>
+        <span className="text-[0.8125rem] font-medium">{title}</span>
+      </button>
+      <dialog
+        ref={dialog}
+        aria-label={title}
+        // Clicking the backdrop lands on the dialog element itself.
+        onClick={(event) => {
+          if (event.target === event.currentTarget) event.currentTarget.close()
+        }}
+        className="m-auto w-[min(560px,calc(100vw-2rem))] rounded-xl border border-border-subtle bg-surface p-5 text-fg shadow-xl backdrop:bg-black/40"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="text-[0.9375rem] font-semibold">{title}</h2>
+            <button
+              type="button"
+              onClick={close}
+              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+            >
+              {t('common.close')}
+            </button>
+          </div>
+          <div
+            role="group"
+            aria-label={t('connections.provider')}
+            className="flex flex-wrap gap-1.5"
+          >
+            {providers.map((provider) => (
+              <button
+                key={provider.value}
+                type="button"
+                aria-pressed={provider.ready}
+                disabled={!provider.ready}
+                className={cn(
+                  'flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[0.8125rem]',
+                  provider.ready
+                    ? 'border-accent bg-hover font-medium'
+                    : 'border-border-subtle text-faint',
+                )}
+              >
+                <provider.Icon className="size-4" />
+                {provider.label}
+                {provider.ready ? null : (
+                  <Badge tone="neutral">{t('connections.soon')}</Badge>
+                )}
+              </button>
+            ))}
+          </div>
+          {children(close)}
+        </div>
+      </dialog>
     </>
+  )
+}
+
+/** CardHead is a connection card's top line: provider, status and menu. */
+function CardHead({
+  Icon,
+  provider,
+  badge,
+  menu,
+}: {
+  Icon: ComponentType<SVGProps<SVGSVGElement>>
+  provider: string
+  badge: ReactNode
+  menu?: ReactNode
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
+        <Icon className="size-4 text-fg" />
+        {provider}
+      </span>
+      {badge}
+      {menu ? <div className="-my-1 -mr-1 ml-auto">{menu}</div> : null}
+    </div>
   )
 }
 
 /**
- * AWSPanel is the AWS source: the connections and the reminder that bastion
- * keeps no AWS credential of its own.
+ * StatusBadge is the card's status. A failed test keeps its hint behind the
+ * badge: hovering or focusing "error" shows why, so the card stays short.
  */
-function AWSPanel() {
+function StatusBadge({
+  connection,
+  testing,
+}: {
+  connection: Connection
+  testing: boolean
+}) {
+  const status = statusView[connection.status]
+  const badge = (
+    <Badge tone={status.tone}>
+      {testing ? t('connections.testing') : t(status.labelKey)}
+    </Badge>
+  )
+  if (connection.status !== 'error' || !connection.hint) return badge
+  return (
+    <InfoTip
+      label={t('connections.errorDetail', { name: connection.name })}
+      content={connection.hint}
+      trigger={badge}
+      className="size-auto rounded-sm"
+    />
+  )
+}
+
+/** Detail is one labelled value in a card's detail grid. */
+function Detail({ label, value, mono = false }: {
+  label: string
+  value: string
+  mono?: boolean
+}) {
+  return (
+    <>
+      <dt className="text-faint">{label}</dt>
+      <dd className={cn('truncate text-muted', mono && 'font-mono')} title={value}>
+        {value}
+      </dd>
+    </>
+  )
+}
+
+/** connectionMenu is the card's "⋮" menu: test, rename and remove. */
+function connectionMenu(
+  connection: Connection,
+  test: ReturnType<typeof useTestConnection>,
+  onRename: () => void,
+  onRemove: () => void,
+) {
+  return (
+    <ActionMenu
+      label={t('connections.actions', { name: connection.name })}
+      // ponytail: the shared "⋯" trigger, turned upright.
+      className="rotate-90"
+      items={[
+        {
+          key: 'test',
+          label: t('connections.test'),
+          disabled: test.isPending,
+          onSelect: () => test.mutate(connection.id),
+        },
+        {
+          key: 'rename',
+          label: t('connections.rename'),
+          onSelect: () => {
+            test.reset()
+            onRename()
+          },
+        },
+        {
+          key: 'remove',
+          label: t('connections.remove'),
+          destructive: true,
+          onSelect: () => {
+            test.reset()
+            onRemove()
+          },
+        },
+      ]}
+    />
+  )
+}
+
+/** RemoveConfirm is the in-card confirmation a removal waits on. */
+function RemoveConfirm({
+  message,
+  remove,
+  id,
+  onCancel,
+}: {
+  message: string
+  remove: ReturnType<typeof useDeleteConnection>
+  id: number
+  onCancel: () => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
+      <span>{message}</span>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="text-critical"
+        onClick={() => remove.mutate(id)}
+        disabled={remove.isPending}
+      >
+        {remove.isPending ? t('connections.removing') : t('connections.remove')}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          remove.reset()
+          onCancel()
+        }}
+      >
+        {t('connections.cancel')}
+      </Button>
+    </div>
+  )
+}
+
+const cardClass =
+  'flex h-full flex-col gap-2 rounded-card border border-border-subtle bg-surface p-4'
+
+/** RegistryPanel is §8's registry sources: AWS accounts and the local daemon. */
+function RegistryPanel() {
   const t = useT()
   const connections = useQuery(connectionsQuery)
   const aws = (connections.data ?? []).filter(
@@ -154,25 +426,18 @@ function AWSPanel() {
   )
 
   return (
-    <section className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4">
-      <div className="flex flex-wrap items-baseline gap-2.5">
-        <h2 className="text-[0.8125rem] font-semibold">
-          {t('connections.aws.title')}
-        </h2>
-        <span className="text-faint">{t('connections.aws.subtitle')}</span>
-      </div>
-
+    <>
       {connections.isPending ? (
         <p className="text-muted">{t('connections.loading')}</p>
       ) : null}
 
       {connections.isError ? (
-        <div className="flex flex-col gap-1">
-          <h3 className="text-[0.8125rem] font-semibold">
+        <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
+          <h2 className="text-[0.8125rem] font-semibold">
             {t('connections.failed')}
-          </h3>
+          </h2>
           <ErrorNote error={connections.error} fix={t('connections.errorFix')} />
-        </div>
+        </section>
       ) : null}
 
       {connections.isSuccess && aws.length === 0 ? (
@@ -183,25 +448,33 @@ function AWSPanel() {
         </p>
       ) : null}
 
-      {aws.length > 0 ? (
-        <ul className="flex flex-col divide-y divide-border-subtle">
-          {aws.map((connection) => (
-            <AWSConnectionRow key={connection.id} connection={connection} />
-          ))}
-        </ul>
-      ) : null}
-    </section>
+      <ul
+        aria-label={t('connections.tabs.registry')}
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+      >
+        <li>
+          <DockerCard />
+        </li>
+        {aws.map((connection) => (
+          <AWSConnectionRow key={connection.id} connection={connection} />
+        ))}
+        <li>
+          <AddConnectionCard providers={registryProviders}>
+            {(close) => <AddAWSForm onAdded={close} />}
+          </AddConnectionCard>
+        </li>
+      </ul>
+    </>
   )
 }
 
-/** AWSConnectionRow is one AWS connection with its test and remove actions. */
+/** AWSConnectionRow is one AWS connection card with its "⋮" menu. */
 function AWSConnectionRow({ connection }: { connection: Connection }) {
   const t = useT()
   const test = useTestConnection()
   const remove = useDeleteConnection()
   const [confirming, setConfirming] = useState(false)
   const [renaming, setRenaming] = useState(false)
-  const status = statusView[connection.status]
   const archived = connection.ecr_asset_count
   const archiveWarning =
     archived > 0
@@ -209,114 +482,58 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
       : ''
 
   return (
-    <li className="-mx-2 flex flex-col gap-2 rounded px-2 py-3 first:pt-0 last:pb-0 hover:bg-hover">
-      <div className="flex flex-wrap items-center gap-2">
-        {renaming ? (
-          <RenameForm
-            connection={connection}
-            onDone={() => setRenaming(false)}
-          />
-        ) : (
-          <span className="font-medium">{connection.name}</span>
-        )}
-        <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
+    <li className={cardClass}>
+      <CardHead
+        Icon={ContainersIcon}
+        provider={t('connections.aws.title')}
+        badge={<StatusBadge connection={connection} testing={test.isPending} />}
+        menu={
+          confirming || renaming
+            ? null
+            : connectionMenu(
+                connection,
+                test,
+                () => setRenaming(true),
+                () => setConfirming(true),
+              )
+        }
+      />
+      {renaming ? (
+        <RenameForm connection={connection} onDone={() => setRenaming(false)} />
+      ) : (
+        <span className="truncate text-[0.9375rem] font-semibold">
+          {connection.name}
+        </span>
+      )}
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
         {connection.region ? (
-          <span className="font-mono text-xs text-muted">{connection.region}</span>
+          <Detail label={t('connections.region')} value={connection.region} mono />
         ) : null}
         {connection.profile ? (
-          <span className="text-xs text-muted">
-            {t('connections.aws.profile', { name: connection.profile })}
-          </span>
+          <Detail label={t('connections.profile')} value={connection.profile} />
         ) : null}
         {connection.account ? (
-          <span className="font-mono text-xs text-muted">
-            {t('connections.aws.account', { account: connection.account })}
-          </span>
+          <Detail label={t('connections.account')} value={connection.account} mono />
         ) : null}
-        <span className="text-xs text-faint">
-          {lastCheckedLabel(connection.last_checked_at)}
-        </span>
-
-        {confirming || renaming ? null : (
-          <div className="ml-auto flex items-center gap-1.5">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => test.mutate(connection.id)}
-              disabled={test.isPending}
-            >
-              {test.isPending ? t('connections.testing') : t('connections.test')}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                test.reset()
-                setRenaming(true)
-              }}
-            >
-              {t('connections.rename')}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                test.reset()
-                setConfirming(true)
-              }}
-            >
-              {t('connections.remove')}
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {connection.arn ? (
-        <p className="break-all font-mono text-xs text-muted">{connection.arn}</p>
-      ) : null}
-
-      {connection.status === 'error' && connection.hint ? (
-        <p className="max-w-[70ch] text-xs text-muted">{connection.hint}</p>
-      ) : null}
+        {connection.arn ? (
+          <Detail label="ARN" value={connection.arn} mono />
+        ) : null}
+      </dl>
+      <span className="mt-auto pt-1 text-xs text-faint">
+        {lastCheckedLabel(connection.last_checked_at)}
+      </span>
 
       {confirming ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
-          <span>
-            {t('connections.aws.confirmRemove', { name: connection.name })}
-            {archiveWarning ? ` ${archiveWarning}` : ''}
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="text-critical"
-            onClick={() => remove.mutate(connection.id)}
-            disabled={remove.isPending}
-          >
-            {remove.isPending ? t('connections.removing') : t('connections.remove')}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              remove.reset()
-              setConfirming(false)
-            }}
-          >
-            {t('connections.cancel')}
-          </Button>
-        </div>
+        <RemoveConfirm
+          message={`${t('connections.aws.confirmRemove', { name: connection.name })}${archiveWarning ? ` ${archiveWarning}` : ''}`}
+          remove={remove}
+          id={connection.id}
+          onCancel={() => setConfirming(false)}
+        />
       ) : null}
 
       {test.isError ? (
-        <ErrorNote
-          error={test.error}
-          fix={t('connections.aws.testErrorFix')}
-        />
+        <ErrorNote error={test.error} fix={t('connections.aws.testErrorFix')} />
       ) : null}
       {remove.isError ? (
         <ErrorNote
@@ -329,7 +546,7 @@ function AWSConnectionRow({ connection }: { connection: Connection }) {
 }
 
 /** AddAWSForm creates an AWS connection; the server tests it before replying. */
-function AddAWSForm() {
+function AddAWSForm({ onAdded }: { onAdded: () => void }) {
   const t = useT()
   const create = useCreateConnection()
   const [name, setName] = useState('')
@@ -345,6 +562,8 @@ function AddAWSForm() {
       {
         onSuccess: (connection) => {
           setName('')
+          // A working connection shows up as its own card; close the dialog.
+          if (connection.status === 'ok') onAdded()
           setNotice(
             connection.status === 'ok'
               ? {
@@ -367,38 +586,30 @@ function AddAWSForm() {
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
-    >
-      <div className="flex flex-col gap-0.5">
-        <h2 className="text-[0.8125rem] font-semibold">
-          {t('connections.aws.addTitle')}
-        </h2>
-        <p className="text-xs text-muted">
-          {t('connections.aws.addBodyBefore')}{' '}
-          <span className="font-mono">aws sso login --profile work</span>
-          {t('connections.aws.addBodyAfter')}
-        </p>
+    <form onSubmit={submit} className="flex flex-col gap-3">
+      <p className="text-xs text-muted">
+        {t('connections.aws.addBodyBefore')}{' '}
+        <span className="font-mono">aws sso login --profile work</span>
+        {t('connections.aws.addBodyAfter')}
+      </p>
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="aws-name" className="text-xs font-medium text-muted">
+          {t('connections.name')}
+        </label>
+        <input
+          id="aws-name"
+          name="name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          autoComplete="off"
+          placeholder="prod"
+          className={inputClass}
+        />
       </div>
 
-      <div className="flex w-full max-w-3xl flex-wrap items-end gap-3">
-        <div className="flex w-52 flex-col gap-1">
-          <label htmlFor="aws-name" className="text-xs font-medium text-muted">
-            {t('connections.name')}
-          </label>
-          <input
-            id="aws-name"
-            name="name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            autoComplete="off"
-            placeholder="prod"
-            className={inputClass}
-          />
-        </div>
-
-        <div className="flex w-56 flex-col gap-1">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
           <label htmlFor="aws-profile" className="text-xs font-medium text-muted">
             {t('connections.profileOptional')}
           </label>
@@ -414,7 +625,7 @@ function AddAWSForm() {
           />
         </div>
 
-        <div className="flex w-44 flex-col gap-1">
+        <div className="flex flex-col gap-1">
           <label htmlFor="aws-region" className="text-xs font-medium text-muted">
             {t('connections.region')}
           </label>
@@ -426,10 +637,23 @@ function AddAWSForm() {
             autoComplete="off"
             spellCheck={false}
             placeholder="eu-central-1"
+            // ponytail: <datalist> is the combo box: pick a common region or type any.
+            list="aws-regions"
             className={inputClass}
           />
+          <datalist id="aws-regions">
+            {awsRegions.map((region) => (
+              <option key={region} value={region} />
+            ))}
+          </datalist>
         </div>
+      </div>
 
+      <div className="flex items-center justify-end gap-2">
+        <InfoTip
+          label={t('connections.aws.hintAria')}
+          content={t('connections.aws.hint')}
+        />
         <Button
           type="submit"
           disabled={
@@ -440,146 +664,108 @@ function AddAWSForm() {
         </Button>
       </div>
 
-      <p className="text-xs text-faint">{t('connections.aws.hint')}</p>
-
       {notice ? <NoticeLine notice={notice} /> : null}
     </form>
   )
 }
 
 /**
- * DockerPanel is a compact status card. Connections configures sources; the
- * image list and scans live on the Containers page. Without a daemon it
- * renders nothing: a machine without Docker is a normal state, not an error.
+ * DockerCard is the local daemon. It is detected, not added: with a daemon it
+ * links to the Containers page, without one it stays as a muted card.
  */
-function DockerPanel() {
+function DockerCard() {
   const t = useT()
   const images = useQuery(dockerImagesQuery)
+  const available = images.isSuccess && images.data.available
 
-  if (!images.isSuccess || !images.data.available) {
-    return null
-  }
-
-  const count = images.data.images.length
   return (
-    <section className="flex flex-col gap-2 rounded-card border border-border-subtle bg-surface p-4">
-      <div className="flex flex-wrap items-baseline gap-2.5">
-        <h2 className="text-[0.8125rem] font-semibold">
-          {t('connections.docker.title')}
-        </h2>
-        <Badge tone="ok">{t('connections.docker.available')}</Badge>
-        <span className="text-faint">
-          {t('connections.docker.images', { count })}
-        </span>
-      </div>
-      <p className="text-xs text-muted">
-        {t('connections.docker.reachedAt')}{' '}
-        <span className="font-mono">{images.data.host}</span>
-      </p>
-      <div>
-        <Link to="/containers" className={buttonVariants({ size: 'sm' })}>
-          {t('connections.docker.view')}
-        </Link>
-      </div>
+    <section className={cn(cardClass, available ? undefined : 'opacity-60')}>
+      <CardHead
+        Icon={ContainersIcon}
+        provider={t('connections.docker.title')}
+        badge={
+          <Badge tone={available ? 'ok' : 'neutral'}>
+            {available
+              ? t('connections.docker.available')
+              : t('connections.docker.unavailable')}
+          </Badge>
+        }
+      />
+      <h3 className="text-[0.9375rem] font-semibold">
+        {t('connections.docker.local')}
+      </h3>
+      {available ? (
+        <>
+          <p className="text-xs text-muted">
+            <span>
+              {t('connections.docker.images', { count: images.data.images.length })}
+            </span>
+            {' · '}
+            <span className="font-mono">{images.data.host}</span>
+          </p>
+          <div className="mt-auto pt-1">
+            <Link
+              to="/containers"
+              className={buttonVariants({ size: 'sm', variant: 'outline' })}
+            >
+              {t('connections.docker.view')}
+            </Link>
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-muted">{t('connections.docker.unavailableHint')}</p>
+      )}
     </section>
   )
 }
 
-/** ConnectionRow is one GitHub connection with its test and remove actions. */
+/** ConnectionRow is one GitHub connection card with its "⋮" menu. */
 function ConnectionRow({ connection }: { connection: Connection }) {
   const test = useTestConnection()
   const remove = useDeleteConnection()
   const [confirming, setConfirming] = useState(false)
   const [renaming, setRenaming] = useState(false)
-  const status = statusView[connection.status]
 
   return (
-    <li className="-mx-2 flex flex-col gap-2 rounded px-2 py-3 first:pt-0 last:pb-0 hover:bg-hover">
-      <div className="flex flex-wrap items-center gap-2">
-        {renaming ? (
-          <RenameForm
-            connection={connection}
-            onDone={() => setRenaming(false)}
-          />
-        ) : (
-          <span className="font-medium">{connection.name}</span>
-        )}
-        <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
+    <li className={cardClass}>
+      <CardHead
+        Icon={GitHubIcon}
+        provider="GitHub"
+        badge={<StatusBadge connection={connection} testing={test.isPending} />}
+        menu={
+          confirming || renaming
+            ? null
+            : connectionMenu(
+                connection,
+                test,
+                () => setRenaming(true),
+                () => setConfirming(true),
+              )
+        }
+      />
+      {renaming ? (
+        <RenameForm connection={connection} onDone={() => setRenaming(false)} />
+      ) : (
+        <span className="truncate text-[0.9375rem] font-semibold">
+          {connection.name}
+        </span>
+      )}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
         {connection.login ? (
           <span className="font-mono text-xs text-muted">@{connection.login}</span>
         ) : null}
         <span className="text-xs text-faint">
           {lastCheckedLabel(connection.last_checked_at)}
         </span>
-
-        {confirming || renaming ? null : (
-          <div className="ml-auto flex items-center gap-1.5">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => test.mutate(connection.id)}
-              disabled={test.isPending}
-            >
-              {test.isPending ? t('connections.testing') : t('connections.test')}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                test.reset()
-                setRenaming(true)
-              }}
-            >
-              {t('connections.rename')}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                test.reset()
-                setConfirming(true)
-              }}
-            >
-              {t('connections.remove')}
-            </Button>
-          </div>
-        )}
       </div>
 
-      {connection.status === 'error' && connection.hint ? (
-        <p className="max-w-[70ch] text-xs text-muted">{connection.hint}</p>
-      ) : null}
-
       {confirming ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-bg px-2.5 py-2 text-xs">
-          <span>
-            Remove “{connection.name}”? Its token is deleted from the OS keychain.
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="text-critical"
-            onClick={() => remove.mutate(connection.id)}
-            disabled={remove.isPending}
-          >
-            {remove.isPending ? t('connections.removing') : t('connections.remove')}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              remove.reset()
-              setConfirming(false)
-            }}
-          >
-            {t('connections.cancel')}
-          </Button>
-        </div>
+        <RemoveConfirm
+          message={t('connections.github.confirmRemove', { name: connection.name })}
+          remove={remove}
+          id={connection.id}
+          onCancel={() => setConfirming(false)}
+        />
       ) : null}
 
       {test.isError ? (
@@ -597,6 +783,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
     </li>
   )
 }
+
 
 /**
  * RenameForm is the inline name editor both tabs use: Enter (or Save) commits,
@@ -676,7 +863,7 @@ function RenameForm({
 }
 
 /** AddGitHubForm creates a connection; the server tests it before replying. */
-function AddGitHubForm() {
+function AddGitHubForm({ onAdded }: { onAdded: () => void }) {
   const t = useT()
   const create = useCreateConnection()
   const [name, setName] = useState('')
@@ -691,6 +878,8 @@ function AddGitHubForm() {
       {
         onSuccess: (connection) => {
           setName('')
+          // A working connection shows up as its own card; close the dialog.
+          if (connection.status === 'ok') onAdded()
           setNotice(
             connection.status === 'ok'
               ? {
@@ -714,19 +903,43 @@ function AddGitHubForm() {
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
-    >
-      <div className="flex flex-col gap-0.5">
-        <h2 className="text-[0.8125rem] font-semibold">
-          {t('connections.github.addTitle')}
-        </h2>
-        <p className="text-xs text-muted">{t('connections.github.addBody')}</p>
-      </div>
+    <form onSubmit={submit} className="flex flex-col gap-3">
+      {/* ponytail: native <details> is the collapse; no state needed. */}
+      <details className="group rounded-md bg-hover px-3 py-1.5 text-xs">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 font-medium [&::-webkit-details-marker]:hidden">
+          <span
+            aria-hidden="true"
+            className="text-faint transition-transform group-open:rotate-90"
+          >
+            ›
+          </span>
+          {t('connections.github.perms.title')}
+        </summary>
+        <div className="flex flex-col gap-1.5 pt-1.5 pb-1">
+        <ul className="flex flex-col gap-1 text-muted">
+          <li>
+            <span className="text-fg">{t('connections.github.perms.scan')}</span>{' '}
+            <span className="font-mono">Contents: read · Metadata: read</span>
+          </li>
+          <li>
+            <span className="text-fg">{t('connections.github.perms.pr')}</span>{' '}
+            <span className="font-mono">Contents: write · Pull requests: write</span>
+          </li>
+          <li>{t('connections.github.perms.classic')}</li>
+        </ul>
+        <a
+          href="https://github.com/settings/personal-access-tokens/new"
+          target="_blank"
+          rel="noreferrer"
+          className="self-start underline underline-offset-2"
+        >
+          {t('connections.github.perms.create')}
+        </a>
+        </div>
+      </details>
 
-      <div className="flex w-full max-w-3xl flex-wrap items-end gap-3">
-        <div className="flex w-52 flex-col gap-1">
+      <div className="flex w-full flex-col gap-3">
+        <div className="flex flex-col gap-1">
           <label htmlFor="github-name" className="text-xs font-medium text-muted">
             {t('connections.name')}
           </label>
@@ -741,7 +954,7 @@ function AddGitHubForm() {
           />
         </div>
 
-        <div className="flex min-w-64 flex-1 flex-col gap-1">
+        <div className="flex flex-col gap-1">
           <label htmlFor="github-token" className="text-xs font-medium text-muted">
             {t('connections.github.token')}
           </label>
@@ -758,15 +971,19 @@ function AddGitHubForm() {
           />
         </div>
 
-        <Button
-          type="submit"
-          disabled={create.isPending || name.trim() === '' || token.trim() === ''}
-        >
-          {create.isPending ? t('connections.adding') : t('connections.add')}
-        </Button>
+        <div className="flex items-center justify-end gap-2">
+          <InfoTip
+            label={t('connections.github.storageAria')}
+            content={`${t('connections.github.addBody')} ${t('connections.github.addHint')}`}
+          />
+          <Button
+            type="submit"
+            disabled={create.isPending || name.trim() === '' || token.trim() === ''}
+          >
+            {create.isPending ? t('connections.adding') : t('connections.add')}
+          </Button>
+        </div>
       </div>
-
-      <p className="text-xs text-faint">{t('connections.github.addHint')}</p>
 
       {notice ? <NoticeLine notice={notice} /> : null}
     </form>

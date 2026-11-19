@@ -33,6 +33,7 @@ var Keys = []string{
 	"bastion-font-family",
 	"bastion-font-size",
 	"bastion-language",
+	"bastion-width",
 	"bastion:get-started:cli-done",
 	"bastion:get-started:dismissed",
 }

@@ -53,7 +53,7 @@ test('SAST is off by default and explains the download', async ({ page, server }
   await expect(card).toContainText('~47 MB')
   await expect(card).toContainText('~1.1 MB')
   await expect(
-    card.getByRole('button', { name: 'Turn on SAST' }),
+    card.getByRole('switch', { name: 'SAST' }),
   ).toBeVisible()
 
   expect(problems).toEqual([])
@@ -73,14 +73,14 @@ test('turning SAST on shows the installed module', async ({ page, server }) => {
   ).toBeVisible()
 
   await openConfiguration(page)
-  await page.getByRole('button', { name: 'Turn on SAST' }).click()
+  await page.getByRole('switch', { name: 'SAST' }).click()
 
   const card = page.getByRole('region', { name: 'SAST' })
   await expect(card.getByText('On', { exact: true })).toBeVisible()
   await expect(card).toContainText('v1.33.1')
   await expect(
-    card.getByRole('button', { name: 'Turn off SAST' }),
-  ).toBeVisible()
+    card.getByRole('switch', { name: 'SAST' }),
+  ).toHaveAttribute('aria-checked', 'true')
   expect(stub.puts).toEqual([true])
 
   expect(problems).toEqual([])

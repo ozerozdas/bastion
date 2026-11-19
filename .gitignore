@@ -11,3 +11,7 @@
 /.openchamber/
 /.serena/
 /.pm/
+/node_modules/
+/test-results/
+/.handoff/
+/.playwright-mcp/

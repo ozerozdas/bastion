@@ -6,6 +6,7 @@ import {
   DashboardIcon,
   ProjectsIcon,
   ReportsIcon,
+  SettingsIcon,
 } from '../components/icons'
 import { t } from './i18n'
 
@@ -72,6 +73,13 @@ export const navItems: NavItem[] = [
     labelKey: 'nav.connections',
     subtitleKey: 'nav.connections.subtitle',
     icon: ConnectionsIcon,
+    section: 'settings',
+  },
+  {
+    to: '/configurations',
+    labelKey: 'nav.configurations',
+    subtitleKey: 'nav.configurations.subtitle',
+    icon: SettingsIcon,
     section: 'settings',
   },
 ]

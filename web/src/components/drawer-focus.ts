@@ -45,13 +45,19 @@ function trapTab(event: KeyboardEvent<HTMLElement>, container: HTMLElement) {
  * and Tab work at once, Tab is trapped, and closing gives focus back to the
  * element that opened it.
  */
-export function useDrawerFocus(onClose: () => void): {
+export function useDrawerFocus(
+  onClose: () => void,
+  options: { restoreFocus?: boolean } = {},
+): {
   panel: RefObject<HTMLDivElement | null>
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
 } {
   const panel = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
   close.current = onClose
+  // A drawer closed by a route change hands focus to the new page itself.
+  const restore = useRef(options.restoreFocus ?? true)
+  restore.current = options.restoreFocus ?? true
 
   // A control that unmounts (a toggle relabelled, a form closed) drops focus to
   // <body>, where the panel's own keydown never fires; Escape must still close.
@@ -72,7 +78,7 @@ export function useDrawerFocus(onClose: () => void): {
         : null
     panel.current?.focus()
     return () => {
-      if (opener?.isConnected) opener.focus()
+      if (restore.current && opener?.isConnected) opener.focus()
     }
   }, [])
 

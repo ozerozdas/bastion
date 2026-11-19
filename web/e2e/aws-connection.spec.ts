@@ -85,8 +85,8 @@ test('AWS connections are created, tested and removed on the Registry tab', asyn
   await page.getByRole('link', { name: 'Connections', exact: true }).click()
   await page.getByRole('tab', { name: 'Registry' }).click()
 
-  await expect(page.getByRole('heading', { name: 'AWS' })).toBeVisible()
   await expect(page.getByText('No AWS connection yet')).toBeVisible()
+  await page.getByRole('button', { name: 'New connection' }).click()
 
   const createRequest = page.waitForRequest(
     (request) =>
@@ -109,19 +109,17 @@ test('AWS connections are created, tested and removed on the Registry tab', asyn
 
   // The row shows what STS reported, and the form reports the account.
   await expect(
-    page.getByText('account 123456789012', { exact: true }),
+    page.getByText('123456789012', { exact: true }),
   ).toBeVisible()
   await expect(
     page.getByText('arn:aws:iam::123456789012:user/bastion-test'),
   ).toBeVisible()
-  await expect(
-    page.getByText(
-      'Connection added; authenticated to AWS account 123456789012.',
-    ),
-  ).toBeVisible()
+  // A working connection closes the dialog; the card is the confirmation.
+  await expect(page.getByRole('dialog')).toBeHidden()
 
   // Rename edits the name in place: Enter commits and sends only the name.
-  await page.getByRole('button', { name: 'Rename' }).click()
+  await page.getByRole('button', { name: 'Actions for prod' }).click()
+  await page.getByRole('menuitem', { name: 'Rename' }).click()
   const renameRequest = page.waitForRequest(
     (request) =>
       request.url().endsWith('/api/connections/1') &&
@@ -132,12 +130,13 @@ test('AWS connections are created, tested and removed on the Registry tab', asyn
   expect((await renameRequest).postDataJSON()).toEqual({ name: 'production' })
   await expect(page.getByText('production', { exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Test', exact: true }).click()
-  await expect(
-    page.getByRole('button', { name: 'Test', exact: true }),
-  ).toBeEnabled()
+  const actions = page.getByRole('button', { name: 'Actions for production' })
+  await actions.click()
+  await page.getByRole('menuitem', { name: 'Test' }).click()
+  await expect(actions).toBeEnabled()
 
-  await page.getByRole('button', { name: 'Remove', exact: true }).click()
+  await actions.click()
+  await page.getByRole('menuitem', { name: 'Remove' }).click()
   await expect(
     page.getByText('Only the profile and region are forgotten'),
   ).toBeVisible()
@@ -170,6 +169,7 @@ test('a failed AWS test shows the hint, not a credential', async ({
   await page.goto(server.url)
   await page.getByRole('link', { name: 'Connections', exact: true }).click()
   await page.getByRole('tab', { name: 'Registry' }).click()
+  await page.getByRole('button', { name: 'New connection' }).click()
 
   await page.getByLabel('Name').fill('prod')
   await page.getByLabel('Region').fill('eu-central-1')
@@ -179,6 +179,6 @@ test('a failed AWS test shows the hint, not a credential', async ({
     page.getByText('Connection saved, but the test failed.'),
   ).toBeVisible()
   await expect(page.getByText(/ExpiredToken/).first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Test' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Actions for prod' })).toBeAttached()
   expect(problems).toEqual([])
 })

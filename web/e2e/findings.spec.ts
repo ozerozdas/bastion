@@ -268,9 +268,7 @@ test('lists findings across projects with no filter, critical first', async ({
   await openDashboard(page, server.url)
   await page.getByRole('link', { name: /^Findings/ }).click()
 
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Findings' }),
-  ).toBeVisible()
+  await expect(page.locator('#page-heading')).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Project' })).toBeVisible()
   await expect(page.locator('#findings-project')).toHaveValue('')
 
@@ -319,6 +317,40 @@ test('lists findings across projects with no filter, critical first', async ({
   expect(problems).toEqual([])
 })
 
+test('opens a finding and follows it to its project', async ({
+  page,
+  server,
+}) => {
+  await stubLicencePolicy(page)
+  const problems = watch(page)
+
+  await page.route('**/api/assets', (route) =>
+    route.fulfill({ json: { assets: [alpha, beta] } }),
+  )
+  await page.route('**/api/findings?**', (route) =>
+    route.fulfill(respondFindings(findings, new URL(route.request().url()))),
+  )
+
+  await openDashboard(page, server.url)
+  await page.getByRole('link', { name: /^Findings/ }).click()
+  // One row per finding, so the row opens the finding's own drawer.
+  await page.getByRole('button', { name: 'Single' }).click()
+
+  await page.getByRole('row', { name: /High in alpha/ }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  // The drawer names the project the finding belongs to and links to it.
+  await expect(dialog.getByText('Project', { exact: true })).toBeVisible()
+
+  const origin = new URL(page.url()).origin
+  await dialog.getByRole('link', { name: 'alpha', exact: true }).click()
+  await expect(page).toHaveURL(`${origin}/findings/${String(alpha.id)}`)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.locator('#findings-project')).toHaveValue(String(alpha.id))
+
+  expect(problems).toEqual([])
+})
+
 test('groups one CVE across projects and keeps the view in the URL', async ({
   page,
   server,
@@ -354,9 +386,7 @@ test('groups one CVE across projects and keeps the view in the URL', async ({
 
   // A reload stays grouped: the bare URL is the grouped default.
   await page.reload()
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Findings' }),
-  ).toBeVisible()
+  await expect(page.locator('#page-heading')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Grouped' })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -417,9 +447,7 @@ test('redirects old report URLs to the findings list', async ({ page, server }) 
 
   await page.goto(`${origin}/reports?asset=${String(asset.id)}`)
   await expect(page).toHaveURL(`${origin}/findings/${String(asset.id)}`)
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Findings' }),
-  ).toBeVisible()
+  await expect(page.locator('#page-heading')).toBeVisible()
   await expect(page.locator('#findings-project')).toHaveValue(String(asset.id))
 
   await page.goto(`${origin}/reports`)
@@ -629,7 +657,7 @@ test('searches findings by text and keeps the search in the URL', async ({
   const rows = page.locator('tbody tr')
 
   // The search settles into ?q= after the debounce and narrows the list.
-  await page.getByRole('searchbox', { name: 'Search' }).fill('CVE-2022')
+  await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('CVE-2022')
   await expect(page).toHaveURL(`${origin}/findings?q=CVE-2022`)
   await expect(rows).toHaveCount(1)
   await expect(rows.nth(0)).toContainText('High in alpha')
@@ -642,7 +670,7 @@ test('searches findings by text and keeps the search in the URL', async ({
   await expect(rows).toHaveCount(1)
 
   // Clearing it drops the param and restores the severity-filtered groups.
-  await page.getByRole('searchbox', { name: 'Search' }).fill('')
+  await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('')
   await expect(page).toHaveURL(`${origin}/findings`)
   await expect(rows).toHaveCount(2)
 

@@ -49,8 +49,20 @@ test('reviews and rescans one asset on its own page', async ({ page, server }) =
   await page.locator('#findings-search').fill('axios')
   await expect(page).toHaveURL(`${origin}/findings/4?q=axios`)
 
-  await header.getByRole('link', { name: 'Fix plan' }).click()
+  // The project's licence policy is edited in a dialog from the hero.
+  await header.getByRole('button', { name: /^Licence:/ }).click()
+  const licence = page.getByRole('dialog', { name: 'Licence policy for acme/widgets' })
+  await expect(licence).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(licence).toBeHidden()
+
+  // The header's project switcher names this project; no filter chip repeats it.
+  await expect(page.locator('#findings-project')).toHaveValue('4')
+  await expect(page.getByRole('button', { name: /^Remove filter: Assets/ })).toHaveCount(0)
+
+  await page.getByRole('tab', { name: 'Fix plan' }).click()
   await expect(page).toHaveURL(`${origin}/findings/4?tab=fix-plan`)
+  await expect(page.locator('#fix-plan-project')).toHaveCount(0)
 
   // An unknown asset falls back to every project.
   await page.goto(`${origin}/findings/999`)

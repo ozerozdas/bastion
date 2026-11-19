@@ -1,6 +1,6 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { api } from './client'
+import { ApiError, api } from './client'
 import type { components } from './schema'
 
 /** Asset is a project bastion scans, with its last scan and open counts. */
@@ -36,6 +36,48 @@ export function useArchiveAsset() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => api.remove<void>(`/api/assets/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: assetsKey }),
+  })
+}
+
+/**
+ * ensureImageAsset tracks an image without scanning it. POST /api/assets is
+ * idempotent for this purpose: a 409 means the image is already tracked, and
+ * the existing asset's id is what the link or schedule needs.
+ */
+export async function ensureImageAsset(input: {
+  ref: string
+  /** ECR only: the tag the digest came from. */
+  tag?: string
+  /** ECR only: the AWS connection the image belongs to. */
+  connectionId?: number
+}): Promise<number> {
+  const body: CreateAssetRequest = {
+    kind: 'image',
+    ref: input.ref,
+    ...(input.tag === undefined ? {} : { tag: input.tag }),
+    ...(input.connectionId === undefined
+      ? {}
+      : { connection_id: input.connectionId }),
+  }
+  try {
+    return (await api.post<Asset>('/api/assets', body)).id
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 409) throw error
+    const list = await api.get<AssetList>('/api/assets')
+    const existing = list.assets.find(
+      (asset) => asset.kind === 'image' && asset.ref === input.ref,
+    )
+    if (existing === undefined) throw error
+    return existing.id
+  }
+}
+
+/** useEnsureImageAsset tracks an image on demand, refreshing the asset list. */
+export function useEnsureImageAsset() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ensureImageAsset,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: assetsKey }),
   })
 }

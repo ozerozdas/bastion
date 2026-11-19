@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Link } from '@tanstack/react-router'
 
 import {
   useBulkFindingState,
@@ -13,6 +14,7 @@ import { useDrawerFocus } from './drawer-focus'
 import { ErrorNote } from './error-note'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+import { useDelayedClose } from './ui/presence'
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
@@ -42,7 +44,8 @@ export function GroupDrawer({
   onOpenFinding,
 }: GroupDrawerProps) {
   const t = useT()
-  const { panel, onKeyDown } = useDrawerFocus(onClose)
+  const { close, closing } = useDelayedClose(onClose)
+  const { panel, onKeyDown } = useDrawerFocus(close)
   const bulk = useBulkFindingState()
   const [confirming, setConfirming] = useState(false)
   const [decision, setDecision] = useState<FindingState>('ignored')
@@ -62,15 +65,15 @@ export function GroupDrawer({
     onRemoving()
     bulk.mutate(
       { findings: target, decision: { state: decision, reason: reason.trim() } },
-      { onSuccess: onClose, onError: onRemoveFailed },
+      { onSuccess: close, onError: onRemoveFailed },
     )
   }
 
   return (
-    <div className="fixed inset-0 z-40">
+    <div className="fixed inset-0 z-40" data-closing={closing ? '' : undefined}>
       <div
         aria-hidden="true"
-        onClick={onClose}
+        onClick={close}
         className="absolute inset-0 overlay-scrim"
       />
       <div
@@ -80,7 +83,7 @@ export function GroupDrawer({
         aria-labelledby="group-title"
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col gap-4 overflow-y-auto border-l border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
+        className="panel-side absolute inset-y-0 right-0 flex w-full max-w-[520px] flex-col gap-4 overflow-y-auto border-l border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
       >
         <div className="flex items-start gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">
@@ -105,7 +108,7 @@ export function GroupDrawer({
             size="sm"
             variant="ghost"
             className="ml-auto shrink-0"
-            onClick={onClose}
+            onClick={close}
           >
             {t('group.close')}
           </Button>
@@ -113,6 +116,24 @@ export function GroupDrawer({
 
         {group.rule_id ? (
           <p className="font-mono text-xs break-all text-muted">{group.rule_id}</p>
+        ) : null}
+
+        {group.asset_ids.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-muted">{t('finding.projects')}</span>
+            {group.asset_ids.map((assetId) => (
+              <Link
+                key={assetId}
+                to="/findings/$assetId"
+                params={{ assetId: String(assetId) }}
+                onClick={close}
+                title={assetNames.get(assetId) ?? t('asset.fallback', { id: assetId })}
+                className="max-w-[14rem] truncate rounded border border-border-subtle bg-bg px-1.5 py-0.5 text-[0.75rem] hover:bg-hover"
+              >
+                {assetNames.get(assetId) ?? t('asset.fallback', { id: assetId })}
+              </Link>
+            ))}
+          </div>
         ) : null}
 
         <section className="flex flex-col gap-2">
@@ -175,7 +196,7 @@ export function GroupDrawer({
                         fingerprint: finding.fingerprint,
                       })),
                     },
-                    { onSuccess: onClose, onError: onRemoveFailed },
+                    { onSuccess: close, onError: onRemoveFailed },
                   )
                 }}
               >

@@ -108,7 +108,7 @@ test('Notifications saves a webhook and never renders the URL', async ({
     threshold: 'high',
     slack_enabled: true,
     slack_configured: false,
-    email_enabled: false,
+    email_enabled: true,
     smtp_host: '',
     smtp_port: 587,
     smtp_username: '',
@@ -122,8 +122,7 @@ test('Notifications saves a webhook and never renders the URL', async ({
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
 
-  await openConfiguration(page)
-  await page.getByRole('tab', { name: 'Notifications' }).click()
+  await openConfiguration(page, 'Notifications')
   const card = page.getByRole('region', { name: 'Notifications' })
   await expect(card).toBeVisible()
   await expect(

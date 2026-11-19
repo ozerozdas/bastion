@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/ozerozdas/bastion/internal/httpapi/gen"
 	"github.com/ozerozdas/bastion/internal/localllm"
@@ -60,8 +61,40 @@ func (s *Server) SetLLMSettings(_ context.Context, request gen.SetLLMSettingsReq
 	return gen.SetLLMSettings200JSONResponse(llmSettingsResponse(s.llm)), nil
 }
 
-// ExplainFinding implements gen.StrictServerInterface. It reads the finding
-// from the database (never from the request body), sends it to the local model
+// ListLLMModels implements gen.StrictServerInterface. It asks the endpoint for
+// its model list so the settings form can offer the names. The endpoint is
+// optional and defaults to the saved one; either way it goes through the same
+// loopback validation as a save, and the request is made here because the
+// UI's CSP forbids the browser from calling the model server directly.
+func (s *Server) ListLLMModels(ctx context.Context, request gen.ListLLMModelsRequestObject) (gen.ListLLMModelsResponseObject, error) {
+	if s.llm == nil {
+		return gen.ListLLMModels500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error", llmUnavailable),
+		}, nil
+	}
+
+	endpoint := ""
+	if request.Params.Endpoint != nil {
+		endpoint = strings.TrimSpace(*request.Params.Endpoint)
+	}
+	models, err := s.llm.Models(ctx, endpoint)
+	if err != nil {
+		if errors.Is(err, localllm.ErrInvalid) {
+			return gen.ListLLMModels400ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusBadRequest, "Bad Request", err.Error()),
+			), nil
+		}
+		// The transport error and the endpoint's status stay in the log.
+		s.log.Warn("list local models", "error", err)
+		return gen.ListLLMModels502ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadGateway, "Bad Gateway",
+				"the local model endpoint did not answer; check the endpoint and the server log"),
+		), nil
+	}
+	return gen.ListLLMModels200JSONResponse(gen.LLMModels{Models: models}), nil
+}
+
+// ExplainFinding implements gen.StrictServerInterface. It reads the finding// from the database (never from the request body), sends it to the local model
 // and returns the answer. Nothing is written: the endpoint is read-only.
 func (s *Server) ExplainFinding(ctx context.Context, request gen.ExplainFindingRequestObject) (gen.ExplainFindingResponseObject, error) {
 	if s.llm == nil {

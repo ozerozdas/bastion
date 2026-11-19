@@ -12,7 +12,7 @@ import {
 } from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
 import { FilterBar } from '../components/filter-bar'
-import { SeverityCountBadges } from '../components/severity-counts'
+import { OpenSeverityCounts } from '../components/severity-counts'
 import { Badge } from '../components/ui/badge'
 import { buttonVariants } from '../components/ui/button'
 import { t, useT } from '../lib/i18n'
@@ -191,8 +191,11 @@ function ScanTable({
     {
       id: 'project',
       header: t('scans.column.project'),
-      cellClassName: 'max-w-[22ch] truncate py-2 pr-3',
+      // The full name returns at xl; below it the narrower column is what lets
+      // Actions fit without the table scrolling sideways at 1024.
+      cellClassName: 'max-w-[14ch] truncate py-2 pr-3 xl:max-w-[22ch]',
       sortable: true,
+      mobile: 'primary',
       cell: (scan) => {
         const project =
           names.get(scan.asset_id) ??
@@ -215,6 +218,7 @@ function ScanTable({
       headerClassName: 'status-cell pl-3',
       cellClassName: 'status-cell py-2 pl-3',
       sortable: true,
+      mobile: 'status',
       cell: (scan) => {
         const status = statusView[scan.status]
         return <Badge tone={status.tone}>{t(status.labelKey)}</Badge>
@@ -227,13 +231,17 @@ function ScanTable({
       cellClassName: 'py-2 pl-3',
       sortable: true,
       defaultSortDirection: 'desc',
-      cell: (scan) => <SeverityCountBadges counts={scan.counts} />,
+      mobile: 'counts',
+      mobileLabel: t('scans.column.findings'),
+      cell: (scan) => <OpenSeverityCounts counts={scan.counts} />,
     },
     {
       id: 'trigger',
       header: t('scans.column.trigger'),
-      headerClassName: 'pl-3',
-      cellClassName: 'py-2 pl-3 text-muted',
+      // Provenance is the first thing to go when the table is narrow.
+      headerClassName: 'hidden pl-3 xl:table-cell',
+      cellClassName: 'hidden py-2 pl-3 text-muted xl:table-cell',
+      mobile: 'hidden',
       cell: (scan) => triggerLabels[scan.trigger],
     },
     {
@@ -244,6 +252,8 @@ function ScanTable({
         'py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'secondary',
+      mobileLabel: t('scans.column.started'),
       cellTitle: (scan) =>
         scan.started_at ? formatDateTime(scan.started_at) : undefined,
       cell: (scan) => relativeTime(scan.started_at),
@@ -256,6 +266,7 @@ function ScanTable({
         'py-2 pl-3 text-right whitespace-nowrap text-muted tabular-nums',
       sortable: true,
       defaultSortDirection: 'desc',
+      mobile: 'hidden',
       cell: (scan) => scanDuration(scan),
     },
     {
@@ -263,6 +274,11 @@ function ScanTable({
       header: t('scans.column.error'),
       headerClassName: 'pl-3',
       cellClassName: 'py-2 pl-3',
+      mobile: 'secondary',
+      mobileLabel: t('scans.column.error'),
+      // No error leaves the cell without a value: the card drops the labelled
+      // line through data-empty, while the desktop table keeps the dash.
+      cellEmpty: (scan) => !scan.error,
       cell: (scan) =>
         scan.error ? (
           <span
@@ -272,9 +288,7 @@ function ScanTable({
             {scan.error}
           </span>
         ) : (
-          <span aria-hidden="true" className="text-faint">
-            —
-          </span>
+          <span className="text-faint">—</span>
         ),
     },
     {
@@ -282,6 +296,7 @@ function ScanTable({
       header: t('scans.column.actions'),
       headerClassName: 'pl-3 text-right',
       cellClassName: 'py-2 pl-3 whitespace-nowrap text-right',
+      mobile: 'actions',
       cell: (scan) =>
         // Only a succeeded scan has a complete finding set and inventory.
         scan.status === 'succeeded' ? (
@@ -319,6 +334,7 @@ function ScanTable({
       rowKey={(scan) => String(scan.id)}
       sort={sort}
       onSortChange={onSortChange}
+      mobileCards
     />
   )
 }

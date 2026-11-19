@@ -140,6 +140,10 @@ test('Containers adds and scans an ECR tag by its digest', async ({
   ).toHaveAttribute('aria-selected', 'true')
   const row = page.getByRole('row').filter({ hasText: 't2n-api:v1.2.3' })
   await expect(row).toBeVisible()
+  // Untracked rows still get the row menu (link/schedule before the scan).
+  await expect(
+    row.getByRole('button', { name: 'Actions for t2n-api:v1.2.3' }),
+  ).toBeVisible()
 
   const assetRequest = page.waitForRequest(
     (request) =>
@@ -262,11 +266,14 @@ test('Containers tabs switch sources and live in the URL', async ({
   await expect(dockerTab).toHaveAttribute('aria-selected', 'true')
   await expect(page).toHaveURL(`${origin}/containers`)
   await expect(page.getByText('alpine:3.20', { exact: true })).toBeVisible()
+  // The hero's first figure names the source the tab shows.
+  await expect(page.getByText('Local images', { exact: true })).toBeVisible()
 
   // One tab per AWS connection, named after it, with its id in the URL.
   await awsTab.click()
   await expect(page).toHaveURL(`${origin}/containers?tab=aws-1`)
   await expect(awsTab).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByText('ECR images', { exact: true })).toBeVisible()
   await expect(
     page.getByRole('row').filter({ hasText: 't2n-api:v1.2.3' }),
   ).toBeVisible()

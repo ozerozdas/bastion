@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import { cn } from '../lib/utils'
+import { useT } from '../lib/i18n'
 import { Checkbox } from './ui/checkbox'
 
 /** SortDirection is the direction a sortable header asks for. */
@@ -20,6 +21,18 @@ export type DataTableSort = {
   columnId: string
   direction: SortDirection
 }
+
+/**
+ * MobileColumnRole says how a column joins the compact card a row becomes
+ * below md (48rem). A column without a role is hidden in that layout.
+ */
+export type MobileColumnRole =
+  | 'primary'
+  | 'secondary'
+  | 'status'
+  | 'counts'
+  | 'actions'
+  | 'hidden'
 
 export type DataTableColumn<T> = {
   /** Stable id for React keys; not shown. */
@@ -48,6 +61,48 @@ export type DataTableColumn<T> = {
   defaultSortDirection?: SortDirection
   /** The value browser sorting compares. */
   sortValue?: (row: T) => string | number
+  /**
+   * A plain-text name for the column in the mobile sort menu, for headers that
+   * are not already a string.
+   */
+  sortLabel?: string
+  /**
+   * How the column takes part in the stacked card layout below md. Cards are
+   * only built for a DataTable with `mobileCards`; columns left unmarked are
+   * hidden there.
+   */
+  mobile?: MobileColumnRole
+  /** A label the card shows before this cell's value below md. */
+  mobileLabel?: string
+  /**
+   * Says this cell has no value for the row, so the card layout can drop it
+   * instead of showing an empty labelled line.
+   */
+  cellEmpty?: (row: T) => boolean
+}
+
+/** mobileCellProps are the data attributes the card layout in styles.css reads. */
+export function mobileCellProps<T>(column: DataTableColumn<T>): {
+  role: 'cell'
+  'data-mobile': MobileColumnRole
+  'data-label'?: string
+} {
+  return {
+    role: 'cell',
+    'data-mobile': column.mobile ?? 'hidden',
+    ...(column.mobileLabel === undefined
+      ? {}
+      : { 'data-label': column.mobileLabel }),
+  }
+}
+
+/**
+ * MobileCellLabel is a card's field name, a real span so the table keeps its
+ * semantics below md instead of drawing the name in CSS.
+ */
+export function MobileCellLabel({ label }: { label?: string }) {
+  if (label === undefined) return null
+  return <span className="data-table-card-label">{label}</span>
 }
 
 export type DataTableRowSelection = {
@@ -94,6 +149,11 @@ export type DataTableProps<T> = {
   onSortChange?: (sort: DataTableSort) => void
   /** Orders rows in the browser by the active column's sortValue. */
   clientSort?: boolean
+  /**
+   * Below md each row becomes a compact card and the header row gives way to
+   * the select-all control; at md and up the table is unchanged.
+   */
+  mobileCards?: boolean
 }
 
 /** DataTable is the shared table shell: header, optional selection, body. */
@@ -108,95 +168,202 @@ export function DataTable<T>({
   sort,
   onSortChange,
   clientSort,
+  mobileCards,
 }: DataTableProps<T>) {
+  const t = useT()
   const ordered = clientSort && sort !== undefined
     ? sortTableRows(rows, columns, sort)
     : rows
+  const cardMode = mobileCards === true
+  // A card hides the columns it has no role for, so their sort waits for the
+  // header row at md and up.
+  const sortableColumns =
+    cardMode && onSortChange !== undefined
+      ? columns.filter(
+          (column) =>
+            column.sortable === true &&
+            column.mobile !== undefined &&
+            column.mobile !== 'hidden',
+        )
+      : []
+  const activeSort =
+    sort === undefined
+      ? undefined
+      : sortableColumns.find(
+          (column) => columnSortKey(column) === sort.columnId,
+        )
+  const sortDirection: SortDirection =
+    sort?.direction === 'desc' ? 'desc' : 'asc'
+  const nextDirection: SortDirection =
+    activeSort === undefined
+      ? sortableColumns[0]?.defaultSortDirection ?? 'asc'
+      : sortDirection === 'asc'
+        ? 'desc'
+        : 'asc'
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-[0.8125rem]">
-        <thead className="text-xs text-faint">
-          <tr>
-            {selection ? (
-              <th className={cn('pb-2', selection.headerClassName)}>
-                <Checkbox
-                  aria-label={selection.all.label}
-                  checked={selection.all.checked}
-                  indeterminate={selection.all.indeterminate ?? false}
-                  onChange={selection.all.onChange}
-                  className={selection.all.checkboxClassName}
-                />
-              </th>
-            ) : null}
-            {columns.map((column) => {
-              const sortable = column.sortable === true && onSortChange !== undefined
-              const active = sort?.columnId === columnSortKey(column)
-              return (
-                <th
-                  key={column.id}
-                  aria-sort={
-                    sortable
-                      ? active
-                        ? sort?.direction === 'asc'
-                          ? 'ascending'
-                          : 'descending'
-                        : 'none'
-                      : undefined
-                  }
-                  className={cn('pb-2 font-medium', column.headerClassName)}
-                >
-                  {sortable ? (
-                    <button
-                      type="button"
-                      onClick={() => onSortChange(nextTableSort(sort, column))}
-                      className="-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 text-left hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
-                    >
-                      {column.header}
-                      <span
-                        aria-hidden="true"
-                        className={active ? 'text-fg' : 'opacity-50'}
-                      >
-                        {active ? (sort?.direction === 'asc' ? '↑' : '↓') : '↕'}
-                      </span>
-                    </button>
-                  ) : (
-                    column.header
-                  )}
-                </th>
+    <>
+      {sortableColumns.length > 0 ? (
+        <div className="mb-2 flex items-center gap-2 md:hidden">
+          <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted">
+            <span className="shrink-0">{t('table.sortBy')}</span>
+            <select
+              value={activeSort === undefined ? '' : sort?.columnId}
+              onChange={(event) => {
+                const column = sortableColumns.find(
+                  (candidate) =>
+                    columnSortKey(candidate) === event.target.value,
+                )
+                if (column !== undefined) {
+                  onSortChange?.(nextTableSort(sort, column))
+                }
+              }}
+              className="h-8 min-w-0 flex-1 rounded-md border border-border-strong bg-surface px-2 text-[0.8125rem] text-fg"
+            >
+              {activeSort === undefined ? (
+                <option value="">{t('table.defaultOrder')}</option>
+              ) : null}
+              {sortableColumns.map((column) => (
+                <option key={column.id} value={columnSortKey(column)}>
+                  {sortOptionLabel(column)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            aria-label={
+              nextDirection === 'asc'
+                ? t('table.sortAscending')
+                : t('table.sortDescending')
+            }
+            onClick={() => {
+              const column = activeSort ?? sortableColumns[0]
+              if (column === undefined) return
+              onSortChange?.(
+                nextTableSort(
+                  activeSort === undefined ? undefined : sort,
+                  column,
+                ),
               )
-            })}
-          </tr>
-        </thead>
-        <tbody ref={bodyRef} className="divide-y divide-border-subtle">
-          {ordered.map((row, index) => (
-            <Fragment key={rowKey(row)}>
-              {renderRow ? (
-                renderRow(row, index)
-              ) : (
-                <DataTableRow
-                  selection={selection?.row(row)}
-                  onActivate={
-                    onRowActivate ? () => onRowActivate(row, index) : undefined
-                  }
+            }}
+            className="flex h-8 shrink-0 items-center justify-center rounded-md border border-border-strong bg-surface px-2 text-[0.8125rem] text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
+          >
+            <span aria-hidden="true">{nextDirection === 'asc' ? '↑' : '↓'}</span>
+          </button>
+        </div>
+      ) : null}
+      <div className="overflow-x-auto">
+        <table
+          role={cardMode ? 'table' : undefined}
+          className={cn(
+            'w-full text-left text-[0.875rem]',
+            cardMode && 'data-table-cards',
+          )}
+        >
+          <thead role={cardMode ? 'rowgroup' : undefined} className="text-[0.8125rem] text-faint">
+            <tr role={cardMode ? 'row' : undefined}>
+              {selection ? (
+                <th
+                  role={cardMode ? 'columnheader' : undefined}
+                  data-mobile="select"
+                  className={cn('pb-2', selection.headerClassName)}
                 >
-                  {columns.map((column) => (
-                    <td
-                      key={column.id}
-                      className={column.cellClassName}
-                      title={column.cellTitle?.(row)}
-                    >
-                      {column.cell?.(row)}
-                    </td>
-                  ))}
-                </DataTableRow>
-              )}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                  <Checkbox
+                    aria-label={selection.all.label}
+                    checked={selection.all.checked}
+                    indeterminate={selection.all.indeterminate ?? false}
+                    onChange={selection.all.onChange}
+                    className={selection.all.checkboxClassName}
+                  />
+                </th>
+              ) : null}
+              {columns.map((column) => {
+                const sortable = column.sortable === true && onSortChange !== undefined
+                const active = sort?.columnId === columnSortKey(column)
+                return (
+                  <th
+                    key={column.id}
+                    role={cardMode ? 'columnheader' : undefined}
+                    aria-sort={
+                      sortable
+                        ? active
+                          ? sort?.direction === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                        : undefined
+                    }
+                    className={cn('pb-2 font-medium', column.headerClassName)}
+                  >
+                    {sortable ? (
+                      <button
+                        type="button"
+                        onClick={() => onSortChange(nextTableSort(sort, column))}
+                        className="-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 text-left hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-muted"
+                      >
+                        {column.header}
+                        <span
+                          aria-hidden="true"
+                          className={active ? 'text-fg' : 'opacity-50'}
+                        >
+                          {active ? (sort?.direction === 'asc' ? '↑' : '↓') : '↕'}
+                        </span>
+                      </button>
+                    ) : (
+                      column.header
+                    )}
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody
+            ref={bodyRef}
+            role={cardMode ? 'rowgroup' : undefined}
+            className="divide-y divide-border-subtle"
+          >
+            {ordered.map((row, index) => (
+              <Fragment key={rowKey(row)}>
+                {renderRow ? (
+                  renderRow(row, index)
+                ) : (
+                  <DataTableRow
+                    cardMode={cardMode}
+                    selection={selection?.row(row)}
+                    onActivate={
+                      onRowActivate ? () => onRowActivate(row, index) : undefined
+                    }
+                  >
+                    {columns.map((column) => (
+                      <td
+                        key={column.id}
+                        className={column.cellClassName}
+                        title={column.cellTitle?.(row)}
+                        data-empty={
+                          column.cellEmpty?.(row) === true ? '' : undefined
+                        }
+                        {...mobileCellProps(column)}
+                      >
+                        <MobileCellLabel label={column.mobileLabel} />
+                        {column.cell?.(row)}
+                      </td>
+                    ))}
+                  </DataTableRow>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
+}
+
+/** sortOptionLabel is a column's name in the mobile sort menu. */
+function sortOptionLabel<T>(column: DataTableColumn<T>): string {
+  if (column.sortLabel !== undefined) return column.sortLabel
+  return typeof column.header === 'string' ? column.header : column.id
 }
 
 /** columnSortKey is the name a header reports: sortKey when set, id otherwise. */
@@ -265,14 +432,18 @@ export function useTableSort(defaultSort?: DataTableSort): {
 export function DataTableRow({
   selection,
   onActivate,
+  cardMode = false,
   children,
 }: {
   selection?: DataTableRowSelection
   onActivate?: () => void
+  /** Below md a row is a card; its role keeps the table semantics. */
+  cardMode?: boolean
   children: ReactNode
 }) {
   return (
     <tr
+      role={cardMode ? 'row' : undefined}
       tabIndex={onActivate ? 0 : undefined}
       onClick={onActivate}
       onKeyDown={
@@ -295,6 +466,8 @@ export function DataTableRow({
       {selection ? (
         // The checkbox cell must not open the row's detail view.
         <td
+          role={cardMode ? 'cell' : undefined}
+          data-mobile="select"
           className={selection.cellClassName}
           onClick={
             onActivate ? (event) => event.stopPropagation() : undefined

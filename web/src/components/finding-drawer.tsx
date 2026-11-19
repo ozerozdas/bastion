@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link, useRouterState } from '@tanstack/react-router'
 
+import { assetsQuery } from '../api/assets'
 import {
   useClearFindingState,
   useSetFindingState,
@@ -23,6 +25,7 @@ import { ErrorNote } from './error-note'
 import { MarkdownText } from './markdown-text'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+import { useDelayedClose } from './ui/presence'
 
 const factsClass =
   'grid grid-cols-[7rem_1fr] items-baseline gap-x-3 gap-y-1.5 text-[0.8125rem]'
@@ -58,7 +61,18 @@ export function FindingDrawer({
   readOnly = false,
 }: FindingDrawerProps) {
   const t = useT()
-  const { panel, onKeyDown } = useDrawerFocus(onClose)
+  // Closing slides the panel out before the parent unmounts it, so the exit is
+  // still a transition the browser can run.
+  const { close, closing } = useDelayedClose(onClose)
+  const { panel, onKeyDown } = useDrawerFocus(close)
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const assets = useQuery(assetsQuery)
+  const assetName =
+    assets.data?.find((asset) => asset.id === finding.asset_id)?.display_name ??
+    t('asset.fallback', { id: finding.asset_id })
+  // On the project's own page this link would point at the page it is on.
+  const showProject =
+    finding.asset_id > 0 && pathname !== `/findings/${String(finding.asset_id)}`
   const setState = useSetFindingState()
   const clearState = useClearFindingState()
   const { data: llm } = useQuery(llmQuery)
@@ -83,7 +97,7 @@ export function FindingDrawer({
         reason: reason.trim(),
         expires_at: expiryValue(expiryChoice, expiryDay),
       },
-      { onSuccess: onClose, onError: onRemoveFailed },
+      { onSuccess: close, onError: onRemoveFailed },
     )
   }
 
@@ -97,10 +111,10 @@ export function FindingDrawer({
   const stateLabel = finding.state ? t(stateLabels[finding.state]) : ''
 
   return (
-    <div className="fixed inset-0 z-40">
+    <div className="fixed inset-0 z-40" data-closing={closing ? '' : undefined}>
       <div
         aria-hidden="true"
-        onClick={onClose}
+        onClick={close}
         className="absolute inset-0 overlay-scrim"
       />
       <div
@@ -110,7 +124,7 @@ export function FindingDrawer({
         aria-labelledby="finding-title"
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col gap-4 overflow-y-auto border-l border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
+        className="panel-side absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col gap-4 overflow-y-auto border-l border-border-subtle bg-surface p-5 shadow-xl focus:outline-none"
       >
         <div className="sticky -top-5 z-10 -mx-5 -mt-5 flex items-start gap-3 border-b border-border-subtle bg-surface px-5 pt-5 pb-3">
           <div className="flex min-w-0 flex-col gap-1.5">
@@ -150,13 +164,30 @@ export function FindingDrawer({
             size="sm"
             variant="ghost"
             className="ml-auto shrink-0"
-            onClick={onClose}
+            onClick={close}
           >
             {t('finding.close')}
           </Button>
         </div>
 
         <dl className={factsClass}>
+          {showProject ? (
+            <>
+              <dt className="text-muted">{t('finding.project')}</dt>
+              <dd className="min-w-0">
+                <Link
+                  to="/findings/$assetId"
+                  params={{ assetId: String(finding.asset_id) }}
+                  onClick={close}
+                  title={assetName}
+                  className="block truncate hover:underline"
+                >
+                  {assetName}
+                </Link>
+              </dd>
+            </>
+          ) : null}
+
           {finding.rule_id ? (
             <>
               <dt className="text-muted">{t('finding.rule')}</dt>
@@ -324,7 +355,7 @@ export function FindingDrawer({
                           fingerprint: finding.fingerprint,
                           assetId: finding.asset_id,
                         },
-                        { onSuccess: onClose, onError: onRemoveFailed },
+                        { onSuccess: close, onError: onRemoveFailed },
                       )
                     }}
                     disabled={clearState.isPending}
