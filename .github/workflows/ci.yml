@@ -77,7 +77,8 @@ jobs:
           retention-days: 7
 
   # bastion scans its own repository. testdata holds intentional fixture
-  # vulnerabilities, so it is skipped. tools/ is the dev-tool module (linters,
+  # vulnerabilities, so it is skipped; skip-dirs is root-relative, so the
+  # nested govulncheck fixture module is listed too. tools/ is the dev-tool module (linters,
   # codegen); it never ships in the binary and dependabot keeps it current. SARIF upload to code scanning is in
   # action-sample.yml (the released action).
   self-scan:
@@ -112,7 +113,7 @@ jobs:
         run: |
           export BASTION_HMAC_KEY="$(openssl rand -base64 32)"
           ./bin/bastion --cache-dir "$HOME/.cache/bastion" scan --path . --no-store \
-            --skip-dirs testdata --skip-dirs tools --format sarif --fail-on critical > bastion.sarif
+            --skip-dirs testdata --skip-dirs internal/scanners/govulncheck/testdata --skip-dirs tools --format sarif --fail-on critical > bastion.sarif
       - uses: actions/upload-artifact@v7
         if: always()
         with:
