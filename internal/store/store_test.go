@@ -47,6 +47,7 @@ func TestOpenRunsMigrations(t *testing.T) {
 		"preferences",
 		"scanner_runs",
 		"scans",
+		"sla_thresholds",
 	}
 	var got []string
 	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'goose_db_version' ORDER BY name`)
@@ -76,8 +77,8 @@ func TestOpenRunsMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MigrationVersion: %v", err)
 	}
-	if version != 12 {
-		t.Fatalf("schema version = %d, want 12", version)
+	if version != 14 {
+		t.Fatalf("schema version = %d, want 14", version)
 	}
 }
 
@@ -122,8 +123,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MigrationVersion: %v", err)
 	}
-	if version != 12 {
-		t.Fatalf("schema version after re-open = %d, want 12", version)
+	if version != 14 {
+		t.Fatalf("schema version after re-open = %d, want 14", version)
 	}
 }
 

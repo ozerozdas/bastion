@@ -77,6 +77,27 @@ func (e AssetScanSchedule) Valid() bool {
 	}
 }
 
+// Defines values for CIRunTrigger.
+const (
+	CIRunTriggerApi CIRunTrigger = "api"
+	CIRunTriggerCli CIRunTrigger = "cli"
+	CIRunTriggerUi  CIRunTrigger = "ui"
+)
+
+// Valid indicates whether the value is a known member of the CIRunTrigger enum.
+func (e CIRunTrigger) Valid() bool {
+	switch e {
+	case CIRunTriggerApi:
+		return true
+	case CIRunTriggerCli:
+		return true
+	case CIRunTriggerUi:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConnectionKind.
 const (
 	ConnectionKindAws    ConnectionKind = "aws"
@@ -395,6 +416,27 @@ func (e LicencePolicyAction) Valid() bool {
 	}
 }
 
+// Defines values for LicenseEntryPolicy.
+const (
+	LicensePolicyAllow LicenseEntryPolicy = "allow"
+	LicensePolicyDeny  LicenseEntryPolicy = "deny"
+	LicensePolicyNone  LicenseEntryPolicy = "none"
+)
+
+// Valid indicates whether the value is a known member of the LicenseEntryPolicy enum.
+func (e LicenseEntryPolicy) Valid() bool {
+	switch e {
+	case LicensePolicyAllow:
+		return true
+	case LicensePolicyDeny:
+		return true
+	case LicensePolicyNone:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotificationThreshold.
 const (
 	NotificationThresholdCritical NotificationThreshold = "critical"
@@ -457,19 +499,19 @@ func (e SASTState) Valid() bool {
 
 // Defines values for ScanTrigger.
 const (
-	Api ScanTrigger = "api"
-	Cli ScanTrigger = "cli"
-	Ui  ScanTrigger = "ui"
+	ScanTriggerApi ScanTrigger = "api"
+	ScanTriggerCli ScanTrigger = "cli"
+	ScanTriggerUi  ScanTrigger = "ui"
 )
 
 // Valid indicates whether the value is a known member of the ScanTrigger enum.
 func (e ScanTrigger) Valid() bool {
 	switch e {
-	case Api:
+	case ScanTriggerApi:
 		return true
-	case Cli:
+	case ScanTriggerCli:
 		return true
-	case Ui:
+	case ScanTriggerUi:
 		return true
 	default:
 		return false
@@ -833,6 +875,27 @@ func (e ListFindingsParamsOrder) Valid() bool {
 	}
 }
 
+// Defines values for GetReportCIHistoryParamsTrigger.
+const (
+	GetReportCIHistoryParamsTriggerApi GetReportCIHistoryParamsTrigger = "api"
+	GetReportCIHistoryParamsTriggerCli GetReportCIHistoryParamsTrigger = "cli"
+	GetReportCIHistoryParamsTriggerUi  GetReportCIHistoryParamsTrigger = "ui"
+)
+
+// Valid indicates whether the value is a known member of the GetReportCIHistoryParamsTrigger enum.
+func (e GetReportCIHistoryParamsTrigger) Valid() bool {
+	switch e {
+	case GetReportCIHistoryParamsTriggerApi:
+		return true
+	case GetReportCIHistoryParamsTriggerCli:
+		return true
+	case GetReportCIHistoryParamsTriggerUi:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListScansParamsSort.
 const (
 	ListScansParamsSortDuration ListScansParamsSort = "duration"
@@ -992,6 +1055,49 @@ type AssetTrend struct {
 	Scans []TrendScan `json:"scans"`
 }
 
+// AuditAsset defines model for AuditAsset.
+type AuditAsset struct {
+	AssetId     int64  `json:"asset_id"`
+	DisplayName string `json:"display_name"`
+
+	// Kind What the asset is.
+	Kind AssetKind `json:"kind"`
+}
+
+// AuditReport defines model for AuditReport.
+type AuditReport struct {
+	// Asset The requested asset, or `null` for the whole fleet.
+	Asset *AuditAsset `json:"asset"`
+
+	// Findings Findings in scope, most severe first, capped at 500.
+	Findings []Finding `json:"findings"`
+
+	// FixPlan One asset's open vulnerability findings grouped into package upgrades
+	// (PROJECT_SPEC.md §7.2, §8 Phase 3).
+	FixPlan FixPlan `json:"fix_plan"`
+
+	// GeneratedAt When the pack was built.
+	GeneratedAt time.Time `json:"generated_at"`
+
+	// Summary Findings in scope per effective severity; `total` counts them all,
+	// including every finding dropped from `findings` by the 500-entry cap.
+	Summary AuditSummary `json:"summary"`
+
+	// Truncated Whether `findings` dropped findings over the cap.
+	Truncated bool `json:"truncated"`
+}
+
+// AuditSummary Findings in scope per effective severity; `total` counts them all,
+// including every finding dropped from `findings` by the 500-entry cap.
+type AuditSummary struct {
+	Critical int `json:"critical"`
+	High     int `json:"high"`
+	Low      int `json:"low"`
+	Medium   int `json:"medium"`
+	Total    int `json:"total"`
+	Unknown  int `json:"unknown"`
+}
+
 // BulkSetFindingStateRequest defines model for BulkSetFindingStateRequest.
 type BulkSetFindingStateRequest struct {
 	// AssetId The asset every fingerprint belongs to; decisions are per asset.
@@ -1011,6 +1117,88 @@ type BulkSetFindingStateRequest struct {
 
 	// State The user decision that hides a finding across scans.
 	State FindingState `json:"state"`
+}
+
+// CIHistoryReport defines model for CIHistoryReport.
+type CIHistoryReport struct {
+	// Runs Scan runs, newest first.
+	Runs []CIRun `json:"runs"`
+}
+
+// CIRun One scan the history lists. `counts` holds the findings the scan
+// recorded per raw severity: ignored findings are counted and no licence
+// policy applies, so it reports what the run produced.
+type CIRun struct {
+	AssetId int64 `json:"asset_id"`
+
+	// Counts Findings per severity; severities without findings are zero.
+	Counts      SeverityTotals `json:"counts"`
+	DisplayName string         `json:"display_name"`
+
+	// DurationMs Finish minus start in milliseconds, or `null`.
+	DurationMs *int `json:"duration_ms"`
+
+	// FinishedAt Absent while the scan has not finished.
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ScanId     int64      `json:"scan_id"`
+
+	// Scanners The scan's scanner runs.
+	Scanners []CIScannerRun `json:"scanners"`
+
+	// StartedAt Absent while the scan is still queued.
+	StartedAt *time.Time `json:"started_at,omitempty"`
+
+	// Status Lifecycle state of a scan.
+	Status ScanStatus `json:"status"`
+
+	// Trigger Who started the scan.
+	Trigger CIRunTrigger `json:"trigger"`
+}
+
+// CIRunTrigger Who started the scan.
+type CIRunTrigger string
+
+// CIScannerRun defines model for CIScannerRun.
+type CIScannerRun struct {
+	Scanner string `json:"scanner"`
+
+	// Status Lifecycle state of a scan.
+	Status ScanStatus `json:"status"`
+}
+
+// CVEInsightAsset defines model for CVEInsightAsset.
+type CVEInsightAsset struct {
+	AssetId     int64  `json:"asset_id"`
+	DisplayName string `json:"display_name"`
+
+	// FirstSeen When the scan that first reported this finding for the asset
+	// finished. Absent when that scan is unknown.
+	FirstSeen    *time.Time `json:"first_seen,omitempty"`
+	FixedVersion *string    `json:"fixed_version,omitempty"`
+
+	// Kind What the asset is.
+	Kind           AssetKind `json:"kind"`
+	PackageName    *string   `json:"package_name,omitempty"`
+	PackageVersion *string   `json:"package_version,omitempty"`
+
+	// Severity Normalized severity scale (`unknown` when a scanner gave no usable level).
+	Severity Severity `json:"severity"`
+}
+
+// CVEInsights Latest open findings matching one CVE or GHSA id, and the id's EPSS
+// prediction when the feed scores it.
+type CVEInsights struct {
+	// Assets One entry per matching asset; empty when nothing matches.
+	Assets []CVEInsightAsset `json:"assets"`
+
+	// Cve The id the report matched; CVEs are upper-cased.
+	//
+	// Examples: CVE-2021-44228
+	Cve string `json:"cve"`
+
+	// Epss FIRST.org's prediction for the id, or `null` when the feed is off
+	// or does not score it.
+	Epss *EPSSScore `json:"epss"`
 }
 
 // Connection A configured integration. A credential is never part of this shape: a
@@ -1324,6 +1512,10 @@ type ExplainFindingResponse struct {
 // fields are absent when the scanner did not provide them.
 type Finding struct {
 	AssetId int64 `json:"asset_id"`
+
+	// Cwe Common Weakness Enumeration ids the finding maps to, as canonical
+	// `CWE-<n>` strings. `[]` when the scanner reported none.
+	Cwe []string `json:"cwe"`
 
 	// DecidedBy Who made a finding decision, the user or an agent over MCP.
 	DecidedBy   *FindingDecider `json:"decided_by,omitempty"`
@@ -1771,6 +1963,56 @@ type LicencePolicy struct {
 // rule applies.
 type LicencePolicyAction string
 
+// LicenseEntry One licence name and the policy that applies to it.
+type LicenseEntry struct {
+	// Assets Number of distinct assets.
+	Assets int `json:"assets"`
+
+	// IgnoredPackages Number of distinct package names under a live finding decision.
+	IgnoredPackages int `json:"ignored_packages"`
+
+	// Items One entry per finding, by asset and package.
+	Items []LicenseItem `json:"items"`
+
+	// License The licence name, as the scanner reported it.
+	License string `json:"license"`
+
+	// Packages Number of distinct package names.
+	Packages int `json:"packages"`
+
+	// Policy The effective rule: `allow`, `deny`, or `none` when no rule
+	// matched.
+	Policy LicenseEntryPolicy `json:"policy"`
+}
+
+// LicenseEntryPolicy The effective rule: `allow`, `deny`, or `none` when no rule
+// matched.
+type LicenseEntryPolicy string
+
+// LicenseItem defines model for LicenseItem.
+type LicenseItem struct {
+	AssetId     int64  `json:"asset_id"`
+	DisplayName string `json:"display_name"`
+	Ecosystem   string `json:"ecosystem"`
+
+	// Ignored True while a live finding decision covers this finding, so the
+	// inventory can show it without hiding it.
+	Ignored        bool   `json:"ignored"`
+	PackageName    string `json:"package_name"`
+	PackageVersion string `json:"package_version"`
+
+	// State The live decision behind `ignored`, or `null` when the finding has
+	// none.
+	State *FindingState `json:"state"`
+}
+
+// LicensesReport defines model for LicensesReport.
+type LicensesReport struct {
+	// Licenses Licence entries, `deny` first and then by package count
+	// descending.
+	Licenses []LicenseEntry `json:"licenses"`
+}
+
 // MCPSetup How to start `bastion mcp` for this install: the running binary's real
 // path (symlinks resolved) and the arguments that point it at the same
 // data directory as `bastion serve`.
@@ -1782,6 +2024,12 @@ type MCPSetup struct {
 
 	// Command Absolute path of the running bastion binary.
 	Command string `json:"command"`
+}
+
+// MalwareReport defines model for MalwareReport.
+type MalwareReport struct {
+	// Findings The open malware findings, most severe first.
+	Findings []Finding `json:"findings"`
 }
 
 // NotificationSettings The stored notification choices. The Slack webhook and the SMTP
@@ -1830,6 +2078,33 @@ type NotificationSettings struct {
 // NotificationThreshold The lowest severity that makes a new finding notify. `high` counts
 // critical and high findings; `critical` counts only critical ones.
 type NotificationThreshold string
+
+// OWASPCategory defines model for OWASPCategory.
+type OWASPCategory struct {
+	// Count Every open finding in the category, including any the cap dropped.
+	Count int `json:"count"`
+
+	// Findings The category's open findings, most severe first, capped at 50.
+	Findings []Finding `json:"findings"`
+
+	// Id The 2021 category id, or `unmapped`.
+	//
+	// Examples: A03
+	Id string `json:"id"`
+
+	// Title Examples: A03:2021 - Injection
+	Title string `json:"title"`
+
+	// Truncated `count` exceeds the 50 findings the category carries.
+	Truncated bool `json:"truncated"`
+}
+
+// OWASPTop10 Latest open findings grouped by OWASP Top 10 2021 category. Every
+// category is present, in order, with `unmapped` last.
+type OWASPTop10 struct {
+	// Categories `A01` to `A10` in order, then `unmapped`.
+	Categories []OWASPCategory `json:"categories"`
+}
 
 // OutdatedStatus The opt-in outdated-package lookup as the UI and the CLI see it. The
 // setting is off by default; with it off no request reaches deps.dev and
@@ -1910,6 +2185,64 @@ type RenameConnectionRequest struct {
 	Name string `json:"name"`
 }
 
+// ReportTrend defines model for ReportTrend.
+type ReportTrend struct {
+	// Series One series per asset, sorted by `display_name`.
+	Series []ReportTrendSeries `json:"series"`
+}
+
+// ReportTrendPoint defines model for ReportTrendPoint.
+type ReportTrendPoint struct {
+	Critical int `json:"critical"`
+
+	// Date The day, as `YYYY-MM-DD`.
+	//
+	// Examples: 2026-11-10
+	Date    string `json:"date"`
+	High    int    `json:"high"`
+	Low     int    `json:"low"`
+	Medium  int    `json:"medium"`
+	Unknown int    `json:"unknown"`
+}
+
+// ReportTrendSeries defines model for ReportTrendSeries.
+type ReportTrendSeries struct {
+	AssetId     int64  `json:"asset_id"`
+	DisplayName string `json:"display_name"`
+
+	// Points One point per scanned day, oldest first.
+	Points []ReportTrendPoint `json:"points"`
+}
+
+// RuntimeAsset defines model for RuntimeAsset.
+type RuntimeAsset struct {
+	AssetId     int64  `json:"asset_id"`
+	DisplayName string `json:"display_name"`
+}
+
+// RuntimeEntry defines model for RuntimeEntry.
+type RuntimeEntry struct {
+	// Assets The assets that run this runtime, sorted by name.
+	Assets    []RuntimeAsset `json:"assets"`
+	Ecosystem string         `json:"ecosystem"`
+
+	// EolDate The end-of-life date as `YYYY-MM-DD`, or `null` when the scanner
+	// reported none.
+	EolDate *string `json:"eol_date"`
+
+	// FixedVersion The newest supported version, or `null` when the scanner reported
+	// none.
+	FixedVersion *string `json:"fixed_version"`
+	Name         string  `json:"name"`
+	Version      string  `json:"version"`
+}
+
+// RuntimesReport defines model for RuntimesReport.
+type RuntimesReport struct {
+	// Runtimes One entry per runtime name and version.
+	Runtimes []RuntimeEntry `json:"runtimes"`
+}
+
 // SASTState State of the downloaded Opengrep module. `not_installed` is normal
 // before the first download; `checksum_bad` means the file on disk does
 // not match the pinned digest and will not run.
@@ -1942,6 +2275,59 @@ type SASTStatus struct {
 	//
 	// Examples: v1.33.1
 	Version string `json:"version"`
+}
+
+// SLAOverdueFinding defines model for SLAOverdueFinding.
+type SLAOverdueFinding struct {
+	// AgeDays Whole days since `first_seen`.
+	AgeDays int `json:"age_days"`
+
+	// Finding One normalized finding of an asset's latest succeeded scan. Optional
+	// fields are absent when the scanner did not provide them.
+	Finding Finding `json:"finding"`
+
+	// FirstSeen When the scan that first reported this finding for the asset
+	// finished.
+	FirstSeen time.Time `json:"first_seen"`
+
+	// OverdueDays `age_days` minus `threshold_days`.
+	OverdueDays int `json:"overdue_days"`
+
+	// ThresholdDays The severity's allowed age in days.
+	ThresholdDays int `json:"threshold_days"`
+}
+
+// SLAReport Overdue open findings and the fix statistics of the window.
+type SLAReport struct {
+	// FixedInWindow Findings fixed in the window whose fix date falls inside it.
+	FixedInWindow int `json:"fixed_in_window"`
+
+	// MeanTimeToFixDays Mean days from first appearance to fix over `fixed_in_window`, or
+	// `null` when nothing was fixed in the window.
+	MeanTimeToFixDays *float64 `json:"mean_time_to_fix_days,omitempty"`
+
+	// OpenCount Open findings in scope, of every severity.
+	OpenCount int `json:"open_count"`
+
+	// Overdue Overdue findings, most overdue first, capped at 500.
+	Overdue []SLAOverdueFinding `json:"overdue"`
+
+	// OverdueCount Findings in `overdue`.
+	OverdueCount int `json:"overdue_count"`
+
+	// OverdueTruncated More findings are overdue than the 500 `overdue` carries.
+	OverdueTruncated bool `json:"overdue_truncated"`
+
+	// Thresholds The days a finding of each severity may stay open.
+	Thresholds SLAThresholds `json:"thresholds"`
+}
+
+// SLAThresholds The days a finding of each severity may stay open.
+type SLAThresholds struct {
+	Critical int `json:"critical"`
+	High     int `json:"high"`
+	Low      int `json:"low"`
+	Medium   int `json:"medium"`
 }
 
 // Scan One scan of one asset. `counts` are every finding this scan recorded,
@@ -2474,6 +2860,79 @@ type ListLLMModelsParams struct {
 	Endpoint *string `form:"endpoint,omitempty" json:"endpoint,omitempty"`
 }
 
+// GetReportAuditParams defines parameters for GetReportAudit.
+type GetReportAuditParams struct {
+	// AssetId Only findings of this asset.
+	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+}
+
+// GetReportCIHistoryParams defines parameters for GetReportCIHistory.
+type GetReportCIHistoryParams struct {
+	// AssetId Only findings of this asset.
+	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+
+	// Trigger Only list the runs this trigger started; absent lists every scan.
+	Trigger *GetReportCIHistoryParamsTrigger `form:"trigger,omitempty" json:"trigger,omitempty"`
+
+	// Limit Maximum number of runs to return, newest first.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetReportCIHistoryParamsTrigger defines parameters for GetReportCIHistory.
+type GetReportCIHistoryParamsTrigger string
+
+// GetCVEInsightsParams defines parameters for GetCVEInsights.
+type GetCVEInsightsParams struct {
+	// Cve The advisory id to look up: `CVE-YYYY-N...` or
+	// `GHSA-xxxx-xxxx-xxxx`, case-insensitive.
+	Cve string `form:"cve" json:"cve"`
+
+	// AssetId Only findings of this asset.
+	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+}
+
+// GetReportLicensesParams defines parameters for GetReportLicenses.
+type GetReportLicensesParams struct {
+	// AssetId Only findings of this asset.
+	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+}
+
+// GetReportMalwareParams defines parameters for GetReportMalware.
+type GetReportMalwareParams struct {
+	// AssetId Only findings of this asset.
+	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+}
+
+// GetOwaspTop10Params defines parameters for GetOwaspTop10.
+type GetOwaspTop10Params struct {
+	// AssetId Only findings of this asset.
+	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+}
+
+// GetReportRuntimesParams defines parameters for GetReportRuntimes.
+type GetReportRuntimesParams struct {
+	// AssetId Only findings of this asset.
+	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+}
+
+// GetReportSLAParams defines parameters for GetReportSLA.
+type GetReportSLAParams struct {
+	// AssetId Only findings of this asset.
+	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+
+	// Days Length of the fix window in days, ending now. Defaults to 90.
+	Days *int `form:"days,omitempty" json:"days,omitempty"`
+}
+
+// GetReportTrendParams defines parameters for GetReportTrend.
+type GetReportTrendParams struct {
+	// AssetId Only findings of this asset.
+	AssetId *AssetIDQuery `form:"asset_id,omitempty" json:"asset_id,omitempty"`
+
+	// Days Length of the window in days, ending today. Defaults to 90.
+	Days *int `form:"days,omitempty" json:"days,omitempty"`
+}
+
 // ListScansParams defines parameters for ListScans.
 type ListScansParams struct {
 	// AssetId Only findings of this asset.
@@ -2577,6 +3036,9 @@ type SetSASTEnabledJSONRequestBody = SetSASTEnabledRequest
 
 // CreateScansJSONRequestBody defines body for CreateScans for application/json ContentType.
 type CreateScansJSONRequestBody = CreateScansRequest
+
+// SetSLASettingsJSONRequestBody defines body for SetSLASettings for application/json ContentType.
+type SetSLASettingsJSONRequestBody = SLAThresholds
 
 // SetUpdateConsentJSONRequestBody defines body for SetUpdateConsent for application/json ContentType.
 type SetUpdateConsentJSONRequestBody = SetUpdateConsentRequest
@@ -2867,9 +3329,36 @@ type ServerInterface interface {
 	// SetReachabilityEnabled Store the Go reachability opt-in choice.
 	// (PUT /api/reachability)
 	SetReachabilityEnabled(w http.ResponseWriter, r *http.Request)
+	// GetReportAudit Audit pack for one asset or the whole fleet.
+	// (GET /api/reports/audit)
+	GetReportAudit(w http.ResponseWriter, r *http.Request, params GetReportAuditParams)
+	// GetReportCIHistory Scan runs of every trigger, newest first.
+	// (GET /api/reports/ci-history)
+	GetReportCIHistory(w http.ResponseWriter, r *http.Request, params GetReportCIHistoryParams)
+	// GetCVEInsights Assets affected by one CVE or GHSA id, with its EPSS score.
+	// (GET /api/reports/cve-insights)
+	GetCVEInsights(w http.ResponseWriter, r *http.Request, params GetCVEInsightsParams)
 	// GetDashboard Dashboard aggregates across non-archived assets.
 	// (GET /api/reports/dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
+	// GetReportLicenses Licence inventory with the effective allow/deny policy.
+	// (GET /api/reports/licenses)
+	GetReportLicenses(w http.ResponseWriter, r *http.Request, params GetReportLicensesParams)
+	// GetReportMalware Latest open malware findings.
+	// (GET /api/reports/malware)
+	GetReportMalware(w http.ResponseWriter, r *http.Request, params GetReportMalwareParams)
+	// GetOwaspTop10 Latest open findings grouped by OWASP Top 10 2021 category.
+	// (GET /api/reports/owasp-top10)
+	GetOwaspTop10(w http.ResponseWriter, r *http.Request, params GetOwaspTop10Params)
+	// GetReportRuntimes End-of-life runtimes across the latest open findings.
+	// (GET /api/reports/runtimes)
+	GetReportRuntimes(w http.ResponseWriter, r *http.Request, params GetReportRuntimesParams)
+	// GetReportSLA SLA breaches and fix times.
+	// (GET /api/reports/sla)
+	GetReportSLA(w http.ResponseWriter, r *http.Request, params GetReportSLAParams)
+	// GetReportTrend Per-asset daily open finding counts by severity.
+	// (GET /api/reports/trend)
+	GetReportTrend(w http.ResponseWriter, r *http.Request, params GetReportTrendParams)
 	// GetSASTStatus Report the SAST module state.
 	// (GET /api/sast)
 	GetSASTStatus(w http.ResponseWriter, r *http.Request)
@@ -2894,6 +3383,12 @@ type ServerInterface interface {
 	// ListScanFindings Findings of one scan.
 	// (GET /api/scans/{id}/findings)
 	ListScanFindings(w http.ResponseWriter, r *http.Request, id ScanID, params ListScanFindingsParams)
+	// GetSLASettings Read the SLA thresholds.
+	// (GET /api/settings/sla)
+	GetSLASettings(w http.ResponseWriter, r *http.Request)
+	// SetSLASettings Replace the SLA thresholds.
+	// (PUT /api/settings/sla)
+	SetSLASettings(w http.ResponseWriter, r *http.Request)
 	// GetTrivyDB Report the vulnerability DB state.
 	// (GET /api/trivy-db)
 	GetTrivyDB(w http.ResponseWriter, r *http.Request)
@@ -3996,11 +4491,373 @@ func (siw *ServerInterfaceWrapper) SetReachabilityEnabled(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// GetReportAudit operation middleware
+func (siw *ServerInterfaceWrapper) GetReportAudit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetReportAuditParams
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReportAudit(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetReportCIHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetReportCIHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetReportCIHistoryParams
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "trigger" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "trigger", r.URL.Query(), &params.Trigger, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "trigger"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trigger", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReportCIHistory(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCVEInsights operation middleware
+func (siw *ServerInterfaceWrapper) GetCVEInsights(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCVEInsightsParams
+
+	// ------------- Required query parameter "cve" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "cve", r.URL.Query(), &params.Cve, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cve"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cve", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCVEInsights(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetDashboard operation middleware
 func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDashboard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetReportLicenses operation middleware
+func (siw *ServerInterfaceWrapper) GetReportLicenses(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetReportLicensesParams
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReportLicenses(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetReportMalware operation middleware
+func (siw *ServerInterfaceWrapper) GetReportMalware(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetReportMalwareParams
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReportMalware(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOwaspTop10 operation middleware
+func (siw *ServerInterfaceWrapper) GetOwaspTop10(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetOwaspTop10Params
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOwaspTop10(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetReportRuntimes operation middleware
+func (siw *ServerInterfaceWrapper) GetReportRuntimes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetReportRuntimesParams
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReportRuntimes(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetReportSLA operation middleware
+func (siw *ServerInterfaceWrapper) GetReportSLA(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetReportSLAParams
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "days", r.URL.Query(), &params.Days, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReportSLA(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetReportTrend operation middleware
+func (siw *ServerInterfaceWrapper) GetReportTrend(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetReportTrendParams
+
+	// ------------- Optional query parameter "asset_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "asset_id", r.URL.Query(), &params.AssetId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "asset_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "asset_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "days", r.URL.Query(), &params.Days, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReportTrend(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4312,6 +5169,34 @@ func (siw *ServerInterfaceWrapper) ListScanFindings(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetSLASettings operation middleware
+func (siw *ServerInterfaceWrapper) GetSLASettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSLASettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetSLASettings operation middleware
+func (siw *ServerInterfaceWrapper) SetSLASettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetSLASettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTrivyDB operation middleware
 func (siw *ServerInterfaceWrapper) GetTrivyDB(w http.ResponseWriter, r *http.Request) {
 
@@ -4537,6 +5422,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/licence-policy", wrapper.SetLicencePolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/preferences", wrapper.GetPreferences)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/preferences", wrapper.SetPreferences)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/sla", wrapper.GetSLASettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/sla", wrapper.SetSLASettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/notifications", wrapper.GetNotificationSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/notifications", wrapper.SetNotificationSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/notifications/test", wrapper.SendTestNotification)
@@ -4545,6 +5432,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/llm/models", wrapper.ListLLMModels)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/assets/{assetId}/findings/{fingerprint}/explain", wrapper.ExplainFinding)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/dashboard", wrapper.GetDashboard)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/owasp-top10", wrapper.GetOwaspTop10)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/cve-insights", wrapper.GetCVEInsights)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/trend", wrapper.GetReportTrend)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/runtimes", wrapper.GetReportRuntimes)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/malware", wrapper.GetReportMalware)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/sla", wrapper.GetReportSLA)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/licenses", wrapper.GetReportLicenses)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/audit", wrapper.GetReportAudit)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/reports/ci-history", wrapper.GetReportCIHistory)
 
 	return m
 }
@@ -10414,6 +11310,401 @@ func (response SetReachabilityEnabled500ApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type GetReportAuditRequestObject struct {
+	Params GetReportAuditParams
+}
+
+type GetReportAuditResponseObject interface {
+	VisitGetReportAuditResponse(w http.ResponseWriter) error
+}
+
+type GetReportAudit200JSONResponse AuditReport
+
+func (response GetReportAudit200JSONResponse) VisitGetReportAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportAudit400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetReportAudit400ApplicationProblemPlusJSONResponse) VisitGetReportAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportAudit401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetReportAudit401ApplicationProblemPlusJSONResponse) VisitGetReportAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportAudit403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportAudit403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportAudit403ResponseHeaders
+}
+
+func (response GetReportAudit403ApplicationProblemPlusJSONResponse) VisitGetReportAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportAudit404ApplicationProblemPlusJSONResponse Problem
+
+func (response GetReportAudit404ApplicationProblemPlusJSONResponse) VisitGetReportAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportAudit421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportAudit421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportAudit421ResponseHeaders
+}
+
+func (response GetReportAudit421ApplicationProblemPlusJSONResponse) VisitGetReportAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportAudit500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportAudit500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportAudit500ResponseHeaders
+}
+
+func (response GetReportAudit500ApplicationProblemPlusJSONResponse) VisitGetReportAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportCIHistoryRequestObject struct {
+	Params GetReportCIHistoryParams
+}
+
+type GetReportCIHistoryResponseObject interface {
+	VisitGetReportCIHistoryResponse(w http.ResponseWriter) error
+}
+
+type GetReportCIHistory200JSONResponse CIHistoryReport
+
+func (response GetReportCIHistory200JSONResponse) VisitGetReportCIHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportCIHistory400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetReportCIHistory400ApplicationProblemPlusJSONResponse) VisitGetReportCIHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportCIHistory401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetReportCIHistory401ApplicationProblemPlusJSONResponse) VisitGetReportCIHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportCIHistory403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportCIHistory403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportCIHistory403ResponseHeaders
+}
+
+func (response GetReportCIHistory403ApplicationProblemPlusJSONResponse) VisitGetReportCIHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportCIHistory421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportCIHistory421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportCIHistory421ResponseHeaders
+}
+
+func (response GetReportCIHistory421ApplicationProblemPlusJSONResponse) VisitGetReportCIHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportCIHistory500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportCIHistory500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportCIHistory500ResponseHeaders
+}
+
+func (response GetReportCIHistory500ApplicationProblemPlusJSONResponse) VisitGetReportCIHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCVEInsightsRequestObject struct {
+	Params GetCVEInsightsParams
+}
+
+type GetCVEInsightsResponseObject interface {
+	VisitGetCVEInsightsResponse(w http.ResponseWriter) error
+}
+
+type GetCVEInsights200JSONResponse CVEInsights
+
+func (response GetCVEInsights200JSONResponse) VisitGetCVEInsightsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCVEInsights400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetCVEInsights400ApplicationProblemPlusJSONResponse) VisitGetCVEInsightsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCVEInsights401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetCVEInsights401ApplicationProblemPlusJSONResponse) VisitGetCVEInsightsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCVEInsights403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetCVEInsights403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetCVEInsights403ResponseHeaders
+}
+
+func (response GetCVEInsights403ApplicationProblemPlusJSONResponse) VisitGetCVEInsightsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCVEInsights421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetCVEInsights421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetCVEInsights421ResponseHeaders
+}
+
+func (response GetCVEInsights421ApplicationProblemPlusJSONResponse) VisitGetCVEInsightsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCVEInsights500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetCVEInsights500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetCVEInsights500ResponseHeaders
+}
+
+func (response GetCVEInsights500ApplicationProblemPlusJSONResponse) VisitGetCVEInsightsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetDashboardRequestObject struct {
 }
 
@@ -10512,6 +11803,768 @@ type GetDashboard500ApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetDashboard500ApplicationProblemPlusJSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportLicensesRequestObject struct {
+	Params GetReportLicensesParams
+}
+
+type GetReportLicensesResponseObject interface {
+	VisitGetReportLicensesResponse(w http.ResponseWriter) error
+}
+
+type GetReportLicenses200JSONResponse LicensesReport
+
+func (response GetReportLicenses200JSONResponse) VisitGetReportLicensesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportLicenses400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetReportLicenses400ApplicationProblemPlusJSONResponse) VisitGetReportLicensesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportLicenses401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetReportLicenses401ApplicationProblemPlusJSONResponse) VisitGetReportLicensesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportLicenses403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportLicenses403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportLicenses403ResponseHeaders
+}
+
+func (response GetReportLicenses403ApplicationProblemPlusJSONResponse) VisitGetReportLicensesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportLicenses421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportLicenses421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportLicenses421ResponseHeaders
+}
+
+func (response GetReportLicenses421ApplicationProblemPlusJSONResponse) VisitGetReportLicensesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportLicenses500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportLicenses500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportLicenses500ResponseHeaders
+}
+
+func (response GetReportLicenses500ApplicationProblemPlusJSONResponse) VisitGetReportLicensesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportMalwareRequestObject struct {
+	Params GetReportMalwareParams
+}
+
+type GetReportMalwareResponseObject interface {
+	VisitGetReportMalwareResponse(w http.ResponseWriter) error
+}
+
+type GetReportMalware200JSONResponse MalwareReport
+
+func (response GetReportMalware200JSONResponse) VisitGetReportMalwareResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportMalware400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetReportMalware400ApplicationProblemPlusJSONResponse) VisitGetReportMalwareResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportMalware401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetReportMalware401ApplicationProblemPlusJSONResponse) VisitGetReportMalwareResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportMalware403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportMalware403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportMalware403ResponseHeaders
+}
+
+func (response GetReportMalware403ApplicationProblemPlusJSONResponse) VisitGetReportMalwareResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportMalware421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportMalware421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportMalware421ResponseHeaders
+}
+
+func (response GetReportMalware421ApplicationProblemPlusJSONResponse) VisitGetReportMalwareResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportMalware500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportMalware500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportMalware500ResponseHeaders
+}
+
+func (response GetReportMalware500ApplicationProblemPlusJSONResponse) VisitGetReportMalwareResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOwaspTop10RequestObject struct {
+	Params GetOwaspTop10Params
+}
+
+type GetOwaspTop10ResponseObject interface {
+	VisitGetOwaspTop10Response(w http.ResponseWriter) error
+}
+
+type GetOwaspTop10200JSONResponse OWASPTop10
+
+func (response GetOwaspTop10200JSONResponse) VisitGetOwaspTop10Response(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOwaspTop10400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetOwaspTop10400ApplicationProblemPlusJSONResponse) VisitGetOwaspTop10Response(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOwaspTop10401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetOwaspTop10401ApplicationProblemPlusJSONResponse) VisitGetOwaspTop10Response(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOwaspTop10403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetOwaspTop10403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetOwaspTop10403ResponseHeaders
+}
+
+func (response GetOwaspTop10403ApplicationProblemPlusJSONResponse) VisitGetOwaspTop10Response(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOwaspTop10421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetOwaspTop10421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetOwaspTop10421ResponseHeaders
+}
+
+func (response GetOwaspTop10421ApplicationProblemPlusJSONResponse) VisitGetOwaspTop10Response(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOwaspTop10500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetOwaspTop10500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetOwaspTop10500ResponseHeaders
+}
+
+func (response GetOwaspTop10500ApplicationProblemPlusJSONResponse) VisitGetOwaspTop10Response(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportRuntimesRequestObject struct {
+	Params GetReportRuntimesParams
+}
+
+type GetReportRuntimesResponseObject interface {
+	VisitGetReportRuntimesResponse(w http.ResponseWriter) error
+}
+
+type GetReportRuntimes200JSONResponse RuntimesReport
+
+func (response GetReportRuntimes200JSONResponse) VisitGetReportRuntimesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportRuntimes400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetReportRuntimes400ApplicationProblemPlusJSONResponse) VisitGetReportRuntimesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportRuntimes401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetReportRuntimes401ApplicationProblemPlusJSONResponse) VisitGetReportRuntimesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportRuntimes403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportRuntimes403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportRuntimes403ResponseHeaders
+}
+
+func (response GetReportRuntimes403ApplicationProblemPlusJSONResponse) VisitGetReportRuntimesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportRuntimes421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportRuntimes421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportRuntimes421ResponseHeaders
+}
+
+func (response GetReportRuntimes421ApplicationProblemPlusJSONResponse) VisitGetReportRuntimesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportRuntimes500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportRuntimes500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportRuntimes500ResponseHeaders
+}
+
+func (response GetReportRuntimes500ApplicationProblemPlusJSONResponse) VisitGetReportRuntimesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportSLARequestObject struct {
+	Params GetReportSLAParams
+}
+
+type GetReportSLAResponseObject interface {
+	VisitGetReportSLAResponse(w http.ResponseWriter) error
+}
+
+type GetReportSLA200JSONResponse SLAReport
+
+func (response GetReportSLA200JSONResponse) VisitGetReportSLAResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportSLA400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetReportSLA400ApplicationProblemPlusJSONResponse) VisitGetReportSLAResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportSLA401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetReportSLA401ApplicationProblemPlusJSONResponse) VisitGetReportSLAResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportSLA403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportSLA403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportSLA403ResponseHeaders
+}
+
+func (response GetReportSLA403ApplicationProblemPlusJSONResponse) VisitGetReportSLAResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportSLA421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportSLA421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportSLA421ResponseHeaders
+}
+
+func (response GetReportSLA421ApplicationProblemPlusJSONResponse) VisitGetReportSLAResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportSLA500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportSLA500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportSLA500ResponseHeaders
+}
+
+func (response GetReportSLA500ApplicationProblemPlusJSONResponse) VisitGetReportSLAResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportTrendRequestObject struct {
+	Params GetReportTrendParams
+}
+
+type GetReportTrendResponseObject interface {
+	VisitGetReportTrendResponse(w http.ResponseWriter) error
+}
+
+type GetReportTrend200JSONResponse ReportTrend
+
+func (response GetReportTrend200JSONResponse) VisitGetReportTrendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportTrend400ApplicationProblemPlusJSONResponse Problem
+
+func (response GetReportTrend400ApplicationProblemPlusJSONResponse) VisitGetReportTrendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportTrend401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetReportTrend401ApplicationProblemPlusJSONResponse) VisitGetReportTrendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportTrend403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportTrend403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportTrend403ResponseHeaders
+}
+
+func (response GetReportTrend403ApplicationProblemPlusJSONResponse) VisitGetReportTrendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportTrend421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportTrend421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportTrend421ResponseHeaders
+}
+
+func (response GetReportTrend421ApplicationProblemPlusJSONResponse) VisitGetReportTrendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReportTrend500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetReportTrend500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetReportTrend500ResponseHeaders
+}
+
+func (response GetReportTrend500ApplicationProblemPlusJSONResponse) VisitGetReportTrendResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -11663,6 +13716,245 @@ func (response ListScanFindings500ApplicationProblemPlusJSONResponse) VisitListS
 	return err
 }
 
+type GetSLASettingsRequestObject struct {
+}
+
+type GetSLASettingsResponseObject interface {
+	VisitGetSLASettingsResponse(w http.ResponseWriter) error
+}
+
+type GetSLASettings200JSONResponse SLAThresholds
+
+func (response GetSLASettings200JSONResponse) VisitGetSLASettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSLASettings401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetSLASettings401ApplicationProblemPlusJSONResponse) VisitGetSLASettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSLASettings403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetSLASettings403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetSLASettings403ResponseHeaders
+}
+
+func (response GetSLASettings403ApplicationProblemPlusJSONResponse) VisitGetSLASettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSLASettings421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetSLASettings421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetSLASettings421ResponseHeaders
+}
+
+func (response GetSLASettings421ApplicationProblemPlusJSONResponse) VisitGetSLASettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSLASettings500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetSLASettings500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetSLASettings500ResponseHeaders
+}
+
+func (response GetSLASettings500ApplicationProblemPlusJSONResponse) VisitGetSLASettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSLASettingsRequestObject struct {
+	Body *SetSLASettingsJSONRequestBody
+}
+
+type SetSLASettingsResponseObject interface {
+	VisitSetSLASettingsResponse(w http.ResponseWriter) error
+}
+
+type SetSLASettings200JSONResponse SLAThresholds
+
+func (response SetSLASettings200JSONResponse) VisitSetSLASettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSLASettings400ApplicationProblemPlusJSONResponse Problem
+
+func (response SetSLASettings400ApplicationProblemPlusJSONResponse) VisitSetSLASettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSLASettings401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetSLASettings401ApplicationProblemPlusJSONResponse) VisitSetSLASettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSLASettings403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetSLASettings403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetSLASettings403ResponseHeaders
+}
+
+func (response SetSLASettings403ApplicationProblemPlusJSONResponse) VisitSetSLASettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSLASettings421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetSLASettings421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetSLASettings421ResponseHeaders
+}
+
+func (response SetSLASettings421ApplicationProblemPlusJSONResponse) VisitSetSLASettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetSLASettings500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetSLASettings500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetSLASettings500ResponseHeaders
+}
+
+func (response SetSLASettings500ApplicationProblemPlusJSONResponse) VisitSetSLASettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetTrivyDBRequestObject struct {
 }
 
@@ -12270,9 +14562,36 @@ type StrictServerInterface interface {
 	// SetReachabilityEnabled Store the Go reachability opt-in choice.
 	// (PUT /api/reachability)
 	SetReachabilityEnabled(ctx context.Context, request SetReachabilityEnabledRequestObject) (SetReachabilityEnabledResponseObject, error)
+	// GetReportAudit Audit pack for one asset or the whole fleet.
+	// (GET /api/reports/audit)
+	GetReportAudit(ctx context.Context, request GetReportAuditRequestObject) (GetReportAuditResponseObject, error)
+	// GetReportCIHistory Scan runs of every trigger, newest first.
+	// (GET /api/reports/ci-history)
+	GetReportCIHistory(ctx context.Context, request GetReportCIHistoryRequestObject) (GetReportCIHistoryResponseObject, error)
+	// GetCVEInsights Assets affected by one CVE or GHSA id, with its EPSS score.
+	// (GET /api/reports/cve-insights)
+	GetCVEInsights(ctx context.Context, request GetCVEInsightsRequestObject) (GetCVEInsightsResponseObject, error)
 	// GetDashboard Dashboard aggregates across non-archived assets.
 	// (GET /api/reports/dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
+	// GetReportLicenses Licence inventory with the effective allow/deny policy.
+	// (GET /api/reports/licenses)
+	GetReportLicenses(ctx context.Context, request GetReportLicensesRequestObject) (GetReportLicensesResponseObject, error)
+	// GetReportMalware Latest open malware findings.
+	// (GET /api/reports/malware)
+	GetReportMalware(ctx context.Context, request GetReportMalwareRequestObject) (GetReportMalwareResponseObject, error)
+	// GetOwaspTop10 Latest open findings grouped by OWASP Top 10 2021 category.
+	// (GET /api/reports/owasp-top10)
+	GetOwaspTop10(ctx context.Context, request GetOwaspTop10RequestObject) (GetOwaspTop10ResponseObject, error)
+	// GetReportRuntimes End-of-life runtimes across the latest open findings.
+	// (GET /api/reports/runtimes)
+	GetReportRuntimes(ctx context.Context, request GetReportRuntimesRequestObject) (GetReportRuntimesResponseObject, error)
+	// GetReportSLA SLA breaches and fix times.
+	// (GET /api/reports/sla)
+	GetReportSLA(ctx context.Context, request GetReportSLARequestObject) (GetReportSLAResponseObject, error)
+	// GetReportTrend Per-asset daily open finding counts by severity.
+	// (GET /api/reports/trend)
+	GetReportTrend(ctx context.Context, request GetReportTrendRequestObject) (GetReportTrendResponseObject, error)
 	// GetSASTStatus Report the SAST module state.
 	// (GET /api/sast)
 	GetSASTStatus(ctx context.Context, request GetSASTStatusRequestObject) (GetSASTStatusResponseObject, error)
@@ -12297,6 +14616,12 @@ type StrictServerInterface interface {
 	// ListScanFindings Findings of one scan.
 	// (GET /api/scans/{id}/findings)
 	ListScanFindings(ctx context.Context, request ListScanFindingsRequestObject) (ListScanFindingsResponseObject, error)
+	// GetSLASettings Read the SLA thresholds.
+	// (GET /api/settings/sla)
+	GetSLASettings(ctx context.Context, request GetSLASettingsRequestObject) (GetSLASettingsResponseObject, error)
+	// SetSLASettings Replace the SLA thresholds.
+	// (PUT /api/settings/sla)
+	SetSLASettings(ctx context.Context, request SetSLASettingsRequestObject) (SetSLASettingsResponseObject, error)
 	// GetTrivyDB Report the vulnerability DB state.
 	// (GET /api/trivy-db)
 	GetTrivyDB(ctx context.Context, request GetTrivyDBRequestObject) (GetTrivyDBResponseObject, error)
@@ -13565,6 +15890,84 @@ func (sh *strictHandler) SetReachabilityEnabled(w http.ResponseWriter, r *http.R
 	}
 }
 
+// GetReportAudit operation middleware
+func (sh *strictHandler) GetReportAudit(w http.ResponseWriter, r *http.Request, params GetReportAuditParams) {
+	var request GetReportAuditRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReportAudit(ctx, request.(GetReportAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReportAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReportAuditResponseObject); ok {
+		if err := validResponse.VisitGetReportAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetReportCIHistory operation middleware
+func (sh *strictHandler) GetReportCIHistory(w http.ResponseWriter, r *http.Request, params GetReportCIHistoryParams) {
+	var request GetReportCIHistoryRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReportCIHistory(ctx, request.(GetReportCIHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReportCIHistory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReportCIHistoryResponseObject); ok {
+		if err := validResponse.VisitGetReportCIHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCVEInsights operation middleware
+func (sh *strictHandler) GetCVEInsights(w http.ResponseWriter, r *http.Request, params GetCVEInsightsParams) {
+	var request GetCVEInsightsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCVEInsights(ctx, request.(GetCVEInsightsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCVEInsights")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCVEInsightsResponseObject); ok {
+		if err := validResponse.VisitGetCVEInsightsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetDashboard operation middleware
 func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 	var request GetDashboardRequestObject
@@ -13582,6 +15985,162 @@ func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDashboardResponseObject); ok {
 		if err := validResponse.VisitGetDashboardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetReportLicenses operation middleware
+func (sh *strictHandler) GetReportLicenses(w http.ResponseWriter, r *http.Request, params GetReportLicensesParams) {
+	var request GetReportLicensesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReportLicenses(ctx, request.(GetReportLicensesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReportLicenses")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReportLicensesResponseObject); ok {
+		if err := validResponse.VisitGetReportLicensesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetReportMalware operation middleware
+func (sh *strictHandler) GetReportMalware(w http.ResponseWriter, r *http.Request, params GetReportMalwareParams) {
+	var request GetReportMalwareRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReportMalware(ctx, request.(GetReportMalwareRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReportMalware")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReportMalwareResponseObject); ok {
+		if err := validResponse.VisitGetReportMalwareResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOwaspTop10 operation middleware
+func (sh *strictHandler) GetOwaspTop10(w http.ResponseWriter, r *http.Request, params GetOwaspTop10Params) {
+	var request GetOwaspTop10RequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOwaspTop10(ctx, request.(GetOwaspTop10RequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOwaspTop10")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOwaspTop10ResponseObject); ok {
+		if err := validResponse.VisitGetOwaspTop10Response(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetReportRuntimes operation middleware
+func (sh *strictHandler) GetReportRuntimes(w http.ResponseWriter, r *http.Request, params GetReportRuntimesParams) {
+	var request GetReportRuntimesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReportRuntimes(ctx, request.(GetReportRuntimesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReportRuntimes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReportRuntimesResponseObject); ok {
+		if err := validResponse.VisitGetReportRuntimesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetReportSLA operation middleware
+func (sh *strictHandler) GetReportSLA(w http.ResponseWriter, r *http.Request, params GetReportSLAParams) {
+	var request GetReportSLARequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReportSLA(ctx, request.(GetReportSLARequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReportSLA")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReportSLAResponseObject); ok {
+		if err := validResponse.VisitGetReportSLAResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetReportTrend operation middleware
+func (sh *strictHandler) GetReportTrend(w http.ResponseWriter, r *http.Request, params GetReportTrendParams) {
+	var request GetReportTrendRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReportTrend(ctx, request.(GetReportTrendRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReportTrend")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetReportTrendResponseObject); ok {
+		if err := validResponse.VisitGetReportTrendResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -13800,6 +16359,61 @@ func (sh *strictHandler) ListScanFindings(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListScanFindingsResponseObject); ok {
 		if err := validResponse.VisitListScanFindingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSLASettings operation middleware
+func (sh *strictHandler) GetSLASettings(w http.ResponseWriter, r *http.Request) {
+	var request GetSLASettingsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSLASettings(ctx, request.(GetSLASettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSLASettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSLASettingsResponseObject); ok {
+		if err := validResponse.VisitGetSLASettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetSLASettings operation middleware
+func (sh *strictHandler) SetSLASettings(w http.ResponseWriter, r *http.Request) {
+	var request SetSLASettingsRequestObject
+
+	var body SetSLASettingsJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetSLASettings(ctx, request.(SetSLASettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetSLASettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetSLASettingsResponseObject); ok {
+		if err := validResponse.VisitSetSLASettingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

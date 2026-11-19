@@ -97,6 +97,9 @@ type Finding struct {
 
 	Description string   `json:"description,omitempty"`
 	References  []string `json:"references,omitempty"`
+	// CWE lists the Common Weakness Enumeration ids the finding maps to, as
+	// canonical "CWE-<n>" strings. It is empty when the scanner reported none.
+	CWE []string `json:"cwe,omitempty"`
 
 	// Scanner is the primary scanner: the one whose fingerprint is stored and
 	// which scan diffs and finding states key on.

@@ -177,6 +177,7 @@ func mergeCluster(fs []Finding, members []int) Finding {
 	merged := fs[primary]
 	scanners := make(map[string]struct{}, len(members))
 	aliases := make(map[string]struct{}, len(members))
+	var weaknesses []string
 	for _, j := range members {
 		f := fs[j]
 		if len(f.Scanners) > 0 {
@@ -189,6 +190,7 @@ func mergeCluster(fs []Finding, members []int) Finding {
 			scanners[f.Scanner] = struct{}{}
 		}
 		addAliases(aliases, f.Aliases)
+		weaknesses = append(weaknesses, f.CWE...)
 		if f.Occurrences > merged.Occurrences {
 			merged.Occurrences = f.Occurrences
 		}
@@ -201,6 +203,9 @@ func mergeCluster(fs []Finding, members []int) Finding {
 	merged.Fingerprint = fs[primary].Fingerprint
 	merged.Scanners = sortedKeys(scanners)
 	merged.Aliases = sortedKeys(aliases)
+	// The primary scanner labels the weakness only when it knows it; a merged
+	// advisory keeps every CWE any of its scanners reported.
+	merged.CWE = NormalizeCWEIDs(weaknesses)
 	return merged
 }
 

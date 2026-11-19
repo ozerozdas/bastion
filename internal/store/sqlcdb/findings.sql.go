@@ -218,6 +218,7 @@ INSERT INTO findings (
     references_json,
     scanner,
     scanners,
+    cwe,
     reachability,
     first_seen_scan_id,
     created_at
@@ -243,7 +244,8 @@ VALUES (
     ?18,
     ?19,
     ?20,
-    ?21
+    ?21,
+    ?22
 )
 `
 
@@ -266,6 +268,7 @@ type InsertFindingParams struct {
 	ReferencesJSON  string
 	Scanner         string
 	Scanners        string
+	CWE             string
 	Reachability    sql.NullString
 	FirstSeenScanID sql.NullInt64
 	CreatedAt       string
@@ -291,6 +294,7 @@ func (q *Queries) InsertFinding(ctx context.Context, arg InsertFindingParams) er
 		arg.ReferencesJSON,
 		arg.Scanner,
 		arg.Scanners,
+		arg.CWE,
 		arg.Reachability,
 		arg.FirstSeenScanID,
 		arg.CreatedAt,
@@ -328,6 +332,7 @@ SELECT
     f.references_json,
     f.scanner,
     f.scanners,
+    f.cwe,
     f.reachability,
     f.first_seen_scan_id,
     CAST(CASE
@@ -409,6 +414,7 @@ type ListFindingsByScanRow struct {
 	ReferencesJSON  string
 	Scanner         string
 	Scanners        string
+	CWE             string
 	Reachability    sql.NullString
 	FirstSeenScanID sql.NullInt64
 	Status          string
@@ -467,6 +473,7 @@ func (q *Queries) ListFindingsByScan(ctx context.Context, arg ListFindingsByScan
 			&i.ReferencesJSON,
 			&i.Scanner,
 			&i.Scanners,
+			&i.CWE,
 			&i.Reachability,
 			&i.FirstSeenScanID,
 			&i.Status,
@@ -521,6 +528,7 @@ SELECT
     f.references_json,
     f.scanner,
     f.scanners,
+    f.cwe,
     f.reachability,
     f.first_seen_scan_id,
     CAST(CASE
@@ -701,6 +709,7 @@ type ListLatestFindingsRow struct {
 	ReferencesJSON  string
 	Scanner         string
 	Scanners        string
+	CWE             string
 	Reachability    sql.NullString
 	FirstSeenScanID sql.NullInt64
 	Status          string
@@ -768,6 +777,7 @@ func (q *Queries) ListLatestFindings(ctx context.Context, arg ListLatestFindings
 			&i.ReferencesJSON,
 			&i.Scanner,
 			&i.Scanners,
+			&i.CWE,
 			&i.Reachability,
 			&i.FirstSeenScanID,
 			&i.Status,

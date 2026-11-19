@@ -1,9 +1,9 @@
 import { expect, test, watch } from './fixtures'
 
 /**
- * Configuration (#139, #142) is the sidebar's SETTINGS entry, next to
- * Connections: a page with the opt-in modules, the policies and the appearance
- * preferences that used to be cards in the sidebar.
+ * Configuration (#139, #142) is the sidebar's Configuration entry under
+ * Settings & More, next to Connections: a page with the opt-in modules, the
+ * policies and the appearance preferences that used to be cards in the sidebar.
  */
 test('opens Configuration from the sidebar and follows its tabs', async ({
   page,
@@ -29,9 +29,9 @@ test('opens Configuration from the sidebar and follows its tabs', async ({
     page.getByRole('region', { name: 'Licence policy' }),
   ).toHaveCount(0)
 
-  // One nav link under SETTINGS, not a modal opener.
+  // One nav link under SETTINGS & MORE, not a modal opener.
   const opener = page
-    .getByRole('group', { name: 'SETTINGS' })
+    .getByRole('group', { name: 'SETTINGS & MORE' })
     .getByRole('link', { name: 'Configuration' })
   await expect(opener).toBeVisible()
   await expect(

@@ -459,10 +459,20 @@ body {
     min-width: 2.5rem;
   }
 
-  /* A checkbox is a target too; the native box simply renders at touch size. */
-  input[type="checkbox"] {
-    inline-size: 2.5rem;
-    block-size: 2.5rem;
+  /*
+   * Switches and checkboxes keep their drawn size: enlarging them turned
+   * switches into circles and checkboxes into 40px native boxes on
+   * touch-capable desktops. A switch grows its hit box with an invisible ring.
+   */
+  [role="switch"] {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  [role="switch"]::before {
+    content: "";
+    position: absolute;
+    inset: -11px -4px;
   }
 }
 
@@ -940,5 +950,92 @@ dialog:not([open])::backdrop {
     animation-iteration-count: 1 !important;
     transition-delay: 0ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Printable report (#190). The audit report marks its root `.print-report`, so
+ * the frame around it disappears only while that page is open: the sidebar,
+ * the mobile header, the portalled band and every control marked `.print-hide`
+ * are left out, leaving white paper with the report itself.
+ */
+@media print {
+  body:has(.print-report) {
+    background: #fff !important;
+    color: #000;
+  }
+
+  body:has(.print-report) aside,
+  body:has(.print-report) main > header,
+  body:has(.print-report) nav,
+  body:has(.print-report) #page-band,
+  .print-report .print-hide {
+    display: none !important;
+  }
+
+  body:has(.print-report) main {
+    margin: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+  }
+
+  body:has(.print-report) .page-content {
+    gap: 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-report {
+    gap: 14px;
+    color: #000;
+    /* The app's palette is theme-aware; printing is always black on white. */
+    --b-bg: #fff;
+    --b-surface: #fff;
+    --b-fg: #000;
+    --b-muted: #333;
+    --b-faint: #555;
+    --b-border-subtle: #d4d4d4;
+    --b-border-strong: #b4b4b4;
+    --b-hover: #f2f2f2;
+    /* Severity stays legible on paper: the light-theme values, not the theme
+       the screen happened to be in (a dark accent is unreadable on white). */
+    --b-critical: #c81e1e;
+    --b-high: #b9410c;
+    --b-medium: #946006;
+    --b-low: #2155d6;
+    --b-ok: #146c34;
+  }
+
+  .print-report .print-avoid {
+    break-inside: avoid;
+  }
+
+  .print-report h2,
+  .print-report h3 {
+    break-after: avoid;
+  }
+
+  .print-report .rounded-card {
+    border-color: #d4d4d4 !important;
+    background: #fff !important;
+  }
+
+  .print-report table {
+    font-size: 9.5pt;
+  }
+
+  .print-report thead {
+    display: table-header-group;
+  }
+
+  .print-report a {
+    color: #000;
+    text-decoration: none;
+  }
+
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
   }
 }

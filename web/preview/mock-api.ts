@@ -143,6 +143,7 @@ const findings: Finding[] = Array.from({ length: 160 }, (_, i) => {
     scanners: i % 5 === 0 ? ['trivy', 'osv'] : ['trivy'],
     status: 'open',
     first_seen_scan_id: assetId * 10 + (i % 3),
+    cwe: type === 'vulnerability' ? ['CWE-79'] : [],
     references: i % 4 === 3 ? [] : ['https://example.com/advisories/preview', 'https://example.org/a/very/long/reference/path/that/must/wrap/inside/the/drawer/without/overflowing'],
     ...(i % 6 === 5 ? {} : { description: 'An attacker who controls the input can trigger this condition. '.repeat((i % 4) + 1).trim() }),
     ...(hasPackage

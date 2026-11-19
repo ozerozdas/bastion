@@ -430,7 +430,10 @@ test('groups one CVE across projects and keeps the view in the URL', async ({
   expect(problems).toEqual([])
 })
 
-test('redirects old report URLs to the findings list', async ({ page, server }) => {
+test('redirects the old security-reports URL to the findings list', async ({
+  page,
+  server,
+}) => {
   await stubLicencePolicy(page)
   const problems = watch(page)
   const asset = { ...alpha, id: 42, display_name: 'forty-two' }
@@ -445,18 +448,10 @@ test('redirects old report URLs to the findings list', async ({ page, server }) 
   await openDashboard(page, server.url)
   const origin = new URL(page.url()).origin
 
-  await page.goto(`${origin}/reports?asset=${String(asset.id)}`)
-  await expect(page).toHaveURL(`${origin}/findings/${String(asset.id)}`)
-  await expect(page.locator('#page-heading')).toBeVisible()
-  await expect(page.locator('#findings-project')).toHaveValue(String(asset.id))
-
-  await page.goto(`${origin}/reports`)
-  await expect(page).toHaveURL(`${origin}/findings`)
-  await expect(page.locator('#findings-project')).toHaveValue('')
-
-  // The name the previous UI used keeps working too.
+  // /reports is the Reports page now (#190); only the older name redirects.
   await page.goto(`${origin}/security-reports?asset=${String(asset.id)}`)
   await expect(page).toHaveURL(`${origin}/findings/${String(asset.id)}`)
+  await expect(page.locator('#findings-project')).toHaveValue(String(asset.id))
 
   expect(problems).toEqual([])
 })

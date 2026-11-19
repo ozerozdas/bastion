@@ -20,6 +20,19 @@ import (
 // built without one.
 const reportsUnavailable = "reports are not configured; start bastion with its database"
 
+// reportAssetID reads the optional asset_id of a /api/reports/* query. The
+// spec's minimum is 1, but the generated binder only parses the number, and
+// the service would read a zero as "the whole fleet"; reject anything below 1.
+func reportAssetID(id *gen.AssetIDQuery) (int64, bool) {
+	if id == nil {
+		return 0, true
+	}
+	if *id < 1 {
+		return 0, false
+	}
+	return *id, true
+}
+
 // ListFindings implements gen.StrictServerInterface. The single view pages in
 // SQL; the grouped view folds the whole filtered list in reports and then cuts
 // the page, because a group spans projects.
@@ -279,6 +292,239 @@ func (s *Server) GetDashboard(ctx context.Context, _ gen.GetDashboardRequestObje
 	return gen.GetDashboard200JSONResponse(dashboardResponse(dashboard)), nil
 }
 
+// GetOwaspTop10 implements gen.StrictServerInterface.
+func (s *Server) GetOwaspTop10(ctx context.Context, request gen.GetOwaspTop10RequestObject) (gen.GetOwaspTop10ResponseObject, error) {
+	if s.reports == nil {
+		return gen.GetOwaspTop10500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error", reportsUnavailable),
+		}, nil
+	}
+
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetOwaspTop10400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
+	}
+	categories, err := s.reports.OWASPTop10(ctx, assetID)
+	if err != nil {
+		if errors.Is(err, reports.ErrInvalid) {
+			return gen.GetOwaspTop10400ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusBadRequest, "Bad Request", err.Error()),
+			), nil
+		}
+		s.log.Error("owasp top 10", "asset", assetID, "error", err)
+		return gen.GetOwaspTop10500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error",
+				"could not read the OWASP Top 10 report; see the server log"),
+		}, nil
+	}
+
+	out := gen.OWASPTop10{Categories: make([]gen.OWASPCategory, 0, len(categories))}
+	for _, category := range categories {
+		out.Categories = append(out.Categories, gen.OWASPCategory{
+			Id:        category.ID,
+			Title:     category.Title,
+			Count:     category.Count,
+			Findings:  findingResponses(category.Findings),
+			Truncated: category.Truncated,
+		})
+	}
+	return gen.GetOwaspTop10200JSONResponse(out), nil
+}
+
+// GetCVEInsights implements gen.StrictServerInterface.
+func (s *Server) GetCVEInsights(ctx context.Context, request gen.GetCVEInsightsRequestObject) (gen.GetCVEInsightsResponseObject, error) {
+	if s.reports == nil {
+		return gen.GetCVEInsights500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error", reportsUnavailable),
+		}, nil
+	}
+
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetCVEInsights400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
+	}
+	insights, err := s.reports.CVEInsights(ctx, request.Params.Cve, assetID)
+	if err != nil {
+		if errors.Is(err, reports.ErrInvalid) {
+			return gen.GetCVEInsights400ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusBadRequest, "Bad Request", err.Error()),
+			), nil
+		}
+		s.log.Error("cve insights", "cve", request.Params.Cve, "error", err)
+		return gen.GetCVEInsights500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error",
+				"could not read the CVE insights; see the server log"),
+		}, nil
+	}
+
+	out := gen.CVEInsights{
+		Cve:    insights.CVE,
+		Assets: make([]gen.CVEInsightAsset, 0, len(insights.Assets)),
+	}
+	if insights.EPSS != nil {
+		out.Epss = &gen.EPSSScore{
+			Score:      insights.EPSS.Score,
+			Percentile: insights.EPSS.Percentile,
+		}
+	}
+	for _, asset := range insights.Assets {
+		item := gen.CVEInsightAsset{
+			AssetId:        asset.AssetID,
+			DisplayName:    asset.DisplayName,
+			Kind:           gen.AssetKind(asset.Kind),
+			Severity:       gen.Severity(asset.Severity),
+			PackageName:    stringPointer(asset.PackageName),
+			PackageVersion: stringPointer(asset.PackageVersion),
+			FixedVersion:   stringPointer(asset.FixedVersion),
+		}
+		if asset.FirstSeen != nil {
+			firstSeen := *asset.FirstSeen
+			item.FirstSeen = &firstSeen
+		}
+		out.Assets = append(out.Assets, item)
+	}
+	return gen.GetCVEInsights200JSONResponse(out), nil
+}
+
+// GetReportTrend implements gen.StrictServerInterface.
+func (s *Server) GetReportTrend(ctx context.Context, request gen.GetReportTrendRequestObject) (gen.GetReportTrendResponseObject, error) {
+	if s.reports == nil {
+		return gen.GetReportTrend500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error", reportsUnavailable),
+		}, nil
+	}
+
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetReportTrend400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
+	}
+	days := reports.DefaultTrendDays
+	if request.Params.Days != nil {
+		days = *request.Params.Days
+	}
+	series, err := s.reports.Trend(ctx, assetID, days)
+	if err != nil {
+		if errors.Is(err, reports.ErrInvalid) {
+			return gen.GetReportTrend400ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusBadRequest, "Bad Request", err.Error()),
+			), nil
+		}
+		s.log.Error("report trend", "asset", assetID, "error", err)
+		return gen.GetReportTrend500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error",
+				"could not read the trend; see the server log"),
+		}, nil
+	}
+
+	out := gen.ReportTrend{Series: make([]gen.ReportTrendSeries, 0, len(series))}
+	for _, item := range series {
+		points := make([]gen.ReportTrendPoint, 0, len(item.Points))
+		for _, point := range item.Points {
+			points = append(points, gen.ReportTrendPoint{
+				Date:     point.Date,
+				Critical: point.Critical,
+				High:     point.High,
+				Medium:   point.Medium,
+				Low:      point.Low,
+				Unknown:  point.Unknown,
+			})
+		}
+		out.Series = append(out.Series, gen.ReportTrendSeries{
+			AssetId:     item.AssetID,
+			DisplayName: item.DisplayName,
+			Points:      points,
+		})
+	}
+	return gen.GetReportTrend200JSONResponse(out), nil
+}
+
+// GetReportRuntimes implements gen.StrictServerInterface.
+func (s *Server) GetReportRuntimes(ctx context.Context, request gen.GetReportRuntimesRequestObject) (gen.GetReportRuntimesResponseObject, error) {
+	if s.reports == nil {
+		return gen.GetReportRuntimes500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error", reportsUnavailable),
+		}, nil
+	}
+
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetReportRuntimes400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
+	}
+	runtimes, err := s.reports.Runtimes(ctx, assetID)
+	if err != nil {
+		if errors.Is(err, reports.ErrInvalid) {
+			return gen.GetReportRuntimes400ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusBadRequest, "Bad Request", err.Error()),
+			), nil
+		}
+		s.log.Error("report runtimes", "asset", assetID, "error", err)
+		return gen.GetReportRuntimes500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error",
+				"could not read the runtimes; see the server log"),
+		}, nil
+	}
+
+	out := gen.RuntimesReport{Runtimes: make([]gen.RuntimeEntry, 0, len(runtimes))}
+	for _, runtime := range runtimes {
+		assets := make([]gen.RuntimeAsset, 0, len(runtime.Assets))
+		for _, asset := range runtime.Assets {
+			assets = append(assets, gen.RuntimeAsset{
+				AssetId:     asset.AssetID,
+				DisplayName: asset.DisplayName,
+			})
+		}
+		out.Runtimes = append(out.Runtimes, gen.RuntimeEntry{
+			Name:         runtime.Name,
+			Ecosystem:    runtime.Ecosystem,
+			Version:      runtime.Version,
+			EolDate:      stringPointer(runtime.EOLDate),
+			FixedVersion: stringPointer(runtime.FixedVersion),
+			Assets:       assets,
+		})
+	}
+	return gen.GetReportRuntimes200JSONResponse(out), nil
+}
+
+// GetReportMalware implements gen.StrictServerInterface.
+func (s *Server) GetReportMalware(ctx context.Context, request gen.GetReportMalwareRequestObject) (gen.GetReportMalwareResponseObject, error) {
+	if s.reports == nil {
+		return gen.GetReportMalware500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error", reportsUnavailable),
+		}, nil
+	}
+
+	assetID, ok := reportAssetID(request.Params.AssetId)
+	if !ok {
+		return gen.GetReportMalware400ApplicationProblemPlusJSONResponse(
+			newProblem(http.StatusBadRequest, "Bad Request", "asset_id must be a positive integer"),
+		), nil
+	}
+	list, err := s.reports.Malware(ctx, assetID)
+	if err != nil {
+		if errors.Is(err, reports.ErrInvalid) {
+			return gen.GetReportMalware400ApplicationProblemPlusJSONResponse(
+				newProblem(http.StatusBadRequest, "Bad Request", err.Error()),
+			), nil
+		}
+		s.log.Error("report malware", "asset", assetID, "error", err)
+		return gen.GetReportMalware500ApplicationProblemPlusJSONResponse{
+			Body: newProblem(http.StatusInternalServerError, "Internal Server Error",
+				"could not read the malware findings; see the server log"),
+		}, nil
+	}
+	return gen.GetReportMalware200JSONResponse(gen.MalwareReport{
+		Findings: findingResponses(list),
+	}), nil
+}
+
 // findingResponse maps a domain finding onto the API shape. An unset optional
 // string becomes an absent JSON field rather than "".
 func findingResponse(finding reports.Finding) gen.Finding {
@@ -299,6 +545,7 @@ func findingResponse(finding reports.Finding) gen.Finding {
 		Occurrences:     finding.Occurrences,
 		Scanner:         finding.Scanner,
 		Scanners:        finding.Scanners,
+		Cwe:             finding.CWE,
 		Status:          gen.FindingStatus(finding.Status),
 		State:           findingStatePointer(finding.State),
 		Reason:          stringPointer(finding.Reason),
@@ -332,6 +579,9 @@ func findingResponse(finding reports.Finding) gen.Finding {
 	}
 	if out.Scanners == nil {
 		out.Scanners = []string{}
+	}
+	if out.Cwe == nil {
+		out.Cwe = []string{}
 	}
 	return out
 }

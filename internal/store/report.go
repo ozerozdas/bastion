@@ -171,6 +171,10 @@ func findingFromRow(row sqlcdb.ListFindingsByScanRow) (findings.Finding, error) 
 	if err != nil {
 		return findings.Finding{}, fmt.Errorf("finding %q scanners: %w", row.Title, err)
 	}
+	cwe, err := decodeStringList(row.CWE)
+	if err != nil {
+		return findings.Finding{}, fmt.Errorf("finding %q cwe: %w", row.Title, err)
+	}
 	f := findings.Finding{
 		AssetID:        row.AssetID,
 		Type:           findings.Type(row.Type),
@@ -186,6 +190,7 @@ func findingFromRow(row sqlcdb.ListFindingsByScanRow) (findings.Finding, error) 
 		References:     refs,
 		Scanner:        row.Scanner,
 		Scanners:       scanners,
+		CWE:            cwe,
 		Fingerprint:    row.Fingerprint,
 		Occurrences:    int(row.Occurrences),
 	}

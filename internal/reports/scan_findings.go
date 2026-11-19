@@ -138,6 +138,10 @@ func (s *Service) findingFromScanRow(row sqlcdb.ListFindingsByScanRow) (Finding,
 	if err != nil {
 		return Finding{}, err
 	}
+	cwe, err := decodeCWE(row.CWE)
+	if err != nil {
+		return Finding{}, err
+	}
 	finding := Finding{
 		ID:             row.ID,
 		AssetID:        row.AssetID,
@@ -155,6 +159,7 @@ func (s *Service) findingFromScanRow(row sqlcdb.ListFindingsByScanRow) (Finding,
 		Occurrences:    int(row.Occurrences),
 		Scanner:        row.Scanner,
 		Scanners:       scanners,
+		CWE:            cwe,
 		Status:         row.Status,
 		State:          row.State.String,
 		Reason:         row.Reason.String,

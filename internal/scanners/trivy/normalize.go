@@ -75,6 +75,7 @@ func (s *Scanner) Normalize(raw *scanners.RawResult, asset findings.Asset) ([]fi
 				CVSS:           maxCVSS(v.CVSS),
 				Description:    v.Description,
 				References:     references(v.PrimaryURL, v.References),
+				CWE:            findings.NormalizeCWEIDs(v.CweIDs),
 				Scanner:        s.Name(),
 				Aliases:        vulnerabilityAliases(v),
 			}
@@ -409,6 +410,7 @@ type vuln struct {
 	Severity         string               `json:"Severity"`
 	PrimaryURL       string               `json:"PrimaryURL"`
 	References       []string             `json:"References"`
+	CweIDs           []string             `json:"CweIDs"`
 	CVSS             map[string]cvssScore `json:"CVSS"`
 }
 

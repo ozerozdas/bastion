@@ -14,9 +14,15 @@ import { pageHeadingId } from './page-band'
 export function ProjectSwitcher({
   assets,
   current,
+  heading = 'h1',
+  onChange,
 }: {
   assets: readonly Asset[]
   current: Asset | undefined
+  /** The page's h1 by default; a page with its own title shows a compact span. */
+  heading?: 'h1' | 'none'
+  /** Where a pick goes; the default is the Findings list and its project pages. */
+  onChange?: (assetId: number | null) => void
 }) {
   const t = useT()
   const navigate = useNavigate()
@@ -32,19 +38,29 @@ export function ProjectSwitcher({
   }
   const repos = assets.filter((asset) => asset.kind !== 'image')
   const images = assets.filter((asset) => asset.kind === 'image')
+  const title = current?.display_name ?? t('findings.filter.allProjects')
 
   return (
     // The visible title is the h1; the native select is a sibling overlaid on
     // it, so the heading names the page and the control stays a real select.
     <span className="relative inline-flex max-w-full items-center gap-1.5 rounded-md px-1 hover:bg-hover focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-muted">
-      <h1
-        id={pageHeadingId}
-        tabIndex={-1}
-        title={current?.display_name ?? t('findings.filter.allProjects')}
-        className="min-w-0 max-w-[min(36rem,72vw)] truncate text-2xl font-semibold tracking-tight text-fg focus:outline-none"
-      >
-        {current?.display_name ?? t('findings.filter.allProjects')}
-      </h1>
+      {heading === 'h1' ? (
+        <h1
+          id={pageHeadingId}
+          tabIndex={-1}
+          title={title}
+          className="min-w-0 max-w-[min(36rem,72vw)] truncate text-2xl font-semibold tracking-tight text-fg focus:outline-none"
+        >
+          {title}
+        </h1>
+      ) : (
+        <span
+          title={title}
+          className="min-w-0 max-w-[min(20rem,60vw)] truncate text-sm font-medium text-fg"
+        >
+          {title}
+        </span>
+      )}
       <span
         aria-hidden="true"
         className="shrink-0 text-lg leading-none text-muted"
@@ -60,11 +76,16 @@ export function ProjectSwitcher({
         value={current === undefined ? '' : String(current.id)}
         onChange={(event) => {
           const value = event.target.value
-          void (value === ''
+          const assetId = value === '' ? null : Number(value)
+          if (onChange !== undefined) {
+            onChange(assetId)
+            return
+          }
+          void (assetId === null
             ? navigate({ to: '/findings', search: { ...kept, tab: undefined } })
             : navigate({
                 to: '/findings/$assetId',
-                params: { assetId: value },
+                params: { assetId: String(assetId) },
                 search: kept,
               }))
         }}

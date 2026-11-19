@@ -118,7 +118,7 @@ test('renders every nav page without browser errors', async ({
   expect(problems).toEqual([])
 })
 
-test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => {
+test('groups the sidebar into ASSETS and SETTINGS & MORE', async ({ page, server }) => {
   const problems = watch(page)
   await openSession(page, server)
 
@@ -127,10 +127,11 @@ test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => 
     aside.getByRole('heading', { name: 'ASSETS', exact: true }),
   ).toBeVisible()
   await expect(
-    aside.getByRole('heading', { name: 'SETTINGS', exact: true }),
+    aside.getByRole('heading', { name: 'SETTINGS & MORE', exact: true }),
   ).toBeVisible()
 
-  // Order is the ADR-007 one: Findings moved up, Connections moved down.
+  // Order is the ADR-007 one: Findings moved up, Connections moved down, and
+  // Reports sits after Configuration.
   const labels = await aside
     .getByRole('link')
     .evaluateAll((links) =>
@@ -143,6 +144,7 @@ test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => 
     'Containers',
     'Connections',
     'Configuration',
+    'Reports',
   ])
 
   // Scan History is a tab now, not a sidebar entry.
@@ -152,7 +154,7 @@ test('groups the sidebar into ASSETS and SETTINGS', async ({ page, server }) => 
   // standalone button above the Local · version footer is gone.
   await expect(
     aside
-      .getByRole('group', { name: 'SETTINGS' })
+      .getByRole('group', { name: 'SETTINGS & MORE' })
       .getByRole('link', { name: 'Configuration' }),
   ).toBeVisible()
   await expect(

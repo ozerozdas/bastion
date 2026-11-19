@@ -18,6 +18,7 @@ INSERT INTO findings (
     references_json,
     scanner,
     scanners,
+    cwe,
     reachability,
     first_seen_scan_id,
     created_at
@@ -41,6 +42,7 @@ VALUES (
     sqlc.arg(references_json),
     sqlc.arg(scanner),
     sqlc.arg(scanners),
+    sqlc.arg(cwe),
     sqlc.narg(reachability),
     sqlc.arg(first_seen_scan_id),
     sqlc.arg(created_at)
@@ -98,6 +100,7 @@ SELECT
     f.references_json,
     f.scanner,
     f.scanners,
+    f.cwe,
     f.reachability,
     f.first_seen_scan_id,
     CAST(CASE
@@ -207,6 +210,7 @@ SELECT
     f.references_json,
     f.scanner,
     f.scanners,
+    f.cwe,
     f.reachability,
     f.first_seen_scan_id,
     CAST(CASE

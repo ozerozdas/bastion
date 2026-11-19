@@ -351,7 +351,36 @@ type jsonResult struct {
 		Message  string `json:"message"`
 		Severity string `json:"severity"`
 		Lines    string `json:"lines"`
+		Metadata struct {
+			CWE cweList `json:"cwe"`
+		} `json:"metadata"`
 	} `json:"extra"`
+}
+
+// cweList decodes the rule's cwe metadata. Rules publish it as one string
+// ("CWE-89: Improper Neutralization...") or as a list of such strings; any
+// other shape is ignored rather than failing the scan, because the metadata is
+// free-form and has changed shape upstream before.
+type cweList []string
+
+func (c *cweList) UnmarshalJSON(data []byte) error {
+	var single string
+	if err := json.Unmarshal(data, &single); err == nil {
+		*c = cweList{single}
+		return nil
+	}
+	var list []any
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil
+	}
+	out := make(cweList, 0, len(list))
+	for _, entry := range list {
+		if text, ok := entry.(string); ok {
+			out = append(out, text)
+		}
+	}
+	*c = out
+	return nil
 }
 
 // parse decodes opengrep's report into bastion findings. Paths outside root
@@ -410,6 +439,7 @@ func parse(data []byte, root string, asset findings.Asset) ([]findings.Finding, 
 			Severity:    severityFromString(result.Extra.Severity),
 			Title:       title,
 			Location:    location,
+			CWE:         findings.NormalizeCWEIDs(result.Extra.Metadata.CWE),
 			Scanner:     Name,
 			SnippetHash: snippet,
 		}
