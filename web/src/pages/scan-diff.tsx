@@ -10,6 +10,7 @@ import type { SeverityTotals } from '../api/reports'
 import { DataTable } from '../components/data-table'
 import { ErrorNote } from '../components/error-note'
 import { FindingDrawer } from '../components/finding-drawer'
+import { BandHeader, BandSummary } from '../components/page-band'
 import { SeverityCountBadges } from '../components/severity-counts'
 import {
   compareBaselines,
@@ -74,14 +75,16 @@ export function ScanDiffPage() {
 
   if (scanId === undefined) {
     return (
-      <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[0.9375rem] font-semibold">
-          {t('diff.noScan.title')}
-        </h2>
-        <p className="text-xs text-muted">
-          {t('diff.noScan.body', { example: '/scans/12/diff' })}
-        </p>
-      </section>
+      <>
+        <BandHeader>
+          <BandSummary title={t('diff.noScan.title')} />
+        </BandHeader>
+        <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
+          <p className="text-xs text-muted">
+            {t('diff.noScan.body', { example: '/scans/12/diff' })}
+          </p>
+        </section>
+      </>
     )
   }
 
@@ -97,36 +100,37 @@ export function ScanDiffPage() {
 
   if (scan.isError) {
     return (
-      <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[0.9375rem] font-semibold">
-          {t('diff.failed')}
-        </h2>
-        <ErrorNote error={scan.error} />
-        {backToScans}
-      </section>
+      <>
+        <BandHeader>
+          <BandSummary title={t('diff.title', { id: scanId })} />
+        </BandHeader>
+        <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
+          <h2 className="text-[0.9375rem] font-semibold">
+            {t('diff.failed')}
+          </h2>
+          <ErrorNote error={scan.error} />
+          {backToScans}
+        </section>
+      </>
     )
   }
 
   return (
     <>
+      <BandHeader>
+        <BandSummary
+          title={t('diff.title', { id: scanId })}
+          subtitle={
+            diff.data === undefined
+              ? undefined
+              : scanDiffSubtitle(diff.data.against_scan_id)
+          }
+        />
+      </BandHeader>
       <section
-        aria-labelledby="scan-diff-heading"
+        aria-label={t('diff.title', { id: scanId })}
         className="flex flex-col gap-3 rounded-card border border-border-subtle bg-surface p-4"
       >
-        <div className="flex flex-wrap items-baseline gap-2.5">
-          <h2
-            id="scan-diff-heading"
-            className="text-[0.9375rem] font-semibold tracking-[-0.01em]"
-          >
-            {t('diff.title', { id: scanId })}
-          </h2>
-          {diff.data === undefined ? null : (
-            <span className="text-faint">
-              {scanDiffSubtitle(diff.data.against_scan_id)}
-            </span>
-          )}
-        </div>
-
         <div className="flex flex-wrap items-center gap-3">
           {backToScans}
           <label htmlFor="scan-diff-against" className="ml-2 text-xs text-muted">

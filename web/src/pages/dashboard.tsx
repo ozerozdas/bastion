@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { useState, useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore, type ReactNode } from 'react'
 
 import { assetsQuery } from '../api/assets'
 import { ApiError } from '../api/client'
@@ -15,8 +15,8 @@ import {
   type TypeTotals,
 } from '../api/reports'
 import { scansQuery } from '../api/scans'
-import { PageActions } from '../components/app-shell'
 import { EmptyState } from '../components/empty-state'
+import { BandHeader, BandSummary } from '../components/page-band'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
 import { InfoTip } from '../components/ui/info-tip'
@@ -97,22 +97,36 @@ export function DashboardPage() {
     setPreference(cliDonePreference, '1')
   }
 
+  // Every page's title lives in its band; the meta line carries what the old
+  // header bar showed.
+  const band = (meta?: ReactNode) => (
+    <BandHeader>
+      <BandSummary title={t('nav.dashboard')} meta={meta} />
+    </BandHeader>
+  )
+
   if (dashboard.status === 'pending') {
     return (
-      <section className="rounded-card border border-border-subtle bg-surface p-4">
-        <p className="text-muted">{t('dashboard.loading')}</p>
-      </section>
+      <>
+        {band()}
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <p className="text-muted">{t('dashboard.loading')}</p>
+        </section>
+      </>
     )
   }
 
   if (dashboard.status === 'error') {
     return (
-      <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[0.8125rem] font-semibold">
-          {t('dashboard.failed')}
-        </h2>
-        <ErrorNote error={dashboard.error} />
-      </section>
+      <>
+        {band()}
+        <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
+          <h2 className="text-[0.8125rem] font-semibold">
+            {t('dashboard.failed')}
+          </h2>
+          <ErrorNote error={dashboard.error} />
+        </section>
+      </>
     )
   }
 
@@ -123,31 +137,34 @@ export function DashboardPage() {
   if (data.last_scans.length === 0) {
     return (
       <>
-        {checklist?.visible === true ? (
-          <GetStartedStrip
-            state={checklist}
-            onDismiss={dismissChecklist}
-            onCliDone={markCliStep}
-          />
-        ) : null}
-        <EmptyState
-          title={t('dashboard.noScans.title')}
-          body={t('dashboard.noScans.body')}
-        >
-          {checklist === undefined || checklist.visible ? null : (
-            <>
-              <Link to="/connections" className={buttonVariants()}>
-                {t('dashboard.connectGithub')}
-              </Link>
-              <Link
-                to="/repositories"
-                className={buttonVariants({ variant: 'outline' })}
-              >
-                {t('dashboard.addLocalPath')}
-              </Link>
-            </>
-          )}
-        </EmptyState>
+        {band()}
+        <div className="flex flex-col gap-6">
+          {checklist?.visible === true ? (
+            <GetStartedStrip
+              state={checklist}
+              onDismiss={dismissChecklist}
+              onCliDone={markCliStep}
+            />
+          ) : null}
+          <EmptyState
+            title={t('dashboard.noScans.title')}
+            body={t('dashboard.noScans.body')}
+          >
+            {checklist === undefined || checklist.visible ? null : (
+              <>
+                <Link to="/connections" className={buttonVariants()}>
+                  {t('dashboard.connectGithub')}
+                </Link>
+                <Link
+                  to="/repositories"
+                  className={buttonVariants({ variant: 'outline' })}
+                >
+                  {t('dashboard.addLocalPath')}
+                </Link>
+              </>
+            )}
+          </EmptyState>
+        </div>
       </>
     )
   }
@@ -155,28 +172,25 @@ export function DashboardPage() {
   const names = assetNames(data.last_scans, data.top_assets)
 
   return (
-    <div className="flex flex-col gap-6">
-      {checklist?.visible === true ? (
-        <GetStartedStrip
-          state={checklist}
-          onDismiss={dismissChecklist}
-          onCliDone={markCliStep}
-        />
-      ) : null}
-      <PageActions>
-        {/* The hero already fills a phone's first screen. */}
-        <span className="hidden sm:inline">
-          <LatestScan scans={data.last_scans} />
-        </span>
-      </PageActions>
-      <RiskSummary totals={data.totals_by_severity} />
-      <RiskiestProjects assets={data.top_assets} />
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <FindingsByType totals={data.totals_by_type} />
-        <Trend trends={data.trend} names={names} />
+    <>
+      {band(<LatestScan scans={data.last_scans} />)}
+      <div className="flex flex-col gap-6">
+        {checklist?.visible === true ? (
+          <GetStartedStrip
+            state={checklist}
+            onDismiss={dismissChecklist}
+            onCliDone={markCliStep}
+          />
+        ) : null}
+        <RiskSummary totals={data.totals_by_severity} />
+        <RiskiestProjects assets={data.top_assets} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <FindingsByType totals={data.totals_by_type} />
+          <Trend trends={data.trend} names={names} />
+        </div>
+        <LastScans scans={data.last_scans} />
       </div>
-      <LastScans scans={data.last_scans} />
-    </div>
+    </>
   )
 }
 

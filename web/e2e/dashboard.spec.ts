@@ -113,9 +113,7 @@ test('dashboard project names link to their filtered findings', async ({
     .getByRole('link', { name: 'alpha' })
     .click()
   await expect(page).toHaveURL(`${origin}/findings/${String(alpha.id)}`)
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Findings' }),
-  ).toBeVisible()
+  await expect(page.locator('#page-heading')).toBeVisible()
   await expect(page.locator('#findings-project')).toHaveValue(String(alpha.id))
 
   // Back to the dashboard for the last-scan table's own project link.

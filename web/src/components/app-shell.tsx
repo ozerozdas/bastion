@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import {
   useEffect,
   useRef,
@@ -7,7 +7,6 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react'
-import { createPortal } from 'react-dom'
 
 import { useDrawerFocus } from './drawer-focus'
 import { HealthChip } from './health-chip'
@@ -15,18 +14,10 @@ import { CloseIcon, MenuIcon, MoonIcon, SunIcon } from './icons'
 import { pageBandId, pageHeadingId } from './page-band'
 import { TrivyDBChip } from './trivy-db-chip'
 import { UpdateNotice } from './update-notice'
-import { assetsQuery, type Asset } from '../api/assets'
-import type { FindingsSearch } from '../lib/urls'
+import { assetsQuery } from '../api/assets'
 import { dashboardQuery, openFindingTotal } from '../api/reports'
 import { useT } from '../lib/i18n'
-import {
-  bandOwnsTitle,
-  navBadge,
-  navGroups,
-  navItemFor,
-  type NavCounts,
-  type NavItem,
-} from '../lib/nav'
+import { navBadge, navGroups, navItemFor, type NavCounts, type NavItem } from '../lib/nav'
 import {
   resolveMode,
   setMode,
@@ -35,7 +26,6 @@ import {
 } from '../lib/theme'
 import { cn } from '../lib/utils'
 
-const pageActionsId = 'page-actions'
 const sidebarId = 'app-sidebar'
 const desktopQuery = '(min-width: 1024px)'
 
@@ -64,77 +54,6 @@ const navItemClass =
 const navItemActiveClass =
   'bg-active text-fg shadow-[0_0_0_1px_var(--b-border-subtle)]'
 
-/** PageActions renders its children at the right end of the page header. */
-export function PageActions({ children }: { children: ReactNode }) {
-  // ponytail: portal into the header slot; a context slot if pages need more.
-  const [target, setTarget] = useState<HTMLElement | null>(null)
-  useEffect(() => {
-    setTarget(document.getElementById(pageActionsId))
-  }, [])
-  return target ? createPortal(children, target) : null
-}
-
-/**
- * ProjectSwitcher sits after the Findings title: picking a project opens its
- * page and "All projects" returns to the fleet-wide list. It keeps the tab and
- * the list state that make sense on either page.
- */
-function ProjectSwitcher({
-  assets,
-  current,
-}: {
-  assets: readonly Asset[]
-  current: Asset | undefined
-}) {
-  const t = useT()
-  const navigate = useNavigate()
-  const search = useRouterState({ select: (state) => state.location.search }) as FindingsSearch
-  const kept = {
-    ...(search.tab === undefined ? {} : { tab: search.tab }),
-    ...(search.q === undefined ? {} : { q: search.q }),
-    ...(search.size === undefined ? {} : { size: search.size }),
-    ...(search.sort === undefined ? {} : { sort: search.sort }),
-    ...(search.order === undefined ? {} : { order: search.order }),
-  }
-  const repos = assets.filter((asset) => asset.kind !== 'image')
-  const images = assets.filter((asset) => asset.kind === 'image')
-
-  return (
-    <select
-      id="findings-project"
-      aria-label={t('findings.filter.project')}
-      value={current === undefined ? '' : String(current.id)}
-      onChange={(event) => {
-        const value = event.target.value
-        void (value === ''
-          ? navigate({ to: '/findings', search: { ...kept, tab: undefined } })
-          : navigate({ to: '/findings/$assetId', params: { assetId: value }, search: kept }))
-      }}
-      className="h-8 max-w-[min(26rem,50vw)] min-w-0 truncate rounded-md border border-transparent bg-transparent pr-6 pl-1.5 text-[0.9375rem] font-semibold text-fg hover:border-border-subtle hover:bg-hover"
-    >
-      <option value="">{t('findings.filter.allProjects')}</option>
-      {repos.length > 0 ? (
-        <optgroup label={t('findings.filter.group.repositories')}>
-          {repos.map((asset) => (
-            <option key={asset.id} value={asset.id}>
-              {asset.display_name}
-            </option>
-          ))}
-        </optgroup>
-      ) : null}
-      {images.length > 0 ? (
-        <optgroup label={t('findings.filter.group.images')}>
-          {images.map((asset) => (
-            <option key={asset.id} value={asset.id}>
-              {asset.display_name}
-            </option>
-          ))}
-        </optgroup>
-      ) : null}
-    </select>
-  )
-}
-
 /**
  * AppShell is the concept's layout: a fixed 232px sidebar with the ADR-007
  * sections, a 56px header for the page title, and a scrolling page area.
@@ -144,7 +63,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const current = navItemFor(pathname)
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const headingRef = useRef<HTMLHeadingElement>(null)
   // The route the drawer was opened from; a route change closes it and moves
   // focus into the new page instead of back to the menu button.
   const drawerPath = useRef(pathname)
@@ -165,17 +83,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       : undefined,
   }
 
-  // A project's findings page names the project after its section.
-  const pageAssetId = /^\/findings\/(\d+)/.exec(pathname)?.[1]
-  const pageAsset =
-    pageAssetId === undefined
-      ? undefined
-      : assets.data?.find((asset) => asset.id === Number(pageAssetId))
-  const onFindings = pathname === '/findings' || pageAssetId !== undefined
-  // A banded page owns its title and subtitle, so the header bar keeps only
-  // the mobile menu button.
-  const banded = bandOwnsTitle(pathname)
-
   // A link inside the drawer navigates and the drawer must not stay over the
   // page it just opened; the same goes when the viewport grows past lg.
   useEffect(() => {
@@ -183,10 +90,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     previousPath.current = pathname
     if (!drawerOpen) return
     setDrawerOpen(false)
-    // A banded page keeps its title outside the header bar.
-    const heading =
-      headingRef.current ?? document.getElementById(pageHeadingId)
-    heading?.focus()
+    // Every page keeps its title in a band; focus lands there after a nav.
+    document.getElementById(pageHeadingId)?.focus()
   }, [pathname, drawerOpen])
 
   useEffect(() => {
@@ -217,13 +122,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       ) : null}
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header
-          className={cn(
-            'flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle px-4 py-2.5 sm:px-7',
-            // A band on desktop starts at the top of the main area.
-            banded && 'lg:hidden',
-          )}
-        >
+        {/* Below lg the page titles live in their bands, so this bar keeps only
+            the drawer button. */}
+        <header className="flex min-h-14 items-center gap-x-3 border-b border-border-subtle px-4 py-2.5 sm:px-7 lg:hidden">
           <button
             type="button"
             aria-label={t('app.nav.open')}
@@ -233,38 +134,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               drawerPath.current = pathname
               setDrawerOpen(true)
             }}
-            className="-ml-1 flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg lg:hidden"
+            className="-ml-1 flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"
           >
             <MenuIcon />
           </button>
-          {banded ? null : (
-            <>
-              <h1
-                ref={headingRef}
-                tabIndex={-1}
-                className="shrink-0 text-[0.9375rem] font-semibold focus:outline-none"
-              >
-                {pageAsset ? (
-                  <Link to="/findings" className="text-muted hover:text-fg hover:underline">
-                    {t(current.labelKey)}
-                  </Link>
-                ) : (
-                  t(current.labelKey)
-                )}
-              </h1>
-              {onFindings ? (
-                <>
-                  <span aria-hidden="true" className="-mx-1.5 text-faint">›</span>
-                  <ProjectSwitcher assets={assets.data ?? []} current={pageAsset} />
-                </>
-              ) : null}
-              {/* The dashboard hero and the project switcher say this themselves. */}
-              {pathname === '/' || onFindings ? null : (
-                <span className="min-w-0 text-faint">{t(current.subtitleKey)}</span>
-              )}
-            </>
-          )}
-          <div id={pageActionsId} className="ml-auto flex items-center gap-2" />
         </header>
         {/* The band spans the main area; page-content keeps its own column. */}
         <div id={pageBandId} />

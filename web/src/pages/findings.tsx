@@ -35,12 +35,13 @@ import {
 } from '../components/data-table'
 import { EmptyState } from '../components/empty-state'
 import { ErrorNote } from '../components/error-note'
+import { BandHeader, BandSummary } from '../components/page-band'
+import { ProjectSwitcher } from '../components/project-switcher'
 import { FilterBar, type FilterField } from '../components/filter-bar'
 import { FindingDrawer } from '../components/finding-drawer'
 import { GroupDrawer } from '../components/group-drawer'
 import { LicencePolicyCard } from '../components/licence-policy-card'
 import { Pager } from '../components/pager'
-import { PageActions } from '../components/app-shell'
 import { FilterIcon } from '../components/icons'
 import { Tabs } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge'
@@ -58,38 +59,8 @@ import {
   type FindingsView,
 } from '../lib/urls'
 import { cn } from '../lib/utils'
-import { dashboardQuery, openFindingTotal } from '../api/reports'
-import { LatestScan } from './dashboard'
 import { FixPlanPanel } from './fix-plan'
 
-/**
- * HeaderSummary puts the open and critical totals and the last scan in the
- * page header. It reads the dashboard report, which the sidebar count uses too,
- * so the numbers match it whatever the filters below say.
- */
-function HeaderSummary() {
-  const t = useT()
-  const report = useQuery(dashboardQuery)
-  if (!report.isSuccess) {
-    return null
-  }
-  const totals = report.data.totals_by_severity
-  return (
-    // Phones keep the header to the title and Export; the sidebar badge still
-    // carries the open count there.
-    <div className="hidden items-center gap-2 md:flex">
-      <LatestScan scans={report.data.last_scans} />
-      <Badge tone="neutral" className="tabular-nums">
-        {t('findings.header.open', { count: formatNumber(openFindingTotal(totals)) })}
-      </Badge>
-      {totals.critical > 0 ? (
-        <Badge tone="critical" className="tabular-nums">
-          {t('findings.header.critical', { count: formatNumber(totals.critical) })}
-        </Badge>
-      ) : null}
-    </div>
-  )
-}
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
@@ -499,7 +470,12 @@ function FindingsExportMenu({
  * per rule across projects, is the default (#90, #106); a project filter
  * forces single, and the toggle only appears for the fleet-wide list.
  */
-export function FindingsPage({ band }: { band?: ReactNode } = {}) {
+export function FindingsPage({
+  band,
+}: {
+  /** Builds a project's band summary, with the Export menu in its actions. */
+  band?: (actions: ReactNode) => ReactNode
+} = {}) {
   const t = useT()
   const languageCode = useLanguage()
   // The asset page carries its project in the path; the list works the same.
@@ -701,35 +677,55 @@ export function FindingsPage({ band }: { band?: ReactNode } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, page, pageSize, navigate, search.asset, search.view, search.size])
 
+  // The fleet list's band is the project selector; early states still owe the
+  // page its title, so they render it above their message.
+  const emptyBand = (
+    <BandHeader>
+      <BandSummary
+        heading="none"
+        title={<ProjectSwitcher assets={assetList} current={undefined} />}
+      />
+    </BandHeader>
+  )
+
   if (assets.isPending) {
     return (
-      <section className="rounded-card border border-border-subtle bg-surface p-4">
-        <p className="text-muted">{t('findings.loading')}</p>
-      </section>
+      <>
+        {emptyBand}
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <p className="text-muted">{t('findings.loading')}</p>
+        </section>
+      </>
     )
   }
 
   if (assets.isError) {
     return (
-      <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
-        <h2 className="text-[0.8125rem] font-semibold">
-          {t('findings.assetsFailed')}
-        </h2>
-        <ErrorNote error={assets.error} />
-      </section>
+      <>
+        {emptyBand}
+        <section className="flex flex-col gap-1 rounded-card border border-border-subtle bg-surface p-4">
+          <h2 className="text-[0.8125rem] font-semibold">
+            {t('findings.assetsFailed')}
+          </h2>
+          <ErrorNote error={assets.error} />
+        </section>
+      </>
     )
   }
 
   if (assetList.length === 0) {
     return (
-      <EmptyState
-        title={t('findings.empty.title')}
-        body={t('findings.empty.body')}
-      >
-        <Link to="/repositories" className={buttonVariants()}>
-          {t('findings.empty.action')}
-        </Link>
-      </EmptyState>
+      <>
+        {emptyBand}
+        <EmptyState
+          title={t('findings.empty.title')}
+          body={t('findings.empty.body')}
+        >
+          <Link to="/repositories" className={buttonVariants()}>
+            {t('findings.empty.action')}
+          </Link>
+        </EmptyState>
+      </>
     )
   }
 
@@ -1167,32 +1163,40 @@ export function FindingsPage({ band }: { band?: ReactNode } = {}) {
     headerClassName: 'w-6',
   }
 
+  const exportMenu =
+    tab === 'findings' ? (
+      <FindingsExportMenu
+        filter={{
+          assetId: selected?.id,
+          type: type === '' ? undefined : type,
+          severity: severity === '' ? undefined : severity,
+          status,
+          decidedBy,
+          fix: fix === '' ? undefined : fix,
+          dependency: dependency === '' ? undefined : dependency,
+          hideTests,
+          hideMaintenance,
+          q: search.q,
+        }}
+        view={grouped ? 'grouped' : 'single'}
+      />
+    ) : null
+  // A project page supplies its summary through `band`, with the Export menu
+  // placed in its actions. The fleet list gets the same band here: the title
+  // is the project selector (showing "All assets") and Export sits on the right.
+  const projectBand = band === undefined ? undefined : band(exportMenu)
+  const selector = <ProjectSwitcher assets={assetList} current={selected} />
+
   return (
     <>
-      {/* Fleet-wide totals would mislead on one project's page. */}
-      {assetId === undefined ? (
-        <PageActions>
-          <HeaderSummary />
-        </PageActions>
-      ) : null}
-      {tab === 'findings' ? (
-        <PageActions>
-          <FindingsExportMenu
-            filter={{
-              assetId: selected?.id,
-              type: type === '' ? undefined : type,
-              severity: severity === '' ? undefined : severity,
-              status,
-              decidedBy,
-              fix: fix === '' ? undefined : fix,
-              dependency: dependency === '' ? undefined : dependency,
-              hideTests,
-              hideMaintenance,
-              q: search.q,
-            }}
-            view={grouped ? 'grouped' : 'single'}
+      {projectBand === undefined || projectBand === null ? (
+        <BandHeader>
+          <BandSummary
+            heading="none"
+            title={selector}
+            actions={exportMenu}
           />
-        </PageActions>
+        </BandHeader>
       ) : null}
       <Tabs
         label={t('findings.tabs.aria')}
@@ -1208,8 +1212,13 @@ export function FindingsPage({ band }: { band?: ReactNode } = {}) {
         }
         value={tab}
         onChange={changeTab}
-        // A project page passes its own band summary; the fleet list has none.
-        band={band === undefined ? undefined : { summary: band }}
+        // A project page shares its band with the tab row; the fleet list has
+        // no tab row of its own.
+        band={
+          projectBand === undefined || projectBand === null
+            ? undefined
+            : { summary: projectBand }
+        }
         hideSingle
       >
         {tab === 'fix-plan' ? (

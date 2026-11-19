@@ -84,24 +84,26 @@ test('renders every nav page without browser errors', async ({
   for (const item of navPages) {
     await page.getByRole('link', { name: item.label, exact: true }).click()
 
+    // Every page's title is in its band. Findings' title is its project
+    // selector, so its heading text is the selected option, not the nav label.
+    await expect(page.locator('#page-heading')).toBeVisible()
     await expect(
-      page.getByRole('heading', { level: 1, name: item.label }),
+      page.getByRole('heading', {
+        level: 1,
+        name: item.label === 'Findings' ? 'All assets' : item.label,
+      }),
     ).toBeVisible()
-    // The dashboard's hero and the Findings project switcher replace the
-    // subtitle; a banded page keeps its title and subtitle in the band instead
-    // of the header bar.
+    // Every page's title is in its band, so the header bar carries no title or
+    // subtitle at any width; it exists only for the mobile drawer button.
     const subtitle = page.locator('header').getByText(item.subtitle, { exact: true })
-    const bandPages = ['Repositories', 'Containers', 'Connections', 'Configuration']
-    if (
-      item.label === 'Dashboard' ||
-      item.label === 'Findings' ||
-      bandPages.includes(item.label)
-    ) {
-      await expect(subtitle).toHaveCount(0)
-    } else {
-      await expect(subtitle).toBeVisible()
-    }
-    if (bandPages.includes(item.label)) {
+    await expect(subtitle).toHaveCount(0)
+    const bandSubtitles = [
+      'Repositories',
+      'Containers',
+      'Connections',
+      'Configuration',
+    ]
+    if (bandSubtitles.includes(item.label)) {
       await expect(
         page.locator('#page-band').getByText(item.subtitle, { exact: true }),
       ).toBeVisible()

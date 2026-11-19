@@ -98,9 +98,7 @@ async function openFindings(page: Page, url: string) {
     page.getByRole('heading', { level: 1, name: 'Dashboard' }),
   ).toBeVisible()
   await page.getByRole('link', { name: /^Findings/ }).click()
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Findings' }),
-  ).toBeVisible()
+  await expect(page.locator('#page-heading')).toBeVisible()
 }
 
 test('fix plan groups findings into one package upgrade per asset', async ({
@@ -146,13 +144,19 @@ test('fix plan groups findings into one package upgrade per asset', async ({
 
   await expect(page.getByRole('heading', { name: 'Fix plan' })).toBeVisible()
   await expect(page.getByText(/1 upgrade close 2 findings/)).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: 'Score' })).toBeVisible()
-  // The score explains itself: the weight sum and both omitted multipliers.
+  // One line per package: Package | Upgrade | Closes | Score | Actions.
+  const planTable = page.getByRole('region', { name: 'Fix plan' })
+  for (const header of ['Package', 'Upgrade', 'Closes', 'Score', 'Actions']) {
+    await expect(
+      planTable.getByRole('columnheader', { name: header, exact: true }),
+    ).toBeVisible()
+  }
   await expect(
-    page.getByRole('row', { name: /17.*severity 17.*EPSS off.*no image link/ }),
+    page.getByRole('row', { name: /lodash.*npm.*4\.17\.0.*4\.17\.21.*2 findings/ }),
   ).toBeVisible()
+  // The score's formula lives in its tooltip, not under the number.
   await expect(
-    page.getByRole('row', { name: /Upgrade lodash.*4\.17\.21.*2 findings/ }),
+    page.getByTitle(/severity[\s\S]*EPSS off[\s\S]*no image link/),
   ).toBeVisible()
 
   await expect(
@@ -161,7 +165,7 @@ test('fix plan groups findings into one package upgrade per asset', async ({
   await expect(page.getByText('openssl')).toBeVisible()
 
   // A row expands to its findings; the drawer opens from one of them.
-  await page.getByRole('row', { name: /Upgrade lodash/ }).click()
+  await page.getByRole('row', { name: /lodash/ }).click()
   await expect(page.getByText('CVE-2021-1111')).toBeVisible()
   await page.getByRole('button', { name: /CVE-2021-1111/ }).click()
   await expect(page.getByRole('dialog')).toBeVisible()

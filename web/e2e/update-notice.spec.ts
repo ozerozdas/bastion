@@ -115,12 +115,11 @@ test('shows the update command, release notes and a per-version dismiss', async 
   await openSession(page, server.url)
 
   await expect(page.getByText('v0.1.2 is available', { exact: true })).toBeVisible()
-  // "bastion update" is offered first; the Homebrew tab shows the server's line.
+  // "bastion update" is offered first; curl is the only alternative.
   await expect(page.getByText('bastion update', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Homebrew' }).click()
-  await expect(
-    page.getByText(release.command, { exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Homebrew' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'curl' }).click()
+  await expect(page.getByText(/install\.sh \| sh$/)).toBeVisible()
 
   const notes = page.getByRole('link', { name: 'Release notes' })
   await expect(notes).toHaveAttribute('href', release.release_url)
@@ -129,8 +128,8 @@ test('shows the update command, release notes and a per-version dismiss', async 
 
   await page.getByRole('button', { name: 'Copy update command' }).click()
   await expect(page.getByRole('button', { name: 'Copied' })).toBeVisible()
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    release.command,
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(
+    /install\.sh \| sh$/,
   )
 
   await page.getByRole('button', { name: 'Dismiss update notice' }).click()

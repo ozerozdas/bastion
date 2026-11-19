@@ -781,6 +781,7 @@
   "fixPlan.column.maxEpss": "En yüksek EPSS",
   "fixPlan.column.closes": "Kapattığı",
   "fixPlan.column.package": "Paket",
+  "fixPlan.column.actions": "İşlemler",
   "fixPlan.column.findings": "Bulgular",
   "fixPlan.upgrade": "Yükselt",
   "fixPlan.approximate": "yaklaşık",

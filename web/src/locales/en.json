@@ -781,6 +781,7 @@
   "fixPlan.column.maxEpss": "Max EPSS",
   "fixPlan.column.closes": "Closes",
   "fixPlan.column.package": "Package",
+  "fixPlan.column.actions": "Actions",
   "fixPlan.column.findings": "Findings",
   "fixPlan.upgrade": "Upgrade",
   "fixPlan.approximate": "approximate",

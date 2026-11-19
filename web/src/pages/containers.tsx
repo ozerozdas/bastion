@@ -174,9 +174,17 @@ export function ContainersPage() {
 
   if (images.isPending || connections.isPending) {
     return (
-      <section className="rounded-card border border-border-subtle bg-surface p-4">
-        <p className="text-muted">{t('containers.loading')}</p>
-      </section>
+      <>
+        <BandHeader>
+          <BandSummary
+            title={t('nav.containers')}
+            subtitle={t('nav.containers.subtitle')}
+          />
+        </BandHeader>
+        <section className="rounded-card border border-border-subtle bg-surface p-4">
+          <p className="text-muted">{t('containers.loading')}</p>
+        </section>
+      </>
     )
   }
 

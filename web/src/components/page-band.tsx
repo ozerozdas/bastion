@@ -50,6 +50,7 @@ export function BandSummary({
   meta,
   subtitle,
   actions,
+  above,
   below,
   heading = 'h1',
 }: {
@@ -59,12 +60,15 @@ export function BandSummary({
   subtitle?: ReactNode
   /** The page's primary actions, kept at the right end of the title row. */
   actions?: ReactNode
+  /** A small line above the title, e.g. a breadcrumb link. */
+  above?: ReactNode
   /** A full-width row under the title, e.g. an expanded editor or an error. */
   below?: ReactNode
-  heading?: 'h1' | 'h2'
+  heading?: 'h1' | 'h2' | 'none'
 }) {
   return (
     <div className="flex flex-col gap-1">
+      {above}
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -72,8 +76,11 @@ export function BandSummary({
               <h1 id={pageHeadingId} tabIndex={-1} className={titleClass}>
                 {title}
               </h1>
-            ) : (
+            ) : heading === 'h2' ? (
               <h2 className={titleClass}>{title}</h2>
+            ) : (
+              // A caller whose title is a form control renders its own h1.
+              <div className={titleClass}>{title}</div>
             )}
             {meta === undefined ? null : meta}
           </div>

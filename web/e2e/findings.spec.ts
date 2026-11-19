@@ -268,9 +268,7 @@ test('lists findings across projects with no filter, critical first', async ({
   await openDashboard(page, server.url)
   await page.getByRole('link', { name: /^Findings/ }).click()
 
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Findings' }),
-  ).toBeVisible()
+  await expect(page.locator('#page-heading')).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Project' })).toBeVisible()
   await expect(page.locator('#findings-project')).toHaveValue('')
 
@@ -354,9 +352,7 @@ test('groups one CVE across projects and keeps the view in the URL', async ({
 
   // A reload stays grouped: the bare URL is the grouped default.
   await page.reload()
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Findings' }),
-  ).toBeVisible()
+  await expect(page.locator('#page-heading')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Grouped' })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -417,9 +413,7 @@ test('redirects old report URLs to the findings list', async ({ page, server }) 
 
   await page.goto(`${origin}/reports?asset=${String(asset.id)}`)
   await expect(page).toHaveURL(`${origin}/findings/${String(asset.id)}`)
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Findings' }),
-  ).toBeVisible()
+  await expect(page.locator('#page-heading')).toBeVisible()
   await expect(page.locator('#findings-project')).toHaveValue(String(asset.id))
 
   await page.goto(`${origin}/reports`)

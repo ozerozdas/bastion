@@ -30,25 +30,20 @@ export function UpdateNotice() {
 
 /**
  * Ways to update. "bastion update" comes first: it replaces the binary in
- * place and, on a Homebrew install, prints the brew command instead.
+ * place and, on a Homebrew install, prints the brew command instead, so no
+ * separate Homebrew option is offered.
  */
 const methods = [
   { value: 'bastion', label: 'bastion' },
-  { value: 'brew', label: 'Homebrew' },
   { value: 'curl', label: 'curl' },
 ] as const
 
 type Method = (typeof methods)[number]['value']
 
-function commandFor(method: Method, serverCommand: string | undefined): string {
+function commandFor(method: Method): string {
   switch (method) {
     case 'bastion':
       return 'bastion update'
-    case 'brew':
-      // The server knows the tap name of a Homebrew install; prefer its line.
-      return serverCommand?.startsWith('brew ')
-        ? serverCommand
-        : 'brew upgrade ozerozdas/tap/bastion'
     case 'curl':
       return 'curl -fsSL https://raw.githubusercontent.com/ozerozdas/bastion/master/install.sh | sh'
   }
@@ -77,7 +72,7 @@ function UpdateAvailableCard({
   const current = status.current.startsWith('v')
     ? status.current
     : `v${status.current}`
-  const command = commandFor(method, status.command)
+  const command = commandFor(method)
 
   const dismiss = () => {
     dismissUpdate(window.localStorage, latest)

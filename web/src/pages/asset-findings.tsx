@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from '@tanstack/react-router'
-import { useRef } from 'react'
+import { useRef, type ReactNode } from 'react'
 
 import { assetsQuery, type Asset } from '../api/assets'
 import { useScanEvents } from '../api/events'
@@ -9,6 +9,7 @@ import { useCancelScan, useStartScans } from '../api/scans'
 import { ErrorNote } from '../components/error-note'
 import { LicencePolicyEditor } from '../components/licence-policy-card'
 import { BandSummary } from '../components/page-band'
+import { ProjectSwitcher } from '../components/project-switcher'
 import { ScanScheduleSelect } from '../components/scan-schedule'
 import { Badge } from '../components/ui/badge'
 import { Button, buttonVariants } from '../components/ui/button'
@@ -19,17 +20,34 @@ import { scanWhen, statusView } from './projects'
 
 /**
  * AssetFindingsPage reviews and rescans one asset from a single page (#182).
- * The project's summary is the hero: it shares a card with the tab row.
+ * The project's summary is the page band: its title is the project switcher,
+ * and it shares that band with the tab row.
  */
 export function AssetFindingsPage() {
   const { assetId } = useParams({ from: '/findings/$assetId' })
   const assets = useQuery(assetsQuery)
   const asset = assets.data?.find((item) => item.id === Number(assetId))
 
-  return <FindingsPage band={asset ? <AssetHero asset={asset} /> : undefined} />
+  return (
+    <FindingsPage
+      band={(actions) =>
+        asset ? (
+          <AssetHero asset={asset} assets={assets.data ?? []} exportMenu={actions} />
+        ) : null
+      }
+    />
+  )
 }
 
-function AssetHero({ asset }: { asset: Asset }) {
+function AssetHero({
+  asset,
+  assets,
+  exportMenu,
+}: {
+  asset: Asset
+  assets: readonly Asset[]
+  exportMenu: ReactNode
+}) {
   const t = useT()
   const liveScans = useScanEvents()
   const start = useStartScans()
@@ -45,8 +63,16 @@ function AssetHero({ asset }: { asset: Asset }) {
   return (
     <section aria-label={asset.display_name}>
       <BandSummary
-        heading="h2"
-        title={asset.display_name}
+        heading="none"
+        above={
+          <p className="flex items-center gap-1.5 text-xs text-muted">
+            <Link to="/findings" className="hover:text-fg hover:underline">
+              {t('nav.findings')}
+            </Link>
+            <span aria-hidden="true">›</span>
+          </p>
+        }
+        title={<ProjectSwitcher assets={assets} current={asset} />}
         subtitle={
           asset.ref === asset.display_name ? undefined : (
             <span className="font-mono" title={asset.ref}>
@@ -107,6 +133,7 @@ function AssetHero({ asset }: { asset: Asset }) {
                 ? t('repos.queueing')
                 : t('assetFindings.rescan')}
             </Button>
+            {exportMenu}
           </>
         }
         below={
