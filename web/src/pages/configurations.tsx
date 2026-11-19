@@ -1,5 +1,6 @@
 import { useNavigate, useSearch } from '@tanstack/react-router'
 
+import { AboutSettings } from '../components/about-settings'
 import { AISettings } from '../components/ai-settings'
 import { AppearanceSettings } from '../components/appearance-settings'
 import { MCPSettings } from '../components/mcp-settings'
@@ -29,6 +30,7 @@ export function ConfigurationsPage() {
     { value: 'ai', label: t('settings.tabs.ai') },
     { value: 'mcp', label: t('settings.tabs.mcp') },
     { value: 'appearance', label: t('settings.tabs.appearance') },
+    { value: 'about', label: t('settings.tabs.about') },
   ]
 
   return (
@@ -63,6 +65,8 @@ export function ConfigurationsPage() {
         <MCPSettings />
       ) : tab === 'appearance' ? (
         <AppearanceSettings />
+      ) : tab === 'about' ? (
+        <AboutSettings />
       ) : (
         <ModulesSettings />
       )}

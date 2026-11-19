@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, useRouterState } from '@tanstack/react-router'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   useEffect,
   useRef,
@@ -18,7 +18,13 @@ import { useDelayedClose } from './ui/presence'
 import { assetsQuery } from '../api/assets'
 import { dashboardQuery, openFindingTotal } from '../api/reports'
 import { useT } from '../lib/i18n'
-import { navBadge, navGroups, navItemFor, type NavCounts, type NavItem } from '../lib/nav'
+import {
+  navBadge,
+  navGroups,
+  navItemFor,
+  type NavCounts,
+  type NavItem,
+} from '../lib/nav'
 import {
   resolveMode,
   setMode,
@@ -61,7 +67,9 @@ const navItemActiveClass =
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const t = useT()
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
   const current = navItemFor(pathname)
   const [drawerOpen, setDrawerOpen] = useState(false)
   // The close button and the scrim let the drawer slide out before it unmounts.
@@ -156,6 +164,57 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 /**
+ * SidebarSearch sends a query to the Findings table, which owns the search
+ * (the q URL param). ⌘K / Ctrl+K focuses it from anywhere.
+ */
+function SidebarSearch() {
+  const t = useT()
+  const navigate = useNavigate()
+  const input = useRef<HTMLInputElement>(null)
+  const [value, setValue] = useState('')
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        input.current?.focus()
+        input.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  return (
+    <form
+      role="search"
+      onSubmit={(event) => {
+        event.preventDefault()
+        const q = value.trim()
+        void navigate({ to: '/findings', search: q === '' ? {} : { q } })
+        setValue('')
+        input.current?.blur()
+      }}
+      className="flex h-8 items-center gap-2 rounded-md border border-border-strong bg-surface px-2.5 text-xs text-faint focus-within:border-accent"
+    >
+      <SearchIcon />
+      <input
+        ref={input}
+        type="search"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        placeholder={t('app.search.placeholder')}
+        aria-label={t('app.search.placeholder')}
+        className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-faint [&::-webkit-search-cancel-button]:hidden"
+      />
+      <kbd className="rounded border border-border-strong px-1 font-mono text-[0.6875rem]">
+        ⌘K
+      </kbd>
+    </form>
+  )
+}
+
+/**
  * SidebarContent is everything the sidebar shows, so the fixed column and the
  * mobile drawer share one definition. onClose renders the drawer's close button.
  */
@@ -188,18 +247,7 @@ function SidebarContent({
         )}
       </div>
 
-      <button
-        type="button"
-        disabled
-        title={t('app.search.title')}
-        className="flex h-8 items-center gap-2 rounded-md border border-border-strong bg-surface px-2.5 text-left text-xs text-faint disabled:cursor-not-allowed"
-      >
-        <SearchIcon />
-        <span className="truncate">{t('app.search.placeholder')}</span>
-        <span className="ml-auto rounded border border-border-strong px-1 font-mono text-[0.6875rem]">
-          ⌘K
-        </span>
-      </button>
+      <SidebarSearch />
 
       <nav aria-label={t('app.nav.primary')} className="flex flex-col gap-3">
         {navGroups().map((group) => (
@@ -291,10 +339,7 @@ function SidebarDrawer({
   }, [])
 
   return (
-    <div
-      className="fixed inset-0 z-40"
-      data-closing={closing ? '' : undefined}
-    >
+    <div className="fixed inset-0 z-40" data-closing={closing ? '' : undefined}>
       <div
         aria-hidden="true"
         onClick={onClose}

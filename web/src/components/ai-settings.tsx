@@ -5,8 +5,8 @@ import { llmModelsQuery, llmQuery, useSetLLMSettings } from '../api/llm'
 import { useT } from '../lib/i18n'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
-import { Checkbox } from './ui/checkbox'
 import { InfoTip } from './ui/info-tip'
+import { Switch } from './ui/switch'
 
 const inputClass =
   'h-8 w-full rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg placeholder:text-faint'
@@ -83,15 +83,14 @@ export function AISettings() {
           label={t('settings.module.about', { title: t('settings.ai.title') })}
           content={t('settings.ai.body')}
         />
+        <div className="-my-1 -mr-1 ml-auto">
+          <Switch
+            label={t('settings.ai.enabled')}
+            checked={enabled}
+            onCheckedChange={setEnabled}
+          />
+        </div>
       </div>
-
-      <label className="flex items-center gap-2 text-xs text-muted">
-        <Checkbox
-          checked={enabled}
-          onChange={(event) => setEnabled(event.target.checked)}
-        />
-        {t('settings.ai.enabled')}
-      </label>
 
       <div className="flex flex-col gap-1">
         <label htmlFor="ai-endpoint" className={labelClass}>

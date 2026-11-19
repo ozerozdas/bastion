@@ -283,6 +283,7 @@ export type ConfigurationsTab =
   | 'ai'
   | 'mcp'
   | 'appearance'
+  | 'about'
 
 /** ConfigurationsSearch is the Configuration route's search params. */
 export type ConfigurationsSearch = {
@@ -304,7 +305,8 @@ export function parseConfigurationsTab(
     raw === 'notifications' ||
     raw === 'ai' ||
     raw === 'mcp' ||
-    raw === 'appearance'
+    raw === 'appearance' ||
+    raw === 'about'
   ) {
     return { tab: raw }
   }
