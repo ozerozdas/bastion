@@ -43,7 +43,7 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 		return nil, errors.New("store: database path is required")
 	}
 	if dir := filepath.Dir(path); dir != "" {
-		if err := os.MkdirAll(dir, 0o750); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, fmt.Errorf("store: create database directory %s: %w", dir, err)
 		}
 	}

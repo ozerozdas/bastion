@@ -340,7 +340,7 @@ func (s *Service) load() {
 // download fetches the feed, verifies it parses, and only then replaces the
 // cached file, so a truncated download never becomes the cache.
 func (s *Service) download(ctx context.Context) (map[string]Score, string, error) {
-	if err := os.MkdirAll(s.cacheDir, 0o750); err != nil {
+	if err := os.MkdirAll(s.cacheDir, 0o700); err != nil {
 		return nil, "", fmt.Errorf("create cache directory: %w", err)
 	}
 
@@ -459,7 +459,7 @@ func (s *Service) writeMeta(meta metaFile) error {
 	if s.cacheDir == "" {
 		return errors.New("epss: cache directory is required")
 	}
-	if err := os.MkdirAll(s.cacheDir, 0o750); err != nil {
+	if err := os.MkdirAll(s.cacheDir, 0o700); err != nil {
 		return fmt.Errorf("create cache directory: %w", err)
 	}
 	data, err := json.Marshal(meta)

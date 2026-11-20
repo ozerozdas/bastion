@@ -467,7 +467,7 @@ func (s *Service) Install(ctx context.Context) error {
 	}
 
 	dir := s.Dir()
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("opengrep: create module directory: %w", err)
 	}
 
@@ -515,7 +515,7 @@ func (s *Service) fetch(ctx context.Context, rawURL, wantSHA string, limit int64
 	if err := requireHTTPS(rawURL); err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(s.Dir(), 0o750); err != nil {
+	if err := os.MkdirAll(s.Dir(), 0o700); err != nil {
 		return "", fmt.Errorf("create module directory: %w", err)
 	}
 

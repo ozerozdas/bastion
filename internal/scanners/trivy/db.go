@@ -230,7 +230,7 @@ func defaultUpdater(ctx context.Context, cacheDir string) error {
 		return errors.New("trivy: cache dir is required")
 	}
 	dbDir := trivydb.Dir(cacheDir)
-	if err := os.MkdirAll(dbDir, 0o750); err != nil {
+	if err := os.MkdirAll(dbDir, 0o700); err != nil {
 		return fmt.Errorf("trivy: create db dir %q: %w", dbDir, err)
 	}
 	// Trivy's library state is process-global (ADR-001) and the download
