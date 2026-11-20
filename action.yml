@@ -8,7 +8,7 @@ branding:
 inputs:
   version:
     description: bastion release to install (a tag such as v0.6.0). Pin it; the archive is checked against the release's checksums.txt.
-    default: v0.6.0
+    default: v0.6.1
   path:
     description: Directory to scan.
     default: .
