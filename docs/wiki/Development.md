@@ -50,3 +50,7 @@ make release-snapshot   # → dist/
 
 Tasks, phases and decisions live in `.pm/` (`BOARD.md`, `tasks/`, `decisions/`). The
 rulebook is [`PROJECT_SPEC.md`](../../PROJECT_SPEC.md).
+
+## Translations
+
+The UI ships in English and Turkish. Each language is one file in `web/src/locales/`. To add one, copy `en.json` to `<code>.json` (for example `de.json`), set `_meta.name`, and translate the values. It then appears under Configuration → Appearance → Language. Missing keys fall back to English, and `npm --prefix web run test` checks that the keys and `{placeholders}` match English.
