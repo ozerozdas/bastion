@@ -63,7 +63,7 @@ func ScanFS(ctx context.Context, dir, cacheDir string, skipDirs []string) (out j
 	if cacheDir == "" {
 		return nil, errors.New("trivy: cache dir is required")
 	}
-	if err = os.MkdirAll(cacheDir, 0o750); err != nil {
+	if err = os.MkdirAll(cacheDir, 0o700); err != nil {
 		return nil, fmt.Errorf("trivy: create cache dir %q: %w", cacheDir, err)
 	}
 
@@ -99,7 +99,7 @@ func ScanImage(ctx context.Context, ref, cacheDir, dockerHost string) (out json.
 	if cacheDir == "" {
 		return nil, errors.New("trivy: cache dir is required")
 	}
-	if err = os.MkdirAll(cacheDir, 0o750); err != nil {
+	if err = os.MkdirAll(cacheDir, 0o700); err != nil {
 		return nil, fmt.Errorf("trivy: create cache dir %q: %w", cacheDir, err)
 	}
 
@@ -131,7 +131,7 @@ func ScanRemoteImage(ctx context.Context, ref, cacheDir string, auth sources.Reg
 	if auth.Username == "" || auth.Password == "" {
 		return nil, errors.New("trivy: registry credentials are required")
 	}
-	if err = os.MkdirAll(cacheDir, 0o750); err != nil {
+	if err = os.MkdirAll(cacheDir, 0o700); err != nil {
 		return nil, fmt.Errorf("trivy: create cache dir %q: %w", cacheDir, err)
 	}
 

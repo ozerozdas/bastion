@@ -108,10 +108,10 @@ func extractRules(archivePath, dst string) error {
 		}
 
 		target := filepath.Join(dst, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 			return fmt.Errorf("create rule directory: %w", err)
 		}
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644) //nolint:gosec // target is below dst.
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec // target is below dst.
 		if err != nil {
 			return fmt.Errorf("create rule file: %w", err)
 		}

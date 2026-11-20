@@ -68,7 +68,7 @@ const diff = (against: number) => ({
   against_scan_id: against,
   new: against === 20 ? [newFinding] : [newFinding, newerNewFinding],
   fixed: against === 20 ? [fixedFinding] : [],
-  persisting: against === 20 ? [persistingFinding] : [persistingFinding],
+  persisting: [persistingFinding],
   counts: {
     new: against === 20 ? oneCritical : { ...oneCritical, critical: 2 },
     fixed: against === 20 ? oneCritical : emptyCounts,

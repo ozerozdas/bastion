@@ -81,7 +81,7 @@ func lockPath(dir string) string {
 // openLockFile creates the data directory when needed and opens (creating) the
 // lock file. Locking never writes content, so the file stays empty.
 func openLockFile(dir string) (*os.File, error) {
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("servelock: create %s: %w", dir, err)
 	}
 	file, err := os.OpenFile(lockPath(dir), os.O_CREATE|os.O_RDWR, 0o600)

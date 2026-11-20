@@ -178,10 +178,13 @@ func (e *Email) Notify(ctx context.Context, summary Summary) error {
 // tlsConfig builds the upgrade config. ServerName is the configured host, so
 // the certificate must match it; tests inject RootCAs through TLSConfig.
 func (e *Email) tlsConfig(host string) *tls.Config {
-	config := &tls.Config{ServerName: host}
+	config := &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}
 	if e.TLSConfig != nil {
 		config = e.TLSConfig.Clone()
 		config.ServerName = host
+		if config.MinVersion == 0 {
+			config.MinVersion = tls.VersionTLS12
+		}
 	}
 	return config
 }
