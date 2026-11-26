@@ -15,10 +15,17 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // FileName is the lock file inside the data directory.
 const FileName = "serve.lock"
+
+// acquireWait bounds how long Acquire retries a held lock before failing.
+const (
+	acquireWait  = 3 * time.Second
+	acquireRetry = 100 * time.Millisecond
+)
 
 // errLocked marks the "another process holds the lock" case, so Held can tell
 // it apart from a real file-system error.
@@ -36,7 +43,16 @@ func Acquire(dir string) (release func(), err error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := tryLock(file); err != nil {
+	// A previous serve may still be shutting down, or a `bastion mcp` Held
+	// probe may hold its shared lock for an instant: wait briefly before
+	// reporting a running server.
+	deadline := time.Now().Add(acquireWait)
+	err = tryLock(file)
+	for errors.Is(err, errLocked) && time.Now().Before(deadline) {
+		time.Sleep(acquireRetry)
+		err = tryLock(file)
+	}
+	if err != nil {
 		_ = file.Close()
 		return nil, fmt.Errorf("servelock: %s: %w", lockPath(dir), err)
 	}

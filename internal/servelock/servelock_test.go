@@ -4,6 +4,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ozerozdas/bastion/internal/servelock"
 )
@@ -46,6 +47,27 @@ func TestAcquireRejectsASecondHolder(t *testing.T) {
 	} else if !strings.Contains(err.Error(), servelock.FileName) {
 		t.Errorf("error = %v, want it to name %s", err, servelock.FileName)
 	}
+}
+
+// TestAcquireWaitsForAShuttingDownHolder: a serve that releases the lock
+// shortly (graceful shutdown) does not make the next start fail.
+func TestAcquireWaitsForAShuttingDownHolder(t *testing.T) {
+	dir := t.TempDir()
+
+	release, err := servelock.Acquire(dir)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		release()
+	}()
+
+	second, err := servelock.Acquire(dir)
+	if err != nil {
+		t.Fatalf("Acquire while the holder shuts down: %v", err)
+	}
+	second()
 }
 
 // TestHeldProbesDoNotBlockEachOther: Held takes a shared lock, so concurrent
