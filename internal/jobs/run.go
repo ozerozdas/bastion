@@ -159,34 +159,13 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 		res.ScannerRuns = append(res.ScannerRuns, run)
 	}
 
-	// OSV matches the inventory the scanners produced, not the workspace, so
-	// it runs once over the merged packages. A failure is recorded and logged
-	// but never added to failures: advisories are an enrichment, and a
-	// network error must not fail a scan whose findings are complete.
-	if m.advisories != nil && len(res.Packages) > 0 && ctx.Err() == nil {
-		m.progress(job, StageScan, m.advisories.Name())
-		run := store.ScannerRun{
-			Scanner:        m.advisories.Name(),
-			ScannerVersion: m.advisories.Version(),
-			Status:         "succeeded",
-		}
-		start := time.Now()
-		afs, advErr := m.advisories.Match(ctx, res.Packages, asset)
-		duration := time.Since(start).Milliseconds()
-		run.DurationMS = &duration
-		switch {
-		case advErr != nil && ctx.Err() != nil:
-			run.Status = "canceled"
-			run.Error = advErr.Error()
-		case advErr != nil:
-			slog.Warn("jobs: OSV advisory lookup failed", "scan_id", job.scanID, "error", advErr)
-			run.Status = "failed"
-			run.Error = advErr.Error()
-		default:
-			res.Findings = append(res.Findings, afs...)
-		}
-		res.ScannerRuns = append(res.ScannerRuns, run)
-	}
+	// OSV and the local malware index match the inventory the scanners
+	// produced, not the workspace, so they run once over the merged packages.
+	// A failure is recorded and logged but never added to failures: advisories
+	// are an enrichment, and a network error must not fail a scan whose
+	// findings are complete.
+	m.enrichAdvisories(ctx, job, asset, res, m.advisories)
+	m.enrichAdvisories(ctx, job, asset, res, m.malwareIndex)
 
 	// The outdated lookup reads the same inventory and is opt-in (#38). Like
 	// the advisory lookup it is an enrichment: partial coverage is a warning
@@ -203,6 +182,38 @@ func (m *Manager) collect(ctx context.Context, job *scanJob, ws *sources.Workspa
 	findings.SortFindings(res.Findings)
 	findings.SortPackages(res.Packages)
 	return failures
+}
+
+// enrichAdvisories runs one advisory matcher over the scan's package
+// inventory. An opt-in matcher that is off is skipped without a scanner run.
+// A failure is recorded in scanner_runs and logged, never added to failures.
+func (m *Manager) enrichAdvisories(ctx context.Context, job *scanJob, asset findings.Asset, res *store.ScanResult, matcher AdvisoryMatcher) {
+	if matcher == nil || !matcherEnabled(matcher) || len(res.Packages) == 0 || ctx.Err() != nil {
+		return
+	}
+
+	m.progress(job, StageScan, matcher.Name())
+	run := store.ScannerRun{
+		Scanner:        matcher.Name(),
+		ScannerVersion: matcher.Version(),
+		Status:         "succeeded",
+	}
+	start := time.Now()
+	fs, err := matcher.Match(ctx, res.Packages, asset)
+	duration := time.Since(start).Milliseconds()
+	run.DurationMS = &duration
+	switch {
+	case err != nil && ctx.Err() != nil:
+		run.Status = "canceled"
+		run.Error = err.Error()
+	case err != nil:
+		slog.Warn("jobs: advisory lookup failed", "scan_id", job.scanID, "scanner", matcher.Name(), "error", err)
+		run.Status = "failed"
+		run.Error = err.Error()
+	default:
+		res.Findings = append(res.Findings, fs...)
+	}
+	res.ScannerRuns = append(res.ScannerRuns, run)
 }
 
 // enrichOutdated adds latest-version findings for the scan's package inventory

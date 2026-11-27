@@ -13,6 +13,7 @@ import (
 
 	"github.com/ozerozdas/bastion/internal/app"
 	"github.com/ozerozdas/bastion/internal/docker"
+	"github.com/ozerozdas/bastion/internal/malwaredb"
 	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
@@ -46,6 +47,11 @@ func testDoctorDeps(t *testing.T) doctorDeps {
 		},
 		secretStore: secrets.NewMemoryStore(),
 		getenv:      func(string) string { return "" },
+		malwareIndexStatus: func() malwaredb.Status {
+			// Off on a fresh install: no index, no request.
+			return malwaredb.Status{}
+		},
+		osvEnabled: func() bool { return true },
 		dockerStatus: func(context.Context) docker.DaemonStatus {
 			return docker.DaemonStatus{}
 		},
@@ -327,6 +333,8 @@ func TestWriteDoctorText(t *testing.T) {
 		Docker:          doctorDocker{Found: true, Host: "unix:///var/run/docker.sock", Version: "27.0.3"},
 		Keyring:         doctorStatus{Status: "ok"},
 		HMACKey:         doctorStatus{Status: "missing", Detail: "not created yet"},
+		MalwareIndex:    doctorMalwareIndex{State: "on", SHA: "abc123", Count: 12, Packages: 9},
+		OSV:             doctorOSV{Enabled: true},
 	}
 
 	var out bytes.Buffer
@@ -346,6 +354,8 @@ func TestWriteDoctorText(t *testing.T) {
 		"gitleaks", "8.30.1",
 		"docker", "ok (unix:///var/run/docker.sock, 27.0.3)",
 		"hmac key", "missing (not created yet)",
+		"malware index", "on, snapshot abc123, 12 advisories over 9 package names",
+		"osv", "on",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("text report missing %q:\n%s", want, got)

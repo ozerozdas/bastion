@@ -3,6 +3,11 @@ import type { ReactNode } from 'react'
 
 import { eolQuery, useSetEOLEnabled } from '../api/eol'
 import { epssQuery, useSetEPSSEnabled } from '../api/epss'
+import {
+  malwareIndexQuery,
+  useSetMalwareIndexEnabled,
+} from '../api/malware-index'
+import { osvQuery, useSetOSVEnabled } from '../api/osv'
 import { outdatedQuery, useSetOutdatedEnabled } from '../api/outdated'
 import {
   reachabilityQuery,
@@ -11,6 +16,7 @@ import {
 import { sastQuery, useSetSASTEnabled } from '../api/sast'
 import { updateQuery, useSetUpdateConsent } from '../api/update'
 import { formatNumber, useT } from '../lib/i18n'
+import { formatDateTime } from '../lib/time'
 import { cn } from '../lib/utils'
 import { Badge } from './ui/badge'
 import { SecurityNewsSettings } from './security-news-settings'
@@ -31,6 +37,8 @@ export function ModulesSettings() {
     <div className="flex flex-col gap-4">
       <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <EPSSCard />
+        <MalwareIndexCard />
+        <OSVCard />
         <ReachabilityCard />
         <OutdatedCard />
         <EOLCard />
@@ -146,6 +154,111 @@ function EPSSCard() {
           </p>
         ) : null}
       </ModuleCard>
+    </li>
+  )
+}
+
+function MalwareIndexCard() {
+  const t = useT()
+  const { data } = useQuery(malwareIndexQuery)
+  const toggle = useSetMalwareIndexEnabled()
+
+  if (!data) {
+    return null
+  }
+
+  const failed = data.enabled && data.error !== undefined
+  const commit = data.sha?.slice(0, 7)
+  const built = commit !== undefined
+  const building = data.enabled && !built && !failed
+
+  const meta =
+    data.enabled && built
+      ? t('settings.malware.entries', {
+          count: formatNumber(data.count ?? 0),
+          packages: formatNumber(data.packages ?? 0),
+        })
+      : undefined
+
+  return (
+    <li className="flex">
+      <ModuleCard
+        title={t('settings.malware.title')}
+        body={t('settings.malware.body')}
+        on={data.enabled}
+        pending={toggle.isPending}
+        onChange={(enabled) => toggle.mutate(enabled)}
+        footer={meta}
+      >
+        {building ? (
+          <p className="font-mono text-[0.6875rem] text-muted">
+            {t('settings.malware.building')}
+          </p>
+        ) : null}
+
+        {data.enabled && built ? (
+          <>
+            <p
+              className="min-w-0 truncate font-mono text-[0.625rem] text-muted"
+              title={data.sha}
+            >
+              {t('settings.malware.commit', { sha: commit })}
+              {data.built_at
+                ? ` · ${t('settings.malware.built', {
+                    time: formatDateTime(data.built_at),
+                  })}`
+                : ''}
+            </p>
+            {data.unevaluable ? (
+              <p className="text-[0.6875rem] text-faint">
+                {t('settings.malware.unevaluable', {
+                  count: formatNumber(data.unevaluable),
+                })}
+              </p>
+            ) : null}
+          </>
+        ) : null}
+
+        {failed ? (
+          <>
+            <p className="text-[0.6875rem] text-critical">
+              {t('settings.malware.failed')}
+            </p>
+            <p
+              className="min-w-0 truncate font-mono text-[0.625rem] text-muted"
+              title={data.error}
+            >
+              {data.error}
+            </p>
+            <p className="text-[0.6875rem] text-faint">
+              {t('settings.malware.retries')}
+            </p>
+          </>
+        ) : null}
+      </ModuleCard>
+    </li>
+  )
+}
+
+function OSVCard() {
+  const t = useT()
+  const { data } = useQuery(osvQuery)
+  const toggle = useSetOSVEnabled()
+
+  if (!data) {
+    return null
+  }
+
+  return (
+    <li className="flex">
+      <ModuleCard
+        title={t('settings.osv.title')}
+        body={t('settings.osv.body')}
+        on={data.enabled}
+        pending={toggle.isPending}
+        onChange={(enabled) => toggle.mutate(enabled)}
+        footer={data.enabled ? undefined : t('settings.osv.offline')}
+      />
     </li>
   )
 }

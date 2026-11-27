@@ -28,7 +28,8 @@ func SeverityRank(s Severity) int {
 //
 //  1. findings that share a fingerprint are one finding (PROJECT_SPEC.md §5:
 //     one finding per fingerprint per scan): the severity is upgraded to the
-//     highest seen and the occurrences are summed;
+//     highest seen, and occurrences sum within one scanner but keep the
+//     highest count across scanners;
 //  2. vulnerability findings in the same place whose advisory alias sets
 //     intersect, from different scanners, are one finding, so a CVE reported
 //     by both Trivy and OSV is listed once with both scanners.
@@ -42,8 +43,11 @@ func Merge(fs []Finding) []Finding {
 }
 
 // mergeFingerprints collapses findings that share a fingerprint. It keeps the
-// first occurrence in input order, upgrades the severity to the highest seen
-// and sums the occurrences.
+// first occurrence in input order and upgrades the severity to the highest
+// seen. Duplicates from the same scanner are occurrences of one issue and their
+// counts sum; the same fingerprint from different scanners (OSV and the local
+// malware index both report MAL- id X) is one occurrence, so the highest count
+// wins and every scanner is recorded.
 func mergeFingerprints(fs []Finding) []Finding {
 	out := make([]Finding, 0, len(fs))
 	index := make(map[string]int, len(fs))
@@ -64,12 +68,36 @@ func mergeFingerprints(fs []Finding) []Finding {
 			continue
 		}
 		kept := &out[i]
-		kept.Occurrences += f.Occurrences
+		if kept.Scanner != f.Scanner {
+			if f.Occurrences > kept.Occurrences {
+				kept.Occurrences = f.Occurrences
+			}
+			kept.Scanners = unionScanners(*kept, f)
+		} else {
+			kept.Occurrences += f.Occurrences
+		}
 		if SeverityRank(f.Severity) > SeverityRank(kept.Severity) {
 			kept.Severity = f.Severity
 		}
 	}
 	return out
+}
+
+// unionScanners returns every scanner name either finding carries, including
+// each finding's primary scanner, in stable sorted order.
+func unionScanners(a, b Finding) []string {
+	set := make(map[string]struct{}, len(a.Scanners)+len(b.Scanners)+2)
+	for _, f := range []Finding{a, b} {
+		for _, s := range f.Scanners {
+			if s != "" {
+				set[s] = struct{}{}
+			}
+		}
+		if f.Scanner != "" {
+			set[f.Scanner] = struct{}{}
+		}
+	}
+	return sortedKeys(set)
 }
 
 // aliasGroupKey identifies the place one issue is reported at. The location is

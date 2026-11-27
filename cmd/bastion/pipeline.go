@@ -47,6 +47,9 @@ type pipelineConfig struct {
 	// Advisories enriches the merged package inventory with external
 	// advisories; nil disables the lookup.
 	Advisories jobs.AdvisoryMatcher
+	// MalwareIndex enriches the merged package inventory with malicious-package
+	// advisories matched locally (#203); nil disables the lookup.
+	MalwareIndex jobs.AdvisoryMatcher
 	// Outdated enriches the package inventory with latest-version findings;
 	// nil disables the lookup.
 	Outdated jobs.OutdatedMatcher
@@ -80,6 +83,7 @@ func newScanManager(cfg pipelineConfig) (*jobs.Manager, error) {
 		Scanners:     cfg.ScannerList,
 		Normalizers:  normalizers,
 		Advisories:   cfg.Advisories,
+		MalwareIndex: cfg.MalwareIndex,
 		Outdated:     cfg.Outdated,
 		EOL:          cfg.EOL,
 		Reachability: cfg.Reachability,
@@ -284,7 +288,7 @@ const serverScanShutdownGrace = 10 * time.Second
 // scan can never stay queued forever. bus receives the lifecycle events the
 // SSE endpoint streams. trivyDB is the vulnerability DB manager the scans and
 // the /api/trivy-db endpoints share.
-func newServerScanManager(ctx context.Context, db *sql.DB, paths app.Paths, concurrency int, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager, outdated jobs.OutdatedMatcher, eolLookup jobs.EOLMatcher, reachability jobs.ReachabilityEnricher, sast *opengrep.Service, notify jobs.CompletionListener) (*jobs.Manager, error) {
+func newServerScanManager(ctx context.Context, db *sql.DB, paths app.Paths, concurrency int, tokens *connections.Service, secretStore secrets.Store, bus jobs.Publisher, trivyDB *trivy.Manager, outdated jobs.OutdatedMatcher, eolLookup jobs.EOLMatcher, reachability jobs.ReachabilityEnricher, sast *opengrep.Service, malwareIndex jobs.AdvisoryMatcher, osvSettings *osv.Settings, notify jobs.CompletionListener) (*jobs.Manager, error) {
 	hmacKey, err := secrets.LocalKey(secretStore)
 	if err != nil {
 		// Only secret fingerprints need the key; everything else still works,
@@ -296,6 +300,10 @@ func newServerScanManager(ctx context.Context, db *sql.DB, paths app.Paths, conc
 	if err != nil {
 		return nil, err
 	}
+	advisories := osv.New(version)
+	// The same Settings instance backs /api/osv, so a PUT takes effect on the
+	// next scan without a restart.
+	advisories.Settings = osvSettings
 	manager, err := newScanManager(pipelineConfig{
 		DB: db,
 		// Trivy serializes itself (ADR-001); running adapters one after
@@ -312,7 +320,8 @@ func newServerScanManager(ctx context.Context, db *sql.DB, paths app.Paths, conc
 			CacheDir: paths.TrivyCacheDir(),
 			HMACKey:  hmacKey,
 		},
-		Advisories:   osv.New(version),
+		Advisories:   advisories,
+		MalwareIndex: malwareIndex,
 		Outdated:     outdated,
 		EOL:          eolLookup,
 		Reachability: reachability,

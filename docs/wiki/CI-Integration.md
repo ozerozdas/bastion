@@ -6,6 +6,10 @@
 - `--format sarif` — output for GitHub code scanning and other SARIF tools,
 - `--fail-on <severity>` — fail the job (exit `2`) on serious findings.
 
+The local malware index is off by default, so CI is unaffected. If it is enabled in the
+data directory a job uses and no index is cached there, the first `bastion scan` downloads
+the snapshot and builds the index before matching (~48 MB, bounded at 10 minutes).
+
 ## Secrets key
 
 Secret findings are stored redacted together with an HMAC (see

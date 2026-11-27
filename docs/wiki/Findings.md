@@ -10,7 +10,7 @@ Every scanner result is normalized into one **finding** model, whatever produced
 | `license` | Trivy | A package under a licence you may need to review; a deny policy raises its severity |
 | `misconfig` | Trivy | Dockerfile runs as root; S3 bucket without encryption |
 | `secret` | Gitleaks | An AWS key committed in `config/prod.env` |
-| `malware` | OSV | A `MAL-` advisory: a known-malicious package in the inventory (always critical) |
+| `malware` | OSV and the local malware index | A `MAL-` advisory: a known-malicious package in the inventory (always critical) |
 
 ## One advisory, one finding
 
@@ -19,6 +19,24 @@ shows the CVE, OSV the GHSA. After normalization bastion merges findings of the
 same package in the same location whose advisory alias sets intersect, keeping
 Trivy's finding as the primary one. The merged finding lists every scanner that
 reported it (`scanners` in the API), so one CVE appears once rather than twice.
+
+
+## Malware findings
+
+A `MAL-` advisory says a package in the inventory is known-malicious. It is always a
+**critical** `malware` finding, from either of two sources:
+
+- the online OSV lookup (on by default), or
+- the opt-in local malware index, which downloads a snapshot of
+  [ossf/malicious-packages](https://github.com/ossf/malicious-packages) at most once a day
+  and matches on this machine, so package names stay local.
+
+Both sources produce the same rule id (`MAL-…`) and the same fingerprint, so with both on
+you see the malicious package once, not twice. The local index matches explicit version
+lists, `introduced: 0` (every version) and SEMVER ranges; other range types are skipped and
+counted as unevaluable (`bastion doctor` shows the count), never guessed. A package without
+a version matches only advisories that mark every version malicious. Withdrawn advisories
+are ignored.
 
 
 ## Severity

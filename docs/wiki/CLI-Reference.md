@@ -49,6 +49,10 @@ Scans one target without the UI and prints the findings.
 
 Give exactly one of `--path` or `--repo`.
 
+The local malware index is off by default. When it is on in the data directory this scan
+uses and no index is cached, `bastion scan` downloads and builds it first (~48 MB, bounded
+at 10 minutes). CI is unaffected unless it is enabled there.
+
 Progress is printed to stderr as plain lines (`trivy: running…`, `trivy: waiting for vulnerability database…`, `trivy: succeeded (4s)`, `osv: failed: <reason>`); stdout carries only the selected format. `--quiet` silences them.
 
 ```sh

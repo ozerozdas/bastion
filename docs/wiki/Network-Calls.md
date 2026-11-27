@@ -9,9 +9,11 @@ it on: Trivy runs with `--disable-telemetry --skip-version-check`, scans query
 | `mirror.gcr.io/aquasec/trivy-db`, `ghcr.io/aquasecurity/trivy-db` | **Download** in the sidebar, or the first scan that needs it; then on DB refresh | Vulnerabilities, package advisories. ~1.7 GB on first download |
 | `mirror.gcr.io/aquasec/trivy-java-db`, `ghcr.io/aquasecurity/trivy-java-db` | Scan containing Java artifacts | Java index DB, needed to map `.jar` files to artifacts |
 | `mirror.gcr.io/aquasec/trivy-checks:2` | When misconfiguration scanning runs | IaC checks bundle, ~2.6 MB |
-| `api.osv.dev` | Every scan whose package inventory is non-empty | `POST /v1/querybatch` and `GET /v1/vulns/{id}` for the advisories it reports. Sends package name, version and ecosystem only, with `User-Agent: bastion/<version>` |
+| `api.osv.dev` | Every scan whose package inventory is non-empty, while the online lookup is on (the default) | `POST /v1/querybatch` and `GET /v1/vulns/{id}` for the advisories it reports. Sends package name, version and ecosystem only, with `User-Agent: bastion/<version>` |
 | `api.github.com` | Only on user action: test connection, discover repos, add asset, scan, or confirm **Open PR** on a fix plan step  | `GET /user`, `GET /user/repos`, `GET /repos/{owner}/{repo}`, `GET /repos/{owner}/{repo}/commits/{branch}`, `GET /repos/{owner}/{repo}/tarball/{sha}`, and for a confirmed pull request `GET /repos/{owner}/{repo}/git/ref/heads/{branch}`, `GET /repos/{owner}/{repo}/pulls`, `GET /repos/{owner}/{repo}/contents/{path}`, `POST /repos/{owner}/{repo}/git/refs`, `PUT /repos/{owner}/{repo}/contents/{path}` (one manifest file) and `POST /repos/{owner}/{repo}/pulls`. Nothing is written without the confirmation dialog |
-| `codeload.github.com` | Redirect target of the tarball call | The repository archive itself |
+| `codeload.github.com` | Redirect target of a repository tarball call, or the malware snapshot download below | The repository archive itself |
+| `api.github.com` (`/repos/ossf/malicious-packages/commits/main`) | At most once a day, only after you turn the local malware index on in the UI | Resolves the dataset snapshot commit with `Accept: application/vnd.github.sha`. Sends your IP and `User-Agent: bastion/<version>`; the archive is fetched only when the SHA changed |
+| `codeload.github.com` (`/ossf/malicious-packages/tar.gz/<sha>`) | Same moment, only when the SHA changed | The snapshot archive, ~48 MB (~242k OSV reports). Only `osv/malicious/**` is indexed, locally. Sends your IP and `User-Agent: bastion/<version>`; nothing about your packages or scans is sent, and the index is never re-uploaded |
 | `sts.<region>.amazonaws.com` | Only on user action: test an AWS connection | `GetCallerIdentity`, signed with the credentials of the AWS profile you chose; the account id and ARN come back |
 | `ecr.<region>.amazonaws.com` | Only on user action: discover ECR repositories, or start an ECR image scan | `DescribeRepositories`, `DescribeImages` and `GetAuthorizationToken`, signed with the credentials of the AWS profile you chose; repository names, tag names, digests and push times come back |
 | `<account>.dkr.ecr.<region>.amazonaws.com` | Only during an ECR image scan | Docker Registry HTTP API pull of the pinned digest, authenticated with the short-lived ECR token from `GetAuthorizationToken` (held in memory for the scan, never stored or logged) |
@@ -45,15 +47,25 @@ cache, an instance role) when you test the connection, so no AWS key is written 
 bastion's database or the OS keychain.
 
 The three Trivy registries are OCI pulls performed by Trivy's updater; they are cached
-under `<cache>/trivy` and re-used by later scans. Nothing is downloaded at startup: the
-sidebar only reads the DB status, and the DB arrives when you press **Download** there or
-when a scan needs it. GitHub is contacted in the background only by the daily release
-check; every scan, discovery and download call happens on your action. Request URLs are
-never logged (private-repo redirects carry a short-lived token).
+under `<cache>/trivy` and re-used by later scans. The vulnerability DB is not fetched at
+startup: the sidebar only reads the DB status, and the DB arrives when you press
+**Download** there or when a scan needs it. Background calls are limited to the daily
+release check and, with the local malware index on, its daily snapshot check; every other
+scan, discovery and download call happens on your action. Request URLs are never logged
+(private-repo redirects carry a short-lived token).
 
 OSV receives only the package name, version and ecosystem of the inventory Trivy already
-built; repository contents, file paths and findings never leave the machine. A failed OSV
-lookup is logged and recorded as a failed scanner run; the scan's other findings stand.
+built; repository contents, file paths and findings never leave the machine. Turn the online
+lookup off under **Configuration > Modules** and no request goes to `api.osv.dev`: online
+advisories, including `MAL-` malware, are then absent, and the local malware index still
+matches if you enabled it. Consent lives in `osv-settings.json`: a missing file means on,
+and a file that exists but is unreadable or invalid fails closed (**off**), so a lookup you
+turned off never comes back because the file was damaged. A failed OSV lookup is logged and
+recorded as a failed scanner run; the scan's other findings stand.
+
+The local malware index is off until you turn it on; once on, matching happens on this
+machine and the only requests are the two snapshot calls above. Your package names are never
+sent to GitHub or anywhere else by that matcher.
 
 The release check is disabled by `BASTION_NO_UPDATE_CHECK=1`, in CI, and in `dev` builds,
 whatever the stored choice. Consent lives in the data directory; it is `unset` (no

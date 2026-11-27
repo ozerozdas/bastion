@@ -16,6 +16,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/jobs"
 	"github.com/ozerozdas/bastion/internal/licencepolicy"
 	"github.com/ozerozdas/bastion/internal/localllm"
+	"github.com/ozerozdas/bastion/internal/malwaredb"
 	"github.com/ozerozdas/bastion/internal/notifications"
 	"github.com/ozerozdas/bastion/internal/preferences"
 	"github.com/ozerozdas/bastion/internal/reports"
@@ -23,6 +24,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/scanners/eol"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
+	"github.com/ozerozdas/bastion/internal/scanners/osv"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/securitynews"
 	"github.com/ozerozdas/bastion/internal/servelock"
@@ -43,6 +45,8 @@ type serverServices struct {
 	scanManager  *jobs.Manager
 	trivyDB      *trivy.Manager
 	epss         *epss.Service
+	malwareIndex *malwaredb.Service
+	osvSettings  *osv.Settings
 	securityNews *securitynews.Service
 	reachability *govulncheck.Service
 	outdated     *depsdev.Service
@@ -107,6 +111,12 @@ func newServerServices(ctx context.Context, paths app.Paths, port, concurrency i
 	// The EPSS feed is opt-in and off by default; with the setting off its
 	// Status call and every lookup are no-ops and no request is made.
 	services.epss = newEPSSService(paths)
+	// The local malware index is opt-in and off by default (#203): off means
+	// no snapshot download and no local matching.
+	services.malwareIndex = newMalwareIndexService(paths)
+	// The OSV online lookup is on by default; its settings file stores an
+	// opt-out that both the matcher and /api/osv read.
+	services.osvSettings = osv.NewSettings(paths.DataDir)
 	// Security News is opt-in too (#192): off by default, so no feed is
 	// fetched until the user turns it on.
 	services.securityNews = newSecurityNewsService(paths)
@@ -179,7 +189,8 @@ func newServerServices(ctx context.Context, paths app.Paths, port, concurrency i
 	services.trivyDB = trivy.NewManager(paths.TrivyCacheDir())
 	services.scanManager, err = newServerScanManager(ctx, db, paths, concurrency,
 		services.connections, secretStore, services.events, services.trivyDB,
-		services.outdated, services.eol, services.reachability, services.sast, services.notify)
+		services.outdated, services.eol, services.reachability, services.sast,
+		services.malwareIndex, services.osvSettings, services.notify)
 	if err != nil {
 		return nil, err
 	}

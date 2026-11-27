@@ -13,19 +13,21 @@ it on.
 | `mirror.gcr.io/aquasec/trivy-db`, `ghcr.io/aquasecurity/trivy-db` | **Download** in the sidebar, or the first scan that needs it; then on DB refresh | Vulnerability advisories (~1.7 GB first time) |
 | `mirror.gcr.io/aquasec/trivy-java-db`, `ghcr.io/aquasecurity/trivy-java-db` | Scans with Java artifacts | Maps `.jar` files to artifacts |
 | `mirror.gcr.io/aquasec/trivy-checks:2` | Misconfiguration scanning | IaC checks bundle (~2.6 MB) |
-| `api.osv.dev` | Scans with a non-empty package inventory | Malware advisories. Sends package name, version and ecosystem only, with `User-Agent: bastion/<version>` |
+| `api.osv.dev` | Scans with a non-empty package inventory, while the online lookup is on (default) | Package advisories, including `MAL-` malware. Sends package name, version and ecosystem only, with `User-Agent: bastion/<version>`; off under **Configuration > Modules** means no request |
 | `api.github.com` | **Only on your action**: test connection, list repos, add, scan | Identity, repo list, commit SHA, tarball |
-| `codeload.github.com` | Redirect of the tarball call | The repository archive |
+| `api.github.com` (`ossf/malicious-packages`) | At most once a day, only after you turn the local malware index on | The dataset commit; the ~48 MB snapshot follows from `codeload.github.com` when it changed. Sends your IP and `User-Agent: bastion/<version>`; package names stay local |
+| `codeload.github.com` | Redirect of a repository tarball call, or the malware snapshot download | The repository archive, or the ~48 MB public snapshot matched locally |
 | `endoflife.date` | Scans that detect an OS or Go runtime, **only after you turn the End-of-life check on** | Release cycles of that product, cached for a day. Sends the product name only |
 | `github.com/ozerozdas/bastion/releases/latest` | At most once a day, only after you turn the release check on in the UI | Newest release tag. Sends your IP and `User-Agent: bastion/<version>`; the redirect is not followed |
 | `feeds.feedburner.com`, `www.bleepingcomputer.com`, `www.cisa.gov`, `isc.sans.edu`, `krebsonsecurity.com`, `www.securityweek.com`, `www.darkreading.com`, `www.exploit-db.com`, `googleprojectzero.blogspot.com`, `portswigger.net`, `www.reddit.com` | **Only after you turn Security News on**; at most every 30 minutes per enabled source (2 minutes after a failure) | The source's RSS/Atom feed: titles, short plain-text summaries, dates and links. Sends your IP and `User-Agent: bastion/<version>`; each feed is cached in memory, HTML is stripped, and only http(s) links are kept. Redirects stay on the same host |
 
-GitHub is contacted in the background only by the daily release check; every scan,
-discovery and download call happens on your action. Opening the UI downloads nothing: the
-vulnerability DB arrives when you press **Download** in the sidebar or when a scan needs
-it. Request URLs are never logged (private-repo redirects carry a short-lived token). The
-release check is disabled by `BASTION_NO_UPDATE_CHECK=1`, in CI, and in `dev` builds,
-whatever the stored choice.
+GitHub is contacted in the background only by the daily release check and, once you turn
+the local malware index on, by its daily snapshot check; every other scan, discovery and
+download call happens on your action. Opening the UI does not download the vulnerability
+DB: it arrives when you press **Download** in the sidebar or when a scan needs it. Request
+URLs are never logged (private-repo redirects carry a short-lived token). The release check
+is disabled by `BASTION_NO_UPDATE_CHECK=1`, in CI, and in `dev` builds, whatever the stored
+choice.
 
 ## The local server
 
@@ -51,6 +53,8 @@ Treat the URL as a password until you've opened it.
 - **Tokens** — OS keyring only; never in SQLite, logs or API responses.
 - **Secrets found in code** — redacted plus HMAC, never the raw value
   ([details](Findings.md#secrets)).
+- **Malware index** — a public snapshot of `ossf/malicious-packages` in the cache directory,
+  matched on this machine; your package names are never part of it.
 - **Scanned content** is untrusted input. Downloads are capped (512 MiB compressed tarball,
   2 GiB / 200k files extracted) and partial coverage is reported, not hidden.
 

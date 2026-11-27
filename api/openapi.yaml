@@ -52,6 +52,18 @@ tags:
       made. When on, the gzipped CSV is cached and refreshed at most daily, and
       findings carry its score at read time. `GET /api/epss` never blocks on
       the network.
+  - name: malware-index
+    description: |
+      The opt-in local malware index. When on, bastion downloads a snapshot of
+      github.com/ossf/malicious-packages at most once a day (~48 MB compressed)
+      and matches the package inventory against it on this machine. Off by
+      default; with the setting off no request is made. `GET
+      /api/malware-index` never blocks on the network.
+  - name: osv
+    description: |
+      The OSV.dev online advisory lookup. On by default. When off, scans send
+      nothing to api.osv.dev and findings carry only what local matchers
+      report. `GET /api/osv` and `PUT /api/osv` only read and store the choice.
   - name: outdated
     description: |
       The opt-in outdated-package lookup (#38). When on, a scan asks
@@ -359,6 +371,122 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EPSSStatus"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/malware-index:
+    get:
+      operationId: getMalwareIndexStatus
+      summary: Report the local malware index state.
+      description: |
+        Returns the stored opt-in setting and the cached index: the dataset
+        commit it was built from, when it was built, how many malicious-package
+        advisories and package names it holds, and how many advisory entries
+        could not be evaluated. With the setting off no request is made. With
+        it on, a snapshot whose upstream commit is older than 24 hours is
+        checked in the background; this response carries the cached values
+        immediately.
+      tags: [malware-index]
+      responses:
+        "200":
+          description: The current local malware index state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MalwareIndexStatus"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setMalwareIndexEnabled
+      summary: Store the local malware index opt-in choice.
+      description: |
+        Only the UI calls this. `enabled: false` stops every future download and
+        deletes nothing already cached. Turning it on clears the daily budget so
+        an index is built at once when none exists; the response is the updated
+        status.
+      tags: [malware-index]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetMalwareIndexEnabledRequest"
+      responses:
+        "200":
+          description: The choice was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MalwareIndexStatus"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /api/osv:
+    get:
+      operationId: getOSVStatus
+      summary: Report the OSV.dev online lookup state.
+      description: |
+        Returns the stored setting only. It is on by default; a missing
+        settings file means on, which keeps the behaviour of earlier versions.
+        With it off no request reaches api.osv.dev.
+      tags: [osv]
+      responses:
+        "200":
+          description: The current OSV online lookup state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OSVStatus"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setOSVEnabled
+      summary: Store the OSV.dev online lookup choice.
+      description: |
+        Only the UI calls this. `enabled: false` stops every future request to
+        api.osv.dev; the next scan reports only what local matchers find.
+        Turning it on affects the next scan; the response is the updated
+        status.
+      tags: [osv]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetOSVEnabledRequest"
+      responses:
+        "200":
+          description: The choice was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OSVStatus"
         "400":
           $ref: "#/components/responses/Problem"
         "401":
@@ -3339,6 +3467,91 @@ components:
           description: |
             True opts in to the daily FIRST.org download; false turns it off and
             stops every future request.
+    MalwareIndexStatus:
+      type: object
+      title: MalwareIndexStatus
+      description: |
+        The local malware index as the UI and the CLI see it. Optional fields
+        are absent when no index has been built yet or the last refresh failed.
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            The stored opt-in setting. False means no download is ever made and
+            scans carry only the malware findings another matcher reports.
+        sha:
+          type: string
+          description: |
+            The ossf/malicious-packages commit the cached index was built from.
+          examples: ["4f9c2a1b7d3e5f60718293a4b5c6d7e8f9012345"]
+        built_at:
+          type: string
+          format: date-time
+          description: When the cached index was built.
+        last_attempt:
+          type: string
+          format: date-time
+          description: |
+            When the daily check last ran, successful or not. It keeps the
+            once-a-day budget across restarts.
+        count:
+          type: integer
+          minimum: 0
+          description: Number of malicious-package advisories in the index.
+        packages:
+          type: integer
+          minimum: 0
+          description: Number of distinct ecosystem/package-name keys in the index.
+        unevaluable:
+          type: integer
+          minimum: 0
+          description: |
+            Advisory entries whose version ranges this build cannot evaluate,
+            and that carry no explicit version list. They are never matched
+            rather than guessed.
+        error:
+          type: string
+          description: |
+            Why the last refresh failed. The previous index, if any, stays in
+            use, so scans keep matching against it.
+    SetMalwareIndexEnabledRequest:
+      type: object
+      title: SetMalwareIndexEnabledRequest
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            True opts in to the daily snapshot download and local matching;
+            false turns it off and stops every future request.
+    OSVStatus:
+      type: object
+      title: OSVStatus
+      description: |
+        The OSV.dev online advisory lookup. It is on by default; a missing
+        settings file means on.
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            False means no request reaches api.osv.dev; package names, versions
+            and ecosystems stay on this machine.
+    SetOSVEnabledRequest:
+      type: object
+      title: SetOSVEnabledRequest
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: |
+            True keeps the online lookup on; false turns it off and stops every
+            future request.
     SecurityNewsSource:
       type: object
       title: SecurityNewsSource
