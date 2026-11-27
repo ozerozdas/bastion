@@ -2887,6 +2887,9 @@ type LicencePolicyAssetIDQuery = int64
 // OffsetQuery defines model for OffsetQuery.
 type OffsetQuery = int
 
+// ReportSnapshotFormatQuery defines model for ReportSnapshotFormatQuery.
+type ReportSnapshotFormatQuery = string
+
 // ScanID defines model for ScanID.
 type ScanID = int64
 

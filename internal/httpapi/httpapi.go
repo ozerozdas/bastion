@@ -363,6 +363,10 @@ func (s *Server) buildHandler() http.Handler {
 	// hand-written like the findings export.
 	mux.HandleFunc("GET /api/reports/licenses.csv", s.handleLicenseCSV)
 
+	// The report snapshot serves Markdown, HTML or JSON as a download, so it is
+	// hand-written like the licence CSV.
+	mux.HandleFunc("GET /api/reports/snapshot", s.handleReportSnapshot)
+
 	// Unknown /api/* paths must not fall through to the UI handler.
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusNotFound, "Not Found",

@@ -1498,6 +1498,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reports/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the fleet or one asset's security report snapshot.
+         * @description Writes one offline snapshot of the fleet — scan coverage, open findings,
+         *     SLA status, triage decisions, suppression rules and the licence policy —
+         *     as a single document. `format=md` (the CLI default) is
+         *     GitHub-flavoured Markdown, `format=html` a self-contained page and
+         *     `format=json` the default machine-readable snapshot. `asset_id` narrows
+         *     the scope to one asset; an unknown id yields an empty snapshot.
+         *
+         *     The `Content-Disposition` filename is
+         *     `bastion-report-<YYYYMMDD-HHMM>.<ext>`, stamped from the snapshot's
+         *     `generated_at` in UTC. Every response carries
+         *     `X-Content-Type-Options: nosniff`; the HTML response also carries
+         *     `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'`,
+         *     so the downloaded page can neither fetch nor run anything.
+         *
+         *     This operation is hand-written in `internal/httpapi/reports_snapshot.go`
+         *     and excluded from codegen (api/oapi-codegen.yaml): the generated strict
+         *     server cannot set the `Content-Disposition` header. The spec stays the
+         *     contract.
+         */
+        get: operations["downloadReportSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reports/audit": {
         parameters: {
             query?: never;
@@ -3703,6 +3740,11 @@ export interface components {
          *     writes one row per finding.
          */
         FindingsViewQuery: "grouped" | "single";
+        /**
+         * @description The document format: `json` (the default), `md` or `html`. Any other
+         *     value is rejected with 400.
+         */
+        ReportSnapshotFormatQuery: string;
     };
     requestBodies: never;
     headers: never;
@@ -6521,6 +6563,59 @@ export interface operations {
                 };
             };
             /** @description `asset_id` is not a positive asset id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    downloadReportSnapshot: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The document format: `json` (the default), `md` or `html`. Any other
+                 *     value is rejected with 400.
+                 */
+                format?: components["parameters"]["ReportSnapshotFormatQuery"];
+                /** @description Only findings of this asset. */
+                asset_id?: components["parameters"]["AssetIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The snapshot as one downloadable document. */
+            200: {
+                headers: {
+                    /**
+                     * @description Attachment with the filename
+                     *     `bastion-report-<YYYYMMDD-HHMM>.<ext>`.
+                     */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                    "text/markdown": string;
+                    "text/html": string;
+                };
+            };
+            /**
+             * @description `format` is not one of `md`, `html` or `json`, or `asset_id` is not
+             *     a positive integer.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;

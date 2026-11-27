@@ -23,6 +23,9 @@ type AssetTarget struct {
 	// registry here, which lets a scan refuse an orphaned image instead of
 	// falling back to the local Docker daemon.
 	MetadataJSON string
+	// Archived says the asset was removed. The read still succeeds, so a caller
+	// can refuse it by name instead of treating it as unknown.
+	Archived bool
 }
 
 // LoadAssetTarget reads one asset's target information. A missing asset is an
@@ -93,6 +96,7 @@ func assetTarget(row sqlcdb.Asset) AssetTarget {
 		Ref:           row.Ref,
 		DefaultBranch: row.DefaultBranch.String,
 		MetadataJSON:  row.MetadataJSON,
+		Archived:      row.ArchivedAt.Valid,
 	}
 	if row.ConnectionID.Valid {
 		target.ConnectionID = row.ConnectionID.Int64

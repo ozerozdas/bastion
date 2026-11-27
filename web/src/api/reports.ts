@@ -199,6 +199,23 @@ export function licensesCsvUrl(assetId?: number): string {
   return `/api/reports/licenses.csv${reportParams({ assetId })}`
 }
 
+/** SnapshotFormat is the file format the security snapshot is downloaded in. */
+export type SnapshotFormat = 'md' | 'html' | 'json'
+
+/** snapshotFormats is the reading order of the format selector. */
+export const snapshotFormats = ['md', 'html', 'json'] as const
+
+/**
+ * snapshotUrl is the download URL of the security snapshot (#204): coverage,
+ * open findings, SLA, triage decisions, suppression rules and licence policy.
+ * Absent assetId covers the whole fleet.
+ */
+export function snapshotUrl(format: SnapshotFormat, assetId?: number): string {
+  const params = new URLSearchParams({ format })
+  if (assetId !== undefined) params.set('asset_id', String(assetId))
+  return `/api/reports/snapshot?${params.toString()}`
+}
+
 /** auditQuery reads the audit pack of one asset, or of the fleet. */
 export function auditQuery(assetId?: number) {
   return queryOptions({

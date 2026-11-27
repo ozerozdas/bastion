@@ -1,8 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import { lazy, Suspense, type ComponentType } from 'react'
+import { lazy, Suspense, useState, type ComponentType } from 'react'
 
 import { assetsQuery } from '../api/assets'
+import {
+  snapshotFormats,
+  snapshotUrl,
+  type SnapshotFormat,
+} from '../api/reports'
 import { EmptyState } from '../components/empty-state'
 import { BandHeader, BandSummary } from '../components/page-band'
 import { ProjectSwitcher } from '../components/project-switcher'
@@ -100,6 +105,7 @@ export function ReportsPage() {
           }
         />
       </BandHeader>
+      <SnapshotExport asset={search.asset} />
       <ul
         aria-label={t('reports.list.aria')}
         className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
@@ -109,6 +115,59 @@ export function ReportsPage() {
         ))}
       </ul>
     </>
+  )
+}
+
+/**
+ * SnapshotExport downloads the security snapshot (#204): one deterministic,
+ * offline document of coverage, findings, SLA, decisions and policy. The link
+ * is a plain same-origin anchor like the licence CSV, so the session cookie
+ * authenticates the download as it does any other page request.
+ */
+function SnapshotExport({ asset }: { asset: number | undefined }) {
+  const t = useT()
+  const [format, setFormat] = useState<SnapshotFormat>('md')
+
+  return (
+    <section className="flex flex-wrap items-end justify-between gap-3 rounded-card border border-border-subtle bg-surface px-4 py-3 print-hide">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <h2 className="text-[0.9375rem] font-semibold tracking-[-0.01em]">
+          {t('reports.snapshot.title')}
+        </h2>
+        <p className="text-xs text-muted">{t('reports.snapshot.caption')}</p>
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="snapshot-format"
+            className="text-xs font-medium text-muted"
+          >
+            {t('reports.snapshot.format.label')}
+          </label>
+          <select
+            id="snapshot-format"
+            value={format}
+            onChange={(event) =>
+              setFormat(event.target.value as SnapshotFormat)
+            }
+            className="h-8 min-w-32 rounded-md border border-border-strong bg-surface px-2.5 text-[0.8125rem] text-fg"
+          >
+            {snapshotFormats.map((option) => (
+              <option key={option} value={option}>
+                {t(`reports.snapshot.format.${option}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <a
+          href={snapshotUrl(format, asset)}
+          download
+          className={buttonVariants({ variant: 'outline' })}
+        >
+          {t('reports.snapshot.download')}
+        </a>
+      </div>
+    </section>
   )
 }
 

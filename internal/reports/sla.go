@@ -38,12 +38,14 @@ var defaultSLAThresholds = SLAThresholds{
 	Low:      180,
 }
 
-// SLAThresholds is the days a finding of each severity may stay open.
+// SLAThresholds is the days a finding of each severity may stay open. Its JSON
+// tags shape the snapshot export only; the HTTP API sends the generated gen
+// types.
 type SLAThresholds struct {
-	Critical int
-	High     int
-	Medium   int
-	Low      int
+	Critical int `json:"critical"`
+	High     int `json:"high"`
+	Medium   int `json:"medium"`
+	Low      int `json:"low"`
 }
 
 // Validate rejects a threshold outside the allowed range.

@@ -6,6 +6,7 @@ bastion serve   [--port N] [--no-browser] [--concurrency N]
 bastion scan    --path DIR | --repo owner/name[@ref]
                 [--format json|table|sarif|cyclonedx] [--fail-on critical|high|medium|low]
                 [--skip-dirs DIR]...  [--no-store]
+bastion report  [--format md|html|json] [--asset ID]
 bastion doctor  [--json]
 bastion version
 ```
@@ -72,6 +73,40 @@ bastion scan --repo ozerozdas/bastion --format json
 | `2` | Scan finished and found an open finding at or above `--fail-on` |
 
 This lets CI tell "findings found" from "the scan broke".
+
+## `bastion report`
+
+Prints one snapshot of the fleet: coverage per project, open findings by severity, SLA
+status, triage decisions with their reason and expiry, active suppression rules and the
+licence policy. The Markdown and HTML documents show each project's last scan and its
+failed scanners; the full scanner-run list is in JSON, under `coverage.assets[].scanners`.
+It is the same document `GET /api/reports/snapshot` serves to the web UI.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--format` | `md` | `md` (Markdown), `html` (one self-contained page) or `json` |
+| `--asset ID` | whole fleet | Report on one project by id; asset names are not resolved |
+
+It makes no network call, so it works offline and in CI. Like every other command it opens
+the local database, and applies pending schema migrations as `bastion doctor` does. The
+output is deterministic: the same database produces the same bytes, apart from the
+generated-at line (the `generated_at` field in JSON), which carries the snapshot's
+timestamp in UTC.
+
+The report contains finding details as scanned (titles, paths, messages), which can include
+local filesystem paths and repository names — review it before sharing it outside your
+team.
+
+```sh
+# Markdown for every project
+bastion report
+
+# One project as a self-contained page
+bastion report --asset 3 --format html > report.html
+
+# Machine-readable, for a pipeline
+bastion report --format json > report.json
+```
 
 ## `bastion doctor`
 
