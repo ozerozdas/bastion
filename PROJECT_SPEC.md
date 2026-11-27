@@ -19,12 +19,12 @@ Positioning: a free, private, simple alternative to paid platforms like Aikido.d
 3. **Repo ↔ image lineage.** Show which GitHub repo produces which ECR image and what is vulnerable in the deployed tag.
 4. **Actionable output.** "Upgrade package X to Y → closes N findings", not just a CVE list.
 5. **Agent-friendly.** MCP server (Phase 4) so AI agents can query findings and propose fixes, and compose with artifact-analysis tools such as REA (`morluto/rea`) without bastion embedding them.
-6. **Less noise than SaaS.** Use local compute for what hosted platforms ration: malicious-package detection (Phase 2), reachability analysis (Phase 3), full git-history secret scans (Phase 5).
+6. **Less noise than SaaS.** Use local compute for what hosted platforms ration: malicious-package detection (Phase 2), reachability analysis (Phase 3), full git-history secret scans (Phase 6).
 
 ### Non-goals (v1)
-- Multi-user, auth, RBAC, hosted/SaaS mode
-- Continuous monitoring while the app is closed (explicit trade-off of local-first; server mode is Phase 5)
-- DAST, cloud posture (CSPM), runtime security
+- Multi-user, auth, RBAC, hosted/SaaS mode. Teams share triage decisions and policy through the repository instead (Phase 7)
+- Continuous monitoring while the app is closed (explicit trade-off of local-first; scheduled scans run while `bastion serve` runs, CI with repo policy covers the rest in Phase 7)
+- Runtime security (in-app firewall, bot blocking), pentesting, full DAST. Read-only cloud posture checks and an opt-in DAST-lite module are in scope from Phase 8, under the same network-call rules as everything else
 - SAST inside the core binary (it is an opt-in downloaded module, Phase 3)
 - Writing our own vulnerability matching logic
 
@@ -321,11 +321,37 @@ Goal: **retire the biggest technical risk** (Trivy + Gitleaks as libraries insid
 - Adversarial test corpus: BLA-hardened artifacts (`qybaihe/bla`) verify that MCP/LLM paths respect budgets and do not follow instructions embedded in targets
 - GitHub Action: `bastion scan` in CI, SARIF upload, fail on threshold
 
-### Phase 5 — Later
+### Phase 5 — Continuous visibility (v0.6)
+- Scheduled scans for one local user while `bastion serve` runs
+- End-of-life runtime and OS findings (opt-in outbound call)
+- Suppression rules and view filters; agents propose noise via MCP
+- Findings page per asset, Reports page
+
+### Phase 6 — Individual depth (v0.7)
+- OSSF malicious-packages feed (opt-in), deduplicated with OSV malware findings
+- `bastion report`: coverage, findings, decisions and policy snapshot
+- User rule packs for Opengrep and IaC checks
+- Git history secret scanning (opt-in)
+- Fix verification: rescan the upgrade PR branch and diff
+- MCP agent workflow recipes
+- Spike: JS/TS reachability. Design note: install-time guard against malicious packages
+
+### Phase 7 — Team without a server (v0.8)
+- ADR: triage decisions and policy live in the repository under `.bastion/`; git history is the audit trail
+- Export/import of `finding_states` and suppression rules; scans read `.bastion/` from the scanned repo
+- CI enforces repo policy and comments the finding diff on pull requests
+- VEX export, audit trail view
+
+### Phase 8 — Scope expansion (v0.9)
+- Kubernetes cluster scanning via kubeconfig (embedded Trivy `pkg/k8s`)
+- AWS misconfiguration checks on a connected account (CSPM-lite); ADR first on `trivy-aws` vs own read-only adapters
+- DAST-lite as an opt-in downloaded module (ADR-002 pattern), targets limited to hosts the user adds
+
+### Later
 - Additional scanners: Grype, Syft (with cross-scanner dedup)
-- Git history secret scanning (go-git clone)
-- Server mode: scheduled scans, multi-user, auth
-- License compliance findings
+- Multi-user server mode with auth
+- Hosted LLM providers (opt-in), code-level autofix for SAST and IaC findings
+- Binary hardening findings, deeper JS bundle inspection
 
 ---
 
@@ -359,7 +385,7 @@ Goal: **retire the biggest technical risk** (Trivy + Gitleaks as libraries insid
 | Vuln DB download is large/slow on first run | Show progress in UI; cache; `--offline` flag uses existing cache |
 | Keyring unavailable (headless Linux) | Detect in `bastion doctor`; fallback to env vars (`BASTION_GITHUB_TOKEN`), never to plaintext file |
 | False positives erode trust | Ignore with reason, persisted by fingerprint; show scanner + rule for every finding |
-| Local-first means no monitoring when closed | Documented as trade-off; CI integration (Phase 4) and server mode (Phase 5) cover it |
+| Local-first means no monitoring when closed | Documented as trade-off; CI integration (Phase 4), scheduled scans (Phase 5) and repo policy in CI (Phase 7) cover it |
 | Scope creep | Phase exit criteria are hard gates; new ideas go to GitHub issues (no milestone, or `needs-discussion`), not into current phase |
 
 ---
