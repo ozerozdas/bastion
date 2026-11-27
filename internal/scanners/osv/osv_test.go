@@ -380,15 +380,15 @@ func TestEcosystem(t *testing.T) {
 		"unknown-ec": "",
 	}
 	for in, want := range tests {
-		got, ok := ecosystem(in)
+		got, ok := Ecosystem(in)
 		if want == "" {
 			if ok {
-				t.Errorf("ecosystem(%q) = %q, want unmapped", in, got)
+				t.Errorf("Ecosystem(%q) = %q, want unmapped", in, got)
 			}
 			continue
 		}
 		if !ok || got != want {
-			t.Errorf("ecosystem(%q) = %q, %v; want %q", in, got, ok, want)
+			t.Errorf("Ecosystem(%q) = %q, %v; want %q", in, got, ok, want)
 		}
 	}
 }

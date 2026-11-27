@@ -2026,6 +2026,42 @@ type MCPSetup struct {
 	Command string `json:"command"`
 }
 
+// MalwareIndexStatus The local malware index as the UI and the CLI see it. Optional fields
+// are absent when no index has been built yet or the last refresh failed.
+type MalwareIndexStatus struct {
+	// BuiltAt When the cached index was built.
+	BuiltAt *time.Time `json:"built_at,omitempty"`
+
+	// Count Number of malicious-package advisories in the index.
+	Count *int `json:"count,omitempty"`
+
+	// Enabled The stored opt-in setting. False means no download is ever made and
+	// scans carry only the malware findings another matcher reports.
+	Enabled bool `json:"enabled"`
+
+	// Error Why the last refresh failed. The previous index, if any, stays in
+	// use, so scans keep matching against it.
+	Error *string `json:"error,omitempty"`
+
+	// LastAttempt When the daily check last ran, successful or not. It keeps the
+	// once-a-day budget across restarts.
+	LastAttempt *time.Time `json:"last_attempt,omitempty"`
+
+	// Packages Number of distinct ecosystem/package-name keys in the index.
+	Packages *int `json:"packages,omitempty"`
+
+	// Sha The ossf/malicious-packages commit the cached index was built from.
+	//
+	//
+	// Examples: 4f9c2a1b7d3e5f60718293a4b5c6d7e8f9012345
+	Sha *string `json:"sha,omitempty"`
+
+	// Unevaluable Advisory entries whose version ranges this build cannot evaluate,
+	// and that carry no explicit version list. They are never matched
+	// rather than guessed.
+	Unevaluable *int `json:"unevaluable,omitempty"`
+}
+
 // MalwareReport defines model for MalwareReport.
 type MalwareReport struct {
 	// Findings The open malware findings, most severe first.
@@ -2078,6 +2114,14 @@ type NotificationSettings struct {
 // NotificationThreshold The lowest severity that makes a new finding notify. `high` counts
 // critical and high findings; `critical` counts only critical ones.
 type NotificationThreshold string
+
+// OSVStatus The OSV.dev online advisory lookup. It is on by default; a missing
+// settings file means on.
+type OSVStatus struct {
+	// Enabled False means no request reaches api.osv.dev; package names, versions
+	// and ecosystems stay on this machine.
+	Enabled bool `json:"enabled"`
+}
 
 // OWASPCategory defines model for OWASPCategory.
 type OWASPCategory struct {
@@ -2589,6 +2633,13 @@ type SetLLMSettingsRequest struct {
 	Model *string `json:"model,omitempty"`
 }
 
+// SetMalwareIndexEnabledRequest defines model for SetMalwareIndexEnabledRequest.
+type SetMalwareIndexEnabledRequest struct {
+	// Enabled True opts in to the daily snapshot download and local matching;
+	// false turns it off and stops every future request.
+	Enabled bool `json:"enabled"`
+}
+
 // SetNotificationSettingsRequest The settable notification fields. Omitted fields are left untouched;
 // `slack_webhook` and `email_password` are write-only and
 // `clear_slack_webhook` and `clear_email_password` remove the stored
@@ -2633,6 +2684,13 @@ type SetNotificationSettingsRequest struct {
 	// To One or more recipient addresses, comma separated, each validated
 	// with net/mail.
 	To *string `json:"to,omitempty"`
+}
+
+// SetOSVEnabledRequest defines model for SetOSVEnabledRequest.
+type SetOSVEnabledRequest struct {
+	// Enabled True keeps the online lookup on; false turns it off and stops every
+	// future request.
+	Enabled bool `json:"enabled"`
 }
 
 // SetOutdatedEnabledRequest defines model for SetOutdatedEnabledRequest.
@@ -3091,8 +3149,14 @@ type SetLicencePolicyJSONRequestBody = LicencePolicy
 // SetLLMSettingsJSONRequestBody defines body for SetLLMSettings for application/json ContentType.
 type SetLLMSettingsJSONRequestBody = SetLLMSettingsRequest
 
+// SetMalwareIndexEnabledJSONRequestBody defines body for SetMalwareIndexEnabled for application/json ContentType.
+type SetMalwareIndexEnabledJSONRequestBody = SetMalwareIndexEnabledRequest
+
 // SetNotificationSettingsJSONRequestBody defines body for SetNotificationSettings for application/json ContentType.
 type SetNotificationSettingsJSONRequestBody = SetNotificationSettingsRequest
+
+// SetOSVEnabledJSONRequestBody defines body for SetOSVEnabled for application/json ContentType.
+type SetOSVEnabledJSONRequestBody = SetOSVEnabledRequest
 
 // SetOutdatedEnabledJSONRequestBody defines body for SetOutdatedEnabled for application/json ContentType.
 type SetOutdatedEnabledJSONRequestBody = SetOutdatedEnabledRequest
@@ -3374,6 +3438,12 @@ type ServerInterface interface {
 	// ListLLMModels List the models the local endpoint offers.
 	// (GET /api/llm/models)
 	ListLLMModels(w http.ResponseWriter, r *http.Request, params ListLLMModelsParams)
+	// GetMalwareIndexStatus Report the local malware index state.
+	// (GET /api/malware-index)
+	GetMalwareIndexStatus(w http.ResponseWriter, r *http.Request)
+	// SetMalwareIndexEnabled Store the local malware index opt-in choice.
+	// (PUT /api/malware-index)
+	SetMalwareIndexEnabled(w http.ResponseWriter, r *http.Request)
 	// GetMCPSetup Report the command that starts the MCP server.
 	// (GET /api/mcp)
 	GetMCPSetup(w http.ResponseWriter, r *http.Request)
@@ -3386,6 +3456,12 @@ type ServerInterface interface {
 	// SendTestNotification Send a test message to every configured notifier.
 	// (POST /api/notifications/test)
 	SendTestNotification(w http.ResponseWriter, r *http.Request)
+	// GetOSVStatus Report the OSV.dev online lookup state.
+	// (GET /api/osv)
+	GetOSVStatus(w http.ResponseWriter, r *http.Request)
+	// SetOSVEnabled Store the OSV.dev online lookup choice.
+	// (PUT /api/osv)
+	SetOSVEnabled(w http.ResponseWriter, r *http.Request)
 	// GetOutdatedStatus Report the outdated-package lookup state.
 	// (GET /api/outdated)
 	GetOutdatedStatus(w http.ResponseWriter, r *http.Request)
@@ -4432,6 +4508,34 @@ func (siw *ServerInterfaceWrapper) ListLLMModels(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetMalwareIndexStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetMalwareIndexStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMalwareIndexStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMalwareIndexEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetMalwareIndexEnabled(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMalwareIndexEnabled(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMCPSetup operation middleware
 func (siw *ServerInterfaceWrapper) GetMCPSetup(w http.ResponseWriter, r *http.Request) {
 
@@ -4479,6 +4583,34 @@ func (siw *ServerInterfaceWrapper) SendTestNotification(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SendTestNotification(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOSVStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetOSVStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOSVStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetOSVEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetOSVEnabled(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetOSVEnabled(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5490,6 +5622,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/trivy-db/download", wrapper.DownloadTrivyDB)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/epss", wrapper.GetEPSSStatus)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/epss", wrapper.SetEPSSEnabled)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/malware-index", wrapper.GetMalwareIndexStatus)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/malware-index", wrapper.SetMalwareIndexEnabled)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/osv", wrapper.GetOSVStatus)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/osv", wrapper.SetOSVEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/security-news", wrapper.GetSecurityNews)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/security-news", wrapper.SetSecurityNews)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/outdated", wrapper.GetOutdatedStatus)
@@ -10199,6 +10335,255 @@ func (response ListLLMModels502ApplicationProblemPlusJSONResponse) VisitListLLMM
 	return err
 }
 
+type GetMalwareIndexStatusRequestObject struct {
+}
+
+type GetMalwareIndexStatusResponseObject interface {
+	VisitGetMalwareIndexStatusResponse(w http.ResponseWriter) error
+}
+
+type GetMalwareIndexStatus200JSONResponse MalwareIndexStatus
+
+func (response GetMalwareIndexStatus200JSONResponse) VisitGetMalwareIndexStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMalwareIndexStatus401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetMalwareIndexStatus401ApplicationProblemPlusJSONResponse) VisitGetMalwareIndexStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMalwareIndexStatus403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetMalwareIndexStatus403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetMalwareIndexStatus403ResponseHeaders
+}
+
+func (response GetMalwareIndexStatus403ApplicationProblemPlusJSONResponse) VisitGetMalwareIndexStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMalwareIndexStatus421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetMalwareIndexStatus421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetMalwareIndexStatus421ResponseHeaders
+}
+
+func (response GetMalwareIndexStatus421ApplicationProblemPlusJSONResponse) VisitGetMalwareIndexStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMalwareIndexStatus500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetMalwareIndexStatus500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetMalwareIndexStatus500ResponseHeaders
+}
+
+func (response GetMalwareIndexStatus500ApplicationProblemPlusJSONResponse) VisitGetMalwareIndexStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMalwareIndexEnabledRequestObject struct {
+	Body *SetMalwareIndexEnabledJSONRequestBody
+}
+
+type SetMalwareIndexEnabledResponseObject interface {
+	VisitSetMalwareIndexEnabledResponse(w http.ResponseWriter) error
+}
+
+type SetMalwareIndexEnabled200JSONResponse MalwareIndexStatus
+
+func (response SetMalwareIndexEnabled200JSONResponse) VisitSetMalwareIndexEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMalwareIndexEnabled400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetMalwareIndexEnabled400ApplicationProblemPlusJSONResponse) VisitSetMalwareIndexEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMalwareIndexEnabled401ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetMalwareIndexEnabled401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetMalwareIndexEnabled401ResponseHeaders
+}
+
+func (response SetMalwareIndexEnabled401ApplicationProblemPlusJSONResponse) VisitSetMalwareIndexEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMalwareIndexEnabled403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetMalwareIndexEnabled403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetMalwareIndexEnabled403ResponseHeaders
+}
+
+func (response SetMalwareIndexEnabled403ApplicationProblemPlusJSONResponse) VisitSetMalwareIndexEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMalwareIndexEnabled421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetMalwareIndexEnabled421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetMalwareIndexEnabled421ResponseHeaders
+}
+
+func (response SetMalwareIndexEnabled421ApplicationProblemPlusJSONResponse) VisitSetMalwareIndexEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetMalwareIndexEnabled500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetMalwareIndexEnabled500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetMalwareIndexEnabled500ResponseHeaders
+}
+
+func (response SetMalwareIndexEnabled500ApplicationProblemPlusJSONResponse) VisitSetMalwareIndexEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMCPSetupRequestObject struct {
 }
 
@@ -10680,6 +11065,255 @@ func (response SendTestNotification502ApplicationProblemPlusJSONResponse) VisitS
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOSVStatusRequestObject struct {
+}
+
+type GetOSVStatusResponseObject interface {
+	VisitGetOSVStatusResponse(w http.ResponseWriter) error
+}
+
+type GetOSVStatus200JSONResponse OSVStatus
+
+func (response GetOSVStatus200JSONResponse) VisitGetOSVStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOSVStatus401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetOSVStatus401ApplicationProblemPlusJSONResponse) VisitGetOSVStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOSVStatus403ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetOSVStatus403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetOSVStatus403ResponseHeaders
+}
+
+func (response GetOSVStatus403ApplicationProblemPlusJSONResponse) VisitGetOSVStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOSVStatus421ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetOSVStatus421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetOSVStatus421ResponseHeaders
+}
+
+func (response GetOSVStatus421ApplicationProblemPlusJSONResponse) VisitGetOSVStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOSVStatus500ResponseHeaders struct {
+	ContentType *string
+}
+
+type GetOSVStatus500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers GetOSVStatus500ResponseHeaders
+}
+
+func (response GetOSVStatus500ApplicationProblemPlusJSONResponse) VisitGetOSVStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOSVEnabledRequestObject struct {
+	Body *SetOSVEnabledJSONRequestBody
+}
+
+type SetOSVEnabledResponseObject interface {
+	VisitSetOSVEnabledResponse(w http.ResponseWriter) error
+}
+
+type SetOSVEnabled200JSONResponse OSVStatus
+
+func (response SetOSVEnabled200JSONResponse) VisitSetOSVEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOSVEnabled400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetOSVEnabled400ApplicationProblemPlusJSONResponse) VisitSetOSVEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOSVEnabled401ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetOSVEnabled401ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetOSVEnabled401ResponseHeaders
+}
+
+func (response SetOSVEnabled401ApplicationProblemPlusJSONResponse) VisitSetOSVEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOSVEnabled403ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetOSVEnabled403ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetOSVEnabled403ResponseHeaders
+}
+
+func (response SetOSVEnabled403ApplicationProblemPlusJSONResponse) VisitSetOSVEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOSVEnabled421ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetOSVEnabled421ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetOSVEnabled421ResponseHeaders
+}
+
+func (response SetOSVEnabled421ApplicationProblemPlusJSONResponse) VisitSetOSVEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(421)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOSVEnabled500ResponseHeaders struct {
+	ContentType *string
+}
+
+type SetOSVEnabled500ApplicationProblemPlusJSONResponse struct {
+	Body    Problem
+	Headers SetOSVEnabled500ResponseHeaders
+}
+
+func (response SetOSVEnabled500ApplicationProblemPlusJSONResponse) VisitSetOSVEnabledResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.ContentType != nil {
+		w.Header().Set("Content-Type", fmt.Sprint(*response.Headers.ContentType))
+	}
+	w.WriteHeader(500)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14892,6 +15526,12 @@ type StrictServerInterface interface {
 	// ListLLMModels List the models the local endpoint offers.
 	// (GET /api/llm/models)
 	ListLLMModels(ctx context.Context, request ListLLMModelsRequestObject) (ListLLMModelsResponseObject, error)
+	// GetMalwareIndexStatus Report the local malware index state.
+	// (GET /api/malware-index)
+	GetMalwareIndexStatus(ctx context.Context, request GetMalwareIndexStatusRequestObject) (GetMalwareIndexStatusResponseObject, error)
+	// SetMalwareIndexEnabled Store the local malware index opt-in choice.
+	// (PUT /api/malware-index)
+	SetMalwareIndexEnabled(ctx context.Context, request SetMalwareIndexEnabledRequestObject) (SetMalwareIndexEnabledResponseObject, error)
 	// GetMCPSetup Report the command that starts the MCP server.
 	// (GET /api/mcp)
 	GetMCPSetup(ctx context.Context, request GetMCPSetupRequestObject) (GetMCPSetupResponseObject, error)
@@ -14904,6 +15544,12 @@ type StrictServerInterface interface {
 	// SendTestNotification Send a test message to every configured notifier.
 	// (POST /api/notifications/test)
 	SendTestNotification(ctx context.Context, request SendTestNotificationRequestObject) (SendTestNotificationResponseObject, error)
+	// GetOSVStatus Report the OSV.dev online lookup state.
+	// (GET /api/osv)
+	GetOSVStatus(ctx context.Context, request GetOSVStatusRequestObject) (GetOSVStatusResponseObject, error)
+	// SetOSVEnabled Store the OSV.dev online lookup choice.
+	// (PUT /api/osv)
+	SetOSVEnabled(ctx context.Context, request SetOSVEnabledRequestObject) (SetOSVEnabledResponseObject, error)
 	// GetOutdatedStatus Report the outdated-package lookup state.
 	// (GET /api/outdated)
 	GetOutdatedStatus(ctx context.Context, request GetOutdatedStatusRequestObject) (GetOutdatedStatusResponseObject, error)
@@ -15988,6 +16634,61 @@ func (sh *strictHandler) ListLLMModels(w http.ResponseWriter, r *http.Request, p
 	}
 }
 
+// GetMalwareIndexStatus operation middleware
+func (sh *strictHandler) GetMalwareIndexStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetMalwareIndexStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMalwareIndexStatus(ctx, request.(GetMalwareIndexStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMalwareIndexStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMalwareIndexStatusResponseObject); ok {
+		if err := validResponse.VisitGetMalwareIndexStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetMalwareIndexEnabled operation middleware
+func (sh *strictHandler) SetMalwareIndexEnabled(w http.ResponseWriter, r *http.Request) {
+	var request SetMalwareIndexEnabledRequestObject
+
+	var body SetMalwareIndexEnabledJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetMalwareIndexEnabled(ctx, request.(SetMalwareIndexEnabledRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetMalwareIndexEnabled")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetMalwareIndexEnabledResponseObject); ok {
+		if err := validResponse.VisitSetMalwareIndexEnabledResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetMCPSetup operation middleware
 func (sh *strictHandler) GetMCPSetup(w http.ResponseWriter, r *http.Request) {
 	var request GetMCPSetupRequestObject
@@ -16084,6 +16785,61 @@ func (sh *strictHandler) SendTestNotification(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SendTestNotificationResponseObject); ok {
 		if err := validResponse.VisitSendTestNotificationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOSVStatus operation middleware
+func (sh *strictHandler) GetOSVStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetOSVStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOSVStatus(ctx, request.(GetOSVStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOSVStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOSVStatusResponseObject); ok {
+		if err := validResponse.VisitGetOSVStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetOSVEnabled operation middleware
+func (sh *strictHandler) SetOSVEnabled(w http.ResponseWriter, r *http.Request) {
+	var request SetOSVEnabledRequestObject
+
+	var body SetOSVEnabledJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetOSVEnabled(ctx, request.(SetOSVEnabledRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetOSVEnabled")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetOSVEnabledResponseObject); ok {
+		if err := validResponse.VisitSetOSVEnabledResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

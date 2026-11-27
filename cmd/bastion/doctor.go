@@ -18,9 +18,11 @@ import (
 	"github.com/ozerozdas/bastion/internal/app"
 	"github.com/ozerozdas/bastion/internal/docker"
 	"github.com/ozerozdas/bastion/internal/epss"
+	"github.com/ozerozdas/bastion/internal/malwaredb"
 	"github.com/ozerozdas/bastion/internal/scanners/gitleaks"
 	"github.com/ozerozdas/bastion/internal/scanners/govulncheck"
 	"github.com/ozerozdas/bastion/internal/scanners/opengrep"
+	"github.com/ozerozdas/bastion/internal/scanners/osv"
 	"github.com/ozerozdas/bastion/internal/scanners/trivy"
 	"github.com/ozerozdas/bastion/internal/secrets"
 	"github.com/ozerozdas/bastion/internal/store"
@@ -59,6 +61,11 @@ type doctorDeps struct {
 	// opengrepStatus is a read-only snapshot of the downloaded SAST module,
 	// same contract: it hashes the binary but never downloads.
 	opengrepStatus func() opengrep.Status
+	// malwareIndexStatus is a read-only snapshot of the local malware index:
+	// the stored opt-in setting and the cached metadata, never a download.
+	malwareIndexStatus func() malwaredb.Status
+	// osvEnabled reports the stored OSV.dev choice. It is on by default.
+	osvEnabled func() bool
 	// dockerStatus probes the local Docker daemon with a short timeout.
 	dockerStatus func(ctx context.Context) docker.DaemonStatus
 }
@@ -83,6 +90,8 @@ type doctorReport struct {
 	EPSS            doctorEPSS         `json:"epss"`
 	Reachability    doctorReachability `json:"reachability"`
 	Opengrep        doctorOpengrep     `json:"opengrep"`
+	MalwareIndex    doctorMalwareIndex `json:"malware_index"`
+	OSV             doctorOSV          `json:"osv"`
 	Warnings        []string           `json:"warnings,omitempty"`
 }
 
@@ -173,6 +182,12 @@ func newDoctorDeps(opts *rootOptions) doctorDeps {
 		opengrepStatus: func() opengrep.Status {
 			return newOpengrepModule(opts.paths).Status()
 		},
+		malwareIndexStatus: func() malwaredb.Status {
+			return newMalwareIndexService(opts.paths).Snapshot()
+		},
+		osvEnabled: func() bool {
+			return osv.NewSettings(opts.paths.DataDir).Enabled()
+		},
 		dockerStatus: docker.Status,
 	}
 }
@@ -241,6 +256,18 @@ func runDoctor(ctx context.Context, deps doctorDeps) (doctorReport, error) {
 	}
 	if warning := report.Opengrep.warning(); warning != "" {
 		report.Warnings = append(report.Warnings, warning)
+	}
+
+	report.MalwareIndex = doctorMalwareIndex{State: "off"}
+	if deps.malwareIndexStatus != nil {
+		report.MalwareIndex = doctorMalwareIndexFromStatus(deps.malwareIndexStatus())
+	}
+
+	// The OSV.dev lookup is on unless the stored setting turns it off, which is
+	// what a missing settings file means too.
+	report.OSV = doctorOSV{Enabled: true}
+	if deps.osvEnabled != nil {
+		report.OSV = doctorOSV{Enabled: deps.osvEnabled()}
 	}
 
 	if deps.dockerStatus != nil {
@@ -360,6 +387,8 @@ func writeDoctorText(w io.Writer, report doctorReport) error {
 		{"epss", report.EPSS.summary()},
 		{"reachability", report.Reachability.summary()},
 		{"opengrep", report.Opengrep.summary()},
+		{"malware index", report.MalwareIndex.summary()},
+		{"osv", report.OSV.summary()},
 	}
 
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)

@@ -126,6 +126,22 @@ type AdvisoryMatcher interface {
 	Match(ctx context.Context, packages []findings.Package, asset findings.Asset) ([]findings.Finding, error)
 }
 
+// enabledMatcher is the optional half of an AdvisoryMatcher that is opt-in.
+// A matcher without it is always on, which keeps the OSV lookup's default.
+type enabledMatcher interface {
+	// Enabled reports the stored opt-in setting.
+	Enabled() bool
+}
+
+// matcherEnabled reports whether matcher should run. An advisory matcher that
+// does not implement Enabled is always on.
+func matcherEnabled(matcher AdvisoryMatcher) bool {
+	if toggle, ok := matcher.(enabledMatcher); ok {
+		return toggle.Enabled()
+	}
+	return true
+}
+
 // OutdatedMatcher enriches a scan's package inventory with latest-version
 // findings from deps.dev (#38). Like an AdvisoryMatcher it reads the packages
 // other scanners produced rather than the workspace. It is opt-in: Enabled is
@@ -206,6 +222,10 @@ type Config struct {
 	// Advisories enriches the merged package inventory with external
 	// advisories. Nil disables the lookup; a failure never fails the scan.
 	Advisories AdvisoryMatcher
+	// MalwareIndex enriches the merged package inventory with malicious-package
+	// advisories matched locally (#203). Nil disables the lookup; a failure
+	// never fails the scan.
+	MalwareIndex AdvisoryMatcher
 	// Outdated enriches the merged package inventory with latest-version
 	// findings. Nil disables the lookup; a failure never fails the scan.
 	Outdated OutdatedMatcher
@@ -242,6 +262,7 @@ type Manager struct {
 	resolve      ResolveFunc
 	notify       CompletionListener
 	advisories   AdvisoryMatcher
+	malwareIndex AdvisoryMatcher
 	outdated     OutdatedMatcher
 	eol          EOLMatcher
 	reachability ReachabilityEnricher
@@ -315,6 +336,7 @@ func New(cfg Config) (*Manager, error) {
 		resolve:      resolve,
 		notify:       cfg.Notify,
 		advisories:   cfg.Advisories,
+		malwareIndex: cfg.MalwareIndex,
 		outdated:     cfg.Outdated,
 		eol:          cfg.EOL,
 		reachability: cfg.Reachability,

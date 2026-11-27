@@ -211,6 +211,54 @@ func TestMergeByAliases(t *testing.T) {
 	}
 }
 
+// TestMergeCrossScannerFingerprint proves two scanners reporting the same
+// advisory (OSV and the local malware index both name MAL- id X) collapse into
+// one finding: one occurrence, both scanners recorded, and no double count.
+func TestMergeCrossScannerFingerprint(t *testing.T) {
+	fromOSV := Finding{
+		AssetID:        1,
+		Type:           TypeMalware,
+		RuleID:         "MAL-2026-0001",
+		Severity:       SeverityCritical,
+		Title:          "Malicious package left-pad",
+		PackageName:    "left-pad",
+		PackageVersion: "1.0.0",
+		Ecosystem:      "npm",
+		Location:       "package-lock.json",
+		Scanner:        "osv",
+	}
+	fromOSV.Fingerprint = Fingerprint(fromOSV.AssetID, fromOSV)
+	fromIndex := fromOSV
+	fromIndex.Scanner = "malware-index"
+
+	for _, input := range [][]Finding{{fromOSV, fromIndex}, {fromIndex, fromOSV}} {
+		got := Merge(input)
+		if len(got) != 1 {
+			t.Fatalf("got %d findings, want 1: %+v", len(got), got)
+		}
+		f := got[0]
+		if f.Occurrences > 1 {
+			t.Errorf("occurrences = %d, want 1: both scanners describe one occurrence", f.Occurrences)
+		}
+		if want := []string{"malware-index", "osv"}; !slices.Equal(f.Scanners, want) {
+			t.Errorf("scanners = %v, want %v", f.Scanners, want)
+		}
+		if f.Scanner != input[0].Scanner || f.Fingerprint != fromOSV.Fingerprint {
+			t.Errorf("kept %q/%q, want the first finding", f.Scanner, f.Fingerprint)
+		}
+	}
+
+	// The same scanner reporting the same fingerprint twice is two occurrences.
+	first := fromOSV
+	first.Occurrences = 1
+	second := fromOSV
+	second.Occurrences = 1
+	got := Merge([]Finding{first, second})
+	if len(got) != 1 || got[0].Occurrences != 2 {
+		t.Fatalf("same-scanner duplicates = %+v, want one finding with two occurrences", got)
+	}
+}
+
 func TestSeverityRank(t *testing.T) {
 	order := []Severity{SeverityUnknown, SeverityLow, SeverityMedium, SeverityHigh, SeverityCritical}
 	for i := 1; i < len(order); i++ {

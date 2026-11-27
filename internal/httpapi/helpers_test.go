@@ -256,9 +256,30 @@ func newTestServerWithTrivyDB(t *testing.T, manager *trivy.Manager) *testServer 
 	return newTestServerWithConfig(t, nil, nil, manager, nil, nil, nil, nil)
 }
 
+// newTestServerWithMalwareIndex is newTestServer with a caller-controlled
+// malware index, so handler tests observe the reported status and the stored
+// choice without reaching github.com/ossf/malicious-packages.
+func newTestServerWithMalwareIndex(t *testing.T, service malwareIndexService) *testServer {
+	t.Helper()
+	return newTestServerWithConfig(t, nil, nil, nil, nil, nil, nil, nil, func(cfg *Config) {
+		cfg.MalwareIndex = service
+	})
+}
+
+// newTestServerWithOSV is newTestServer with a caller-controlled OSV online
+// lookup setting, so handler tests observe the stored choice without reaching
+// api.osv.dev.
+func newTestServerWithOSV(t *testing.T, settings osvSettings) *testServer {
+	t.Helper()
+	return newTestServerWithConfig(t, nil, nil, nil, nil, nil, nil, nil, func(cfg *Config) {
+		cfg.OSV = settings
+	})
+}
+
 // newTestServerWithConfig builds the test server with every optional service a
-// caller wants to control. Nil values get the defaults described above.
-func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Checker, manager *trivy.Manager, feed *epss.Service, outdated *depsdev.Service, sast *opengrep.Service, news *securitynews.Service) *testServer {
+// caller wants to control. Nil values get the defaults described above. The
+// variadic mutate functions run last, for a service only one test needs.
+func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Checker, manager *trivy.Manager, feed *epss.Service, outdated *depsdev.Service, sast *opengrep.Service, news *securitynews.Service, mutate ...func(*Config)) *testServer {
 	t.Helper()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -360,7 +381,7 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 	if sast != nil {
 		sastService = sast
 	}
-	srv, err := New(Config{
+	cfg := Config{
 		Version:       "test-version",
 		Port:          port,
 		Logger:        slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
@@ -382,7 +403,11 @@ func newTestServerWithConfig(t *testing.T, fake *fakeGitHub, checker *update.Che
 			Command: "/opt/bastion/bin/bastion",
 			Args:    []string{"mcp", "--data-dir", filepath.Join(t.TempDir(), "data")},
 		},
-	})
+	}
+	for _, apply := range mutate {
+		apply(&cfg)
+	}
+	srv, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

@@ -60,6 +60,10 @@ type Matcher struct {
 	BaseURL   string
 	UserAgent string
 	Client    *http.Client
+	// Settings holds the user's online-lookup consent. Nil means on, so a
+	// matcher built without a settings file keeps the behaviour of versions
+	// that predate the toggle.
+	Settings *Settings
 }
 
 // New returns a matcher that identifies itself as bastion/<version>.
@@ -80,6 +84,19 @@ func (*Matcher) Name() string { return "osv" }
 // Version is the OSV API surface the matcher speaks.
 func (*Matcher) Version() string { return Version }
 
+// Enabled reports whether the online lookup is on. A matcher built without
+// Settings keeps the behaviour of versions that predate the toggle and is on;
+// nil means on as well.
+func (m *Matcher) Enabled() bool {
+	if m == nil {
+		return true
+	}
+	if m.Settings == nil {
+		return true
+	}
+	return m.Settings.Enabled()
+}
+
 // Match queries OSV for the packages in inventory and returns one finding per
 // inventory entry and advisory. MAL- advisories become malware findings (always
 // critical); the rest become vulnerability findings whose severity comes from
@@ -89,6 +106,11 @@ func (*Matcher) Version() string { return Version }
 // A query failure is returned so the caller can record the run as failed; the
 // scan itself must continue without these findings.
 func (m *Matcher) Match(ctx context.Context, inventory []findings.Package, asset findings.Asset) ([]findings.Finding, error) {
+	if !m.Enabled() {
+		// The user turned the online lookup off: no finding and, crucially,
+		// no request. Local matchers still cover the inventory.
+		return nil, nil
+	}
 	queries, keys := inventoryQueries(inventory)
 	if len(queries) == 0 {
 		return nil, nil
@@ -290,7 +312,7 @@ func inventoryQueries(inventory []findings.Package) ([]query, []pkgKey) {
 	keys := make([]pkgKey, 0, len(inventory))
 
 	for _, p := range inventory {
-		osvEco, ok := ecosystem(p.Ecosystem)
+		osvEco, ok := Ecosystem(p.Ecosystem)
 		if !ok || p.Name == "" || p.Version == "" {
 			continue
 		}
@@ -329,8 +351,9 @@ var ecosystems = map[string]string{
 	"swift":           "SwiftURL",
 }
 
-// ecosystem returns the OSV name for a Trivy-style ecosystem.
-func ecosystem(name string) (string, bool) {
+// Ecosystem returns the OSV name for a Trivy-style ecosystem. Local matchers
+// use it too, so both lookups normalize the inventory the same way.
+func Ecosystem(name string) (string, bool) {
 	osvName, ok := ecosystems[strings.ToLower(name)]
 	return osvName, ok
 }

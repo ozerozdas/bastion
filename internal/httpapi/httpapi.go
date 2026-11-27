@@ -100,6 +100,12 @@ type Config struct {
 	// EPSS serves GET and PUT /api/epss. serve wires the opt-in FIRST.org
 	// feed; nil answers those endpoints with 500.
 	EPSS *epss.Service
+	// MalwareIndex serves GET and PUT /api/malware-index (#203). serve wires
+	// the opt-in local index; nil answers those endpoints with 500.
+	MalwareIndex malwareIndexService
+	// OSV serves GET and PUT /api/osv (#203), the online lookup's consent.
+	// serve wires the stored setting; nil answers those endpoints with 500.
+	OSV osvSettings
 	// SecurityNews serves GET and PUT /api/security-news (#192). serve wires
 	// the opt-in feed; nil answers those endpoints with 500.
 	SecurityNews *securitynews.Service
@@ -169,6 +175,14 @@ type Server struct {
 	// epss backs GET and PUT /api/epss, with the same nil-means-unavailable
 	// contract.
 	epss *epss.Service
+
+	// malwareIndex backs GET and PUT /api/malware-index (#203), with the same
+	// nil-means-unavailable contract.
+	malwareIndex malwareIndexService
+
+	// osv backs GET and PUT /api/osv (#203), with the same
+	// nil-means-unavailable contract.
+	osv osvSettings
 
 	// securityNews backs GET and PUT /api/security-news (#192), with the same
 	// nil-means-unavailable contract.
@@ -248,6 +262,8 @@ func New(cfg Config) (*Server, error) {
 		update:        cfg.Update,
 		trivyDB:       cfg.TrivyDB,
 		epss:          cfg.EPSS,
+		malwareIndex:  cfg.MalwareIndex,
+		osv:           cfg.OSV,
 		securityNews:  cfg.SecurityNews,
 		outdated:      cfg.Outdated,
 		eol:           cfg.EOL,

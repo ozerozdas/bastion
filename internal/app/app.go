@@ -18,13 +18,14 @@ const (
 	// and temporary workspaces.
 	EnvCacheDir = "BASTION_CACHE_DIR"
 
-	dataDirName       = "bastion"
-	cacheDirName      = "bastion"
-	dbFileName        = "bastion.db"
-	trivyCacheDirName = "trivy"
-	epssDirName       = "epss"
-	workspacesDirName = "workspaces"
-	modulesDirName    = "modules"
+	dataDirName         = "bastion"
+	cacheDirName        = "bastion"
+	dbFileName          = "bastion.db"
+	trivyCacheDirName   = "trivy"
+	epssDirName         = "epss"
+	malwareIndexDirName = "malware-index"
+	workspacesDirName   = "workspaces"
+	modulesDirName      = "modules"
 )
 
 // Flags are the raw path values from the CLI. An empty string means "not set",
@@ -87,6 +88,13 @@ func (p Paths) TrivyCacheDir() string {
 // database.
 func (p Paths) EPSSDir() string {
 	return filepath.Join(p.CacheDir, epssDirName)
+}
+
+// MalwareIndexDir is the local malware index cache inside the cache directory
+// (#203). The downloaded snapshot is derived data, so it never sits in the data
+// directory next to the database.
+func (p Paths) MalwareIndexDir() string {
+	return filepath.Join(p.CacheDir, malwareIndexDirName)
 }
 
 // WorkspacesDir is where fetched repository checkouts live, inside the cache

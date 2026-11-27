@@ -170,6 +170,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/malware-index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the local malware index state.
+         * @description Returns the stored opt-in setting and the cached index: the dataset
+         *     commit it was built from, when it was built, how many malicious-package
+         *     advisories and package names it holds, and how many advisory entries
+         *     could not be evaluated. With the setting off no request is made. With
+         *     it on, a snapshot whose upstream commit is older than 24 hours is
+         *     checked in the background; this response carries the cached values
+         *     immediately.
+         */
+        get: operations["getMalwareIndexStatus"];
+        /**
+         * Store the local malware index opt-in choice.
+         * @description Only the UI calls this. `enabled: false` stops every future download and
+         *     deletes nothing already cached. Turning it on clears the daily budget so
+         *     an index is built at once when none exists; the response is the updated
+         *     status.
+         */
+        put: operations["setMalwareIndexEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/osv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report the OSV.dev online lookup state.
+         * @description Returns the stored setting only. It is on by default; a missing
+         *     settings file means on, which keeps the behaviour of earlier versions.
+         *     With it off no request reaches api.osv.dev.
+         */
+        get: operations["getOSVStatus"];
+        /**
+         * Store the OSV.dev online lookup choice.
+         * @description Only the UI calls this. `enabled: false` stops every future request to
+         *     api.osv.dev; the next scan reports only what local matchers find.
+         *     Turning it on affects the next scan; the response is the updated
+         *     status.
+         */
+        put: operations["setOSVEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/security-news": {
         parameters: {
             query?: never;
@@ -1662,6 +1724,77 @@ export interface components {
             /**
              * @description True opts in to the daily FIRST.org download; false turns it off and
              *     stops every future request.
+             */
+            enabled: boolean;
+        };
+        /**
+         * MalwareIndexStatus
+         * @description The local malware index as the UI and the CLI see it. Optional fields
+         *     are absent when no index has been built yet or the last refresh failed.
+         */
+        MalwareIndexStatus: {
+            /**
+             * @description The stored opt-in setting. False means no download is ever made and
+             *     scans carry only the malware findings another matcher reports.
+             */
+            enabled: boolean;
+            /**
+             * @description The ossf/malicious-packages commit the cached index was built from.
+             * @example 4f9c2a1b7d3e5f60718293a4b5c6d7e8f9012345
+             */
+            sha?: string;
+            /**
+             * Format: date-time
+             * @description When the cached index was built.
+             */
+            built_at?: string;
+            /**
+             * Format: date-time
+             * @description When the daily check last ran, successful or not. It keeps the
+             *     once-a-day budget across restarts.
+             */
+            last_attempt?: string;
+            /** @description Number of malicious-package advisories in the index. */
+            count?: number;
+            /** @description Number of distinct ecosystem/package-name keys in the index. */
+            packages?: number;
+            /**
+             * @description Advisory entries whose version ranges this build cannot evaluate,
+             *     and that carry no explicit version list. They are never matched
+             *     rather than guessed.
+             */
+            unevaluable?: number;
+            /**
+             * @description Why the last refresh failed. The previous index, if any, stays in
+             *     use, so scans keep matching against it.
+             */
+            error?: string;
+        };
+        /** SetMalwareIndexEnabledRequest */
+        SetMalwareIndexEnabledRequest: {
+            /**
+             * @description True opts in to the daily snapshot download and local matching;
+             *     false turns it off and stops every future request.
+             */
+            enabled: boolean;
+        };
+        /**
+         * OSVStatus
+         * @description The OSV.dev online advisory lookup. It is on by default; a missing
+         *     settings file means on.
+         */
+        OSVStatus: {
+            /**
+             * @description False means no request reaches api.osv.dev; package names, versions
+             *     and ecosystems stay on this machine.
+             */
+            enabled: boolean;
+        };
+        /** SetOSVEnabledRequest */
+        SetOSVEnabledRequest: {
+            /**
+             * @description True keeps the online lookup on; false turns it off and stops every
+             *     future request.
              */
             enabled: boolean;
         };
@@ -3770,6 +3903,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EPSSStatus"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getMalwareIndexStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current local malware index state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MalwareIndexStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setMalwareIndexEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMalwareIndexEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The choice was stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MalwareIndexStatus"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getOSVStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current OSV online lookup state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OSVStatus"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            421: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    setOSVEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetOSVEnabledRequest"];
+            };
+        };
+        responses: {
+            /** @description The choice was stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OSVStatus"];
                 };
             };
             400: components["responses"]["Problem"];

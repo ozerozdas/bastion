@@ -146,6 +146,8 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 		Update:        updateChecker,
 		TrivyDB:       services.trivyDB,
 		EPSS:          services.epss,
+		MalwareIndex:  services.malwareIndex,
+		OSV:           services.osvSettings,
 		SecurityNews:  services.securityNews,
 		Reachability:  services.reachability,
 		SAST:          services.sast,
@@ -173,6 +175,9 @@ func runServe(cmd *cobra.Command, opts *serveOptions, deps serveDeps) error {
 	// Start the daily EPSS refresh when the user opted in and the cache is
 	// stale. Status never waits for the network, so startup is not delayed.
 	services.epss.Status()
+	// Same contract for the local malware index (#203): off by default, and an
+	// enabled, stale index rebuilds in the background.
+	services.malwareIndex.Status()
 
 	if !opts.noBrowser {
 		// Opening the browser must not block startup: a failure (headless box,

@@ -30,6 +30,7 @@ import (
 	"github.com/ozerozdas/bastion/internal/docker"
 	"github.com/ozerozdas/bastion/internal/findings"
 	"github.com/ozerozdas/bastion/internal/jobs"
+	"github.com/ozerozdas/bastion/internal/malwaredb"
 	"github.com/ozerozdas/bastion/internal/report/sarif"
 	"github.com/ozerozdas/bastion/internal/sbom"
 	"github.com/ozerozdas/bastion/internal/scanners"
@@ -132,7 +133,10 @@ type scanDeps struct {
 	// newAdvisories builds the OSV matcher. Nil disables the advisory lookup,
 	// which is what tests that do not exercise it want.
 	newAdvisories func() *osv.Matcher
-	hmacKey       func() ([]byte, error)
+	// newMalwareIndex builds the local malware index (#203). Nil disables the
+	// lookup, which is what tests that do not exercise it want.
+	newMalwareIndex func() *malwaredb.Service
+	hmacKey         func() ([]byte, error)
 	// githubToken resolves the --repo credential. db is nil for --no-store,
 	// which never opens the database and therefore only honours the
 	// environment fallback.
@@ -204,8 +208,17 @@ func newScanDeps(root *rootOptions) scanDeps {
 			// another also keeps Gitleaks independent of that lock.
 			return []scanners.Scanner{trivy.New(), gitleaks.New()}
 		},
-		newAdvisories: func() *osv.Matcher { return osv.New(version) },
-		hmacKey:       func() ([]byte, error) { return secrets.LocalKey(secrets.NewStore()) },
+		newAdvisories: func() *osv.Matcher {
+			m := osv.New(version)
+			// The CLI only reads the stored choice: with the lookup off no
+			// request reaches api.osv.dev.
+			m.Settings = osv.NewSettings(root.paths.DataDir)
+			return m
+		},
+		newMalwareIndex: func() *malwaredb.Service {
+			return newMalwareIndexService(root.paths)
+		},
+		hmacKey: func() ([]byte, error) { return secrets.LocalKey(secrets.NewStore()) },
 		githubToken: func(ctx context.Context, db *sql.DB) (string, error) {
 			if db == nil {
 				return connections.EnvToken()
@@ -416,6 +429,24 @@ func (d scanDeps) advisoryMatcher() jobs.AdvisoryMatcher {
 		return m
 	}
 	return nil
+}
+
+// malwareMatcher returns the local malware index after a best-effort refresh,
+// or nil when the index is off or not wired. A refresh failure keeps the
+// previous index in use and is logged, never returned: malware matching is an
+// enrichment, and a network error must not fail a scan.
+func (d scanDeps) malwareMatcher(ctx context.Context) jobs.AdvisoryMatcher {
+	if d.newMalwareIndex == nil {
+		return nil
+	}
+	service := d.newMalwareIndex()
+	if service == nil || !service.Enabled() {
+		return nil
+	}
+	if err := service.Refresh(ctx); err != nil && ctx.Err() == nil {
+		slog.Warn("scan: malware index refresh failed, using the cached index", "error", err)
+	}
+	return service
 }
 
 // repoTarget is a resolved --repo target: the parsed spec, the repository's
@@ -722,6 +753,7 @@ func runStoredScan(ctx context.Context, db *sql.DB, kind sources.TargetKind, ass
 		Sources:      srcs,
 		Options:      scanOpts,
 		Advisories:   deps.advisoryMatcher(),
+		MalwareIndex: deps.malwareMatcher(ctx),
 		Outdated:     depsdev.New(depsdev.Config{DataDir: deps.paths.DataDir, Version: deps.version}),
 		EOL:          eol.New(eol.Config{DataDir: deps.paths.DataDir, Version: deps.version}),
 		Reachability: govulncheck.New(govulncheck.Config{DataDir: deps.paths.DataDir}),
@@ -853,7 +885,9 @@ func runDirectScan(ctx context.Context, kind sources.TargetKind, asset findings.
 	}
 	defer func() { _ = ws.Close() }()
 
-	result, scanErr := scanTarget(ctx, kind, scannerList, deps.advisoryMatcher(), ws, asset, scanOpts, progress)
+	result, scanErr := scanTarget(ctx, kind, scannerList,
+		[]jobs.AdvisoryMatcher{deps.advisoryMatcher(), deps.malwareMatcher(ctx)},
+		ws, asset, scanOpts, progress)
 	// Without a database there are no ignore decisions: every finding is open.
 	result.open = result.Findings
 	return result, scanErr
@@ -1068,7 +1102,7 @@ func imageAsset(ref string) findings.Asset {
 // findings; the returned error names every failed scanner.
 //
 // It backs --no-store; a stored scan runs the same steps inside jobs.Manager.
-func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Scanner, advisories jobs.AdvisoryMatcher, ws *sources.Workspace, asset findings.Asset, opts scanners.Options, progress *scanProgress) (scanOutput, error) {
+func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Scanner, advisories []jobs.AdvisoryMatcher, ws *sources.Workspace, asset findings.Asset, opts scanners.Options, progress *scanProgress) (scanOutput, error) {
 	out := scanOutput{
 		Asset:       asset,
 		Findings:    []findings.Finding{},
@@ -1110,25 +1144,29 @@ func scanTarget(ctx context.Context, kind sources.TargetKind, scs []scanners.Sca
 		out.ScannerRuns = append(out.ScannerRuns, run)
 	}
 
-	// OSV matches the inventory the scanners produced, not the workspace, so
-	// it runs once over the merged packages. A failure is recorded and logged
-	// but does not fail the scan: the scan's findings are complete without it.
-	if advisories != nil && len(out.Packages) > 0 && ctx.Err() == nil {
+	// OSV and the local malware index match the inventory the scanners
+	// produced, not the workspace, so they run once over the merged packages.
+	// A failure is recorded and logged but does not fail the scan: the scan's
+	// findings are complete without it.
+	for _, matcher := range advisories {
+		if matcher == nil || len(out.Packages) == 0 || ctx.Err() != nil {
+			continue
+		}
 		run := scannerRun{
-			Scanner:        advisories.Name(),
-			ScannerVersion: advisories.Version(),
+			Scanner:        matcher.Name(),
+			ScannerVersion: matcher.Version(),
 			Status:         "succeeded",
 		}
 		start := time.Now()
-		progress.stage(jobs.StageScan, advisories.Name())
-		afs, err := advisories.Match(ctx, out.Packages, asset)
+		progress.stage(jobs.StageScan, matcher.Name())
+		afs, err := matcher.Match(ctx, out.Packages, asset)
 		run.DurationMS = time.Since(start).Milliseconds()
 		switch {
 		case err != nil && ctx.Err() != nil:
 			run.Status = "canceled"
 			run.Error = err.Error()
 		case err != nil:
-			slog.Warn("scan: OSV advisory lookup failed", "error", err)
+			slog.Warn("scan: advisory lookup failed", "matcher", matcher.Name(), "error", err)
 			run.Status = "failed"
 			run.Error = err.Error()
 		default:
