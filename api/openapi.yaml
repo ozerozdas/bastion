@@ -2932,6 +2932,70 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /api/reports/snapshot:
+    get:
+      operationId: downloadReportSnapshot
+      summary: Download the fleet or one asset's security report snapshot.
+      description: |
+        Writes one offline snapshot of the fleet — scan coverage, open findings,
+        SLA status, triage decisions, suppression rules and the licence policy —
+        as a single document. `format=md` (the CLI default) is
+        GitHub-flavoured Markdown, `format=html` a self-contained page and
+        `format=json` the default machine-readable snapshot. `asset_id` narrows
+        the scope to one asset; an unknown id yields an empty snapshot.
+
+        The `Content-Disposition` filename is
+        `bastion-report-<YYYYMMDD-HHMM>.<ext>`, stamped from the snapshot's
+        `generated_at` in UTC. Every response carries
+        `X-Content-Type-Options: nosniff`; the HTML response also carries
+        `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'`,
+        so the downloaded page can neither fetch nor run anything.
+
+        This operation is hand-written in `internal/httpapi/reports_snapshot.go`
+        and excluded from codegen (api/oapi-codegen.yaml): the generated strict
+        server cannot set the `Content-Disposition` header. The spec stays the
+        contract.
+      tags: [reports]
+      parameters:
+        - $ref: "#/components/parameters/ReportSnapshotFormatQuery"
+        - $ref: "#/components/parameters/AssetIDQuery"
+      responses:
+        "200":
+          description: The snapshot as one downloadable document.
+          headers:
+            Content-Disposition:
+              description: |
+                Attachment with the filename
+                `bastion-report-<YYYYMMDD-HHMM>.<ext>`.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            text/markdown:
+              schema:
+                type: string
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: |
+            `format` is not one of `md`, `html` or `json`, or `asset_id` is not
+            a positive integer.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "421":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /api/reports/audit:
     get:
       operationId: getReportAudit
@@ -3295,6 +3359,16 @@ components:
         type: string
         enum: [grouped, single]
         default: grouped
+    ReportSnapshotFormatQuery:
+      name: format
+      in: query
+      required: false
+      description: |
+        The document format: `json` (the default), `md` or `html`. Any other
+        value is rejected with 400.
+      schema:
+        type: string
+        default: json
   responses:
     Problem:
       description: |

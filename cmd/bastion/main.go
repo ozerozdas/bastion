@@ -88,6 +88,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newServeCmd(opts))
 	root.AddCommand(newMCPCmd(opts))
 	root.AddCommand(newScanCmd(opts))
+	root.AddCommand(newReportCmd(opts))
 	root.AddCommand(newDoctorCmd(opts))
 	root.AddCommand(newUpdateCmd())
 	// The hidden child the reachability enrichment re-execs itself with.

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bastion security report</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 2rem 1.5rem 3rem;
+  background: #ffffff;
+  color: #1f2328;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+main { max-width: 64rem; margin: 0 auto; }
+h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
+h2 { font-size: 1.2rem; margin: 2rem 0 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid #d8dee4; }
+p { margin: 0.5rem 0; }
+.meta { color: #59636e; }
+.summary { margin: 0.5rem 0 0.75rem; }
+.none { color: #59636e; font-style: italic; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; margin: 0.5rem 0 1rem; font-size: 0.9rem; }
+th, td { border: 1px solid #d8dee4; padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; }
+th { background: #f6f8fa; font-weight: 600; }
+td { white-space: pre-line; overflow-wrap: anywhere; }
+tr { page-break-inside: avoid; break-inside: avoid; }
+thead { display: table-header-group; }
+@media print {
+  body { padding: 0; font-size: 12px; }
+  main { max-width: none; }
+  h2 { page-break-after: avoid; break-after: avoid; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Bastion security report</h1>
+<p class="meta">Generated {{timestamp .GeneratedAt}} &middot; Scope: {{scope .Scope}}</p>
+
+<section>
+<h2>Coverage</h2>
+{{if .Coverage.Assets}}
+<p class="summary">{{.Coverage.AssetsTotal}} assets: {{.Coverage.Scanned}} scanned, {{.Coverage.NeverScanned}} never scanned, {{.Coverage.LastScanFailed}} last scan failed.</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Asset</th><th>Kind</th><th>Last scan status</th><th>Finished</th><th>Failed scanners</th></tr>
+</thead>
+<tbody>
+{{range .Coverage.Assets}}
+<tr>
+<td>{{asset .DisplayName .AssetID}}</td>
+<td>{{dash .Kind}}</td>
+<td>{{lastScanStatus .LastScan}}</td>
+<td>{{lastScanFinished .LastScan}}</td>
+<td>{{failedScanners .Scanners}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}
+<p class="none">None.</p>
+{{end}}
+</section>
+
+<section>
+<h2>Open findings</h2>
+{{if .Findings.Assets}}
+<p class="summary">{{.Findings.Open}} open: {{.Findings.Total.Critical}} critical, {{.Findings.Total.High}} high, {{.Findings.Total.Medium}} medium, {{.Findings.Total.Low}} low, {{.Findings.Total.Unknown}} unknown.</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Asset</th><th>Kind</th><th>Total</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Unknown</th></tr>
+</thead>
+<tbody>
+{{range .Findings.Assets}}
+<tr>
+<td>{{asset .DisplayName .AssetID}}</td>
+<td>{{dash .Kind}}</td>
+<td>{{.Total}}</td>
+<td>{{.Severity.Critical}}</td>
+<td>{{.Severity.High}}</td>
+<td>{{.Severity.Medium}}</td>
+<td>{{.Severity.Low}}</td>
+<td>{{.Severity.Unknown}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}
+<p class="none">None.</p>
+{{end}}
+</section>
+
+<section>
+<h2>SLA</h2>
+{{if or .SLA.OpenCount .SLA.OverdueCount .SLA.FixedInWindow .SLA.Overdue .SLA.MeanTimeToFixDays}}
+<p class="summary">Thresholds: {{.SLA.Thresholds.Critical}} days critical, {{.SLA.Thresholds.High}} days high, {{.SLA.Thresholds.Medium}} days medium, {{.SLA.Thresholds.Low}} days low. Fix window: {{.SLA.WindowDays}} days.</p>
+<p class="summary">{{.SLA.OpenCount}} open, {{.SLA.OverdueCount}} overdue{{if .SLA.OverdueTruncated}} (list truncated){{end}}, {{.SLA.FixedInWindow}} fixed in the window, mean time to fix {{meanTimeToFix .SLA.MeanTimeToFixDays}}.</p>
+{{if .SLA.Overdue}}
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Asset</th><th>Finding</th><th>Severity</th><th>First seen</th><th>Age days</th><th>Threshold days</th><th>Overdue days</th></tr>
+</thead>
+<tbody>
+{{range .SLA.Overdue}}
+<tr>
+<td>{{asset .AssetName .AssetID}}</td>
+<td>{{finding .Title .RuleID .Fingerprint}}</td>
+<td>{{dash .Severity}}</td>
+<td>{{timestamp .FirstSeen}}</td>
+<td>{{.AgeDays}}</td>
+<td>{{.ThresholdDays}}</td>
+<td>{{.OverdueDays}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}
+<p class="none">None.</p>
+{{end}}
+{{else}}
+<p class="none">None.</p>
+{{end}}
+</section>
+
+<section>
+<h2>Triage decisions</h2>
+{{if or .Decisions.Total .Decisions.Entries}}
+<p class="summary">{{.Decisions.Total}} decisions, {{.Decisions.Expired}} expired.</p>
+<p class="summary">By state: {{counts .Decisions.ByState}}.</p>
+<p class="summary">By decided by: {{counts .Decisions.ByDecidedBy}}.</p>
+{{if .Decisions.Entries}}
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Asset</th><th>Finding</th><th>Severity</th><th>State</th><th>Reason</th><th>Decided by</th><th>Expires</th><th>Expired</th></tr>
+</thead>
+<tbody>
+{{range .Decisions.Entries}}
+<tr>
+<td>{{asset .AssetName .AssetID}}</td>
+<td>{{finding .Title .RuleID .Fingerprint}}</td>
+<td>{{dash .Severity}}</td>
+<td>{{dash .State}}</td>
+<td>{{dash .Reason}}</td>
+<td>{{dash .DecidedBy}}</td>
+<td>{{timestampPtr .ExpiresAt}}</td>
+<td>{{yesNo .Expired}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}
+<p class="none">None.</p>
+{{end}}
+{{else}}
+<p class="none">None.</p>
+{{end}}
+</section>
+
+<section>
+<h2>Suppression rules</h2>
+{{if or .SuppressionRules.ActiveCount .SuppressionRules.ProposedCount .SuppressionRules.Rules}}
+<p class="summary">{{.SuppressionRules.ActiveCount}} active, {{.SuppressionRules.ProposedCount}} proposed.</p>
+{{if .SuppressionRules.Rules}}
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>ID</th><th>Asset</th><th>Finding type</th><th>Rule ID</th><th>Package</th><th>Path glob</th><th>State</th><th>Reason</th><th>Expires</th><th>Expired</th><th>Created by</th><th>Matched</th></tr>
+</thead>
+<tbody>
+{{range .SuppressionRules.Rules}}
+<tr>
+<td>{{.ID}}</td>
+<td>{{ruleAsset .}}</td>
+<td>{{dash .FindingType}}</td>
+<td>{{dash .RuleID}}</td>
+<td>{{dash .PackageName}}</td>
+<td>{{dash .PathGlob}}</td>
+<td>{{dash .State}}</td>
+<td>{{dash .Reason}}</td>
+<td>{{timestampPtr .ExpiresAt}}</td>
+<td>{{yesNo .Expired}}</td>
+<td>{{dash .CreatedBy}}</td>
+<td>{{.Matched}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}
+<p class="none">None.</p>
+{{end}}
+{{else}}
+<p class="none">None.</p>
+{{end}}
+</section>
+
+<section>
+<h2>Licence policy</h2>
+{{if or .LicencePolicy.Global.Allow .LicencePolicy.Global.Deny .LicencePolicy.Assets}}
+<p class="summary">Global allow: {{list .LicencePolicy.Global.Allow}}</p>
+<p class="summary">Global deny: {{list .LicencePolicy.Global.Deny}}</p>
+{{if .LicencePolicy.Assets}}
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Asset</th><th>Allow</th><th>Deny</th></tr>
+</thead>
+<tbody>
+{{range .LicencePolicy.Assets}}
+<tr>
+<td>{{asset .AssetName .AssetID}}</td>
+<td>{{list .Allow}}</td>
+<td>{{list .Deny}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+{{else}}
+<p class="none">None.</p>
+{{end}}
+{{else}}
+<p class="none">None.</p>
+{{end}}
+</section>
+</main>
+</body>
+</html>

@@ -87,6 +87,30 @@ only while `bastion serve` is open. A scan missed while bastion was closed runs 
 next start, and notifications work as they do for any other scan. Scheduled scans appear
 in the scan history with the `ui` trigger.
 
+## Reports
+
+The **Reports** page collects the saved views: licences and SBOM, the trend, CVE insights,
+malware, runtimes, scan history, the audit pack, OWASP Top 10 and SLA. The project switcher
+scopes every report; with no project selected they cover the whole fleet.
+
+At the top, **Export snapshot** downloads one snapshot of the current scope as
+**Markdown**, **HTML** or **JSON**: coverage per project, open findings by severity, SLA
+status, triage decisions (with reason and expiry), active suppression rules and the licence
+policy. Markdown and HTML show each project's last scan and its failed scanners; the full
+scanner-run list is in JSON (`coverage.assets[].scanners`). The file is built without a
+network call; like every command it reads the local database (and applies pending schema
+migrations, as `bastion doctor` does), so it is identical apart from its timestamp line.
+`bastion report` writes the same document from the CLI — see
+[CLI Reference](CLI-Reference.md#bastion-report).
+
+The report contains finding details as scanned (titles, paths, messages), which can include
+local filesystem paths and repository names — review it before sharing it outside your
+team.
+
+The Markdown and HTML snapshots can serve as audit evidence: they list the decisions taken,
+whether a user or an agent decided (`decided by`) and when a decision expires. Person
+identity arrives with repository-based decisions (#214).
+
 ## Connections
 
 Where credentials live: **GitHub** tokens and **AWS** profiles for ECR.

@@ -1,0 +1,235 @@
+{
+  "generated_at": "2026-11-27T09:30:00Z",
+  "scope": {
+    "all": true,
+    "asset_id": null,
+    "asset_name": ""
+  },
+  "coverage": {
+    "assets_total": 2,
+    "scanned": 1,
+    "never_scanned": 1,
+    "last_scan_failed": 0,
+    "assets": [
+      {
+        "asset_id": 1,
+        "display_name": "Alpha | repo",
+        "kind": "repo",
+        "ref": "octo/alpha",
+        "last_scan": {
+          "id": 7,
+          "status": "succeeded",
+          "started_at": "2026-11-27T09:00:00Z",
+          "finished_at": "2026-11-27T09:20:00Z"
+        },
+        "scanners": [
+          {
+            "name": "trivy",
+            "version": "0.60.0",
+            "db_version": "2026-11-01",
+            "status": "succeeded",
+            "duration_ms": 1200,
+            "error": ""
+          },
+          {
+            "name": "gitleaks",
+            "version": "",
+            "db_version": "",
+            "status": "failed",
+            "duration_ms": null,
+            "error": "config missing"
+          }
+        ]
+      },
+      {
+        "asset_id": 2,
+        "display_name": "Beta",
+        "kind": "path",
+        "ref": "/srv/beta",
+        "last_scan": null,
+        "scanners": []
+      }
+    ]
+  },
+  "findings": {
+    "total": {
+      "critical": 1,
+      "high": 1,
+      "medium": 0,
+      "low": 1,
+      "unknown": 0
+    },
+    "open": 3,
+    "assets": [
+      {
+        "asset_id": 1,
+        "display_name": "Alpha | repo",
+        "kind": "repo",
+        "total": 2,
+        "severity": {
+          "critical": 1,
+          "high": 1,
+          "medium": 0,
+          "low": 0,
+          "unknown": 0
+        }
+      },
+      {
+        "asset_id": 2,
+        "display_name": "Beta",
+        "kind": "path",
+        "total": 1,
+        "severity": {
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 1,
+          "unknown": 0
+        }
+      }
+    ]
+  },
+  "sla": {
+    "thresholds": {
+      "critical": 7,
+      "high": 30,
+      "medium": 90,
+      "low": 180
+    },
+    "window_days": 90,
+    "open_count": 3,
+    "overdue_count": 1,
+    "overdue_truncated": false,
+    "fixed_in_window": 2,
+    "mean_time_to_fix_days": 12.5,
+    "overdue": [
+      {
+        "asset_id": 1,
+        "asset_name": "Alpha | repo",
+        "finding_id": 11,
+        "fingerprint": "fp-critical",
+        "type": "vulnerability",
+        "severity": "critical",
+        "title": "CVE-2026-0001 | remote code",
+        "rule_id": "CVE-2026-0001",
+        "package_name": "openssl",
+        "location": "go.mod",
+        "first_seen": "2026-09-01T10:00:00Z",
+        "age_days": 87,
+        "threshold_days": 7,
+        "overdue_days": 80
+      }
+    ]
+  },
+  "decisions": {
+    "total": 2,
+    "expired": 1,
+    "by_state": [
+      {
+        "key": "ignored",
+        "count": 1
+      },
+      {
+        "key": "accepted_risk",
+        "count": 1
+      },
+      {
+        "key": "false_positive",
+        "count": 0
+      }
+    ],
+    "by_decided_by": [
+      {
+        "key": "user",
+        "count": 1
+      },
+      {
+        "key": "agent",
+        "count": 1
+      }
+    ],
+    "entries": [
+      {
+        "asset_id": 1,
+        "asset_name": "Alpha | repo",
+        "fingerprint": "fp-high",
+        "type": "misconfig",
+        "rule_id": "CKV_AWS_1",
+        "title": "S3 bucket public",
+        "package_name": "aws",
+        "location": "main.tf",
+        "severity": "high",
+        "state": "accepted_risk",
+        "reason": "GPL | needs \u003cscript\u003ereview\nsecond line",
+        "decided_by": "agent",
+        "expires_at": "2026-10-01T00:00:00Z",
+        "expired": true,
+        "created_at": "2026-09-15T08:00:00Z",
+        "rule_ref": null
+      },
+      {
+        "asset_id": 2,
+        "asset_name": "Beta",
+        "fingerprint": "fp-low",
+        "type": "outdated",
+        "rule_id": "lodash",
+        "title": "lodash outdated",
+        "package_name": "",
+        "location": "",
+        "severity": "low",
+        "state": "ignored",
+        "reason": "not deployed",
+        "decided_by": "user",
+        "expires_at": null,
+        "expired": false,
+        "created_at": "2026-10-01T08:00:00Z",
+        "rule_ref": null
+      }
+    ]
+  },
+  "suppression_rules": {
+    "active_count": 1,
+    "proposed_count": 1,
+    "rules": [
+      {
+        "id": 5,
+        "asset_id": 1,
+        "asset_name": "Alpha | repo",
+        "finding_type": "vulnerability",
+        "rule_id": "CVE-2099-9999",
+        "package_name": "openssl",
+        "path_glob": "**/*.mod",
+        "state": "ignored",
+        "reason": "not deployed",
+        "expires_at": "2026-10-01T00:00:00Z",
+        "expired": true,
+        "created_by": "user",
+        "created_at": "2026-09-02T07:00:00Z",
+        "matched": 2
+      }
+    ]
+  },
+  "licence_policy": {
+    "global": {
+      "allow": [
+        "BSD-3-Clause"
+      ],
+      "deny": [
+        "GPL-3.0",
+        "AGPL-3.0"
+      ]
+    },
+    "assets": [
+      {
+        "asset_id": 1,
+        "asset_name": "Alpha | repo",
+        "allow": [
+          "MIT"
+        ],
+        "deny": [
+          "GPL-3.0"
+        ]
+      }
+    ]
+  }
+}

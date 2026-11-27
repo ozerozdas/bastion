@@ -411,6 +411,95 @@ func (q *Queries) ReportLicenseFindings(ctx context.Context, arg ReportLicenseFi
 	return items, nil
 }
 
+const reportScannerCoverage = `-- name: ReportScannerCoverage :many
+SELECT
+    a.id AS asset_id,
+    a.display_name,
+    a.kind,
+    a.ref,
+    s.id AS scan_id,
+    s.status AS scan_status,
+    s.started_at,
+    s.finished_at,
+    sr.scanner,
+    sr.scanner_version,
+    sr.db_version,
+    sr.status AS scanner_status,
+    sr.duration_ms,
+    sr.error
+FROM assets a
+LEFT JOIN scans s
+    ON s.asset_id = a.id
+   AND s.id = (
+       SELECT MAX(s2.id)
+       FROM scans s2
+       WHERE s2.asset_id = a.id
+   )
+LEFT JOIN scanner_runs sr ON sr.scan_id = s.id
+WHERE a.archived_at IS NULL
+  AND (?1 IS NULL OR a.id = ?1)
+ORDER BY a.display_name, a.id, sr.scanner
+`
+
+type ReportScannerCoverageRow struct {
+	AssetID        int64
+	DisplayName    string
+	Kind           string
+	Ref            string
+	ScanID         sql.NullInt64
+	ScanStatus     sql.NullString
+	StartedAt      sql.NullString
+	FinishedAt     sql.NullString
+	Scanner        sql.NullString
+	ScannerVersion sql.NullString
+	DBVersion      sql.NullString
+	ScannerStatus  sql.NullString
+	DurationMS     sql.NullInt64
+	Error          sql.NullString
+}
+
+// Every non-archived asset with its newest scan, whatever that scan's status,
+// and the scanner runs of that scan (#204). An asset that was never scanned
+// still returns one row, with NULL scan and scanner columns, so the snapshot
+// can report it as uncovered. Ordering is total: asset, then scanner name.
+func (q *Queries) ReportScannerCoverage(ctx context.Context, assetID interface{}) ([]ReportScannerCoverageRow, error) {
+	rows, err := q.db.QueryContext(ctx, reportScannerCoverage, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReportScannerCoverageRow
+	for rows.Next() {
+		var i ReportScannerCoverageRow
+		if err := rows.Scan(
+			&i.AssetID,
+			&i.DisplayName,
+			&i.Kind,
+			&i.Ref,
+			&i.ScanID,
+			&i.ScanStatus,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.Scanner,
+			&i.ScannerVersion,
+			&i.DBVersion,
+			&i.ScannerStatus,
+			&i.DurationMS,
+			&i.Error,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reportSeverityTrend = `-- name: ReportSeverityTrend :many
 WITH ranked AS (
     SELECT
@@ -851,6 +940,113 @@ func (q *Queries) ReportTrendScans(ctx context.Context, now string) ([]ReportTre
 			&i.ScanID,
 			&i.FinishedAt,
 			&i.CriticalHighOpen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reportTriageDecisions = `-- name: ReportTriageDecisions :many
+SELECT
+    fs.asset_id,
+    a.display_name,
+    a.kind AS asset_kind,
+    fs.fingerprint,
+    COALESCE(f.type, '') AS finding_type,
+    COALESCE(f.rule_id, '') AS rule_id,
+    COALESCE(f.title, '') AS title,
+    COALESCE(f.package_name, '') AS package_name,
+    COALESCE(f.location, '') AS location,
+    COALESCE(f.severity, '') AS severity,
+    fs.state,
+    COALESCE(fs.reason, '') AS reason,
+    fs.decided_by,
+    fs.expires_at,
+    fs.created_at,
+    fs.rule_ref
+FROM finding_states fs
+JOIN assets a ON a.id = fs.asset_id
+LEFT JOIN findings f ON f.id = (
+    SELECT f2.id
+    FROM findings f2
+    WHERE f2.asset_id = fs.asset_id AND f2.fingerprint = fs.fingerprint
+    ORDER BY f2.scan_id DESC, f2.id DESC
+    LIMIT 1
+)
+WHERE a.archived_at IS NULL
+  AND (?1 IS NULL OR fs.asset_id = ?1)
+ORDER BY
+    a.display_name,
+    a.id,
+    fs.state,
+    CASE COALESCE(f.severity, '')
+        WHEN 'critical' THEN 0
+        WHEN 'high' THEN 1
+        WHEN 'medium' THEN 2
+        WHEN 'low' THEN 3
+        ELSE 4
+    END,
+    fs.fingerprint
+`
+
+type ReportTriageDecisionsRow struct {
+	AssetID     int64
+	DisplayName string
+	AssetKind   string
+	Fingerprint string
+	FindingType string
+	RuleID      string
+	Title       string
+	PackageName string
+	Location    string
+	Severity    string
+	State       string
+	Reason      string
+	DecidedBy   string
+	ExpiresAt   sql.NullString
+	CreatedAt   string
+	RuleRef     sql.NullInt64
+}
+
+// Every finding decision with the finding it covers, for the offline snapshot
+// (#204). The identifying fields come from the newest finding row carrying the
+// decision's fingerprint, so a decision outlives the scan that first reported
+// it; a decision whose findings are gone still appears with empty fields.
+// Expired decisions are returned too: the caller marks them against its clock.
+func (q *Queries) ReportTriageDecisions(ctx context.Context, assetID interface{}) ([]ReportTriageDecisionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, reportTriageDecisions, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReportTriageDecisionsRow
+	for rows.Next() {
+		var i ReportTriageDecisionsRow
+		if err := rows.Scan(
+			&i.AssetID,
+			&i.DisplayName,
+			&i.AssetKind,
+			&i.Fingerprint,
+			&i.FindingType,
+			&i.RuleID,
+			&i.Title,
+			&i.PackageName,
+			&i.Location,
+			&i.Severity,
+			&i.State,
+			&i.Reason,
+			&i.DecidedBy,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.RuleRef,
 		); err != nil {
 			return nil, err
 		}

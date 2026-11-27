@@ -17,9 +17,11 @@ output-options:
   # strict server cannot set the Content-Disposition header the download needs.
   # /api/findings/export is hand-written for the same reason
   # (internal/httpapi/findings_export.go), as is the licence CSV download
-  # (internal/httpapi/licenses.go).
+  # (internal/httpapi/licenses.go) and the report snapshot
+  # (internal/httpapi/reports_snapshot.go).
   exclude-operation-ids:
     - streamEvents
     - getScanSBOM
     - exportFindings
     - downloadLicenses
+    - downloadReportSnapshot

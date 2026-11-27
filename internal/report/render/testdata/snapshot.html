@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bastion security report</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 2rem 1.5rem 3rem;
+  background: #ffffff;
+  color: #1f2328;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+main { max-width: 64rem; margin: 0 auto; }
+h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
+h2 { font-size: 1.2rem; margin: 2rem 0 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid #d8dee4; }
+p { margin: 0.5rem 0; }
+.meta { color: #59636e; }
+.summary { margin: 0.5rem 0 0.75rem; }
+.none { color: #59636e; font-style: italic; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; margin: 0.5rem 0 1rem; font-size: 0.9rem; }
+th, td { border: 1px solid #d8dee4; padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; }
+th { background: #f6f8fa; font-weight: 600; }
+td { white-space: pre-line; overflow-wrap: anywhere; }
+tr { page-break-inside: avoid; break-inside: avoid; }
+thead { display: table-header-group; }
+@media print {
+  body { padding: 0; font-size: 12px; }
+  main { max-width: none; }
+  h2 { page-break-after: avoid; break-after: avoid; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Bastion security report</h1>
+<p class="meta">Generated 2026-11-27 09:30 UTC &middot; Scope: whole fleet</p>
+
+<section>
+<h2>Coverage</h2>
+
+<p class="summary">2 assets: 1 scanned, 1 never scanned, 0 last scan failed.</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Asset</th><th>Kind</th><th>Last scan status</th><th>Finished</th><th>Failed scanners</th></tr>
+</thead>
+<tbody>
+
+<tr>
+<td>Alpha | repo</td>
+<td>repo</td>
+<td>succeeded</td>
+<td>2026-11-27 09:20 UTC</td>
+<td>gitleaks</td>
+</tr>
+
+<tr>
+<td>Beta</td>
+<td>path</td>
+<td>never scanned</td>
+<td>—</td>
+<td>—</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+</section>
+
+<section>
+<h2>Open findings</h2>
+
+<p class="summary">3 open: 1 critical, 1 high, 0 medium, 1 low, 0 unknown.</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Asset</th><th>Kind</th><th>Total</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Unknown</th></tr>
+</thead>
+<tbody>
+
+<tr>
+<td>Alpha | repo</td>
+<td>repo</td>
+<td>2</td>
+<td>1</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+
+<tr>
+<td>Beta</td>
+<td>path</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+<td>0</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+</section>
+
+<section>
+<h2>SLA</h2>
+
+<p class="summary">Thresholds: 7 days critical, 30 days high, 90 days medium, 180 days low. Fix window: 90 days.</p>
+<p class="summary">3 open, 1 overdue, 2 fixed in the window, mean time to fix 12.5 days.</p>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Asset</th><th>Finding</th><th>Severity</th><th>First seen</th><th>Age days</th><th>Threshold days</th><th>Overdue days</th></tr>
+</thead>
+<tbody>
+
+<tr>
+<td>Alpha | repo</td>
+<td>CVE-2026-0001 | remote code</td>
+<td>critical</td>
+<td>2026-09-01 10:00 UTC</td>
+<td>87</td>
+<td>7</td>
+<td>80</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+
+</section>
+
+<section>
+<h2>Triage decisions</h2>
+
+<p class="summary">2 decisions, 1 expired.</p>
+<p class="summary">By state: ignored 1, accepted_risk 1, false_positive 0.</p>
+<p class="summary">By decided by: user 1, agent 1.</p>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Asset</th><th>Finding</th><th>Severity</th><th>State</th><th>Reason</th><th>Decided by</th><th>Expires</th><th>Expired</th></tr>
+</thead>
+<tbody>
+
+<tr>
+<td>Alpha | repo</td>
+<td>S3 bucket public</td>
+<td>high</td>
+<td>accepted_risk</td>
+<td>GPL | needs &lt;script&gt;review
+second line</td>
+<td>agent</td>
+<td>2026-10-01 00:00 UTC</td>
+<td>yes</td>
+</tr>
+
+<tr>
+<td>Beta</td>
+<td>lodash outdated</td>
+<td>low</td>
+<td>ignored</td>
+<td>not deployed</td>
+<td>user</td>
+<td>—</td>
+<td>no</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+
+</section>
+
+<section>
+<h2>Suppression rules</h2>
+
+<p class="summary">1 active, 1 proposed.</p>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>ID</th><th>Asset</th><th>Finding type</th><th>Rule ID</th><th>Package</th><th>Path glob</th><th>State</th><th>Reason</th><th>Expires</th><th>Expired</th><th>Created by</th><th>Matched</th></tr>
+</thead>
+<tbody>
+
+<tr>
+<td>5</td>
+<td>Alpha | repo</td>
+<td>vulnerability</td>
+<td>CVE-2099-9999</td>
+<td>openssl</td>
+<td>**/*.mod</td>
+<td>ignored</td>
+<td>not deployed</td>
+<td>2026-10-01 00:00 UTC</td>
+<td>yes</td>
+<td>user</td>
+<td>2</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+
+</section>
+
+<section>
+<h2>Licence policy</h2>
+
+<p class="summary">Global allow: BSD-3-Clause</p>
+<p class="summary">Global deny: GPL-3.0, AGPL-3.0</p>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr><th>Asset</th><th>Allow</th><th>Deny</th></tr>
+</thead>
+<tbody>
+
+<tr>
+<td>Alpha | repo</td>
+<td>MIT</td>
+<td>GPL-3.0</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+
+</section>
+</main>
+</body>
+</html>

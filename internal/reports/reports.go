@@ -90,13 +90,14 @@ func (s *Service) expiryNow() string {
 	return store.FormatTimestamp(s.now())
 }
 
-// SeverityTotals is the open finding count per severity.
+// SeverityTotals is the open finding count per severity. Its JSON tags shape
+// the snapshot export only; the HTTP API sends the generated gen types.
 type SeverityTotals struct {
-	Critical int
-	High     int
-	Medium   int
-	Low      int
-	Unknown  int
+	Critical int `json:"critical"`
+	High     int `json:"high"`
+	Medium   int `json:"medium"`
+	Low      int `json:"low"`
+	Unknown  int `json:"unknown"`
 }
 
 // TypeTotals is the open finding count per finding type (§5).
